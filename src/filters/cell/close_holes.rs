@@ -1,17 +1,17 @@
-use crate::data::PolyData;
-use std::collections::HashMap;
+use crate::data::{CellArray, PolyData};
+use std::collections::{HashMap, HashSet};
 
 /// Close all boundary loops in a mesh by capping them with fan triangulation.
 ///
-/// Similar to `fill_holes` but also handles multiple separate boundary loops.
-/// Finds all boundary edges, traces connected loops, and fills each with
-/// triangles fanned from the loop centroid.
+/// Mirrors the main `vtkFillHolesFilter` flow for polygonal cells: boundary
+/// edges are linked into simple loops and each valid loop is triangulated using
+/// existing point ids. No new cap-center points are created.
 pub fn close_holes(input: &PolyData) -> PolyData {
-    // Find boundary edges (edges shared by exactly one cell)
     let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
-    let mut edge_next: HashMap<i64, Vec<i64>> = HashMap::new();
-
     for cell in input.polys.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
         for i in 0..cell.len() {
             let a = cell[i];
             let b = cell[(i + 1) % cell.len()];
@@ -20,88 +20,91 @@ pub fn close_holes(input: &PolyData) -> PolyData {
         }
     }
 
-    // Build directed boundary edge graph
-    for (&(a, b), &count) in &edge_count {
-        if count == 1 {
-            // Need to determine the boundary direction
-            // Find the cell containing this edge and determine winding
-            for cell in input.polys.iter() {
-                for i in 0..cell.len() {
-                    let ca = cell[i];
-                    let cb = cell[(i + 1) % cell.len()];
-                    if (ca == a && cb == b) || (ca == b && cb == a) {
-                        // Boundary edge goes opposite to the cell winding
-                        edge_next.entry(cb).or_default().push(ca);
-                        break;
-                    }
-                }
-            }
-        }
+    let boundary_edges: Vec<(i64, i64)> = edge_count
+        .into_iter()
+        .filter_map(|(edge, count)| (count == 1).then_some(edge))
+        .collect();
+
+    let mut edge_links: HashMap<i64, Vec<usize>> = HashMap::new();
+    for (edge_id, &(a, b)) in boundary_edges.iter().enumerate() {
+        edge_links.entry(a).or_default().push(edge_id);
+        edge_links.entry(b).or_default().push(edge_id);
     }
 
-    let mut points = input.points.clone();
-    let mut polys = input.polys.clone();
+    let mut out_polys = input.polys.clone();
+    let mut visited = vec![false; boundary_edges.len()];
 
-    // Trace boundary loops
-    let mut visited = std::collections::HashSet::new();
-    for &start in edge_next.keys() {
-        if visited.contains(&start) {
+    for cell_id in 0..boundary_edges.len() {
+        if visited[cell_id] {
             continue;
         }
 
-        // Trace the loop
-        let mut loop_pts = vec![start];
-        visited.insert(start);
-        let mut current = start;
+        visited[cell_id] = true;
+        let (start_id, mut end_id) = boundary_edges[cell_id];
+        let mut current_cell_id = cell_id;
+        let mut polygon = vec![start_id];
+        let mut valid = true;
 
-        loop {
-            let nexts = match edge_next.get(&current) {
-                Some(n) => n,
-                None => break,
-            };
-            let next = nexts.iter().find(|&&n| !visited.contains(&n));
-            match next {
-                Some(&n) => {
-                    if n == start && loop_pts.len() >= 3 {
-                        // Loop closed
-                        break;
-                    }
-                    loop_pts.push(n);
-                    visited.insert(n);
-                    current = n;
+        while start_id != end_id && valid {
+            polygon.push(end_id);
+            let neighbors = match edge_links.get(&end_id) {
+                Some(edges) => edges,
+                None => {
+                    valid = false;
+                    break;
                 }
-                None => break,
+            };
+
+            let next_edges: Vec<usize> = neighbors
+                .iter()
+                .copied()
+                .filter(|&edge_id| edge_id != current_cell_id && !visited[edge_id])
+                .collect();
+
+            if next_edges.len() != 1 {
+                valid = false;
+            } else {
+                let nei_id = next_edges[0];
+                visited[nei_id] = true;
+                let (p0, p1) = boundary_edges[nei_id];
+                end_id = if p0 != end_id { p0 } else { p1 };
+                current_cell_id = nei_id;
             }
         }
 
-        if loop_pts.len() >= 3 {
-            // Compute centroid
-            let mut cx = 0.0;
-            let mut cy = 0.0;
-            let mut cz = 0.0;
-            for &pid in &loop_pts {
-                let p = points.get(pid as usize);
-                cx += p[0];
-                cy += p[1];
-                cz += p[2];
-            }
-            let n = loop_pts.len() as f64;
-            let center_id = points.len() as i64;
-            points.push([cx / n, cy / n, cz / n]);
-
-            // Fan triangulate
-            for i in 0..loop_pts.len() {
-                let a = loop_pts[i];
-                let b = loop_pts[(i + 1) % loop_pts.len()];
-                polys.push_cell(&[center_id, a, b]);
-            }
+        if valid && polygon.len() >= 3 && is_simple_loop(&polygon) {
+            triangulate_loop(&polygon, &mut out_polys);
         }
     }
 
     let mut pd = PolyData::new();
-    pd.points = points;
-    pd.polys = polys;
+    pd.points = input.points.clone();
+    pd.verts = input.verts.clone();
+    pd.lines = input.lines.clone();
+    pd.polys = out_polys;
+    pd.strips = input.strips.clone();
+    *pd.point_data_mut() = input.point_data().clone();
     pd
+}
+
+fn is_simple_loop(polygon: &[i64]) -> bool {
+    let mut seen = HashSet::with_capacity(polygon.len());
+    polygon.iter().all(|&point_id| seen.insert(point_id))
+}
+
+fn triangulate_loop(polygon: &[i64], polys: &mut CellArray) {
+    if polygon.len() == 3 {
+        polys.push_cell(polygon);
+    } else {
+        for i in 1..polygon.len() - 1 {
+            if polygon[0] != polygon[i]
+                && polygon[i] != polygon[i + 1]
+                && polygon[0] != polygon[i + 1]
+            {
+                polys.push_cell(&[polygon[0], polygon[i], polygon[i + 1]]);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -110,24 +113,20 @@ mod tests {
 
     #[test]
     fn close_single_hole() {
-        // Open box missing top face
         let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]); // 0
-        pd.points.push([1.0, 0.0, 0.0]); // 1
-        pd.points.push([1.0, 1.0, 0.0]); // 2
-        pd.points.push([0.0, 1.0, 0.0]); // 3
-                                         // Two triangles forming a quad
-        pd.polys.push_cell(&[0, 1, 2]);
-        pd.polys.push_cell(&[0, 2, 3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
 
         let result = close_holes(&pd);
-        // Original had 2 cells, should have more after closing
-        assert!(result.polys.num_cells() >= 2);
+        assert_eq!(result.points.len(), 4);
+        assert_eq!(result.polys.num_cells(), 3);
     }
 
     #[test]
     fn already_closed() {
-        // Single triangle - all edges are boundary, forms a single loop
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
@@ -135,8 +134,8 @@ mod tests {
         pd.polys.push_cell(&[0, 1, 2]);
 
         let result = close_holes(&pd);
-        // Should add hole-filling triangles
-        assert!(result.polys.num_cells() >= 1);
+        assert_eq!(result.points.len(), 3);
+        assert_eq!(result.polys.num_cells(), 2);
     }
 
     #[test]

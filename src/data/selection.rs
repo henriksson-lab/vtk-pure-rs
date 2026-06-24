@@ -5,14 +5,24 @@ pub enum SelectionContentType {
     GlobalIds,
     /// Selection by pedigree IDs.
     PedigreeIds,
+    /// Selection by exact array values.
+    Values,
     /// Selection by indices (point or cell indices).
     Indices,
-    /// Selection by frustum (6 planes).
+    /// Selection by frustum (8 homogeneous world-coordinate corners).
     Frustum,
+    /// Selection by world-coordinate locations.
+    Locations,
     /// Selection by value range on a named array.
     Thresholds,
     /// Selection by block index (for MultiBlock).
     Blocks,
+    /// Selection by block selector expressions.
+    BlockSelectors,
+    /// Selection by query expression.
+    Query,
+    /// Selection by user-supplied logic.
+    User,
 }
 
 /// Whether the selection applies to points or cells.
@@ -20,6 +30,10 @@ pub enum SelectionContentType {
 pub enum SelectionFieldType {
     Point,
     Cell,
+    Field,
+    Vertex,
+    Edge,
+    Row,
 }
 
 /// A single node in a selection, specifying what to select and how.

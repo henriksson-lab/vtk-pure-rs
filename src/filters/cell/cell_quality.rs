@@ -3,7 +3,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Quality metric to compute.
 #[derive(Debug, Clone, Copy)]
 pub enum QualityMetric {
-    /// Aspect ratio (longest edge / shortest edge).
+    /// Verdict triangle aspect ratio.
     AspectRatio,
     /// Minimum interior angle (degrees).
     MinAngle,
@@ -11,7 +11,7 @@ pub enum QualityMetric {
     MaxAngle,
     /// Area of the polygon.
     Area,
-    /// Condition number: circumradius / (2 * inradius) for triangles. 1.0 = equilateral.
+    /// Verdict triangle condition number. 1.0 = equilateral.
     Condition,
     /// Jacobian: scaled Jacobian determinant (1.0 = ideal, 0 = degenerate).
     ScaledJacobian,
@@ -23,7 +23,7 @@ pub enum QualityMetric {
     Skew,
     /// Distortion: area / ideal area. 1.0 = ideal.
     Distortion,
-    /// Radius ratio: inradius / circumradius. 0.5 = equilateral triangle.
+    /// Verdict radius ratio: circumradius / (2 * inradius). 1.0 = equilateral.
     RadiusRatio,
     /// Aspect Frobenius: Frobenius-norm aspect ratio. 1.0 = equilateral.
     AspectFrobenius,
@@ -35,7 +35,7 @@ pub enum QualityMetric {
 
 /// Compute a quality metric for each polygon cell.
 ///
-/// Adds a "Quality" scalar array to cell data.
+/// Adds a "CellQuality" scalar array to cell data.
 pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
     let offsets = input.polys.offsets();
     let conn = input.polys.connectivity();
@@ -64,13 +64,10 @@ pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
 
         let val = match metric {
             QualityMetric::AspectRatio => {
-                let edges = edge_lengths(&pts);
-                let min_e = edges.iter().cloned().fold(f64::MAX, f64::min);
-                let max_e = edges.iter().cloned().fold(0.0f64, f64::max);
-                if min_e > 1e-20 {
-                    max_e / min_e
+                if n == 3 {
+                    triangle_aspect_ratio(&pts)
                 } else {
-                    f64::MAX
+                    0.0
                 }
             }
             QualityMetric::MinAngle => {
@@ -176,7 +173,11 @@ pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
 
     let mut pd = input.clone();
     pd.cell_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Quality", values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CellQuality",
+            values,
+            1,
+        )));
     pd
 }
 
@@ -252,58 +253,53 @@ fn polygon_area(pts: &[[f64; 3]]) -> f64 {
 // --- Verdict-style triangle metrics ---
 
 fn triangle_condition(pts: &[[f64; 3]]) -> f64 {
-    // Condition = circumradius / (2 * inradius)
+    let v1 = sub(pts[1], pts[0]);
+    let v2 = sub(pts[2], pts[0]);
+    let area_x2 = norm(cross(v1, v2));
+    if area_x2 < 1e-30 {
+        return f64::MAX;
+    }
+    (dot(v1, v1) + dot(v2, v2) - dot(v1, v2)) / (area_x2 * (3.0f64).sqrt())
+}
+
+fn triangle_aspect_ratio(pts: &[[f64; 3]]) -> f64 {
     let edges = edge_lengths(pts);
     let (a, b, c) = (edges[0], edges[1], edges[2]);
-    let s = (a + b + c) / 2.0;
-    let area = polygon_area(pts);
-    if area < 1e-30 {
+    let area_x2 = triangle_area_x2(pts);
+    if area_x2 < 1e-30 {
         return f64::MAX;
     }
-    let circumradius = a * b * c / (4.0 * area);
-    let inradius = area / s;
-    if inradius < 1e-30 {
-        return f64::MAX;
-    }
-    circumradius / (2.0 * inradius)
+    ((3.0f64).sqrt() / 6.0) * a.max(b).max(c) * (a + b + c) / area_x2
 }
 
 fn triangle_scaled_jacobian(pts: &[[f64; 3]]) -> f64 {
-    // Scaled Jacobian for triangle: 2 * area / (max_edge^2 * sqrt(3))
-    let area = polygon_area(pts);
     let edges = edge_lengths(pts);
-    let max_e = edges.iter().cloned().fold(0.0f64, f64::max);
-    if max_e < 1e-30 {
+    let max_edge_length_product = (edges[0] * edges[1])
+        .max(edges[1] * edges[2])
+        .max(edges[0] * edges[2]);
+    if max_edge_length_product < 1e-30 {
         return 0.0;
     }
-    2.0 * area / (max_e * max_e * (3.0f64).sqrt())
+    (2.0 / (3.0f64).sqrt()) * triangle_area_x2(pts) / max_edge_length_product
 }
 
 fn triangle_shape(pts: &[[f64; 3]]) -> f64 {
-    // Shape = 2*sqrt(3) * area / sum(edge_i^2)
-    let area = polygon_area(pts);
-    let edges = edge_lengths(pts);
-    let sum_sq: f64 = edges.iter().map(|e| e * e).sum();
-    if sum_sq < 1e-30 {
+    let condition = triangle_condition(pts);
+    if condition <= 1e-30 {
         return 0.0;
     }
-    2.0 * (3.0f64).sqrt() * area / sum_sq
+    1.0 / condition
 }
 
 fn triangle_radius_ratio(pts: &[[f64; 3]]) -> f64 {
     let edges = edge_lengths(pts);
     let (a, b, c) = (edges[0], edges[1], edges[2]);
-    let s = (a + b + c) / 2.0;
-    let area = polygon_area(pts);
-    if area < 1e-30 {
-        return 0.0;
+    let area_x2 = triangle_area_x2(pts);
+    let denominator = area_x2 * area_x2;
+    if denominator < 1e-30 {
+        return f64::MAX;
     }
-    let inradius = area / s;
-    let circumradius = a * b * c / (4.0 * area);
-    if circumradius < 1e-30 {
-        return 0.0;
-    }
-    inradius / circumradius
+    0.25 * a * b * c * (a + b + c) / denominator
 }
 
 fn triangle_aspect_frobenius(pts: &[[f64; 3]]) -> f64 {
@@ -315,6 +311,10 @@ fn triangle_aspect_frobenius(pts: &[[f64; 3]]) -> f64 {
         return f64::MAX;
     }
     sum_sq / (4.0 * (3.0f64).sqrt() * area)
+}
+
+fn triangle_area_x2(pts: &[[f64; 3]]) -> f64 {
+    norm(cross(sub(pts[1], pts[0]), sub(pts[2], pts[0])))
 }
 
 fn quad_scaled_jacobian(pts: &[[f64; 3]]) -> f64 {
@@ -387,6 +387,26 @@ fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn norm(a: [f64; 3]) -> f64 {
+    dot(a, a).sqrt()
+}
+
 /// Compute all Verdict-style quality metrics at once, adding multiple arrays.
 pub fn mesh_quality_verdict(input: &PolyData) -> PolyData {
     let metrics = [
@@ -405,7 +425,7 @@ pub fn mesh_quality_verdict(input: &PolyData) -> PolyData {
     let mut pd = input.clone();
     for (metric, name) in &metrics {
         let result = cell_quality(input, *metric);
-        if let Some(arr) = result.cell_data().get_array("Quality") {
+        if let Some(arr) = result.cell_data().get_array("CellQuality") {
             pd.cell_data_mut().add_array(match arr {
                 AnyDataArray::F64(a) => {
                     AnyDataArray::F64(DataArray::from_vec(*name, a.as_slice().to_vec(), 1))
@@ -432,7 +452,7 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = cell_quality(&pd, QualityMetric::AspectRatio);
-        let arr = result.cell_data().get_array("Quality").unwrap();
+        let arr = result.cell_data().get_array("CellQuality").unwrap();
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
         assert!((val[0] - 1.0).abs() < 1e-10); // equilateral: all edges equal
@@ -445,7 +465,7 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = cell_quality(&pd, QualityMetric::MinAngle);
-        let arr = result.cell_data().get_array("Quality").unwrap();
+        let arr = result.cell_data().get_array("CellQuality").unwrap();
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
         assert!((val[0] - 45.0).abs() < 1e-6);
@@ -458,7 +478,7 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = cell_quality(&pd, QualityMetric::Area);
-        let arr = result.cell_data().get_array("Quality").unwrap();
+        let arr = result.cell_data().get_array("CellQuality").unwrap();
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
         assert!((val[0] - 3.0).abs() < 1e-10);

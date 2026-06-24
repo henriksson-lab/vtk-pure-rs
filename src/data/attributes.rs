@@ -52,123 +52,67 @@ impl DataSetAttributes {
     // Active attribute setters/getters
 
     pub fn set_active_scalars(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::NoLimit, 0) {
-            self.active_scalars = Some(name.to_string());
-            true
-        } else {
-            self.active_scalars = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::NoLimit, 0);
+        Self::set_active_attribute(&mut self.active_scalars, name, check)
     }
 
     pub fn set_active_vectors(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
-            self.active_vectors = Some(name.to_string());
-            true
-        } else {
-            self.active_vectors = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 3);
+        Self::set_active_attribute(&mut self.active_vectors, name, check)
     }
 
     pub fn set_active_normals(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
-            self.active_normals = Some(name.to_string());
-            true
-        } else {
-            self.active_normals = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 3);
+        Self::set_active_attribute(&mut self.active_normals, name, check)
     }
 
     pub fn set_active_tcoords(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Max, 3) {
-            self.active_tcoords = Some(name.to_string());
-            true
-        } else {
-            self.active_tcoords = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Max, 3);
+        Self::set_active_attribute(&mut self.active_tcoords, name, check)
     }
 
     pub fn set_active_tensors(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Tensor, 9) {
-            self.active_tensors = Some(name.to_string());
-            true
-        } else {
-            self.active_tensors = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Tensor, 9);
+        Self::set_active_attribute(&mut self.active_tensors, name, check)
     }
 
     pub fn set_active_global_ids(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
-            self.active_global_ids = Some(name.to_string());
-            true
-        } else {
-            self.active_global_ids = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 1);
+        Self::set_active_attribute(&mut self.active_global_ids, name, check)
     }
 
     pub fn set_active_pedigree_ids(&mut self, name: &str) -> bool {
-        if self.has_array(name) {
-            self.active_pedigree_ids = Some(name.to_string());
-            true
+        let check = if self.has_array(name) {
+            AttributeCheck::Valid
         } else {
-            self.active_pedigree_ids = None;
-            false
-        }
+            AttributeCheck::Missing
+        };
+        Self::set_active_attribute(&mut self.active_pedigree_ids, name, check)
     }
 
     pub fn set_active_edge_flags(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
-            self.active_edge_flags = Some(name.to_string());
-            true
-        } else {
-            self.active_edge_flags = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 1);
+        Self::set_active_attribute(&mut self.active_edge_flags, name, check)
     }
 
     pub fn set_active_tangents(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
-            self.active_tangents = Some(name.to_string());
-            true
-        } else {
-            self.active_tangents = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 3);
+        Self::set_active_attribute(&mut self.active_tangents, name, check)
     }
 
     pub fn set_active_rational_weights(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
-            self.active_rational_weights = Some(name.to_string());
-            true
-        } else {
-            self.active_rational_weights = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 1);
+        Self::set_active_attribute(&mut self.active_rational_weights, name, check)
     }
 
     pub fn set_active_higher_order_degrees(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
-            self.active_higher_order_degrees = Some(name.to_string());
-            true
-        } else {
-            self.active_higher_order_degrees = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 3);
+        Self::set_active_attribute(&mut self.active_higher_order_degrees, name, check)
     }
 
     pub fn set_active_process_ids(&mut self, name: &str) -> bool {
-        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
-            self.active_process_ids = Some(name.to_string());
-            true
-        } else {
-            self.active_process_ids = None;
-            false
-        }
+        let check = self.check_attribute_components(name, AttributeLimit::Exact, 1);
+        Self::set_active_attribute(&mut self.active_process_ids, name, check)
     }
 
     pub fn scalars(&self) -> Option<&AnyDataArray> {
@@ -320,21 +264,44 @@ impl DataSetAttributes {
         clear_if_matches(&mut self.active_process_ids, name);
     }
 
+    fn set_active_attribute(
+        active: &mut Option<String>,
+        name: &str,
+        check: AttributeCheck,
+    ) -> bool {
+        match check {
+            AttributeCheck::Valid => {
+                *active = Some(name.to_string());
+                true
+            }
+            AttributeCheck::Missing => {
+                *active = None;
+                false
+            }
+            AttributeCheck::InvalidComponents => false,
+        }
+    }
+
     fn check_attribute_components(
         &self,
         name: &str,
         limit: AttributeLimit,
         expected: usize,
-    ) -> bool {
+    ) -> AttributeCheck {
         let Some(array) = self.field_data.get_array(name) else {
-            return false;
+            return AttributeCheck::Missing;
         };
         let num_components = array.num_components();
-        match limit {
+        let valid = match limit {
             AttributeLimit::NoLimit => true,
             AttributeLimit::Max => num_components <= expected,
             AttributeLimit::Exact => num_components == expected,
             AttributeLimit::Tensor => num_components == expected || num_components == 6,
+        };
+        if valid {
+            AttributeCheck::Valid
+        } else {
+            AttributeCheck::InvalidComponents
         }
     }
 }
@@ -345,6 +312,13 @@ enum AttributeLimit {
     Exact,
     NoLimit,
     Tensor,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AttributeCheck {
+    Valid,
+    Missing,
+    InvalidComponents,
 }
 
 #[cfg(test)]
@@ -436,6 +410,26 @@ mod tests {
 
         assert!(attrs.vectors().is_none());
         assert!(!attrs.has_active_attributes());
+    }
+
+    #[test]
+    fn invalid_active_attribute_components_preserve_existing_like_vtk() {
+        let mut attrs = DataSetAttributes::new();
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "v",
+            vec![1.0, 2.0, 3.0],
+            3,
+        )));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "bad_v",
+            vec![1.0, 2.0],
+            2,
+        )));
+        assert!(attrs.set_active_vectors("v"));
+
+        assert!(!attrs.set_active_vectors("bad_v"));
+
+        assert_eq!(attrs.vectors().unwrap().name(), "v");
     }
 
     #[test]

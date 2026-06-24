@@ -1,3 +1,4 @@
+use crate::data::traits::{DataObject, DataSet};
 use crate::data::{DataSetAttributes, FieldData, Points};
 use crate::types::{BoundingBox, VtkError};
 
@@ -49,15 +50,6 @@ impl ExplicitStructuredGrid {
     /// Create from dimensions and points.
     pub fn from_points(dims: [usize; 3], points: Points<f64>) -> Result<Self, VtkError> {
         validate_dimensions(dims)?;
-        let expected = checked_num_points(dims)?;
-        if points.len() != expected {
-            return Err(VtkError::InvalidData(format!(
-                "expected {} points for {:?} grid, got {}",
-                expected,
-                dims,
-                points.len()
-            )));
-        }
         let mut grid = Self::new(dims);
         grid.points = points;
         Ok(grid)
@@ -70,7 +62,7 @@ impl ExplicitStructuredGrid {
 
     /// Number of points.
     pub fn num_points(&self) -> usize {
-        checked_num_points(self.dimensions).expect("validated dimensions overflowed")
+        self.points.len()
     }
 
     /// Number of cells (including blanked).
@@ -247,6 +239,50 @@ impl ExplicitStructuredGrid {
     }
 }
 
+impl DataObject for ExplicitStructuredGrid {
+    fn field_data(&self) -> &FieldData {
+        self.field_data()
+    }
+
+    fn field_data_mut(&mut self) -> &mut FieldData {
+        self.field_data_mut()
+    }
+}
+
+impl DataSet for ExplicitStructuredGrid {
+    fn num_points(&self) -> usize {
+        self.num_points()
+    }
+
+    fn num_cells(&self) -> usize {
+        self.num_cells()
+    }
+
+    fn point(&self, idx: usize) -> [f64; 3] {
+        self.points.get(idx)
+    }
+
+    fn bounds(&self) -> BoundingBox {
+        self.bounds()
+    }
+
+    fn point_data(&self) -> &DataSetAttributes {
+        self.point_data()
+    }
+
+    fn point_data_mut(&mut self) -> &mut DataSetAttributes {
+        self.point_data_mut()
+    }
+
+    fn cell_data(&self) -> &DataSetAttributes {
+        self.cell_data()
+    }
+
+    fn cell_data_mut(&mut self) -> &mut DataSetAttributes {
+        self.cell_data_mut()
+    }
+}
+
 fn validate_dimensions(dims: [usize; 3]) -> Result<(), VtkError> {
     if dims.iter().all(|&d| d >= 2) {
         Ok(())
@@ -255,13 +291,6 @@ fn validate_dimensions(dims: [usize; 3]) -> Result<(), VtkError> {
             "explicit structured grid dimensions must all be >= 2, got {dims:?}"
         )))
     }
-}
-
-fn checked_num_points(dims: [usize; 3]) -> Result<usize, VtkError> {
-    dims[0]
-        .checked_mul(dims[1])
-        .and_then(|n| n.checked_mul(dims[2]))
-        .ok_or_else(|| VtkError::InvalidData(format!("grid dimensions too large: {dims:?}")))
 }
 
 fn checked_num_cells(dims: [usize; 3]) -> Result<usize, VtkError> {
@@ -349,7 +378,7 @@ mod tests {
 
     #[test]
     fn cell_point_ids_are_explicit_connectivity() {
-        let mut g = ExplicitStructuredGrid::new([2, 2, 2]);
+        let mut g = make_grid_2x2x2();
         let ids = [7, 6, 5, 4, 3, 2, 1, 0];
         g.set_cell_point_ids(0, 0, 0, ids).unwrap();
         assert_eq!(g.cell_point_ids(0, 0, 0), ids);
@@ -366,10 +395,11 @@ mod tests {
     }
 
     #[test]
-    fn point_count_mismatch() {
+    fn accepts_arbitrary_point_count() {
         let pts = Points::new();
         let result = ExplicitStructuredGrid::from_points([3, 3, 3], pts);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().num_points(), 0);
     }
 
     #[test]

@@ -114,6 +114,8 @@ pub struct ObbTree {
 }
 
 impl ObbTree {
+    const DEFAULT_MAX_LEVEL: usize = 12;
+
     /// Build an OBB tree from a PolyData mesh.
     pub fn build(poly_data: &PolyData, max_leaf_size: usize) -> Self {
         let num_cells = poly_data.polys.num_cells();
@@ -168,7 +170,7 @@ impl ObbTree {
         if indices.is_empty() {
             return Self { root: None };
         }
-        let root = Self::build_node(&cells, indices, max_leaf_size);
+        let root = Self::build_node(&cells, indices, max_leaf_size, 0, Self::DEFAULT_MAX_LEVEL);
         Self { root: Some(root) }
     }
 
@@ -176,10 +178,12 @@ impl ObbTree {
         cells: &[Option<CellGeometry>],
         indices: Vec<usize>,
         max_leaf_size: usize,
+        level: usize,
+        max_level: usize,
     ) -> ObbNode {
         let obb = compute_cell_obb(cells, &indices);
 
-        if indices.len() <= max_leaf_size {
+        if level >= max_level || indices.len() <= max_leaf_size {
             return ObbNode::Leaf {
                 obb,
                 cell_indices: indices,
@@ -194,8 +198,20 @@ impl ObbTree {
             };
         };
 
-        let left = Box::new(Self::build_node(cells, left_indices, max_leaf_size));
-        let right = Box::new(Self::build_node(cells, right_indices, max_leaf_size));
+        let left = Box::new(Self::build_node(
+            cells,
+            left_indices,
+            max_leaf_size,
+            level + 1,
+            max_level,
+        ));
+        let right = Box::new(Self::build_node(
+            cells,
+            right_indices,
+            max_leaf_size,
+            level + 1,
+            max_level,
+        ));
 
         ObbNode::Internal { obb, left, right }
     }
@@ -444,58 +460,116 @@ fn obb_from_mean_cov_points(mean: [f64; 3], cov: [[f64; 3]; 3], points: &[[f64; 
     }
 }
 
-/// Compute 3 orthogonal eigenvectors of a 3x3 symmetric matrix via power iteration.
+/// Compute VTK-style Jacobi eigenvectors of a 3x3 symmetric matrix.
 fn eigen_axes_3x3(cov: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let v1 = power_iteration(cov, [1.0, 0.0, 0.0], 20);
-    // Deflate
-    let e1 = dot3(&mat_vec(cov, v1), v1);
-    let mut cov2 = *cov;
+    const MAX_ROTATIONS: usize = 20;
+
+    let mut a = *cov;
+    let mut v = [[0.0f64; 3]; 3];
     for i in 0..3 {
-        for j in 0..3 {
-            cov2[i][j] -= e1 * v1[i] * v1[j];
+        v[i][i] = 1.0;
+    }
+    let mut w = [a[0][0], a[1][1], a[2][2]];
+    let mut b = w;
+    let mut z = [0.0f64; 3];
+
+    for sweep in 0..MAX_ROTATIONS {
+        let sm = a[0][1].abs() + a[0][2].abs() + a[1][2].abs();
+        if sm == 0.0 {
+            break;
+        }
+
+        let tresh = if sweep < 3 { 0.2 * sm / 9.0 } else { 0.0 };
+        for ip in 0..2 {
+            for iq in ip + 1..3 {
+                let g = 100.0 * a[ip][iq].abs();
+                if sweep > 3 && (w[ip].abs() + g) == w[ip].abs() && (w[iq].abs() + g) == w[iq].abs()
+                {
+                    a[ip][iq] = 0.0;
+                } else if a[ip][iq].abs() > tresh {
+                    let h = w[iq] - w[ip];
+                    let t = if (h.abs() + g) == h.abs() {
+                        a[ip][iq] / h
+                    } else {
+                        let theta = 0.5 * h / a[ip][iq];
+                        let mut t = 1.0 / (theta.abs() + (1.0 + theta * theta).sqrt());
+                        if theta < 0.0 {
+                            t = -t;
+                        }
+                        t
+                    };
+                    let c = 1.0 / (1.0 + t * t).sqrt();
+                    let s = t * c;
+                    let tau = s / (1.0 + c);
+                    let h = t * a[ip][iq];
+                    z[ip] -= h;
+                    z[iq] += h;
+                    w[ip] -= h;
+                    w[iq] += h;
+                    a[ip][iq] = 0.0;
+
+                    for j in 0..ip {
+                        rotate(&mut a, j, ip, j, iq, s, tau);
+                    }
+                    for j in ip + 1..iq {
+                        rotate(&mut a, ip, j, j, iq, s, tau);
+                    }
+                    for j in iq + 1..3 {
+                        rotate(&mut a, ip, j, iq, j, s, tau);
+                    }
+                    for j in 0..3 {
+                        rotate(&mut v, j, ip, j, iq, s, tau);
+                    }
+                }
+            }
+        }
+
+        for ip in 0..3 {
+            b[ip] += z[ip];
+            w[ip] = b[ip];
+            z[ip] = 0.0;
         }
     }
-    let v2_raw = power_iteration(&cov2, [0.0, 1.0, 0.0], 20);
-    // Gram-Schmidt
-    let proj = dot3(&v2_raw, v1);
-    let mut v2 = [
-        v2_raw[0] - proj * v1[0],
-        v2_raw[1] - proj * v1[1],
-        v2_raw[2] - proj * v1[2],
-    ];
-    let len = (v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2]).sqrt();
-    if len > 1e-15 {
-        v2[0] /= len;
-        v2[1] /= len;
-        v2[2] /= len;
-    } else {
-        v2 = [0.0, 1.0, 0.0];
-    }
 
-    let v3 = cross3(v1, v2);
-    [v1, v2, v3]
-}
-
-fn power_iteration(mat: &[[f64; 3]; 3], mut v: [f64; 3], iters: usize) -> [f64; 3] {
-    for _ in 0..iters {
-        v = mat_vec(mat, v);
-        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-        if len < 1e-30 {
-            return [1.0, 0.0, 0.0];
+    for j in 0..2 {
+        let mut k = j;
+        let mut tmp = w[k];
+        for (i, &wi) in w.iter().enumerate().skip(j + 1) {
+            if wi >= tmp {
+                k = i;
+                tmp = wi;
+            }
         }
-        v[0] /= len;
-        v[1] /= len;
-        v[2] /= len;
+        if k != j {
+            w[k] = w[j];
+            w[j] = tmp;
+            for row in &mut v {
+                row.swap(j, k);
+            }
+        }
     }
-    v
-}
 
-fn mat_vec(m: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
+    for j in 0..3 {
+        let num_pos = (0..3).filter(|&i| v[i][j] >= 0.0).count();
+        if num_pos < 2 {
+            for row in &mut v {
+                row[j] *= -1.0;
+            }
+        }
+    }
+
     [
-        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+        [v[0][0], v[1][0], v[2][0]],
+        [v[0][1], v[1][1], v[2][1]],
+        [v[0][2], v[1][2], v[2][2]],
     ]
+}
+
+fn rotate(a: &mut [[f64; 3]; 3], i: usize, j: usize, k: usize, l: usize, s: f64, tau: f64) {
+    let g = a[i][j];
+    let h = a[k][l];
+    a[i][j] = g - s * (h + g * tau);
+    a[k][l] = h + s * (g - h * tau);
 }
 
 fn dot3(a: &[f64; 3], b: [f64; 3]) -> f64 {

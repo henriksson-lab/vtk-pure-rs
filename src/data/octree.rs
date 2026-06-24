@@ -18,7 +18,7 @@ enum OctreeNode {
 impl OctreePointLocator {
     /// Build an octree from points with default settings.
     pub fn build(points: &[[f64; 3]]) -> Self {
-        Self::build_with_params(points, 10, 16)
+        Self::build_with_params(points, 100, 20)
     }
 
     /// Build with custom parameters.

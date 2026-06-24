@@ -1,15 +1,11 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, Points, PolyData};
 
-/// Generate one vertex at the center of each non-empty input cell.
+/// Generate one point at the center of each non-empty input cell.
 pub fn cell_centers(input: &PolyData) -> PolyData {
     let nc = input.total_cells();
     let mut pts = Vec::with_capacity(nc * 3);
-    let mut vert_off = Vec::with_capacity(nc + 1);
-    let mut vert_conn = Vec::with_capacity(nc);
     let mut source_cell_ids = Vec::with_capacity(nc);
-    vert_off.push(0);
 
-    let mut point_id = 0i64;
     let mut cell_id = 0usize;
     for cells in [&input.verts, &input.lines, &input.polys, &input.strips] {
         for cell in cells.iter() {
@@ -30,24 +26,35 @@ pub fn cell_centers(input: &PolyData) -> PolyData {
             pts.push(x / n);
             pts.push(y / n);
             pts.push(z / n);
-            vert_conn.push(point_id);
-            vert_off.push(point_id + 1);
-            source_cell_ids.push(cell_id as f64);
-            point_id += 1;
+            source_cell_ids.push(cell_id);
             cell_id += 1;
         }
     }
 
     let mut output = PolyData::new();
     output.points = Points::from_flat_vec(pts);
-    output.verts = CellArray::from_raw(vert_off, vert_conn);
-    output
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "vtkOriginalCellIds",
-            source_cell_ids,
-            1,
-        )));
+    if source_cell_ids.len() == input.total_cells() {
+        for array in input.cell_data().field_data().iter() {
+            output.point_data_mut().add_array(array.clone());
+        }
+    } else {
+        for array in input.cell_data().field_data().iter() {
+            let num_comp = array.num_components();
+            let mut data = Vec::with_capacity(source_cell_ids.len() * num_comp);
+            let mut tuple = vec![0.0; num_comp];
+            for &source_cell_id in &source_cell_ids {
+                array.tuple_as_f64(source_cell_id, &mut tuple);
+                data.extend_from_slice(&tuple);
+            }
+            output
+                .point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    array.name(),
+                    data,
+                    num_comp,
+                )));
+        }
+    }
     output
 }
 
@@ -86,6 +93,6 @@ mod tests {
 
         let r = cell_centers(&pd);
         assert_eq!(r.points.len(), 4);
-        assert_eq!(r.verts.num_cells(), 4);
+        assert_eq!(r.verts.num_cells(), 0);
     }
 }

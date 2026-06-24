@@ -37,11 +37,18 @@ pub fn describe_column(table: &Table, column_name: &str) -> Option<ColumnStats> 
         values.push(buf[0]);
     }
 
-    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let min = values[0];
     let max = values[n - 1];
     let mean = values.iter().sum::<f64>() / n as f64;
-    let variance = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / n as f64;
+    let m2 = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>();
+    let variance = if m2 * m2 <= f32::EPSILON as f64 * mean.abs() {
+        0.0
+    } else if n > 1 {
+        m2 / (n - 1) as f64
+    } else {
+        f64::NAN
+    };
     let median = if n % 2 == 0 {
         (values[n / 2 - 1] + values[n / 2]) / 2.0
     } else {
@@ -97,7 +104,7 @@ pub fn correlation(table: &Table, col_a: &str, col_b: &str) -> Option<f64> {
 
     let denom = (var_a * var_b).sqrt();
     if denom < 1e-15 {
-        return Some(0.0);
+        return Some(f64::NAN);
     }
     Some(cov / denom)
 }
@@ -195,6 +202,7 @@ mod tests {
         assert_eq!(stats.min, 1.0);
         assert_eq!(stats.max, 5.0);
         assert!((stats.mean - 3.0).abs() < 1e-10);
+        assert!((stats.std_dev - (2.5_f64).sqrt()).abs() < 1e-10);
         assert!((stats.median - 3.0).abs() < 1e-10);
     }
 
@@ -221,5 +229,32 @@ mod tests {
         let s = format!("{stats}");
         assert!(s.contains("z:"));
         assert!(s.contains("n=5"));
+    }
+
+    #[test]
+    fn near_constant_variance_matches_vtk_zero_threshold() {
+        let t = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 1.0 + 1e-8],
+            1,
+        )));
+        let stats = describe_column(&t, "x").unwrap();
+        assert_eq!(stats.std_dev, 0.0);
+    }
+
+    #[test]
+    fn constant_column_correlation_is_nan() {
+        let t = Table::new()
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 1.0, 1.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![2.0, 3.0, 4.0],
+                1,
+            )));
+        assert!(correlation(&t, "x", "y").unwrap().is_nan());
     }
 }

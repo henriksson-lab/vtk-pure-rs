@@ -21,6 +21,7 @@ pub fn triangulate_strips(input: &PolyData) -> PolyData {
     }
 
     pd.strips = CellArray::new();
+    pd.cell_data_mut().clear();
     pd
 }
 
@@ -29,28 +30,7 @@ pub fn triangulate_strips(input: &PolyData) -> PolyData {
 /// Uses a greedy algorithm to merge adjacent triangles into strips.
 /// Falls back to single-triangle strips for unmatched triangles.
 pub fn triangles_to_strips(input: &PolyData) -> PolyData {
-    // For simplicity, just convert each triangle to a 3-point strip
-    // A full greedy strip builder would require edge adjacency
-    let mut strips = CellArray::new();
-
-    for cell in input.polys.iter() {
-        if cell.len() == 3 {
-            strips.push_cell(cell);
-        }
-    }
-
-    // Keep non-triangle polys
-    let mut polys = CellArray::new();
-    for cell in input.polys.iter() {
-        if cell.len() != 3 {
-            polys.push_cell(cell);
-        }
-    }
-
-    let mut pd = input.clone();
-    pd.polys = polys;
-    pd.strips = strips;
-    pd
+    crate::filters::cell::strip::to_triangle_strips(input)
 }
 
 #[cfg(test)]

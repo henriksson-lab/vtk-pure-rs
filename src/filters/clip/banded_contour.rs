@@ -10,7 +10,7 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 /// The output has a "BandIndex" cell data array indicating which band
 /// each cell belongs to (0-indexed).
 pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyData {
-    if values.len() < 2 {
+    if values.is_empty() {
         return PolyData::new();
     }
 
@@ -27,8 +27,29 @@ pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyDa
         *val = buf[0];
     }
 
+    let scalar_range = scalar_data
+        .iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |range, &s| {
+            (range.0.min(s), range.1.max(s))
+        });
+    if !scalar_range.0.is_finite() || !scalar_range.1.is_finite() {
+        return PolyData::new();
+    }
+
     let mut sorted = values.to_vec();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut clip_values = Vec::with_capacity(sorted.len() + 2);
+    if scalar_range.0 < sorted[0] {
+        clip_values.push(scalar_range.0);
+    }
+    clip_values.extend(sorted);
+    if scalar_range.1 > *clip_values.last().unwrap() {
+        clip_values.push(scalar_range.1);
+    }
+    clip_values.dedup_by(|a, b| (*a - *b).abs() <= f64::EPSILON);
+    if clip_values.len() < 2 {
+        return PolyData::new();
+    }
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
@@ -54,9 +75,9 @@ pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyDa
             let v2 = input.points.get(p2_idx);
 
             // For each band, clip the triangle to that band
-            for bi in 0..sorted.len() - 1 {
-                let lo = sorted[bi];
-                let hi = sorted[bi + 1];
+            for bi in 0..clip_values.len() - 1 {
+                let lo = clip_values[bi];
+                let hi = clip_values[bi + 1];
 
                 let clipped = clip_triangle_to_band(v0, v1, v2, s0, s1, s2, lo, hi);
                 if clipped.len() >= 3 {
@@ -219,10 +240,10 @@ mod tests {
     }
 
     #[test]
-    fn too_few_values() {
+    fn single_value_adds_range_bands() {
         let pd = make_tri_with_scalars();
         let result = banded_contour(&pd, "scalars", &[0.5]);
-        assert_eq!(result.polys.num_cells(), 0);
+        assert!(result.polys.num_cells() >= 2);
     }
 
     #[test]

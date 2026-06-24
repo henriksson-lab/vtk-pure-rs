@@ -43,6 +43,7 @@ pub fn cell_data_to_point_data(input: &PolyData, array_name: &str) -> PolyData {
     }
 
     let mut pd = input.clone();
+    pd.cell_data_mut().field_data_mut().clear();
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             array_name, sums, num_comp,
@@ -81,6 +82,7 @@ pub fn point_data_to_cell_data(input: &PolyData, array_name: &str) -> PolyData {
     }
 
     let mut pd = input.clone();
+    pd.point_data_mut().field_data_mut().clear();
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             array_name,

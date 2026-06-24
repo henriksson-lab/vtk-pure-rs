@@ -19,6 +19,10 @@ pub fn extract_selection(input: &PolyData, selection: &Selection) -> PolyData {
             match node.field_type {
                 SelectionFieldType::Point => extract_by_point_indices(input, &indices),
                 SelectionFieldType::Cell => extract_by_cell_indices(input, &indices),
+                SelectionFieldType::Field
+                | SelectionFieldType::Vertex
+                | SelectionFieldType::Edge
+                | SelectionFieldType::Row => PolyData::new(),
             }
         }
         SelectionContentType::Thresholds => {
@@ -33,6 +37,10 @@ pub fn extract_selection(input: &PolyData, selection: &Selection) -> PolyData {
                     extract_by_point_threshold(input, array_name, min, max)
                 }
                 SelectionFieldType::Cell => extract_by_cell_threshold(input, array_name, min, max),
+                SelectionFieldType::Field
+                | SelectionFieldType::Vertex
+                | SelectionFieldType::Edge
+                | SelectionFieldType::Row => PolyData::new(),
             }
         }
         _ => input.clone(),

@@ -1,14 +1,14 @@
-use crate::data::PolyData;
+use crate::data::{CellArray, PolyData};
 
 /// Fill holes (open boundary loops) in a triangle mesh.
 ///
 /// Finds boundary edges (edges used by exactly one polygon), traces
-/// closed loops, and fills each loop with a fan of triangles from the
-/// loop centroid.
+/// closed loops, and fills each loop with triangles using existing points.
 pub fn fill_holes(input: &PolyData) -> PolyData {
-    let offsets = input.polys.offsets();
-    let conn = input.polys.connectivity();
-    let nc = input.polys.num_cells();
+    let work_polys = polys_with_decomposed_strips(input);
+    let offsets = work_polys.offsets();
+    let conn = work_polys.connectivity();
+    let nc = work_polys.num_cells();
 
     // Sorted-edge approach: collect all directed edges, sort, find boundary edges.
     // Boundary = edges appearing exactly once when canonicalized (a < b).
@@ -38,7 +38,7 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
 
     // Find boundary edges (canonical key appears exactly once)
     let np = input.points.len();
-    let mut next_vertex: Vec<i64> = vec![-1; np];
+    let mut boundary_out: Vec<Vec<i64>> = vec![Vec::new(); np];
     let mut has_boundary = false;
     let ne = edges.len();
     let mut i = 0;
@@ -51,10 +51,11 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
             i += 1;
         }
         if count == 1 {
-            // Boundary edge: set directed next
             let (_, a, b) = edges[start_i];
-            next_vertex[a as usize] = b;
-            has_boundary = true;
+            if a >= 0 && b >= 0 {
+                boundary_out[a as usize].push(b);
+                has_boundary = true;
+            }
         }
     }
 
@@ -67,54 +68,61 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
     let mut loops: Vec<Vec<i64>> = Vec::new();
 
     for start_v in 0..np {
-        if next_vertex[start_v] < 0 || visited[start_v] {
+        if boundary_out[start_v].is_empty() || visited[start_v] {
             continue;
         }
         let mut loop_pts = Vec::new();
         let mut current = start_v;
+        let mut valid = true;
         loop {
             if visited[current] {
                 break;
             }
             visited[current] = true;
             loop_pts.push(current as i64);
-            let nxt = next_vertex[current];
-            if nxt < 0 {
+            if boundary_out[current].len() != 1 {
+                valid = false;
                 break;
             }
+            let nxt = boundary_out[current][0];
             current = nxt as usize;
         }
-        if loop_pts.len() >= 3 && current == start_v {
+        if valid && loop_pts.len() >= 3 && current == start_v {
             loops.push(loop_pts);
         }
     }
 
     let mut pd = input.clone();
-    let pts = input.points.as_flat_slice();
 
-    // Fill each loop with a fan triangulation
     for lp in &loops {
-        let mut cx = 0.0;
-        let mut cy = 0.0;
-        let mut cz = 0.0;
-        for &id in lp {
-            let b = id as usize * 3;
-            cx += pts[b];
-            cy += pts[b + 1];
-            cz += pts[b + 2];
-        }
-        let n = lp.len() as f64;
-        let center_idx = pd.points.len() as i64;
-        pd.points.push([cx / n, cy / n, cz / n]);
-
-        for i in 0..lp.len() {
-            let a = lp[i];
-            let b = lp[(i + 1) % lp.len()];
-            pd.polys.push_cell(&[center_idx, b, a]);
+        for i in 1..lp.len() - 1 {
+            pd.polys.push_cell(&[lp[0], lp[i], lp[i + 1]]);
         }
     }
+    pd.cell_data_mut().clear();
 
     pd
+}
+
+fn polys_with_decomposed_strips(input: &PolyData) -> CellArray {
+    if input.strips.is_empty() {
+        return input.polys.clone();
+    }
+
+    let mut polys = input.polys.clone();
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            if i % 2 == 0 {
+                polys.push_cell(&[strip[i], strip[i + 1], strip[i + 2]]);
+            } else {
+                polys.push_cell(&[strip[i + 1], strip[i], strip[i + 2]]);
+            }
+        }
+    }
+    polys
 }
 
 #[cfg(test)]

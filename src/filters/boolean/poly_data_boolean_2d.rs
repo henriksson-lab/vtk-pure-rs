@@ -15,7 +15,7 @@ pub fn bounding_box_overlap(a: &PolyData, b: &PolyData) -> Option<[f64; 4]> {
     let y_min = ba.y_min.max(bb.y_min);
     let y_max = ba.y_max.min(bb.y_max);
 
-    if x_min >= x_max || y_min >= y_max {
+    if x_min > x_max || y_min > y_max {
         None
     } else {
         Some([x_min, x_max, y_min, y_max])
@@ -69,6 +69,14 @@ mod tests {
         let b = make_box_2d(5.0, 5.0, 6.0, 6.0);
         assert!(bounding_box_overlap(&a, &b).is_none());
         assert!(!bounding_boxes_overlap(&a, &b));
+    }
+
+    #[test]
+    fn touching_edges_overlap_like_bounds() {
+        let a = make_box_2d(0.0, 0.0, 1.0, 1.0);
+        let b = make_box_2d(1.0, 0.25, 2.0, 0.75);
+        assert_eq!(bounding_box_overlap(&a, &b), Some([1.0, 1.0, 0.25, 0.75]));
+        assert!(bounding_boxes_overlap(&a, &b));
     }
 
     #[test]

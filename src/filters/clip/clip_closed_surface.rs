@@ -19,6 +19,9 @@ use crate::data::{CellArray, Points, PolyData};
 /// * `normal` - Normal vector of the clipping plane (pointing toward the kept side)
 pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
     let norm_len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if norm_len <= 0.0 {
+        return input.clone();
+    }
     let normal = [
         normal[0] / norm_len,
         normal[1] / norm_len,
@@ -31,6 +34,7 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
     // Track intersection edges for cap generation
     // Each intersection edge is stored as (point_index_a, point_index_b) on the clip plane
     let mut cap_edges: Vec<(usize, usize)> = Vec::new();
+    let mut edge_locator: HashMap<(i64, i64), i64> = HashMap::new();
 
     for cell_idx in 0..input.polys.num_cells() {
         let cell = input.polys.cell(cell_idx);
@@ -58,8 +62,13 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
             // discard
         } else {
             // Clip the polygon and collect intersection edges
-            let (clipped, intersections) =
-                clip_and_collect(cell, &dists, &input.points, &mut out_points);
+            let (clipped, intersections) = clip_and_collect(
+                cell,
+                &dists,
+                &input.points,
+                &mut out_points,
+                &mut edge_locator,
+            );
 
             if clipped.len() >= 3 {
                 // Fan-triangulate the clipped polygon
@@ -105,11 +114,10 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
             // Fan-triangulate from centroid
             for i in 0..loop_indices.len() {
                 let j = (i + 1) % loop_indices.len();
-                // Wind cap triangles to face in the normal direction
                 out_polys.push_cell(&[
                     center_idx as i64,
-                    loop_indices[i] as i64,
                     loop_indices[j] as i64,
+                    loop_indices[i] as i64,
                 ]);
             }
         }
@@ -127,6 +135,7 @@ fn clip_and_collect(
     dists: &[f64],
     src_points: &Points<f64>,
     out_points: &mut Points<f64>,
+    edge_locator: &mut HashMap<(i64, i64), i64>,
 ) -> (Vec<i64>, Vec<(i64, i64)>) {
     let n = cell.len();
     let mut result = Vec::new();
@@ -144,16 +153,27 @@ fn clip_and_collect(
 
         // Check for crossing
         if (di >= 0.0 && dj < 0.0) || (di < 0.0 && dj >= 0.0) {
-            let t = di / (di - dj);
-            let pi = src_points.get(cell[i] as usize);
-            let pj = src_points.get(cell[j] as usize);
-            let new_pt = [
-                pi[0] + t * (pj[0] - pi[0]),
-                pi[1] + t * (pj[1] - pi[1]),
-                pi[2] + t * (pj[2] - pi[2]),
-            ];
-            let new_id = out_points.len() as i64;
-            out_points.push(new_pt);
+            let edge_key = if cell[i] < cell[j] {
+                (cell[i], cell[j])
+            } else {
+                (cell[j], cell[i])
+            };
+            let new_id = if let Some(&id) = edge_locator.get(&edge_key) {
+                id
+            } else {
+                let t = di / (di - dj);
+                let pi = src_points.get(cell[i] as usize);
+                let pj = src_points.get(cell[j] as usize);
+                let new_pt = [
+                    pi[0] + t * (pj[0] - pi[0]),
+                    pi[1] + t * (pj[1] - pi[1]),
+                    pi[2] + t * (pj[2] - pi[2]),
+                ];
+                let id = out_points.len() as i64;
+                out_points.push(new_pt);
+                edge_locator.insert(edge_key, id);
+                id
+            };
             result.push(new_id);
             new_pts_in_order.push(new_id);
         }
@@ -187,21 +207,15 @@ fn order_edges_into_loops(edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
         adj.entry(b).or_default().push(a);
     }
 
-    let mut used_nodes: HashMap<usize, usize> = HashMap::new(); // node -> times visited
+    let mut used_edges: HashMap<(usize, usize), bool> = HashMap::new();
     let mut loops = Vec::new();
 
     for &(start, _) in edges {
-        if *used_nodes.get(&start).unwrap_or(&0) >= adj.get(&start).map_or(0, |v| v.len()) {
-            continue;
-        }
-
         let mut loop_verts = Vec::new();
         let mut current = start;
-        let mut visited_edges: HashMap<(usize, usize), bool> = HashMap::new();
 
         loop {
             loop_verts.push(current);
-            *used_nodes.entry(current).or_insert(0) += 1;
 
             let neighbors = match adj.get(&current) {
                 Some(n) => n,
@@ -211,8 +225,8 @@ fn order_edges_into_loops(edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
             let mut found_next = false;
             for &nb in neighbors {
                 let edge_key = (current.min(nb), current.max(nb));
-                if !visited_edges.contains_key(&edge_key) {
-                    visited_edges.insert(edge_key, true);
+                if !used_edges.contains_key(&edge_key) {
+                    used_edges.insert(edge_key, true);
                     current = nb;
                     found_next = true;
                     break;

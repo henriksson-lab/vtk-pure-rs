@@ -242,7 +242,7 @@ mod tests {
     fn any_dataset_from_explicit_structured_grid() {
         let grid = ExplicitStructuredGrid::new([2, 2, 2]);
         let any = AnyDataSet::from(grid);
-        assert_eq!(any.num_points(), 8);
+        assert_eq!(any.num_points(), 0);
         assert_eq!(any.num_cells(), 1);
     }
 }

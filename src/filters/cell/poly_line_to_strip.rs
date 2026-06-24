@@ -87,6 +87,7 @@ pub fn poly_line_to_strip(input: &PolyData) -> PolyData {
 
     let mut pd = input.clone();
     pd.lines = out_lines;
+    pd.cell_data_mut().clear();
     pd
 }
 

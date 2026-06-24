@@ -28,9 +28,9 @@ impl<T> Iterator for DataStream<T> {
 
 /// Streams a `PolyData` in chunks of N points.
 ///
-/// Each yielded chunk contains at most `chunk_size` points with their
-/// associated vertex cells. Polygon/line cells are NOT split across chunks;
-/// only point-level chunking is performed.
+/// Each yielded chunk contains at most `chunk_size` points. Cells are not split
+/// across chunks; cells whose point ids all fall inside the current point range
+/// are copied and remapped to the chunk-local point ids.
 pub struct StreamingPolyData {
     data: PolyData,
     chunk_size: usize,
@@ -61,15 +61,16 @@ impl Iterator for StreamingPolyData {
         self.cursor = end;
 
         let mut pts = Points::<f64>::new();
-        let mut verts = CellArray::new();
         for i in start..end {
             pts.push(self.data.points.get(i));
-            verts.push_cell(&[(i - start) as i64]);
         }
 
         let mut chunk = PolyData::new();
         chunk.points = pts;
-        chunk.verts = verts;
+        chunk.verts = copy_cells_in_point_range(&self.data.verts, start, end);
+        chunk.lines = copy_cells_in_point_range(&self.data.lines, start, end);
+        chunk.polys = copy_cells_in_point_range(&self.data.polys, start, end);
+        chunk.strips = copy_cells_in_point_range(&self.data.strips, start, end);
         Some(chunk)
     }
 }
@@ -122,7 +123,9 @@ impl Iterator for StreamingImageData {
                 values.extend_from_slice(&buf);
             }
             let arr = DataArray::<f64>::from_vec(scalars.name(), values, nc);
+            let scalar_name = arr.name().to_string();
             slice.point_data_mut().add_array(AnyDataArray::F64(arr));
+            slice.point_data_mut().set_active_scalars(&scalar_name);
         }
 
         Some(slice)
@@ -147,8 +150,30 @@ pub fn collect_stream(iter: impl Iterator<Item = PolyData>) -> PolyData {
             let shifted: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
             merged.polys.push_cell(&shifted);
         }
+        for c in 0..chunk.lines.num_cells() {
+            let cell = chunk.lines.cell(c);
+            let shifted: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
+            merged.lines.push_cell(&shifted);
+        }
+        for c in 0..chunk.strips.num_cells() {
+            let cell = chunk.strips.cell(c);
+            let shifted: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
+            merged.strips.push_cell(&shifted);
+        }
     }
     merged
+}
+
+fn copy_cells_in_point_range(cells: &CellArray, start: usize, end: usize) -> CellArray {
+    let mut out = CellArray::new();
+    for c in 0..cells.num_cells() {
+        let cell = cells.cell(c);
+        if cell.iter().all(|&id| id >= start as i64 && id < end as i64) {
+            let remapped: Vec<i64> = cell.iter().map(|&id| id - start as i64).collect();
+            out.push_cell(&remapped);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -167,6 +192,33 @@ mod tests {
     }
 
     #[test]
+    fn streaming_poly_data_preserves_whole_cells() {
+        let mut pd = PolyData::from_points((0..6).map(|i| [i as f64, 0.0, 0.0]).collect());
+        pd.verts.push_cell(&[0]);
+        pd.lines.push_cell(&[1, 2]);
+        pd.polys.push_cell(&[3, 4, 5]);
+        pd.strips.push_cell(&[0, 1, 2]);
+
+        let chunks: Vec<PolyData> = StreamingPolyData::new(pd, 3).collect();
+        assert_eq!(chunks[0].verts.cell(0), &[0]);
+        assert_eq!(chunks[0].lines.cell(0), &[1, 2]);
+        assert_eq!(chunks[0].strips.cell(0), &[0, 1, 2]);
+        assert_eq!(chunks[1].polys.cell(0), &[0, 1, 2]);
+    }
+
+    #[test]
+    fn collect_stream_preserves_all_cell_arrays() {
+        let mut first = PolyData::from_points(vec![[0.0; 3], [1.0, 0.0, 0.0]]);
+        first.lines.push_cell(&[0, 1]);
+        let mut second = PolyData::from_points(vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0]]);
+        second.strips.push_cell(&[0, 1]);
+
+        let merged = collect_stream(vec![first, second].into_iter());
+        assert_eq!(merged.lines.cell(0), &[0, 1]);
+        assert_eq!(merged.strips.cell(0), &[2, 3]);
+    }
+
+    #[test]
     fn streaming_image_data_slices() {
         let img = ImageData::from_function(
             [4, 4, 3],
@@ -180,6 +232,7 @@ mod tests {
         assert_eq!(slices.len(), 3);
         for s in &slices {
             assert_eq!(s.dimensions(), [4, 4, 1]);
+            assert!(s.point_data().scalars().is_some());
         }
     }
 }

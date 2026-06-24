@@ -1,39 +1,11 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::PolyData;
 
 /// Separate all cells so they don't share any vertices.
 ///
 /// Each cell gets its own copy of its vertices. Useful for flat shading
 /// or for exploded views. Opposite of `clean` which merges shared vertices.
 pub fn separate_cells(input: &PolyData) -> PolyData {
-    let mut out_points = Points::<f64>::new();
-    let mut out_polys = CellArray::new();
-    let mut out_lines = CellArray::new();
-
-    for cell in input.polys.iter() {
-        let base = out_points.len() as i64;
-        let mut ids = Vec::with_capacity(cell.len());
-        for &pid in cell.iter() {
-            out_points.push(input.points.get(pid as usize));
-            ids.push(base + ids.len() as i64);
-        }
-        out_polys.push_cell(&ids);
-    }
-
-    for cell in input.lines.iter() {
-        let base = out_points.len() as i64;
-        let mut ids = Vec::with_capacity(cell.len());
-        for &pid in cell.iter() {
-            out_points.push(input.points.get(pid as usize));
-            ids.push(base + ids.len() as i64);
-        }
-        out_lines.push_cell(&ids);
-    }
-
-    let mut pd = PolyData::new();
-    pd.points = out_points;
-    pd.polys = out_polys;
-    pd.lines = out_lines;
-    pd
+    crate::filters::cell::shrink::shrink(input, 1.0)
 }
 
 #[cfg(test)]
@@ -73,5 +45,24 @@ mod tests {
         let pd = PolyData::new();
         let result = separate_cells(&pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn separates_all_polydata_cell_arrays() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.lines.push_cell(&[0, 1]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.strips.push_cell(&[0, 1, 2]);
+
+        let result = separate_cells(&pd);
+        assert_eq!(result.points.len(), 9);
+        assert_eq!(result.verts.num_cells(), 1);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.strips.num_cells(), 1);
     }
 }

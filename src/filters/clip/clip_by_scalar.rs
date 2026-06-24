@@ -24,7 +24,7 @@ pub fn clip_by_scalar(input: &PolyData, scalars: &str, isovalue: f64, invert: bo
 
     let inside = |s: f64| -> bool {
         if invert {
-            s < isovalue
+            s <= isovalue
         } else {
             s >= isovalue
         }
@@ -54,7 +54,7 @@ pub fn clip_by_scalar(input: &PolyData, scalars: &str, isovalue: f64, invert: bo
                     .iter()
                     .map(|&id| input.points.get(id as usize))
                     .collect();
-                let clipped = clip_triangle(&verts, &sv, isovalue, invert, &mut points);
+                let clipped = clip_triangle(&ids, &verts, &sv, isovalue, invert, &mut points);
                 if clipped.len() >= 3 {
                     for i in 1..clipped.len() - 1 {
                         polys.push_cell(&[clipped[0], clipped[i], clipped[i + 1]]);
@@ -68,6 +68,7 @@ pub fn clip_by_scalar(input: &PolyData, scalars: &str, isovalue: f64, invert: bo
 }
 
 fn clip_triangle(
+    ids: &[i64; 3],
     verts: &[[f64; 3]],
     scalars: &[f64; 3],
     isovalue: f64,
@@ -76,7 +77,7 @@ fn clip_triangle(
 ) -> Vec<i64> {
     let inside = |s: f64| -> bool {
         if invert {
-            s < isovalue
+            s <= isovalue
         } else {
             s >= isovalue
         }
@@ -89,9 +90,7 @@ fn clip_triangle(
         let sj = scalars[j];
 
         if inside(si) {
-            let idx = points.len() as i64;
-            points.push(verts[i]);
-            result.push(idx);
+            result.push(ids[i]);
         }
 
         if inside(si) != inside(sj) {
