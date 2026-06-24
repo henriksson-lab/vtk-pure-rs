@@ -2,11 +2,9 @@
 
 A pure Rust reimplementation of [VTK 9.6](https://vtk.org/) (The Visualization Toolkit). Translated from the C++ VTK 9.6.0 source ([Kitware/VTK@`00f9418c`](https://github.com/Kitware/VTK/commit/00f9418ca61fa2d3cd75ae78c3978b18fdce12f2)). Not an FFI binding — a ground-up Rust implementation of VTK's core concepts.
 
-**~300K lines of Rust | 5184 features | 575+ tests | 22 I/O formats | wgpu rendering**
+* 2026-06-24: A proper audit is taking place
 
-Most functions tested to give the same output as C++ version. But see TODO.md for some that are not; example files needed to do full testing
-
-A few features have not been included; contact if interested in these
+**A few features have not been included; contact if interested in these**
 
 
 ## This is an LLM-mediated faithful (hopefully) translation, not the original code!
@@ -51,6 +49,8 @@ Uses `Arc<Vec<T>>` copy-on-write storage for zero-copy clone (matching VTK's `Sh
 - **575 tests** (434 validation + 141 performance)
 - **366/396 (92%)** non-extra features tested against VTK C++ reference output
 - **30 features** remain untested (exotic I/O, GPU, HyperTreeGrid, Reeb graph internals) — see [TODO.md](TODO.md)
+
+Current manifest-level verification is `cargo check --lib` and `cargo check --examples`. Some checked-in test targets still need monolithic-path cleanup before full `cargo test` is reliable.
 
 ## Quick Start
 
@@ -167,7 +167,7 @@ Extra sources (behind `sources-extra` feature): airplane, amphora, castle_tower,
 | CityGML | `.gml` | yes | |
 | Video | `.mp4` etc | | yes* |
 
-*Video requires `ffmpeg` feature. HDF5-based formats (Exodus, CGNS, NetCDF, MINC, AMR) available via `io-hdf5` feature with system `libhdf5-dev`. GDAL (GeoTIFF, Shapefile) via `io-gdal` feature with system `libgdal-dev`.
+*Some checked-in modules reference optional backends such as FFmpeg, HDF5, and GDAL internally, but those backend Cargo features and dependencies are not currently exposed by this manifest.
 
 ## Rendering
 
@@ -194,13 +194,15 @@ wgpu-based GPU rendering (behind `render-wgpu` feature):
 ## Examples
 
 ```bash
-cargo run --example triangle        # basic PolyData + render window
+cargo run --example triangle        # basic PolyData construction
 cargo run --example shapes          # sphere, cube, cone, cylinder, arrow
-cargo run --example isosurface      # marching cubes on gyroid
-cargo run --example scalar_colors   # elevation + colormap visualization
-cargo run --example showcase        # PBR, transparency, axes, scalar bar
-cargo run --example pipeline_demo   # filter pipeline + multi-format I/O
-cargo run --example volume          # GPU volume rendering
+cargo run --example isosurface      # marching cubes on a scalar field
+cargo run --example scalar_colors   # elevation scalars + color mapping
+cargo run --example pipeline_demo   # explicit source/filter chain + I/O
+cargo run --example mesh_info       # inspect mesh files
+cargo run --features render-wgpu --example showcase        # GPU render showcase
+cargo run --features render-wgpu --example volume          # GPU volume rendering
+cargo run --features render-wgpu --example headless_render # offscreen rendering
 ```
 
 ## Design Principles
@@ -210,7 +212,7 @@ cargo run --example volume          # GPU volume rendering
 - **Traits over inheritance** — `DataObject` and `DataSet` traits replace class hierarchies
 - **Filters as functions** — plain `fn(&PolyData) -> PolyData`, composable without a pipeline
 - **Pipeline optional** — `Pipeline` struct available for lazy evaluation + caching when needed
-- **Feature-gated heavy deps** — image/mesh filters, ffmpeg, hdf5, gdal, fontdue are all optional
+- **Feature-gated heavy modules** — image/mesh filters, wgpu rendering, parallel helpers, and fontdue-backed TrueType support are optional
 - **Native CPU targeting** — `.cargo/config.toml` sets `target-cpu=native` for optimal SIMD
 
 ## Feature Flags
@@ -232,9 +234,9 @@ vtk-pure-rs = { version = "0.2", features = [
     "filters-image",       # 3000+ image processing filters [heavy]
     "filters-mesh",        # 800+ mesh processing filters [heavy]
     "sources-extra",       # 350 extra geometry sources
-    "io-all",              # all 22 I/O formats
+    "io-all",              # all currently exposed I/O modules
     "render-wgpu",         # wgpu GPU rendering
-    "parallel",            # MPI-ready parallel ops
+    "parallel",            # local parallel/decomposition helpers
     "truetype",            # TrueType font rendering
 ] }
 ```

@@ -49,10 +49,8 @@ pub fn imprint(mesh_a: &PolyData, mesh_b: &PolyData) -> PolyData {
                 let a = w[0] as usize;
                 let b = w[1] as usize;
                 if a < projected_indices.len() && b < projected_indices.len() {
-                    out_lines.push_cell(&[
-                        projected_indices[a] as i64,
-                        projected_indices[b] as i64,
-                    ]);
+                    out_lines
+                        .push_cell(&[projected_indices[a] as i64, projected_indices[b] as i64]);
                 }
             }
             // Close the polygon edge loop
@@ -129,12 +127,7 @@ fn closest_point_on_mesh(
 }
 
 /// Closest point on a triangle to a query point.
-fn closest_point_on_triangle(
-    a: [f64; 3],
-    b: [f64; 3],
-    c: [f64; 3],
-    p: [f64; 3],
-) -> [f64; 3] {
+fn closest_point_on_triangle(a: [f64; 3], b: [f64; 3], c: [f64; 3], p: [f64; 3]) -> [f64; 3] {
     let ab = sub(b, a);
     let ac = sub(c, a);
     let ap = sub(p, a);

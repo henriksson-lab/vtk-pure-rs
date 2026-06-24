@@ -7,24 +7,46 @@ use crate::data::{CellArray, Points, PolyData};
 /// Creates disconnected cells for visualization.
 pub fn explode(input: &PolyData, factor: f64) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     // Global centroid
-    let mut gcx = 0.0; let mut gcy = 0.0; let mut gcz = 0.0;
-    for i in 0..n { let p = input.points.get(i); gcx+=p[0]; gcy+=p[1]; gcz+=p[2]; }
+    let mut gcx = 0.0;
+    let mut gcy = 0.0;
+    let mut gcz = 0.0;
+    for i in 0..n {
+        let p = input.points.get(i);
+        gcx += p[0];
+        gcy += p[1];
+        gcz += p[2];
+    }
     let nf = n as f64;
-    gcx/=nf; gcy/=nf; gcz/=nf;
+    gcx /= nf;
+    gcy /= nf;
+    gcz /= nf;
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.is_empty() { continue; }
+        if cell.is_empty() {
+            continue;
+        }
         // Cell centroid
-        let mut ccx=0.0; let mut ccy=0.0; let mut ccz=0.0;
-        for &id in cell.iter() { let p=input.points.get(id as usize); ccx+=p[0]; ccy+=p[1]; ccz+=p[2]; }
+        let mut ccx = 0.0;
+        let mut ccy = 0.0;
+        let mut ccz = 0.0;
+        for &id in cell.iter() {
+            let p = input.points.get(id as usize);
+            ccx += p[0];
+            ccy += p[1];
+            ccz += p[2];
+        }
         let cn = cell.len() as f64;
-        ccx/=cn; ccy/=cn; ccz/=cn;
+        ccx /= cn;
+        ccy /= cn;
+        ccz /= cn;
 
         // Displacement from global centroid to cell centroid
         let dx = (ccx - gcx) * factor;
@@ -35,7 +57,7 @@ pub fn explode(input: &PolyData, factor: f64) -> PolyData {
         let mut ids = Vec::with_capacity(cell.len());
         for &pid in cell.iter() {
             let p = input.points.get(pid as usize);
-            out_points.push([p[0]+dx, p[1]+dy, p[2]+dz]);
+            out_points.push([p[0] + dx, p[1] + dy, p[2] + dz]);
             ids.push(base + ids.len() as i64);
         }
         out_polys.push_cell(&ids);
@@ -54,10 +76,12 @@ mod tests {
     #[test]
     fn explode_separates() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([0.5,1.0,0.0]); pd.points.push([1.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
-        pd.polys.push_cell(&[1,3,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.points.push([1.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[1, 3, 2]);
 
         let result = explode(&pd, 1.0);
         assert_eq!(result.points.len(), 6); // separated
@@ -67,8 +91,10 @@ mod tests {
     #[test]
     fn zero_factor_noop() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = explode(&pd, 0.0);
         // With factor=0, points don't move (but are still duplicated)

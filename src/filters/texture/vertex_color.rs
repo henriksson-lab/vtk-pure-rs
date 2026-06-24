@@ -5,19 +5,22 @@ pub fn solid_color(input: &PolyData, r: f64, g: f64, b: f64) -> PolyData {
     let n = input.points.len();
     let mut colors = Vec::with_capacity(n * 3);
     for _ in 0..n {
-        colors.push(r); colors.push(g); colors.push(b);
+        colors.push(r);
+        colors.push(g);
+        colors.push(b);
     }
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Colors", colors, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Colors", colors, 3)));
     pd
 }
 
 /// Color points by height (Z coordinate) using a simple blue-to-red gradient.
 pub fn color_by_height(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let mut min_z = f64::MAX;
     let mut max_z = f64::MIN;
@@ -31,37 +34,47 @@ pub fn color_by_height(input: &PolyData) -> PolyData {
     let mut colors = Vec::with_capacity(n * 3);
     for i in 0..n {
         let t = (input.points.get(i)[2] - min_z) / range;
-        colors.push(t);        // R: low=0, high=1
-        colors.push(0.2);      // G: constant
-        colors.push(1.0 - t);  // B: low=1, high=0
+        colors.push(t); // R: low=0, high=1
+        colors.push(0.2); // G: constant
+        colors.push(1.0 - t); // B: low=1, high=0
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Colors", colors, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Colors", colors, 3)));
     pd
 }
 
 /// Color each cell with a distinct color (cycling through a palette).
 pub fn color_by_cell_index(input: &PolyData) -> PolyData {
     let palette: Vec<[f64; 3]> = vec![
-        [0.894, 0.102, 0.110], [0.216, 0.494, 0.722], [0.302, 0.686, 0.290],
-        [0.596, 0.306, 0.639], [1.000, 0.498, 0.000], [1.000, 1.000, 0.200],
-        [0.651, 0.337, 0.157], [0.969, 0.506, 0.749], [0.600, 0.600, 0.600],
+        [0.894, 0.102, 0.110],
+        [0.216, 0.494, 0.722],
+        [0.302, 0.686, 0.290],
+        [0.596, 0.306, 0.639],
+        [1.000, 0.498, 0.000],
+        [1.000, 1.000, 0.200],
+        [0.651, 0.337, 0.157],
+        [0.969, 0.506, 0.749],
+        [0.600, 0.600, 0.600],
     ];
 
     let n_cells = input.polys.num_cells();
     let mut cell_colors = Vec::with_capacity(n_cells * 3);
     for ci in 0..n_cells {
         let c = &palette[ci % palette.len()];
-        cell_colors.push(c[0]); cell_colors.push(c[1]); cell_colors.push(c[2]);
+        cell_colors.push(c[0]);
+        cell_colors.push(c[1]);
+        cell_colors.push(c[2]);
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Colors", cell_colors, 3),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Colors",
+            cell_colors,
+            3,
+        )));
     pd
 }
 

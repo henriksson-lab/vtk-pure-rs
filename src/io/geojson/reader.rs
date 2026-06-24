@@ -1,5 +1,5 @@
-use std::io::Read;
 use crate::data::{CellArray, Points, PolyData};
+use std::io::Read;
 
 /// Read GeoJSON and return a PolyData.
 ///
@@ -7,7 +7,9 @@ use crate::data::{CellArray, Points, PolyData};
 /// This is a minimal parser — no external JSON dependency.
 pub fn read_geojson<R: Read>(reader: &mut R) -> Result<PolyData, String> {
     let mut text = String::new();
-    reader.read_to_string(&mut text).map_err(|e| e.to_string())?;
+    reader
+        .read_to_string(&mut text)
+        .map_err(|e| e.to_string())?;
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -22,7 +24,9 @@ pub fn read_geojson<R: Read>(reader: &mut R) -> Result<PolyData, String> {
 
         // Extract type value
         let type_val = extract_string_value(&text[pos..]);
-        if type_val.is_none() { continue; }
+        if type_val.is_none() {
+            continue;
+        }
         let type_val = type_val.unwrap();
 
         if type_val == "Feature" || type_val == "FeatureCollection" {
@@ -35,7 +39,11 @@ pub fn read_geojson<R: Read>(reader: &mut R) -> Result<PolyData, String> {
             let coord_start = pos + coord_pos + 13;
             // Skip whitespace and colon
             let rest = text[coord_start..].trim_start();
-            let rest = if rest.starts_with(':') { rest[1..].trim_start() } else { rest };
+            let rest = if rest.starts_with(':') {
+                rest[1..].trim_start()
+            } else {
+                rest
+            };
 
             match type_val.as_str() {
                 "Point" => {
@@ -64,7 +72,11 @@ pub fn read_geojson<R: Read>(reader: &mut R) -> Result<PolyData, String> {
                     if let Some(ring) = parse_polygon_outer_ring(rest) {
                         let mut ids = Vec::new();
                         // Skip last point (same as first in GeoJSON)
-                        let n = if ring.len() > 1 { ring.len() - 1 } else { ring.len() };
+                        let n = if ring.len() > 1 {
+                            ring.len() - 1
+                        } else {
+                            ring.len()
+                        };
                         for c in &ring[..n] {
                             let idx = points.len() as i64;
                             points.push([c[0], c[1], 0.0]);
@@ -89,35 +101,60 @@ pub fn read_geojson<R: Read>(reader: &mut R) -> Result<PolyData, String> {
 
 fn extract_string_value(text: &str) -> Option<String> {
     let rest = text.trim_start();
-    let rest = if rest.starts_with(':') { rest[1..].trim_start() } else { rest };
-    if !rest.starts_with('"') { return None; }
+    let rest = if rest.starts_with(':') {
+        rest[1..].trim_start()
+    } else {
+        rest
+    };
+    if !rest.starts_with('"') {
+        return None;
+    }
     let end = rest[1..].find('"')?;
     Some(rest[1..1 + end].to_string())
 }
 
 fn parse_point(text: &str) -> Option<[f64; 2]> {
     let text = text.trim_start();
-    if !text.starts_with('[') { return None; }
+    if !text.starts_with('[') {
+        return None;
+    }
     let end = text.find(']')?;
     let inner = &text[1..end];
-    let parts: Vec<f64> = inner.split(',').filter_map(|s| s.trim().parse().ok()).collect();
-    if parts.len() >= 2 { Some([parts[0], parts[1]]) } else { None }
+    let parts: Vec<f64> = inner
+        .split(',')
+        .filter_map(|s| s.trim().parse().ok())
+        .collect();
+    if parts.len() >= 2 {
+        Some([parts[0], parts[1]])
+    } else {
+        None
+    }
 }
 
 fn parse_coord_array(text: &str) -> Option<Vec<[f64; 2]>> {
     let text = text.trim_start();
-    if !text.starts_with('[') { return None; }
+    if !text.starts_with('[') {
+        return None;
+    }
     // Find matching bracket
     let mut depth = 0;
     let mut end = 0;
     for (i, ch) in text.char_indices() {
         match ch {
             '[' => depth += 1,
-            ']' => { depth -= 1; if depth == 0 { end = i; break; } }
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = i;
+                    break;
+                }
+            }
             _ => {}
         }
     }
-    if end == 0 { return None; }
+    if end == 0 {
+        return None;
+    }
 
     let inner = &text[1..end];
     let mut coords = Vec::new();
@@ -126,7 +163,10 @@ fn parse_coord_array(text: &str) -> Option<Vec<[f64; 2]>> {
         let abs = pos + start;
         if let Some(e) = inner[abs..].find(']') {
             let pair = &inner[abs + 1..abs + e];
-            let parts: Vec<f64> = pair.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+            let parts: Vec<f64> = pair
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
             if parts.len() >= 2 {
                 coords.push([parts[0], parts[1]]);
             }
@@ -142,7 +182,9 @@ fn parse_polygon_outer_ring(text: &str) -> Option<Vec<[f64; 2]>> {
     // Polygon coordinates: [[[x,y],[x,y],...]]
     // We need to skip one layer of brackets to get to the ring
     let text = text.trim_start();
-    if !text.starts_with('[') { return None; }
+    if !text.starts_with('[') {
+        return None;
+    }
     // Find the inner array start
     let inner = &text[1..].trim_start();
     parse_coord_array(inner)

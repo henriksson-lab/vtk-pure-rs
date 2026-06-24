@@ -11,8 +11,7 @@ use std::time::Instant;
 
 fn load_perf_ref() -> HashMap<String, f64> {
     let path = "tests/vtk_validation/reference/perf_vtk_cpp.json";
-    let content = std::fs::read_to_string(path)
-        .unwrap_or_else(|_| panic!("missing {path}"));
+    let content = std::fs::read_to_string(path).unwrap_or_else(|_| panic!("missing {path}"));
     let map: HashMap<String, f64> = serde_json::from_str(&content).unwrap();
     map
 }
@@ -53,7 +52,11 @@ use vtk_pure_rs::data::*;
 use vtk_pure_rs::filters::core::sources::sphere::{sphere, SphereParams};
 
 fn sp32() -> PolyData {
-    sphere(&SphereParams { theta_resolution: 32, phi_resolution: 32, ..Default::default() })
+    sphere(&SphereParams {
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    })
 }
 fn tri_sp32() -> PolyData {
     vtk_pure_rs::filters::geometry::triangulate::triangulate(&sp32())
@@ -65,12 +68,21 @@ macro_rules! perf_test {
         fn $name() {
             let ref_data = load_perf_ref();
             let vtk_ms = ref_data[$key] * 1000.0;
-            let our_ms = bench_ms(|| { $body }, 30);
+            let our_ms = bench_ms(|| $body, 30);
             let ratio = our_ms / vtk_ms.max(0.001);
-            println!("  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x", $key, our_ms, vtk_ms, ratio);
-            assert!(ratio < $max_ratio,
+            println!(
+                "  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x",
+                $key, our_ms, vtk_ms, ratio
+            );
+            assert!(
+                ratio < $max_ratio,
                 "{}: {:.2}ms is {:.1}x slower than VTK {:.2}ms (max allowed: {}x)",
-                $key, our_ms, ratio, vtk_ms, $max_ratio);
+                $key,
+                our_ms,
+                ratio,
+                vtk_ms,
+                $max_ratio
+            );
         }
     };
 }
@@ -83,22 +95,47 @@ macro_rules! perf_test_setup {
         fn $name() {
             let ref_data = load_perf_ref();
             let vtk_ms = ref_data[$key] * 1000.0;
-            let our_ms = bench_with_setup(|| { $setup }, |$inp| { $body }, 50);
+            let our_ms = bench_with_setup(|| $setup, |$inp| $body, 50);
             let ratio = our_ms / vtk_ms.max(0.001);
-            println!("  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x", $key, our_ms, vtk_ms, ratio);
-            assert!(ratio < $max_ratio,
+            println!(
+                "  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x",
+                $key, our_ms, vtk_ms, ratio
+            );
+            assert!(
+                ratio < $max_ratio,
                 "{}: {:.2}ms is {:.1}x slower than VTK {:.2}ms (max allowed: {}x)",
-                $key, our_ms, ratio, vtk_ms, $max_ratio);
+                $key,
+                our_ms,
+                ratio,
+                vtk_ms,
+                $max_ratio
+            );
         }
     };
 }
 
 // Sources — allow up to 5x slower (sub-ms operations, noise-dominated)
-perf_test!(perf_sphere_32, "sphere_32x32", 5.0,
-    sphere(&SphereParams { theta_resolution: 32, phi_resolution: 32, ..Default::default() }));
+perf_test!(
+    perf_sphere_32,
+    "sphere_32x32",
+    5.0,
+    sphere(&SphereParams {
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    })
+);
 
-perf_test!(perf_sphere_128, "sphere_128x128", 5.0,
-    sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() }));
+perf_test!(
+    perf_sphere_128,
+    "sphere_128x128",
+    5.0,
+    sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    })
+);
 
 // Filters — allow up to 3x slower
 perf_test_setup!(perf_normals, "normals", 3.0, setup: sp32(), body: |input| vtk_pure_rs::filters::normals::normals::compute_normals(input));
@@ -109,21 +146,34 @@ perf_test!(perf_clean, "clean", 3.0, {
     let pd = sp32();
     let mut duped = pd.clone();
     let off = duped.points.len() as i64;
-    for i in 0..pd.points.len() { duped.points.push(pd.points.get(i)); }
+    for i in 0..pd.points.len() {
+        duped.points.push(pd.points.get(i));
+    }
     for ci in 0..pd.polys.num_cells() {
         let c = pd.polys.cell(ci);
         let r: Vec<i64> = c.iter().map(|&v| v + off).collect();
         duped.polys.push_cell(&r);
     }
-    vtk_pure_rs::filters::geometry::clean::clean(&duped,
-        &vtk_pure_rs::filters::geometry::clean::CleanParams::default())
+    vtk_pure_rs::filters::geometry::clean::clean(
+        &duped,
+        &vtk_pure_rs::filters::geometry::clean::CleanParams::default(),
+    )
 });
 
 perf_test_setup!(perf_decimate, "decimate_50", 3.0, setup: tri_sp32(), body: |input| vtk_pure_rs::filters::core::decimate::decimate(input, 0.5));
 
 perf_test!(perf_connectivity, "connectivity", 5.0, {
-    let s1 = sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() });
-    let s2 = sphere(&SphereParams { center: [3.0,0.0,0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() });
+    let s1 = sphere(&SphereParams {
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
+    let s2 = sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     vtk_pure_rs::filters::geometry::connectivity::extract_components(&merged)
 });
@@ -143,21 +193,29 @@ perf_test_setup!(perf_mass_properties, "mass_properties", 5.0, setup: tri_sp32()
 perf_test_setup!(perf_cell_centers, "cell_centers", 5.0, setup: sp32(), body: |input| vtk_pure_rs::filters::cell::cell_centers::cell_centers(input));
 
 perf_test!(perf_mc_64, "mc_64", 3.0, {
-    let img = ImageData::with_dimensions(64,64,64);
-    let mut v = Vec::with_capacity(64*64*64);
-    for k in 0..64i32 { for j in 0..64i32 { for i in 0..64i32 {
-        v.push(((i-32)*(i-32)+(j-32)*(j-32)+(k-32)*(k-32)) as f64);
-    }}}
+    let img = ImageData::with_dimensions(64, 64, 64);
+    let mut v = Vec::with_capacity(64 * 64 * 64);
+    for k in 0..64i32 {
+        for j in 0..64i32 {
+            for i in 0..64i32 {
+                v.push(((i - 32) * (i - 32) + (j - 32) * (j - 32) + (k - 32) * (k - 32)) as f64);
+            }
+        }
+    }
     vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 400.0)
 });
 
 // Note: FE uses rayon; ratio varies with thread contention from other tests
 perf_test!(perf_fe_64, "fe_64", 8.0, {
-    let img = ImageData::with_dimensions(64,64,64);
-    let mut v = Vec::with_capacity(64*64*64);
-    for k in 0..64i32 { for j in 0..64i32 { for i in 0..64i32 {
-        v.push(((i-32)*(i-32)+(j-32)*(j-32)+(k-32)*(k-32)) as f64);
-    }}}
+    let img = ImageData::with_dimensions(64, 64, 64);
+    let mut v = Vec::with_capacity(64 * 64 * 64);
+    for k in 0..64i32 {
+        for j in 0..64i32 {
+            for i in 0..64i32 {
+                v.push(((i - 32) * (i - 32) + (j - 32) * (j - 32) + (k - 32) * (k - 32)) as f64);
+            }
+        }
+    }
     vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &v, 400.0)
 });
 
@@ -165,20 +223,28 @@ perf_test!(perf_fe_64, "fe_64", 8.0, {
 perf_test!(perf_stl, "stl_roundtrip", 3.0, {
     let pd = tri_sp32();
     let path = std::env::temp_dir().join(format!("vtk_perf_{:?}.stl", std::thread::current().id()));
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&path, &pd).unwrap();
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&path, &pd)
+        .unwrap();
     vtk_pure_rs::io::stl::StlReader::read(&path).unwrap()
 });
 
 perf_test!(perf_vtk_io, "vtk_roundtrip", 3.0, {
     let pd = tri_sp32();
     let path = std::env::temp_dir().join(format!("vtk_perf_{:?}.vtk", std::thread::current().id()));
-    vtk_pure_rs::io::legacy::LegacyWriter::ascii().write_poly_data(&path, &pd).unwrap();
+    vtk_pure_rs::io::legacy::LegacyWriter::ascii()
+        .write_poly_data(&path, &pd)
+        .unwrap();
     vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(&path).unwrap()
 });
 
 perf_test!(perf_tube, "tube", 5.0, {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 20 });
+    let l = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 20,
+    });
     vtk_pure_rs::filters::geometry::tube::tube(&l, 0.1, 12)
 });
 
@@ -191,38 +257,58 @@ perf_test!(perf_threshold, "threshold", 5.0, {
 });
 
 perf_test!(perf_append_3, "append_3", 30.0, {
-    let s1 = sp32(); let s2 = sp32(); let s3 = sp32();
+    let s1 = sp32();
+    let s2 = sp32();
+    let s3 = sp32();
     vtk_pure_rs::filters::core::append::append(&[&s1, &s2, &s3])
 });
 
 perf_test!(perf_glyph_10, "glyph_10", 5.0, {
     let mut seeds = PolyData::new();
     seeds.points = Points::from_vec((0..10).map(|i| [i as f64, 0.0, 0.0]).collect());
-    let glyph = sphere(&SphereParams { radius: 0.2, theta_resolution: 8, phi_resolution: 8, ..Default::default() });
+    let glyph = sphere(&SphereParams {
+        radius: 0.2,
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
     vtk_pure_rs::filters::geometry::glyph::glyph(&seeds, &glyph, 1.0, false)
 });
 
 perf_test!(perf_spline, "spline", 10.0, {
     let mut pd = PolyData::new();
-    pd.points = Points::from_vec((0..10).map(|i| [i as f64, (i%3) as f64 * 0.5, 0.0]).collect());
-    pd.lines.push_cell(&[0,1,2,3,4,5,6,7,8,9]);
+    pd.points = Points::from_vec(
+        (0..10)
+            .map(|i| [i as f64, (i % 3) as f64 * 0.5, 0.0])
+            .collect(),
+    );
+    pd.lines.push_cell(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     vtk_pure_rs::filters::geometry::spline::spline(&pd, 10)
 });
 
 perf_test!(perf_feature_edges, "feature_edges_boundary", 5.0, {
     let pd = sp32();
-    vtk_pure_rs::filters::geometry::feature_edges::feature_edges(&pd,
+    vtk_pure_rs::filters::geometry::feature_edges::feature_edges(
+        &pd,
         &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams {
-            boundary_edges: true, feature_edges: false, manifold_edges: false,
-            non_manifold_edges: false, ..Default::default()
-        })
+            boundary_edges: true,
+            feature_edges: false,
+            manifold_edges: false,
+            non_manifold_edges: false,
+            ..Default::default()
+        },
+    )
 });
 
 perf_test_setup!(perf_curvatures, "curvatures_mean", 3.0, setup: tri_sp32(), body: |input| vtk_pure_rs::filters::geometry::curvatures::curvatures(input));
 
 // Large mesh tests (128x128 sphere)
 fn sp128() -> PolyData {
-    sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() })
+    sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    })
 }
 fn tri_sp128() -> PolyData {
     vtk_pure_rs::filters::geometry::triangulate::triangulate(&sp128())
@@ -236,47 +322,65 @@ perf_test!(perf_clean_large, "clean_large", 3.0, {
     let pd = sp128();
     let mut duped = pd.clone();
     let off = duped.points.len() as i64;
-    for i in 0..pd.points.len() { duped.points.push(pd.points.get(i)); }
+    for i in 0..pd.points.len() {
+        duped.points.push(pd.points.get(i));
+    }
     for ci in 0..pd.polys.num_cells() {
         let c = pd.polys.cell(ci);
         let r: Vec<i64> = c.iter().map(|&v| v + off).collect();
         duped.polys.push_cell(&r);
     }
-    vtk_pure_rs::filters::geometry::clean::clean(&duped,
-        &vtk_pure_rs::filters::geometry::clean::CleanParams::default())
+    vtk_pure_rs::filters::geometry::clean::clean(
+        &duped,
+        &vtk_pure_rs::filters::geometry::clean::CleanParams::default(),
+    )
 });
 
 perf_test!(perf_mc_128, "mc_128", 3.0, {
-    let img = ImageData::with_dimensions(128,128,128);
-    let mut v = Vec::with_capacity(128*128*128);
-    for k in 0..128i32{for j in 0..128i32{for i in 0..128i32{
-        v.push(((i-64)*(i-64)+(j-64)*(j-64)+(k-64)*(k-64)) as f64);
-    }}}
+    let img = ImageData::with_dimensions(128, 128, 128);
+    let mut v = Vec::with_capacity(128 * 128 * 128);
+    for k in 0..128i32 {
+        for j in 0..128i32 {
+            for i in 0..128i32 {
+                v.push(((i - 64) * (i - 64) + (j - 64) * (j - 64) + (k - 64) * (k - 64)) as f64);
+            }
+        }
+    }
     vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 900.0)
 });
 
 // Note: FE uses rayon; ratio varies with thread contention from parallel tests
 perf_test!(perf_fe_128, "fe_128", 8.0, {
-    let img = ImageData::with_dimensions(128,128,128);
-    let mut v = Vec::with_capacity(128*128*128);
-    for k in 0..128i32{for j in 0..128i32{for i in 0..128i32{
-        v.push(((i-64)*(i-64)+(j-64)*(j-64)+(k-64)*(k-64)) as f64);
-    }}}
+    let img = ImageData::with_dimensions(128, 128, 128);
+    let mut v = Vec::with_capacity(128 * 128 * 128);
+    for k in 0..128i32 {
+        for j in 0..128i32 {
+            for i in 0..128i32 {
+                v.push(((i - 64) * (i - 64) + (j - 64) * (j - 64) + (k - 64) * (k - 64)) as f64);
+            }
+        }
+    }
     vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &v, 900.0)
 });
 
 // Large I/O
 perf_test!(perf_stl_large, "stl_large", 3.0, {
     let pd = tri_sp128();
-    let path = std::env::temp_dir().join(format!("vtk_perf_{:?}_l.stl", std::thread::current().id()));
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&path, &pd).unwrap();
+    let path =
+        std::env::temp_dir().join(format!("vtk_perf_{:?}_l.stl", std::thread::current().id()));
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&path, &pd)
+        .unwrap();
     vtk_pure_rs::io::stl::StlReader::read(&path).unwrap()
 });
 
 perf_test!(perf_vtk_large, "vtk_large", 3.0, {
     let pd = tri_sp128();
-    let path = std::env::temp_dir().join(format!("vtk_perf_{:?}_l.vtk", std::thread::current().id()));
-    vtk_pure_rs::io::legacy::LegacyWriter::ascii().write_poly_data(&path, &pd).unwrap();
+    let path =
+        std::env::temp_dir().join(format!("vtk_perf_{:?}_l.vtk", std::thread::current().id()));
+    vtk_pure_rs::io::legacy::LegacyWriter::ascii()
+        .write_poly_data(&path, &pd)
+        .unwrap();
     vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(&path).unwrap()
 });
 
@@ -286,7 +390,7 @@ perf_test!(perf_delaunay_500, "delaunay_500", 3.0, {
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((rng >> 33) as f64) / (u32::MAX as f64) * 2.0 - 1.0
     };
-    let pts: Vec<[f64;3]> = (0..500).map(|_| [rand_f64(), rand_f64(), 0.0]).collect();
+    let pts: Vec<[f64; 3]> = (0..500).map(|_| [rand_f64(), rand_f64(), 0.0]).collect();
     let mut pd = PolyData::new();
     pd.points = Points::from_vec(pts);
     vtk_pure_rs::filters::geometry::delaunay_2d::delaunay_2d(&pd)
@@ -302,9 +406,15 @@ perf_test!(perf_smooth_50, "smooth_50", 3.0, {
 perf_test_setup!(perf_decimate_75, "decimate_75", 3.0, setup: tri_sp32(), body: |input| vtk_pure_rs::filters::core::decimate::decimate(input, 0.75));
 
 perf_test!(perf_contour_32, "contour_32", 3.0, {
-    let img = ImageData::with_dimensions(32,32,32);
-    let mut v = Vec::with_capacity(32*32*32);
-    for k in 0..32i32{for j in 0..32i32{for i in 0..32i32{v.push(((i-16)*(i-16)+(j-16)*(j-16)+(k-16)*(k-16)) as f64);}}}
+    let img = ImageData::with_dimensions(32, 32, 32);
+    let mut v = Vec::with_capacity(32 * 32 * 32);
+    for k in 0..32i32 {
+        for j in 0..32i32 {
+            for i in 0..32i32 {
+                v.push(((i - 16) * (i - 16) + (j - 16) * (j - 16) + (k - 16) * (k - 16)) as f64);
+            }
+        }
+    }
     vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 100.0)
 });
 
@@ -320,7 +430,7 @@ perf_test!(perf_hull_200, "hull_200", 5.0, {
         let u2 = (rng >> 33) as f64 / u32::MAX as f64;
         (-2.0 * u1.max(1e-10).ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos()
     };
-    let pts: Vec<[f64;3]> = (0..200).map(|_| [gauss(), gauss(), gauss()]).collect();
+    let pts: Vec<[f64; 3]> = (0..200).map(|_| [gauss(), gauss(), gauss()]).collect();
     let mut pd = PolyData::new();
     pd.points = Points::from_vec(pts);
     vtk_pure_rs::filters::geometry::hull::convex_hull(&pd)
@@ -332,7 +442,7 @@ perf_test!(perf_delaunay_1000, "delaunay_1000", 3.0, {
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((rng >> 33) as f64) / (u32::MAX as f64) * 2.0 - 1.0
     };
-    let pts: Vec<[f64;3]> = (0..1000).map(|_| [rf(), rf(), 0.0]).collect();
+    let pts: Vec<[f64; 3]> = (0..1000).map(|_| [rf(), rf(), 0.0]).collect();
     let mut pd = PolyData::new();
     pd.points = Points::from_vec(pts);
     vtk_pure_rs::filters::geometry::delaunay_2d::delaunay_2d(&pd)
@@ -343,20 +453,25 @@ perf_test!(perf_clean_3x_large, "clean_3x_large", 3.0, {
     let mut tripled = pd.clone();
     for copy in 0..2 {
         let off = tripled.points.len() as i64;
-        for i in 0..pd.points.len() { tripled.points.push(pd.points.get(i)); }
+        for i in 0..pd.points.len() {
+            tripled.points.push(pd.points.get(i));
+        }
         for ci in 0..pd.polys.num_cells() {
             let c = pd.polys.cell(ci);
             let r: Vec<i64> = c.iter().map(|&v| v + off).collect();
             tripled.polys.push_cell(&r);
         }
     }
-    vtk_pure_rs::filters::geometry::clean::clean(&tripled,
-        &vtk_pure_rs::filters::geometry::clean::CleanParams::default())
+    vtk_pure_rs::filters::geometry::clean::clean(
+        &tripled,
+        &vtk_pure_rs::filters::geometry::clean::CleanParams::default(),
+    )
 });
 
 perf_test!(perf_obj_large, "obj_large", 3.0, {
     let pd = tri_sp128();
-    let path = std::env::temp_dir().join(format!("vtk_perf_{:?}_l.obj", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_perf_{:?}_l.obj", std::thread::current().id()));
     vtk_pure_rs::io::obj::ObjWriter::write(&path, &pd).unwrap();
     vtk_pure_rs::io::obj::ObjReader::read(&path).unwrap()
 });
@@ -402,12 +517,12 @@ perf_test_setup!(perf_curvatures_large, "curvatures_large", 3.0,
     body: |input| vtk_pure_rs::filters::geometry::curvatures::curvatures(input));
 
 perf_test_setup!(perf_feature_edges_large, "feature_edges_large", 3.0,
-    setup: sp128(),
-    body: |input| vtk_pure_rs::filters::geometry::feature_edges::feature_edges(input,
-        &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams {
-            boundary_edges: true, feature_edges: false, manifold_edges: false,
-            non_manifold_edges: false, ..Default::default()
-        }));
+setup: sp128(),
+body: |input| vtk_pure_rs::filters::geometry::feature_edges::feature_edges(input,
+    &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams {
+        boundary_edges: true, feature_edges: false, manifold_edges: false,
+        non_manifold_edges: false, ..Default::default()
+    }));
 
 perf_test!(perf_append_5_large, "append_5_large", 30.0, {
     let s = sp128();
@@ -431,7 +546,10 @@ perf_test_setup!(perf_triangulate_large, "triangulate_large", 25.0,
 
 perf_test!(perf_cone_32, "cone_32", 5.0, {
     use vtk_pure_rs::filters::core::sources::cone::{cone, ConeParams};
-    cone(&ConeParams { resolution: 32, ..Default::default() })
+    cone(&ConeParams {
+        resolution: 32,
+        ..Default::default()
+    })
 });
 
 perf_test!(perf_cube, "cube", 5.0, {
@@ -441,7 +559,10 @@ perf_test!(perf_cube, "cube", 5.0, {
 
 perf_test!(perf_cylinder_32, "cylinder_32", 5.0, {
     use vtk_pure_rs::filters::core::sources::cylinder::{cylinder, CylinderParams};
-    cylinder(&CylinderParams { resolution: 32, ..Default::default() })
+    cylinder(&CylinderParams {
+        resolution: 32,
+        ..Default::default()
+    })
 });
 
 perf_test!(perf_arrow, "arrow", 5.0, {
@@ -451,12 +572,20 @@ perf_test!(perf_arrow, "arrow", 5.0, {
 
 perf_test!(perf_plane_32, "plane_32", 5.0, {
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    plane(&PlaneParams { x_resolution: 32, y_resolution: 32, ..Default::default() })
+    plane(&PlaneParams {
+        x_resolution: 32,
+        y_resolution: 32,
+        ..Default::default()
+    })
 });
 
 perf_test!(perf_disk_32, "disk_32", 5.0, {
     use vtk_pure_rs::filters::core::sources::disk::{disk, DiskParams};
-    disk(&DiskParams { circumferential_resolution: 32, radial_resolution: 8, ..Default::default() })
+    disk(&DiskParams {
+        circumferential_resolution: 32,
+        radial_resolution: 8,
+        ..Default::default()
+    })
 });
 
 // --- Filters (using existing VTK C++ ref timings) ---
@@ -482,12 +611,16 @@ perf_test!(perf_subdivide_1, "subdivide_1", 5.0, {
 
 perf_test!(perf_clip_closed, "clip_closed", 5.0, {
     let pd = tri_sp32();
-    vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0])
+    vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(
+        &pd,
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+    )
 });
 
 perf_test!(perf_slice, "slice", 5.0, {
     let pd = tri_sp32();
-    vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0])
+    vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0])
 });
 
 perf_test!(perf_orient_normals, "orient_normals", 5.0, {
@@ -502,7 +635,11 @@ perf_test!(perf_center_of_mass, "center_of_mass", 10.0, {
 
 perf_test!(perf_ribbon, "ribbon", 5.0, {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 20 });
+    let l = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 20,
+    });
     vtk_pure_rs::filters::geometry::ribbon::ribbon(&l, 0.1, [0.0, 0.0, 1.0])
 });
 
@@ -551,7 +688,7 @@ perf_test!(perf_ply, "ply_roundtrip", 3.0, {
 
 perf_test!(perf_slice_large, "slice_large", 7.0, {
     let pd = tri_sp128();
-    vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0])
+    vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0])
 });
 
 perf_test_setup!(perf_transform_large, "transform_large", 5.0,
@@ -582,20 +719,30 @@ perf_test!(perf_connectivity_large, "connectivity_large", 5.0, {
 perf_test!(perf_glyph_50, "glyph_50", 5.0, {
     let mut seeds = PolyData::new();
     seeds.points = Points::from_vec((0..50).map(|i| [i as f64 * 0.1, 0.0, 0.0]).collect());
-    let glyph = sphere(&SphereParams { radius: 0.05, theta_resolution: 8, phi_resolution: 8, ..Default::default() });
+    let glyph = sphere(&SphereParams {
+        radius: 0.05,
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
     vtk_pure_rs::filters::geometry::glyph::glyph(&seeds, &glyph, 1.0, false)
 });
 
 perf_test!(perf_ply_large, "ply_large", 3.0, {
     let pd = tri_sp128();
-    let path = std::env::temp_dir().join(format!("vtk_perf_{:?}_l.ply", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_perf_{:?}_l.ply", std::thread::current().id()));
     vtk_pure_rs::io::ply::PlyBinaryWriter::write(&path, &pd).unwrap();
     vtk_pure_rs::io::ply::PlyBinaryReader::read(&path).unwrap()
 });
 
 perf_test!(perf_tube_large, "tube_large", 5.0, {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 100 });
+    let l = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 100,
+    });
     vtk_pure_rs::filters::geometry::tube::tube(&l, 0.05, 12)
 });
 
@@ -606,7 +753,12 @@ perf_test!(perf_tube_large, "tube_large", 5.0, {
 perf_test!(perf_boolean_union, "boolean_union", 5.0, {
     use vtk_pure_rs::filters::boolean::boolean::{boolean, BooleanOp};
     let a = tri_sp32();
-    let b_src = sphere(&SphereParams { center: [0.3, 0.0, 0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() });
+    let b_src = sphere(&SphereParams {
+        center: [0.3, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    });
     let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&b_src);
     boolean(&a, &b, BooleanOp::Union)
 });
@@ -633,14 +785,16 @@ perf_test_setup!(perf_cell_size_large, "cell_size_large", 5.0,
 
 perf_test!(perf_fill_holes, "fill_holes", 5.0, {
     let pd = tri_sp32();
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     vtk_pure_rs::filters::cell::fill_holes::fill_holes(&clipped)
 });
 
 // Our fill_holes uses simple fan triangulation; VTK uses advancing front.
 perf_test!(perf_fill_holes_large, "fill_holes_large", 8.0, {
     let pd = tri_sp128();
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     vtk_pure_rs::filters::cell::fill_holes::fill_holes(&clipped)
 });
 
@@ -658,7 +812,11 @@ perf_test_setup!(perf_mirror_large, "mirror_large", 5.0,
 
 perf_test!(perf_extrude, "extrude", 5.0, {
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let p = plane(&PlaneParams { x_resolution: 10, y_resolution: 10, ..Default::default() });
+    let p = plane(&PlaneParams {
+        x_resolution: 10,
+        y_resolution: 10,
+        ..Default::default()
+    });
     vtk_pure_rs::filters::transform::extrude::extrude(&p, [0.0, 0.0, 1.0], true)
 });
 
@@ -684,14 +842,24 @@ perf_test_setup!(perf_outline, "outline", 5.0,
 
 perf_test!(perf_hausdorff, "hausdorff", 5.0, {
     let a = sp32();
-    let b = sphere(&SphereParams { center: [0.05, 0.0, 0.0], theta_resolution: 32, phi_resolution: 32, ..Default::default() });
+    let b = sphere(&SphereParams {
+        center: [0.05, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     vtk_pure_rs::filters::distance::hausdorff::hausdorff_distance(&a, &b)
 });
 
 // Our Hausdorff is O(n*m) brute-force; VTK uses spatial acceleration (kd-tree).
 perf_test!(perf_hausdorff_large, "hausdorff_large", 20.0, {
     let a = sp128();
-    let b = sphere(&SphereParams { center: [0.05, 0.0, 0.0], theta_resolution: 128, phi_resolution: 128, ..Default::default() });
+    let b = sphere(&SphereParams {
+        center: [0.05, 0.0, 0.0],
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
     vtk_pure_rs::filters::distance::hausdorff::hausdorff_distance(&a, &b)
 });
 
@@ -699,24 +867,37 @@ perf_test!(perf_hausdorff_large, "hausdorff_large", 20.0, {
 
 perf_test!(perf_surface_nets_32, "surface_nets_32", 5.0, {
     let img = ImageData::with_dimensions(32, 32, 32);
-    let mut v = Vec::with_capacity(32*32*32);
-    for k in 0..32i32 { for j in 0..32i32 { for i in 0..32i32 {
-        let (x, y, z) = (i as f64 - 15.5, j as f64 - 15.5, k as f64 - 15.5);
-        v.push(x*x + y*y + z*z);
-    }}}
+    let mut v = Vec::with_capacity(32 * 32 * 32);
+    for k in 0..32i32 {
+        for j in 0..32i32 {
+            for i in 0..32i32 {
+                let (x, y, z) = (i as f64 - 15.5, j as f64 - 15.5, k as f64 - 15.5);
+                v.push(x * x + y * y + z * z);
+            }
+        }
+    }
     let mut img2 = img.clone();
-    img2.point_data_mut().add_array(AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("values", v, 1)));
+    img2.point_data_mut()
+        .add_array(AnyDataArray::F64(vtk_pure_rs::data::DataArray::from_vec(
+            "values", v, 1,
+        )));
     vtk_pure_rs::filters::geometry::surface_nets::surface_nets(&img2, "values", 200.0)
 });
 
 // --- Collision detection ---
 
 perf_test!(perf_collision, "collision", 5.0, {
-    let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.8, 0.0, 0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
+    let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.8, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
     vtk_pure_rs::filters::distance::collision_detection::collision_detection(&a, &b)
 });
 
@@ -749,19 +930,37 @@ perf_test_setup!(perf_catmull_clark, "catmull_clark_1", 5.0,
 perf_test!(perf_reflect, "reflect", 5.0, {
     use vtk_pure_rs::filters::transform::reflect::*;
     let pd = tri_sp32();
-    reflect(&pd, &ReflectParams { plane: ReflectPlane::X, copy_input: true, ..Default::default() })
+    reflect(
+        &pd,
+        &ReflectParams {
+            plane: ReflectPlane::X,
+            copy_input: true,
+            ..Default::default()
+        },
+    )
 });
 
 perf_test!(perf_reflect_large, "reflect_large", 5.0, {
     use vtk_pure_rs::filters::transform::reflect::*;
     let pd = tri_sp128();
-    reflect(&pd, &ReflectParams { plane: ReflectPlane::X, copy_input: true, ..Default::default() })
+    reflect(
+        &pd,
+        &ReflectParams {
+            plane: ReflectPlane::X,
+            copy_input: true,
+            ..Default::default()
+        },
+    )
 });
 
 // --- Rotational extrusion ---
 perf_test!(perf_rotation_extrude, "rotation_extrude", 5.0, {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.5, 0.0, 0.0], point2: [0.5, 1.0, 0.0], resolution: 10 });
+    let l = line(&LineParams {
+        point1: [0.5, 0.0, 0.0],
+        point2: [0.5, 1.0, 0.0],
+        resolution: 10,
+    });
     vtk_pure_rs::filters::transform::rotation_extrude::rotation_extrude(&l, 360.0, 32)
 });
 
@@ -793,8 +992,12 @@ perf_test_setup!(perf_depth_sort_large, "depth_sort_large", 7.0,
 // --- Extract largest region ---
 perf_test!(perf_extract_largest, "extract_largest", 5.0, {
     let s1 = tri_sp32();
-    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [3.0, 0.0, 0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() }));
+    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    }));
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     vtk_pure_rs::filters::core::extract_largest::extract_largest(&merged)
 });
@@ -814,10 +1017,10 @@ perf_test_setup!(perf_quadric_decimate_large, "quadric_decimate_50_large", 100.0
 
 // --- Calculator ---
 perf_test_setup!(perf_calculator, "calculator", 5.0,
-    setup: sp32(),
-    body: |input| vtk_pure_rs::filters::geometry::calculator::calculator(input, "Result", |_i, p, _| {
-        p[0] * p[0] + p[1] * p[1] + p[2] * p[2]
-    }));
+setup: sp32(),
+body: |input| vtk_pure_rs::filters::geometry::calculator::calculator(input, "Result", |_i, p, _| {
+    p[0] * p[0] + p[1] * p[1] + p[2] * p[2]
+}));
 
 // --- Distance to origin ---
 perf_test_setup!(perf_dist_to_origin, "distance_to_origin", 5.0,
@@ -850,8 +1053,12 @@ perf_test!(perf_byu, "byu_roundtrip", 5.0, {
 // --- Poly data distance ---
 perf_test!(perf_poly_distance, "poly_data_distance", 5.0, {
     let a = tri_sp32();
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.1, 0.0, 0.0], theta_resolution: 32, phi_resolution: 32, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    }));
     vtk_pure_rs::filters::distance::poly_data_distance::poly_data_distance(&a, &b)
 });
 
@@ -881,10 +1088,14 @@ perf_test!(perf_probe_100, "probe_100", 5.0, {
     let pd = sp32();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let mut probe_pts = PolyData::new();
-    probe_pts.points = Points::from_vec((0..100).map(|i| {
-        let t = i as f64 / 99.0;
-        [t - 0.5, 0.0, 0.0]
-    }).collect());
+    probe_pts.points = Points::from_vec(
+        (0..100)
+            .map(|i| {
+                let t = i as f64 / 99.0;
+                [t - 0.5, 0.0, 0.0]
+            })
+            .collect(),
+    );
     vtk_pure_rs::filters::geometry::probe::probe(&with_elev, &probe_pts)
 });
 
@@ -918,13 +1129,25 @@ perf_test!(perf_hedgehog, "hedgehog", 5.0, {
 perf_test!(perf_ruled_surface, "ruled_surface", 30.0, {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
     let mut pd = PolyData::new();
-    let l1 = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 10 });
-    let l2 = line(&LineParams { point1: [0.0,1.0,0.0], point2: [1.0,1.0,0.5], resolution: 10 });
+    let l1 = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 10,
+    });
+    let l2 = line(&LineParams {
+        point1: [0.0, 1.0, 0.0],
+        point2: [1.0, 1.0, 0.5],
+        resolution: 10,
+    });
     // Merge line cells
     pd.points = l1.points.clone();
-    for i in 0..l2.points.len() { pd.points.push(l2.points.get(i)); }
+    for i in 0..l2.points.len() {
+        pd.points.push(l2.points.get(i));
+    }
     let off = l1.points.len() as i64;
-    for cell in l1.lines.iter() { pd.lines.push_cell(cell); }
+    for cell in l1.lines.iter() {
+        pd.lines.push_cell(cell);
+    }
     for cell in l2.lines.iter() {
         let shifted: Vec<i64> = cell.iter().map(|&v| v + off).collect();
         pd.lines.push_cell(&shifted);
@@ -938,7 +1161,7 @@ perf_test!(perf_voronoi_2d, "voronoi_200", 30.0, {
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((rng >> 33) as f64) / (u32::MAX as f64) * 2.0 - 1.0
     };
-    let pts: Vec<[f64;3]> = (0..200).map(|_| [rf(), rf(), 0.0]).collect();
+    let pts: Vec<[f64; 3]> = (0..200).map(|_| [rf(), rf(), 0.0]).collect();
     let mut pd = PolyData::new();
     pd.points = Points::from_vec(pts);
     vtk_pure_rs::filters::geometry::voronoi_2d::voronoi_2d(&pd, 0.5)
@@ -946,8 +1169,16 @@ perf_test!(perf_voronoi_2d, "voronoi_200", 30.0, {
 
 // ==================== ROUND 9 ====================
 
-perf_test!(perf_sphere_64, "sphere_64x64", 5.0,
-    sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() }));
+perf_test!(
+    perf_sphere_64,
+    "sphere_64x64",
+    5.0,
+    sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    })
+);
 
 perf_test_setup!(perf_decimate_90, "decimate_90", 3.0,
     setup: tri_sp32(),
@@ -966,15 +1197,22 @@ perf_test!(perf_vtp, "vtp_roundtrip", 3.0, {
 
 perf_test!(perf_vtp_large, "vtp_large", 3.0, {
     let pd = tri_sp128();
-    let path = std::env::temp_dir().join(format!("vtk_perf_{:?}_l.vtp", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_perf_{:?}_l.vtp", std::thread::current().id()));
     vtk_pure_rs::io::xml::VtpWriter::write(&path, &pd).unwrap();
     vtk_pure_rs::io::xml::VtpReader::read(&path).unwrap()
 });
 
 perf_test!(perf_append_10_small, "append_10_small", 30.0, {
-    let spheres: Vec<_> = (0..10).map(|_|
-        sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() })
-    ).collect();
+    let spheres: Vec<_> = (0..10)
+        .map(|_| {
+            sphere(&SphereParams {
+                theta_resolution: 8,
+                phi_resolution: 8,
+                ..Default::default()
+            })
+        })
+        .collect();
     let refs: Vec<&PolyData> = spheres.iter().collect();
     vtk_pure_rs::filters::core::append::append(&refs)
 });
@@ -982,6 +1220,11 @@ perf_test!(perf_append_10_small, "append_10_small", 30.0, {
 perf_test!(perf_glyph_100, "glyph_100", 5.0, {
     let mut seeds = PolyData::new();
     seeds.points = Points::from_vec((0..100).map(|i| [i as f64 * 0.05, 0.0, 0.0]).collect());
-    let g = sphere(&SphereParams { radius: 0.02, theta_resolution: 6, phi_resolution: 6, ..Default::default() });
+    let g = sphere(&SphereParams {
+        radius: 0.02,
+        theta_resolution: 6,
+        phi_resolution: 6,
+        ..Default::default()
+    });
     vtk_pure_rs::filters::geometry::glyph::glyph(&seeds, &g, 1.0, false)
 });

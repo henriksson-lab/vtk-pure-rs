@@ -6,11 +6,14 @@ use std::collections::HashMap;
 /// Returns a new PolyData containing only the faces whose outward normal
 /// makes an angle less than or equal to `max_angle_deg` with `direction`.
 /// Points are compacted so only referenced vertices are included.
-pub fn select_faces_by_normal(input: &PolyData, direction: [f64; 3], max_angle_deg: f64) -> PolyData {
-    let dir_len: f64 = (direction[0] * direction[0]
-        + direction[1] * direction[1]
-        + direction[2] * direction[2])
-        .sqrt();
+pub fn select_faces_by_normal(
+    input: &PolyData,
+    direction: [f64; 3],
+    max_angle_deg: f64,
+) -> PolyData {
+    let dir_len: f64 =
+        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
+            .sqrt();
     if dir_len < 1e-15 {
         return PolyData::new();
     }
@@ -79,8 +82,12 @@ mod tests {
         // Two triangles: one facing up (+z), one facing down (-z)
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], // +z normal
-                [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0], // -z normal (reversed winding)
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0], // +z normal
+                [0.0, 0.0, 1.0],
+                [0.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0], // -z normal (reversed winding)
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );
@@ -92,8 +99,12 @@ mod tests {
     fn wide_angle_selects_all() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 0.0, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [0.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );

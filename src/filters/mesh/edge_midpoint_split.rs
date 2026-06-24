@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Split every triangle at edge midpoints, producing 4 triangles per input triangle.
 ///
@@ -20,24 +20,27 @@ pub fn midpoint_split(input: &PolyData) -> PolyData {
     // Cache for midpoints: (min_id, max_id) -> new point index
     let mut midpoint_cache: HashMap<(usize, usize), usize> = HashMap::new();
 
-    let mut get_midpoint =
-        |points: &mut Points<f64>, cache: &mut HashMap<(usize, usize), usize>, a: usize, b: usize| -> usize {
-            let key: (usize, usize) = if a < b { (a, b) } else { (b, a) };
-            if let Some(&idx) = cache.get(&key) {
-                return idx;
-            }
-            let pa = input.points.get(a);
-            let pb = input.points.get(b);
-            let mid: [f64; 3] = [
-                (pa[0] + pb[0]) * 0.5,
-                (pa[1] + pb[1]) * 0.5,
-                (pa[2] + pb[2]) * 0.5,
-            ];
-            let idx: usize = points.len();
-            points.push(mid);
-            cache.insert(key, idx);
-            idx
-        };
+    let mut get_midpoint = |points: &mut Points<f64>,
+                            cache: &mut HashMap<(usize, usize), usize>,
+                            a: usize,
+                            b: usize|
+     -> usize {
+        let key: (usize, usize) = if a < b { (a, b) } else { (b, a) };
+        if let Some(&idx) = cache.get(&key) {
+            return idx;
+        }
+        let pa = input.points.get(a);
+        let pb = input.points.get(b);
+        let mid: [f64; 3] = [
+            (pa[0] + pb[0]) * 0.5,
+            (pa[1] + pb[1]) * 0.5,
+            (pa[2] + pb[2]) * 0.5,
+        ];
+        let idx: usize = points.len();
+        points.push(mid);
+        cache.insert(key, idx);
+        idx
+    };
 
     let mut out_polys: CellArray = CellArray::new();
 
@@ -87,17 +90,17 @@ mod tests {
         // Two triangles sharing edge 1-2; midpoint on that edge should be shared
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], // 0
-                [2.0, 0.0, 0.0], // 1
-                [1.0, 2.0, 0.0], // 2
+                [0.0, 0.0, 0.0],  // 0
+                [2.0, 0.0, 0.0],  // 1
+                [1.0, 2.0, 0.0],  // 2
                 [1.0, -2.0, 0.0], // 3
             ],
             vec![[0, 1, 2], [0, 3, 1]],
         );
         let result = midpoint_split(&pd);
         assert_eq!(result.polys.num_cells(), 8); // 4 per triangle
-        // 4 original + 5 unique midpoints (edge 0-1 shared) = 9
-        // edges: 0-1, 1-2, 2-0, 0-3, 3-1 => 5 midpoints
+                                                 // 4 original + 5 unique midpoints (edge 0-1 shared) = 9
+                                                 // edges: 0-1, 1-2, 2-0, 0-3, 3-1 => 5 midpoints
         assert_eq!(result.points.len(), 9);
     }
 

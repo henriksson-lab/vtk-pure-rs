@@ -51,7 +51,7 @@ pub fn image_bilateral(
                         for di in -r..=r {
                             let ii = (i as i64 + di).clamp(0, nx as i64 - 1) as usize;
 
-                            let d_spatial = (di*di + dj*dj + dk*dk) as f64;
+                            let d_spatial = (di * di + dj * dj + dk * dk) as f64;
                             let v = values[kk * ny * nx + jj * nx + ii];
                             let d_range = (v - center_val) * (v - center_val);
 
@@ -62,7 +62,11 @@ pub fn image_bilateral(
                     }
                 }
 
-                result[k * ny * nx + j * nx + i] = if sum_w > 1e-15 { sum_v / sum_w } else { center_val };
+                result[k * ny * nx + j * nx + i] = if sum_w > 1e-15 {
+                    sum_v / sum_w
+                } else {
+                    center_val
+                };
             }
         }
     }
@@ -72,7 +76,11 @@ pub fn image_bilateral(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, result.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -89,9 +97,12 @@ mod tests {
     fn preserves_edges() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         // Step edge: [0, 0, 100, 100, 100]
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 0.0, 100.0, 100.0, 100.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 0.0, 100.0, 100.0, 100.0],
+                1,
+            )));
 
         let result = image_bilateral(&img, "v", 1.0, 10.0, 1);
         let arr = result.point_data().get_array("v").unwrap();
@@ -107,9 +118,12 @@ mod tests {
     #[test]
     fn smooths_noise() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![10.0, 10.0, 50.0, 10.0, 10.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![10.0, 10.0, 50.0, 10.0, 10.0],
+                1,
+            )));
 
         let result = image_bilateral(&img, "v", 1.0, 100.0, 1);
         let arr = result.point_data().get_array("v").unwrap();
@@ -122,9 +136,8 @@ mod tests {
     #[test]
     fn uniform_unchanged() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![5.0; 9], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![5.0; 9], 1)));
 
         let result = image_bilateral(&img, "v", 1.0, 1.0, 1);
         let arr = result.point_data().get_array("v").unwrap();

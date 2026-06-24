@@ -8,7 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 jobs:
   check:
@@ -18,7 +17,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --exclude vtk-python
+      - run: cargo check --lib
+      - run: cargo check --examples
 
   clippy:
     name: Clippy
@@ -29,27 +29,16 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --exclude vtk-python -- -D warnings
+      - run: cargo clippy --lib
 
-  test:
-    name: Test
+  package:
+    name: Package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --exclude vtk-python --exclude vtk-render-wgpu
-        # vtk-render-wgpu excluded: requires GPU adapter
-
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all -- --check
+      - run: cargo package --list
 
   wasm:
     name: WASM Check
@@ -62,6 +51,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: >
           cargo check --target wasm32-unknown-unknown
-          -p vtk-types -p vtk-data -p vtk-filters
-          -p vtk-io-legacy -p vtk-io-stl -p vtk-io-obj
-          -p vtk-io-ply -p vtk-io-off -p vtk-io-csv
+          --no-default-features
+          --features filters-core

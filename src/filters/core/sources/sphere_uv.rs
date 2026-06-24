@@ -29,16 +29,22 @@ pub fn sphere_uv(radius: f64, u_res: usize, v_res: usize) -> PolyData {
             let i10 = (iv * w + iu + 1) as i64;
             let i01 = ((iv + 1) * w + iu) as i64;
             let i11 = ((iv + 1) * w + iu + 1) as i64;
-            if iv == 0 { polys.push_cell(&[i00, i11, i01]); }
-            else if iv == vres - 1 { polys.push_cell(&[i00, i10, i01]); }
-            else { polys.push_cell(&[i00, i10, i11, i01]); }
+            if iv == 0 {
+                polys.push_cell(&[i00, i11, i01]);
+            } else if iv == vres - 1 {
+                polys.push_cell(&[i00, i10, i01]);
+            } else {
+                polys.push_cell(&[i00, i10, i11, i01]);
+            }
         }
     }
 
     let mut result = PolyData::new();
     result.points = pts;
     result.polys = polys;
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
     result.point_data_mut().set_active_tcoords("UV");
     result
 }

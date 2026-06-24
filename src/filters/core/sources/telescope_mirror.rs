@@ -1,8 +1,14 @@
 //! Parabolic telescope mirror surface.
 use crate::data::{CellArray, Points, PolyData};
 
-pub fn telescope_mirror(diameter: f64, focal_length: f64, n_radial: usize, n_angular: usize) -> PolyData {
-    let nr = n_radial.max(3); let na = n_angular.max(6);
+pub fn telescope_mirror(
+    diameter: f64,
+    focal_length: f64,
+    n_radial: usize,
+    n_angular: usize,
+) -> PolyData {
+    let nr = n_radial.max(3);
+    let na = n_angular.max(6);
     let r_max = diameter / 2.0;
     let mut pts = Points::<f64>::new();
     // Center point
@@ -29,11 +35,14 @@ pub fn telescope_mirror(diameter: f64, focal_length: f64, n_radial: usize, n_ang
         let base1 = 1 + i * na;
         for j in 0..na {
             let j1 = (j + 1) % na;
-            polys.push_cell(&[(base0+j) as i64, (base1+j) as i64, (base1+j1) as i64]);
-            polys.push_cell(&[(base0+j) as i64, (base1+j1) as i64, (base0+j1) as i64]);
+            polys.push_cell(&[(base0 + j) as i64, (base1 + j) as i64, (base1 + j1) as i64]);
+            polys.push_cell(&[(base0 + j) as i64, (base1 + j1) as i64, (base0 + j1) as i64]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

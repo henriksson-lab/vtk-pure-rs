@@ -78,12 +78,7 @@ fn point_inside_mesh(point: &[f64; 3], tris: &[Triangle]) -> bool {
 }
 
 /// Moller-Trumbore ray-triangle intersection for ray origin `o` in direction +X.
-fn ray_intersects_triangle(
-    o: &[f64; 3],
-    v0: &[f64; 3],
-    v1: &[f64; 3],
-    v2: &[f64; 3],
-) -> bool {
+fn ray_intersects_triangle(o: &[f64; 3], v0: &[f64; 3], v1: &[f64; 3], v2: &[f64; 3]) -> bool {
     let dir = [1.0, 0.0, 0.0]; // +X ray direction
     let eps: f64 = 1e-12;
 
@@ -146,17 +141,23 @@ mod tests {
         ];
         let faces: Vec<[i64; 3]> = vec![
             // -Z face
-            [0, 2, 1], [0, 3, 2],
+            [0, 2, 1],
+            [0, 3, 2],
             // +Z face
-            [4, 5, 6], [4, 6, 7],
+            [4, 5, 6],
+            [4, 6, 7],
             // -Y face
-            [0, 1, 5], [0, 5, 4],
+            [0, 1, 5],
+            [0, 5, 4],
             // +Y face
-            [2, 3, 7], [2, 7, 6],
+            [2, 3, 7],
+            [2, 7, 6],
             // -X face
-            [0, 4, 7], [0, 7, 3],
+            [0, 4, 7],
+            [0, 7, 3],
             // +X face
-            [1, 2, 6], [1, 6, 5],
+            [1, 2, 6],
+            [1, 6, 5],
         ];
         PolyData::from_triangles(verts, faces)
     }

@@ -31,13 +31,16 @@ pub fn split_by_array(input: &PolyData, array_name: &str) -> Vec<(i64, PolyData)
 
         for &ci in cell_indices {
             let cell = &cells[ci];
-            let mapped: Vec<i64> = cell.iter().map(|&pid| {
-                *pt_map.entry(pid).or_insert_with(|| {
-                    let idx = out_points.len() as i64;
-                    out_points.push(input.points.get(pid as usize));
-                    idx
+            let mapped: Vec<i64> = cell
+                .iter()
+                .map(|&pid| {
+                    *pt_map.entry(pid).or_insert_with(|| {
+                        let idx = out_points.len() as i64;
+                        out_points.push(input.points.get(pid as usize));
+                        idx
+                    })
                 })
-            }).collect();
+                .collect();
             out_polys.push_cell(&mapped);
         }
 
@@ -67,9 +70,12 @@ mod tests {
         pd.points.push([2.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
         pd.polys.push_cell(&[3, 4, 5]);
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("region", vec![0.0, 1.0], 1),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "region",
+                vec![0.0, 1.0],
+                1,
+            )));
 
         let parts = split_by_array(&pd, "region");
         assert_eq!(parts.len(), 2);
@@ -86,9 +92,8 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("g", vec![5.0], 1),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("g", vec![5.0], 1)));
 
         let parts = split_by_array(&pd, "g");
         assert_eq!(parts.len(), 1);

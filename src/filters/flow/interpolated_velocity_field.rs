@@ -31,7 +31,9 @@ impl<'a> ImageVelocityField<'a> {
 impl<'a> VelocityField for ImageVelocityField<'a> {
     fn evaluate(&self, point: [f64; 3]) -> Option<[f64; 3]> {
         let vectors = self.field.point_data().vectors()?;
-        if vectors.num_components() != 3 { return None; }
+        if vectors.num_components() != 3 {
+            return None;
+        }
         let dims = self.field.dimensions();
         let spacing = self.field.spacing();
         let origin = self.field.origin();
@@ -93,48 +95,76 @@ pub fn integrate_streamline(
             Some(v) => v,
             None => break,
         };
-        let speed = (k1[0]*k1[0]+k1[1]*k1[1]+k1[2]*k1[2]).sqrt();
-        if speed < 1e-10 { break; }
+        let speed = (k1[0] * k1[0] + k1[1] * k1[1] + k1[2] * k1[2]).sqrt();
+        if speed < 1e-10 {
+            break;
+        }
 
         points.push(pos);
 
-        let p2 = [pos[0]+0.5*dt*k1[0], pos[1]+0.5*dt*k1[1], pos[2]+0.5*dt*k1[2]];
+        let p2 = [
+            pos[0] + 0.5 * dt * k1[0],
+            pos[1] + 0.5 * dt * k1[1],
+            pos[2] + 0.5 * dt * k1[2],
+        ];
         let k2 = field.evaluate(p2).unwrap_or(k1);
-        let p3 = [pos[0]+0.5*dt*k2[0], pos[1]+0.5*dt*k2[1], pos[2]+0.5*dt*k2[2]];
+        let p3 = [
+            pos[0] + 0.5 * dt * k2[0],
+            pos[1] + 0.5 * dt * k2[1],
+            pos[2] + 0.5 * dt * k2[2],
+        ];
         let k3 = field.evaluate(p3).unwrap_or(k2);
-        let p4 = [pos[0]+dt*k3[0], pos[1]+dt*k3[1], pos[2]+dt*k3[2]];
+        let p4 = [
+            pos[0] + dt * k3[0],
+            pos[1] + dt * k3[1],
+            pos[2] + dt * k3[2],
+        ];
         let k4 = field.evaluate(p4).unwrap_or(k3);
 
         pos = [
-            pos[0]+dt/6.0*(k1[0]+2.0*k2[0]+2.0*k3[0]+k4[0]),
-            pos[1]+dt/6.0*(k1[1]+2.0*k2[1]+2.0*k3[1]+k4[1]),
-            pos[2]+dt/6.0*(k1[2]+2.0*k2[2]+2.0*k3[2]+k4[2]),
+            pos[0] + dt / 6.0 * (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0]),
+            pos[1] + dt / 6.0 * (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1]),
+            pos[2] + dt / 6.0 * (k1[2] + 2.0 * k2[2] + 2.0 * k3[2] + k4[2]),
         ];
     }
 
     points
 }
 
-fn trilinear_interp(arr: &AnyDataArray, pos: [f64; 3], origin: [f64; 3], spacing: [f64; 3], dims: [usize; 3]) -> [f64; 3] {
-    let fx = (pos[0]-origin[0])/spacing[0];
-    let fy = (pos[1]-origin[1])/spacing[1];
-    let fz = (pos[2]-origin[2])/spacing[2];
+fn trilinear_interp(
+    arr: &AnyDataArray,
+    pos: [f64; 3],
+    origin: [f64; 3],
+    spacing: [f64; 3],
+    dims: [usize; 3],
+) -> [f64; 3] {
+    let fx = (pos[0] - origin[0]) / spacing[0];
+    let fy = (pos[1] - origin[1]) / spacing[1];
+    let fz = (pos[2] - origin[2]) / spacing[2];
     let ix = (fx.floor() as usize).min(dims[0].saturating_sub(2));
     let iy = (fy.floor() as usize).min(dims[1].saturating_sub(2));
     let iz = (fz.floor() as usize).min(dims[2].saturating_sub(2));
-    let tx = (fx-ix as f64).clamp(0.0,1.0);
-    let ty = (fy-iy as f64).clamp(0.0,1.0);
-    let tz = (fz-iz as f64).clamp(0.0,1.0);
-    let mut r = [0.0;3];
-    let mut buf = [0.0f64;3];
-    for dz in 0..2usize { for dy in 0..2usize { for dx in 0..2usize {
-        let idx = (ix+dx)+(iy+dy)*dims[0]+(iz+dz)*dims[0]*dims[1];
-        if idx < arr.num_tuples() {
-            arr.tuple_as_f64(idx, &mut buf);
-            let w = (if dx==0{1.0-tx}else{tx})*(if dy==0{1.0-ty}else{ty})*(if dz==0{1.0-tz}else{tz});
-            for c in 0..3 { r[c]+=w*buf[c]; }
+    let tx = (fx - ix as f64).clamp(0.0, 1.0);
+    let ty = (fy - iy as f64).clamp(0.0, 1.0);
+    let tz = (fz - iz as f64).clamp(0.0, 1.0);
+    let mut r = [0.0; 3];
+    let mut buf = [0.0f64; 3];
+    for dz in 0..2usize {
+        for dy in 0..2usize {
+            for dx in 0..2usize {
+                let idx = (ix + dx) + (iy + dy) * dims[0] + (iz + dz) * dims[0] * dims[1];
+                if idx < arr.num_tuples() {
+                    arr.tuple_as_f64(idx, &mut buf);
+                    let w = (if dx == 0 { 1.0 - tx } else { tx })
+                        * (if dy == 0 { 1.0 - ty } else { ty })
+                        * (if dz == 0 { 1.0 - tz } else { tz });
+                    for c in 0..3 {
+                        r[c] += w * buf[c];
+                    }
+                }
+            }
         }
-    }}}
+    }
     r
 }
 
@@ -143,13 +173,18 @@ mod tests {
     use super::*;
 
     fn make_field() -> ImageData {
-        let dims = [10,10,10];
-        let n = dims[0]*dims[1]*dims[2];
-        let mut v = Vec::with_capacity(n*3);
-        for _ in 0..n { v.push(1.0); v.push(0.5); v.push(0.0); }
-        let mut f = ImageData::with_dimensions(dims[0],dims[1],dims[2]);
-        f.set_spacing([1.0,1.0,1.0]);
-        f.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("vel",v,3)));
+        let dims = [10, 10, 10];
+        let n = dims[0] * dims[1] * dims[2];
+        let mut v = Vec::with_capacity(n * 3);
+        for _ in 0..n {
+            v.push(1.0);
+            v.push(0.5);
+            v.push(0.0);
+        }
+        let mut f = ImageData::with_dimensions(dims[0], dims[1], dims[2]);
+        f.set_spacing([1.0, 1.0, 1.0]);
+        f.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("vel", v, 3)));
         f.point_data_mut().set_active_vectors("vel");
         f
     }
@@ -178,7 +213,7 @@ mod tests {
     fn streamline_integration() {
         let field = make_field();
         let vf = ImageVelocityField::new(&field);
-        let line = integrate_streamline(&vf, [2.0,5.0,5.0], 0.1, 30, 1.0);
+        let line = integrate_streamline(&vf, [2.0, 5.0, 5.0], 0.1, 30, 1.0);
         assert!(line.len() > 5);
         // Should move in +X direction
         assert!(line.last().unwrap()[0] > 2.5);

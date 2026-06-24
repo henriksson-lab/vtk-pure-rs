@@ -3,8 +3,8 @@
 //! Reads LAS 1.2 format binary files (point formats 0-3).
 //! Does not support compressed LAZ files.
 
-use std::io::{Read, Seek, SeekFrom};
 use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use std::io::{Read, Seek, SeekFrom};
 
 /// Read a LAS file and return a PolyData point cloud.
 pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
@@ -21,8 +21,10 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
 
     let _point_format = header[100]; // offset 104 from start - 4
     let point_record_len = u16::from_le_bytes([header[101], header[102]]);
-    let num_points = u32::from_le_bytes([header[103], header[104], header[105], header[106]]) as usize;
-    let offset_to_data = u32::from_le_bytes([header[92], header[93], header[94], header[95]]) as u64;
+    let num_points =
+        u32::from_le_bytes([header[103], header[104], header[105], header[106]]) as usize;
+    let offset_to_data =
+        u32::from_le_bytes([header[92], header[93], header[94], header[95]]) as u64;
 
     let x_scale = f64::from_le_bytes(header[127..135].try_into().unwrap());
     let y_scale = f64::from_le_bytes(header[135..143].try_into().unwrap());
@@ -32,7 +34,9 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
     let z_offset = f64::from_le_bytes(header[167..175].try_into().unwrap());
 
     // Seek to point data
-    reader.seek(SeekFrom::Start(offset_to_data)).map_err(|e| e.to_string())?;
+    reader
+        .seek(SeekFrom::Start(offset_to_data))
+        .map_err(|e| e.to_string())?;
 
     let mut points = Points::<f64>::new();
     let mut intensity_data = Vec::with_capacity(num_points);
@@ -41,7 +45,9 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
     let mut point_buf = vec![0u8; point_record_len as usize];
 
     for _ in 0..num_points {
-        if reader.read_exact(&mut point_buf).is_err() { break; }
+        if reader.read_exact(&mut point_buf).is_err() {
+            break;
+        }
 
         // All point formats start with X, Y, Z as i32
         let xi = i32::from_le_bytes(point_buf[0..4].try_into().unwrap());
@@ -70,14 +76,20 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
     mesh.points = points;
 
     if !intensity_data.is_empty() {
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Intensity", intensity_data, 1),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Intensity",
+                intensity_data,
+                1,
+            )));
     }
     if !classification_data.is_empty() {
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Classification", classification_data, 1),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Classification",
+                classification_data,
+                1,
+            )));
     }
 
     Ok(mesh)
@@ -92,20 +104,37 @@ pub fn read_las_file(path: &std::path::Path) -> Result<PolyData, String> {
 /// Write a minimal LAS 1.2 file from a PolyData point cloud.
 pub fn write_las<W: std::io::Write>(w: &mut W, mesh: &PolyData) -> Result<(), String> {
     let n = mesh.points.len();
-    if n == 0 { return Ok(()); }
+    if n == 0 {
+        return Ok(());
+    }
 
     // Compute scale and offset
     let mut min = mesh.points.get(0);
     let mut max = min;
     for i in 1..n {
         let p = mesh.points.get(i);
-        for j in 0..3 { min[j] = min[j].min(p[j]); max[j] = max[j].max(p[j]); }
+        for j in 0..3 {
+            min[j] = min[j].min(p[j]);
+            max[j] = max[j].max(p[j]);
+        }
     }
 
     let scale = [
-        if (max[0] - min[0]).abs() > 1e-15 { (max[0] - min[0]) / i32::MAX as f64 } else { 0.001 },
-        if (max[1] - min[1]).abs() > 1e-15 { (max[1] - min[1]) / i32::MAX as f64 } else { 0.001 },
-        if (max[2] - min[2]).abs() > 1e-15 { (max[2] - min[2]) / i32::MAX as f64 } else { 0.001 },
+        if (max[0] - min[0]).abs() > 1e-15 {
+            (max[0] - min[0]) / i32::MAX as f64
+        } else {
+            0.001
+        },
+        if (max[1] - min[1]).abs() > 1e-15 {
+            (max[1] - min[1]) / i32::MAX as f64
+        } else {
+            0.001
+        },
+        if (max[2] - min[2]).abs() > 1e-15 {
+            (max[2] - min[2]) / i32::MAX as f64
+        } else {
+            0.001
+        },
     ];
     let offset = min;
 
@@ -114,9 +143,9 @@ pub fn write_las<W: std::io::Write>(w: &mut W, mesh: &PolyData) -> Result<(), St
     header[0..4].copy_from_slice(b"LASF");
     header[24] = 1; // version major
     header[25] = 2; // version minor
-    // Header size = 227
+                    // Header size = 227
     header[94..96].copy_from_slice(&227u16.to_le_bytes()); // header size
-    // Offset to point data
+                                                           // Offset to point data
     header[96..100].copy_from_slice(&227u32.to_le_bytes());
     // Point format 0
     header[104] = 0;
@@ -171,9 +200,7 @@ mod tests {
 
     #[test]
     fn roundtrip() {
-        let mesh = PolyData::from_points(vec![
-            [1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0],
-        ]);
+        let mesh = PolyData::from_points(vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]);
 
         let mut buf = Vec::new();
         write_las(&mut buf, &mesh).unwrap();

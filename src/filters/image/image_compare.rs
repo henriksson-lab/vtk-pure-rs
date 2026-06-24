@@ -5,28 +5,44 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Compute Mean Squared Error between two images.
 pub fn mse(a: &ImageData, b: &ImageData, scalars: &str) -> f64 {
     let (va, vb) = read_pair(a, b, scalars);
-    if va.is_empty() { return 0.0; }
-    va.iter().zip(vb.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f64>() / va.len() as f64
+    if va.is_empty() {
+        return 0.0;
+    }
+    va.iter()
+        .zip(vb.iter())
+        .map(|(x, y)| (x - y).powi(2))
+        .sum::<f64>()
+        / va.len() as f64
 }
 
 /// Compute Mean Absolute Error.
 pub fn mae(a: &ImageData, b: &ImageData, scalars: &str) -> f64 {
     let (va, vb) = read_pair(a, b, scalars);
-    if va.is_empty() { return 0.0; }
-    va.iter().zip(vb.iter()).map(|(x, y)| (x - y).abs()).sum::<f64>() / va.len() as f64
+    if va.is_empty() {
+        return 0.0;
+    }
+    va.iter()
+        .zip(vb.iter())
+        .map(|(x, y)| (x - y).abs())
+        .sum::<f64>()
+        / va.len() as f64
 }
 
 /// Compute Peak Signal-to-Noise Ratio.
 pub fn psnr(a: &ImageData, b: &ImageData, scalars: &str, max_val: f64) -> f64 {
     let m = mse(a, b, scalars);
-    if m < 1e-30 { return f64::INFINITY; }
+    if m < 1e-30 {
+        return f64::INFINITY;
+    }
     10.0 * (max_val * max_val / m).log10()
 }
 
 /// Compute normalized cross-correlation.
 pub fn normalized_cross_correlation(a: &ImageData, b: &ImageData, scalars: &str) -> f64 {
     let (va, vb) = read_pair(a, b, scalars);
-    if va.is_empty() { return 0.0; }
+    if va.is_empty() {
+        return 0.0;
+    }
     let n = va.len() as f64;
     let ma = va.iter().sum::<f64>() / n;
     let mb = vb.iter().sum::<f64>() / n;
@@ -41,7 +57,11 @@ pub fn normalized_cross_correlation(a: &ImageData, b: &ImageData, scalars: &str)
         db += y * y;
     }
     let denom = (da * db).sqrt();
-    if denom < 1e-30 { 0.0 } else { num / denom }
+    if denom < 1e-30 {
+        0.0
+    } else {
+        num / denom
+    }
 }
 
 /// Compute difference image (a - b).
@@ -50,17 +70,38 @@ pub fn difference_image(a: &ImageData, b: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = va.iter().zip(vb.iter()).map(|(x, y)| x - y).collect();
     let dims = a.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
-        .with_spacing(a.spacing()).with_origin(a.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("Difference", data, 1)))
+        .with_spacing(a.spacing())
+        .with_origin(a.origin())
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+            "Difference",
+            data,
+            1,
+        )))
 }
 
 fn read_pair(a: &ImageData, b: &ImageData, scalars: &str) -> (Vec<f64>, Vec<f64>) {
-    let aa = match a.point_data().get_array(scalars) { Some(x) if x.num_components()==1 => x, _ => return (vec![],vec![]) };
-    let bb = match b.point_data().get_array(scalars) { Some(x) if x.num_components()==1 => x, _ => return (vec![],vec![]) };
+    let aa = match a.point_data().get_array(scalars) {
+        Some(x) if x.num_components() == 1 => x,
+        _ => return (vec![], vec![]),
+    };
+    let bb = match b.point_data().get_array(scalars) {
+        Some(x) if x.num_components() == 1 => x,
+        _ => return (vec![], vec![]),
+    };
     let n = aa.num_tuples().min(bb.num_tuples());
     let mut buf = [0.0f64];
-    let va: Vec<f64> = (0..n).map(|i| { aa.tuple_as_f64(i, &mut buf); buf[0] }).collect();
-    let vb: Vec<f64> = (0..n).map(|i| { bb.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let va: Vec<f64> = (0..n)
+        .map(|i| {
+            aa.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
+    let vb: Vec<f64> = (0..n)
+        .map(|i| {
+            bb.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
     (va, vb)
 }
 
@@ -69,15 +110,33 @@ mod tests {
     use super::*;
     #[test]
     fn test_identical() {
-        let img = ImageData::from_function([5,5,1],[1.0,1.0,1.0],[0.0,0.0,0.0],"v",|x,_,_|x);
+        let img = ImageData::from_function(
+            [5, 5, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| x,
+        );
         assert!((mse(&img, &img, "v")).abs() < 1e-15);
         assert!(psnr(&img, &img, "v", 255.0).is_infinite());
         assert!((normalized_cross_correlation(&img, &img, "v") - 1.0).abs() < 1e-10);
     }
     #[test]
     fn test_different() {
-        let a = ImageData::from_function([5,5,1],[1.0,1.0,1.0],[0.0,0.0,0.0],"v",|_,_,_|0.0);
-        let b = ImageData::from_function([5,5,1],[1.0,1.0,1.0],[0.0,0.0,0.0],"v",|_,_,_|10.0);
+        let a = ImageData::from_function(
+            [5, 5, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 0.0,
+        );
+        let b = ImageData::from_function(
+            [5, 5, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 10.0,
+        );
         assert!((mse(&a, &b, "v") - 100.0).abs() < 1e-10);
         assert!((mae(&a, &b, "v") - 10.0).abs() < 1e-10);
     }

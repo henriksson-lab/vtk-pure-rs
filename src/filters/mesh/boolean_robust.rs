@@ -12,11 +12,13 @@ pub fn classify_vertices(mesh_a: &PolyData, mesh_b: &PolyData) -> Vec<bool> {
     let na = mesh_a.points.len();
     let tris_b = collect_triangles(mesh_b);
 
-    (0..na).map(|i| {
-        let p = mesh_a.points.get(i);
-        let wn = generalized_winding_number(p, &tris_b);
-        wn.abs() > 0.5
-    }).collect()
+    (0..na)
+        .map(|i| {
+            let p = mesh_a.points.get(i);
+            let wn = generalized_winding_number(p, &tris_b);
+            wn.abs() > 0.5
+        })
+        .collect()
 }
 
 /// Boolean union: keep faces from A outside B + faces from B outside A.
@@ -55,12 +57,18 @@ fn extract_cells_by_vertex_flag(mesh: &PolyData, flags: &[bool], keep_flagged: b
     let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     for cell in mesh.polys.iter() {
-        let majority = cell.iter().filter(|&&pid| {
-            let idx = pid as usize;
-            idx < flags.len() && flags[idx]
-        }).count() > cell.len() / 2;
+        let majority = cell
+            .iter()
+            .filter(|&&pid| {
+                let idx = pid as usize;
+                idx < flags.len() && flags[idx]
+            })
+            .count()
+            > cell.len() / 2;
 
-        if majority != keep_flagged { continue; }
+        if majority != keep_flagged {
+            continue;
+        }
 
         let mut ids = Vec::new();
         for &pid in cell {
@@ -116,23 +124,28 @@ fn generalized_winding_number(point: [f64; 3], triangles: &[Triangle]) -> f64 {
 }
 
 fn solid_angle(p: [f64; 3], tri: &Triangle) -> f64 {
-    let a = [tri[0][0]-p[0], tri[0][1]-p[1], tri[0][2]-p[2]];
-    let b = [tri[1][0]-p[0], tri[1][1]-p[1], tri[1][2]-p[2]];
-    let c = [tri[2][0]-p[0], tri[2][1]-p[1], tri[2][2]-p[2]];
+    let a = [tri[0][0] - p[0], tri[0][1] - p[1], tri[0][2] - p[2]];
+    let b = [tri[1][0] - p[0], tri[1][1] - p[1], tri[1][2] - p[2]];
+    let c = [tri[2][0] - p[0], tri[2][1] - p[1], tri[2][2] - p[2]];
 
-    let la = (a[0]*a[0]+a[1]*a[1]+a[2]*a[2]).sqrt();
-    let lb = (b[0]*b[0]+b[1]*b[1]+b[2]*b[2]).sqrt();
-    let lc = (c[0]*c[0]+c[1]*c[1]+c[2]*c[2]).sqrt();
+    let la = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+    let lb = (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]).sqrt();
+    let lc = (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt();
 
-    if la < 1e-15 || lb < 1e-15 || lc < 1e-15 { return 0.0; }
+    if la < 1e-15 || lb < 1e-15 || lc < 1e-15 {
+        return 0.0;
+    }
 
-    let det = a[0]*(b[1]*c[2]-b[2]*c[1]) - a[1]*(b[0]*c[2]-b[2]*c[0]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
-    let ab = a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-    let ac = a[0]*c[0]+a[1]*c[1]+a[2]*c[2];
-    let bc = b[0]*c[0]+b[1]*c[1]+b[2]*c[2];
-    let denom = la*lb*lc + ab*lc + ac*lb + bc*la;
+    let det = a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+        + a[2] * (b[0] * c[1] - b[1] * c[0]);
+    let ab = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let ac = a[0] * c[0] + a[1] * c[1] + a[2] * c[2];
+    let bc = b[0] * c[0] + b[1] * c[1] + b[2] * c[2];
+    let denom = la * lb * lc + ab * lc + ac * lb + bc * la;
 
-    if denom.abs() < 1e-15 { return 0.0; }
+    if denom.abs() < 1e-15 {
+        return 0.0;
+    }
     2.0 * det.atan2(denom)
 }
 
@@ -144,13 +157,28 @@ mod tests {
         let s = size / 2.0;
         PolyData::from_triangles(
             vec![
-                [cx-s,cy-s,cz-s],[cx+s,cy-s,cz-s],[cx+s,cy+s,cz-s],[cx-s,cy+s,cz-s],
-                [cx-s,cy-s,cz+s],[cx+s,cy-s,cz+s],[cx+s,cy+s,cz+s],[cx-s,cy+s,cz+s],
+                [cx - s, cy - s, cz - s],
+                [cx + s, cy - s, cz - s],
+                [cx + s, cy + s, cz - s],
+                [cx - s, cy + s, cz - s],
+                [cx - s, cy - s, cz + s],
+                [cx + s, cy - s, cz + s],
+                [cx + s, cy + s, cz + s],
+                [cx - s, cy + s, cz + s],
             ],
             vec![
-                [0,2,1],[0,3,2],[4,5,6],[4,6,7],
-                [0,1,5],[0,5,4],[2,3,7],[2,7,6],
-                [0,4,7],[0,7,3],[1,2,6],[1,6,5],
+                [0, 2, 1],
+                [0, 3, 2],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [2, 3, 7],
+                [2, 7, 6],
+                [0, 4, 7],
+                [0, 7, 3],
+                [1, 2, 6],
+                [1, 6, 5],
             ],
         )
     }
@@ -158,7 +186,7 @@ mod tests {
     #[test]
     fn classify_inside() {
         let cube = make_cube(0.0, 0.0, 0.0, 2.0);
-        let probe = PolyData::from_points(vec![[0.0,0.0,0.0],[5.0,5.0,5.0]]);
+        let probe = PolyData::from_points(vec![[0.0, 0.0, 0.0], [5.0, 5.0, 5.0]]);
         let flags = classify_vertices(&probe, &cube);
         assert!(flags[0], "center should be inside");
         assert!(!flags[1], "far point should be outside");

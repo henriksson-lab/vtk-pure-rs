@@ -103,9 +103,12 @@ pub fn bilateral_filter(
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BilateralFiltered", result, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BilateralFiltered",
+            result,
+            1,
+        )));
     img
 }
 
@@ -116,9 +119,12 @@ mod tests {
     #[test]
     fn uniform_field_unchanged() {
         let mut img = ImageData::with_dimensions(4, 4, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("vals", vec![5.0; 16], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "vals",
+                vec![5.0; 16],
+                1,
+            )));
 
         let result = bilateral_filter(&img, "vals", 1.0, 1.0);
         let arr = result.point_data().get_array("BilateralFiltered").unwrap();
@@ -137,9 +143,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(6, 1, 1);
         // Step edge: low on left, high on right
         let vals: Vec<f64> = vec![0.0, 0.0, 0.0, 100.0, 100.0, 100.0];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("vals", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("vals", vals, 1)));
 
         let result = bilateral_filter(&img, "vals", 1.0, 5.0);
         let arr = result.point_data().get_array("BilateralFiltered").unwrap();

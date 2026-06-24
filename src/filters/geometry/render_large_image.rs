@@ -48,7 +48,12 @@ pub fn compute_render_tiles(
             let top = (y + h) as f64 / total_height as f64;
 
             tiles.push(RenderTile {
-                col, row, x, y, width: w, height: h,
+                col,
+                row,
+                x,
+                y,
+                width: w,
+                height: h,
                 viewport: [left, right, bottom, top],
             });
         }
@@ -93,7 +98,11 @@ pub fn composite_tiles(
 ///
 /// Returns (x_offset, y_offset, x_scale, y_scale) to apply to the
 /// projection matrix to render only this tile's portion.
-pub fn tile_frustum_params(tile: &RenderTile, total_width: usize, total_height: usize) -> (f64, f64, f64, f64) {
+pub fn tile_frustum_params(
+    tile: &RenderTile,
+    total_width: usize,
+    total_height: usize,
+) -> (f64, f64, f64, f64) {
     let tw = total_width as f64;
     let th = total_height as f64;
     let x_scale = tw / tile.width as f64;
@@ -142,7 +151,12 @@ mod tests {
     #[test]
     fn frustum_params() {
         let tile = RenderTile {
-            col: 0, row: 0, x: 0, y: 0, width: 512, height: 512,
+            col: 0,
+            row: 0,
+            x: 0,
+            y: 0,
+            width: 512,
+            height: 512,
             viewport: [0.0, 0.5, 0.0, 0.5],
         };
         let (xo, yo, xs, ys) = tile_frustum_params(&tile, 1024, 1024);

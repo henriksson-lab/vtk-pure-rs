@@ -38,7 +38,7 @@ pub fn hedgehog(input: &PolyData, vector_name: &str, scale_factor: f64) -> PolyD
         vectors.tuple_as_f64(i, &mut vbuf);
 
         let out = i * 6;
-        pts_flat[out]     = px;
+        pts_flat[out] = px;
         pts_flat[out + 1] = py;
         pts_flat[out + 2] = pz;
         pts_flat[out + 3] = px + vbuf[0] * scale_factor;
@@ -60,7 +60,7 @@ pub fn hedgehog(input: &PolyData, vector_name: &str, scale_factor: f64) -> PolyD
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::DataArray;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn hedgehog_basic() {
@@ -68,13 +68,12 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("vectors", vec![
-                1.0, 0.0, 0.0,
-                0.0, 1.0, 0.0,
-                0.0, 0.0, 1.0,
-            ], 3),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "vectors",
+                vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+                3,
+            )));
         let result = hedgehog(&pd, "vectors", 2.0);
         assert_eq!(result.points.len(), 6); // 3 points × 2 (base + tip)
         assert_eq!(result.lines.num_cells(), 3);

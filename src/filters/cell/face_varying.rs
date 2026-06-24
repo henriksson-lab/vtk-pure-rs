@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Convert cell data to face-varying (per-face-vertex) point data.
 ///
@@ -7,7 +7,8 @@ use crate::data::{AnyDataArray, DataArray, CellArray, Points, PolyData};
 /// in renderers that only support per-vertex data.
 pub fn cell_data_to_face_varying(input: &PolyData, array_name: &str) -> PolyData {
     let arr = match input.cell_data().get_array(array_name) {
-        Some(a) => a, None => return input.clone(),
+        Some(a) => a,
+        None => return input.clone(),
     };
 
     let nc = arr.num_components();
@@ -22,7 +23,9 @@ pub fn cell_data_to_face_varying(input: &PolyData, array_name: &str) -> PolyData
         let mut ids = Vec::with_capacity(cell.len());
         for &pid in cell.iter() {
             out_points.push(input.points.get(pid as usize));
-            for c in 0..nc { out_values.push(buf[c]); }
+            for c in 0..nc {
+                out_values.push(buf[c]);
+            }
             ids.push(base + ids.len() as i64);
         }
         out_polys.push_cell(&ids);
@@ -31,9 +34,10 @@ pub fn cell_data_to_face_varying(input: &PolyData, array_name: &str) -> PolyData
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, out_values, nc),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, out_values, nc,
+        )));
     pd
 }
 
@@ -50,9 +54,12 @@ mod tests {
         pd.points.push([0.0, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
         pd.polys.push_cell(&[0, 2, 3]);
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("color", vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0], 3),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "color",
+                vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                3,
+            )));
 
         let result = cell_data_to_face_varying(&pd, "color");
         assert_eq!(result.points.len(), 6); // 3+3 (no sharing)
@@ -66,9 +73,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![100.0], 1),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![100.0],
+                1,
+            )));
 
         let result = cell_data_to_face_varying(&pd, "temp");
         let arr = result.point_data().get_array("temp").unwrap();

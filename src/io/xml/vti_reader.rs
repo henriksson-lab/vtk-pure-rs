@@ -5,8 +5,8 @@ use crate::data::ImageData;
 use crate::types::VtkError;
 
 use crate::io::xml::vtp_reader::{
-    extract_section, extract_attr, parse_attribute_arrays,
-    extract_appended_raw, extract_appended_base64,
+    extract_appended_base64, extract_appended_raw, extract_attr, extract_section,
+    parse_attribute_arrays,
 };
 
 /// Reader for VTK XML ImageData format (.vti).
@@ -67,12 +67,22 @@ impl VtiReader {
 
         // Parse PointData
         if let Some(pd_section) = extract_section(&content, "PointData") {
-            parse_attribute_arrays(&pd_section, image.point_data_mut(), appended_raw.as_deref(), appended_b64.as_deref())?;
+            parse_attribute_arrays(
+                &pd_section,
+                image.point_data_mut(),
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         // Parse CellData
         if let Some(cd_section) = extract_section(&content, "CellData") {
-            parse_attribute_arrays(&cd_section, image.cell_data_mut(), appended_raw.as_deref(), appended_b64.as_deref())?;
+            parse_attribute_arrays(
+                &cd_section,
+                image.cell_data_mut(),
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         Ok(image)
@@ -89,8 +99,8 @@ fn find_tag(content: &str, tag: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::xml::VtiWriter;
     use crate::data::{DataArray as DA, DataSet};
+    use crate::io::xml::VtiWriter;
 
     #[test]
     fn roundtrip_vti() {

@@ -68,7 +68,11 @@ impl BoundingBox {
 
     /// Size along each axis [dx, dy, dz].
     pub fn size(&self) -> [f64; 3] {
-        [self.x_max - self.x_min, self.y_max - self.y_min, self.z_max - self.z_min]
+        [
+            self.x_max - self.x_min,
+            self.y_max - self.y_min,
+            self.z_max - self.z_min,
+        ]
     }
 
     /// Volume of the bounding box.
@@ -79,16 +83,22 @@ impl BoundingBox {
 
     /// Check if a point is inside the bounding box.
     pub fn contains(&self, point: [f64; 3]) -> bool {
-        point[0] >= self.x_min && point[0] <= self.x_max
-            && point[1] >= self.y_min && point[1] <= self.y_max
-            && point[2] >= self.z_min && point[2] <= self.z_max
+        point[0] >= self.x_min
+            && point[0] <= self.x_max
+            && point[1] >= self.y_min
+            && point[1] <= self.y_max
+            && point[2] >= self.z_min
+            && point[2] <= self.z_max
     }
 
     /// Check if two bounding boxes overlap.
     pub fn intersects(&self, other: &BoundingBox) -> bool {
-        self.x_min <= other.x_max && self.x_max >= other.x_min
-            && self.y_min <= other.y_max && self.y_max >= other.y_min
-            && self.z_min <= other.z_max && self.z_max >= other.z_min
+        self.x_min <= other.x_max
+            && self.x_max >= other.x_min
+            && self.y_min <= other.y_max
+            && self.y_max >= other.y_min
+            && self.z_min <= other.z_max
+            && self.z_max >= other.z_min
     }
 
     /// Compute the union of two bounding boxes.
@@ -129,7 +139,14 @@ impl BoundingBox {
 
     /// Create from min/max corners.
     pub fn from_corners(min: [f64; 3], max: [f64; 3]) -> Self {
-        Self { x_min: min[0], x_max: max[0], y_min: min[1], y_max: max[1], z_min: min[2], z_max: max[2] }
+        Self {
+            x_min: min[0],
+            x_max: max[0],
+            y_min: min[1],
+            y_max: max[1],
+            z_min: min[2],
+            z_max: max[2],
+        }
     }
 }
 

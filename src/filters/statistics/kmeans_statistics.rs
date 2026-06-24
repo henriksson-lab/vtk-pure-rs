@@ -23,7 +23,9 @@ pub struct KmeansResult {
 /// Returns cluster labels, centroids, and inertia.
 pub fn kmeans_table(table: &Table, k: usize, max_iter: usize) -> Option<KmeansResult> {
     let data = extract_matrix(table);
-    if data.is_empty() || k == 0 { return None; }
+    if data.is_empty() || k == 0 {
+        return None;
+    }
     Some(kmeans_core(&data, k, max_iter))
 }
 
@@ -32,35 +34,46 @@ pub fn kmeans_table(table: &Table, k: usize, max_iter: usize) -> Option<KmeansRe
 /// Returns the mesh with a "ClusterId" point data array.
 pub fn kmeans_points(mesh: &PolyData, k: usize, max_iter: usize) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 || k == 0 { return mesh.clone(); }
+    if n == 0 || k == 0 {
+        return mesh.clone();
+    }
 
-    let data: Vec<Vec<f64>> = (0..n).map(|i| {
-        let p = mesh.points.get(i);
-        vec![p[0], p[1], p[2]]
-    }).collect();
+    let data: Vec<Vec<f64>> = (0..n)
+        .map(|i| {
+            let p = mesh.points.get(i);
+            vec![p[0], p[1], p[2]]
+        })
+        .collect();
 
     let result = kmeans_core(&data, k, max_iter);
 
     let mut out = mesh.clone();
     let labels: Vec<f64> = result.labels.iter().map(|&l| l as f64).collect();
-    out.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ClusterId", labels, 1),
-    ));
+    out.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ClusterId",
+            labels,
+            1,
+        )));
     out
 }
 
 /// Run K-means on scalar columns of a Table and add a "ClusterId" column.
 pub fn kmeans_table_labeled(table: &Table, k: usize, max_iter: usize) -> Table {
     let data = extract_matrix(table);
-    if data.is_empty() || k == 0 { return table.clone(); }
+    if data.is_empty() || k == 0 {
+        return table.clone();
+    }
 
     let result = kmeans_core(&data, k, max_iter);
     let labels: Vec<f64> = result.labels.iter().map(|&l| l as f64).collect();
 
     let mut out = table.clone();
-    out.add_column(AnyDataArray::F64(
-        DataArray::from_vec("ClusterId", labels, 1),
-    ));
+    out.add_column(AnyDataArray::F64(DataArray::from_vec(
+        "ClusterId",
+        labels,
+        1,
+    )));
     out
 }
 
@@ -78,7 +91,8 @@ fn kmeans_core(data: &[Vec<f64>], k: usize, max_iter: usize) -> KmeansResult {
         let mut best_idx = 0;
         let mut best_dist = 0.0f64;
         for (i, row) in data.iter().enumerate() {
-            let min_d = centroids.iter()
+            let min_d = centroids
+                .iter()
                 .map(|c| sq_dist(row, c))
                 .fold(f64::MAX, f64::min);
             if min_d > best_dist {
@@ -113,7 +127,9 @@ fn kmeans_core(data: &[Vec<f64>], k: usize, max_iter: usize) -> KmeansResult {
             }
         }
 
-        if !changed { break; }
+        if !changed {
+            break;
+        }
 
         // Update step
         let mut new_centroids = vec![vec![0.0; d]; k];
@@ -141,7 +157,12 @@ fn kmeans_core(data: &[Vec<f64>], k: usize, max_iter: usize) -> KmeansResult {
         inertia += sq_dist(row, &centroids[labels[i]]);
     }
 
-    KmeansResult { labels, centroids, inertia, iterations }
+    KmeansResult {
+        labels,
+        centroids,
+        inertia,
+        iterations,
+    }
 }
 
 fn sq_dist(a: &[f64], b: &[f64]) -> f64 {
@@ -151,7 +172,9 @@ fn sq_dist(a: &[f64], b: &[f64]) -> f64 {
 fn extract_matrix(table: &Table) -> Vec<Vec<f64>> {
     let mut cols: Vec<Vec<f64>> = Vec::new();
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
@@ -161,9 +184,13 @@ fn extract_matrix(table: &Table) -> Vec<Vec<f64>> {
         }
         cols.push(values);
     }
-    if cols.is_empty() { return Vec::new(); }
+    if cols.is_empty() {
+        return Vec::new();
+    }
     let n = cols[0].len();
-    (0..n).map(|i| cols.iter().map(|c| c[i]).collect()).collect()
+    (0..n)
+        .map(|i| cols.iter().map(|c| c[i]).collect())
+        .collect()
 }
 
 #[cfg(test)]
@@ -173,10 +200,16 @@ mod tests {
     #[test]
     fn two_clusters() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![0.0, 0.1, 0.2, 10.0, 10.1, 10.2], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y",
-                vec![0.0, 0.1, -0.1, 0.0, 0.1, -0.1], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![0.0, 0.1, 0.2, 10.0, 10.1, 10.2],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.0, 0.1, -0.1, 0.0, 0.1, -0.1],
+                1,
+            )));
 
         let result = kmeans_table(&table, 2, 100).unwrap();
         assert_eq!(result.labels.len(), 6);
@@ -192,8 +225,10 @@ mod tests {
     fn kmeans_on_points() {
         let mut mesh = PolyData::new();
         mesh.points = crate::data::Points::from(vec![
-            [0.0, 0.0, 0.0], [0.1, 0.0, 0.0],
-            [10.0, 0.0, 0.0], [10.1, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.1, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [10.1, 0.0, 0.0],
         ]);
         let result = kmeans_points(&mesh, 2, 50);
         assert!(result.point_data().get_array("ClusterId").is_some());
@@ -201,17 +236,22 @@ mod tests {
 
     #[test]
     fn labeled_table() {
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![0.0, 0.1, 5.0, 5.1], 1)));
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![0.0, 0.1, 5.0, 5.1],
+            1,
+        )));
         let result = kmeans_table_labeled(&table, 2, 50);
         assert!(result.column_by_name("ClusterId").is_some());
     }
 
     #[test]
     fn single_cluster() {
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0], 1)));
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0],
+            1,
+        )));
         let result = kmeans_table(&table, 1, 50).unwrap();
         assert!(result.labels.iter().all(|&l| l == 0));
     }

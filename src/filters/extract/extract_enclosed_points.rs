@@ -12,10 +12,12 @@ pub fn points_inside_surface(probe: &PolyData, surface: &PolyData) -> Vec<bool> 
     let n = probe.points.len();
     let tris = collect_triangles(surface);
 
-    (0..n).map(|i| {
-        let p = probe.points.get(i);
-        is_inside_ray_cast(p, &tris)
-    }).collect()
+    (0..n)
+        .map(|i| {
+            let p = probe.points.get(i);
+            is_inside_ray_cast(p, &tris)
+        })
+        .collect()
 }
 
 /// Extract only points that lie inside the surface.
@@ -38,9 +40,13 @@ pub fn mark_enclosed_points(probe: &PolyData, surface: &PolyData) -> PolyData {
     let data: Vec<f64> = inside.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect();
 
     let mut result = probe.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("InsideSurface", data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "InsideSurface",
+            data,
+            1,
+        )));
     result
 }
 
@@ -81,26 +87,36 @@ fn ray_triangle_intersect(origin: [f64; 3], dir: [f64; 3], tri: &Triangle) -> bo
     let e2 = sub(tri[2], tri[0]);
     let h = cross(dir, e2);
     let a = dot(e1, h);
-    if a.abs() < 1e-12 { return false; }
+    if a.abs() < 1e-12 {
+        return false;
+    }
     let f = 1.0 / a;
     let s = sub(origin, tri[0]);
     let u = f * dot(s, h);
-    if u < 0.0 || u > 1.0 { return false; }
+    if u < 0.0 || u > 1.0 {
+        return false;
+    }
     let q = cross(s, e1);
     let v = f * dot(dir, q);
-    if v < 0.0 || u + v > 1.0 { return false; }
+    if v < 0.0 || u + v > 1.0 {
+        return false;
+    }
     let t = f * dot(e2, q);
     t > 1e-8 // intersection ahead of ray
 }
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0]-b[0], a[1]-b[1], a[2]-b[2]]
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 #[cfg(test)]

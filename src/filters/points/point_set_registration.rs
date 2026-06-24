@@ -1,4 +1,4 @@
-use crate::data::{Points, PolyData, KdTree};
+use crate::data::{KdTree, Points, PolyData};
 
 /// Rigid registration of two point sets using iterative closest point (simple version).
 ///
@@ -8,7 +8,9 @@ use crate::data::{Points, PolyData, KdTree};
 pub fn translate_to_match(source: &PolyData, target: &PolyData, iterations: usize) -> PolyData {
     let n_src = source.points.len();
     let n_tgt = target.points.len();
-    if n_src == 0 || n_tgt == 0 { return source.clone(); }
+    if n_src == 0 || n_tgt == 0 {
+        return source.clone();
+    }
 
     let tgt_pts: Vec<[f64; 3]> = (0..n_tgt).map(|i| target.points.get(i)).collect();
     let tree = KdTree::build(&tgt_pts);
@@ -17,7 +19,9 @@ pub fn translate_to_match(source: &PolyData, target: &PolyData, iterations: usiz
 
     for _ in 0..iterations {
         // Find average displacement to closest target points
-        let mut dx = 0.0; let mut dy = 0.0; let mut dz = 0.0;
+        let mut dx = 0.0;
+        let mut dy = 0.0;
+        let mut dz = 0.0;
         let mut count = 0;
 
         for p in &pts {
@@ -30,21 +34,31 @@ pub fn translate_to_match(source: &PolyData, target: &PolyData, iterations: usiz
             }
         }
 
-        if count == 0 { break; }
+        if count == 0 {
+            break;
+        }
         let nf = count as f64;
-        dx /= nf; dy /= nf; dz /= nf;
+        dx /= nf;
+        dy /= nf;
+        dz /= nf;
 
         // Apply translation
         for p in &mut pts {
-            p[0] += dx; p[1] += dy; p[2] += dz;
+            p[0] += dx;
+            p[1] += dy;
+            p[2] += dz;
         }
 
         // Stop if displacement is tiny
-        if dx*dx + dy*dy + dz*dz < 1e-20 { break; }
+        if dx * dx + dy * dy + dz * dz < 1e-20 {
+            break;
+        }
     }
 
     let mut points = Points::<f64>::new();
-    for p in &pts { points.push(*p); }
+    for p in &pts {
+        points.push(*p);
+    }
     let mut pd = source.clone();
     pd.points = points;
     pd
@@ -54,7 +68,9 @@ pub fn translate_to_match(source: &PolyData, target: &PolyData, iterations: usiz
 pub fn registration_error(source: &PolyData, target: &PolyData) -> f64 {
     let n_src = source.points.len();
     let n_tgt = target.points.len();
-    if n_src == 0 || n_tgt == 0 { return 0.0; }
+    if n_src == 0 || n_tgt == 0 {
+        return 0.0;
+    }
 
     let tgt_pts: Vec<[f64; 3]> = (0..n_tgt).map(|i| target.points.get(i)).collect();
     let tree = KdTree::build(&tgt_pts);

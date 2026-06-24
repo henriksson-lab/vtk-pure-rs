@@ -33,13 +33,18 @@ pub fn array_scale(input: &PolyData, a: &str, factor: f64, result_name: &str) ->
 
 /// Compute the element-wise square root of an array (negative values → 0).
 pub fn array_sqrt(input: &PolyData, a: &str, result_name: &str) -> PolyData {
-    unary_op(input, a, result_name, |x| {
-        if x < 0.0 {
-            0.0
-        } else {
-            x.sqrt()
-        }
-    })
+    unary_op(
+        input,
+        a,
+        result_name,
+        |x| {
+            if x < 0.0 {
+                0.0
+            } else {
+                x.sqrt()
+            }
+        },
+    )
 }
 
 /// Compute the element-wise absolute value of an array.
@@ -75,7 +80,11 @@ where
 
     let mut pd = input.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, nc)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     pd
 }
 
@@ -101,7 +110,11 @@ where
 
     let mut pd = input.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, nc)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     pd
 }
 
@@ -115,9 +128,17 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([2.0, 0.0, 0.0]);
         pd.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec("a", vec![4.0, 9.0, 16.0], 1)));
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "a",
+                vec![4.0, 9.0, 16.0],
+                1,
+            )));
         pd.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec("b", vec![2.0, 3.0, 4.0], 1)));
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "b",
+                vec![2.0, 3.0, 4.0],
+                1,
+            )));
         pd
     }
 

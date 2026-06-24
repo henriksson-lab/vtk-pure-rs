@@ -21,14 +21,17 @@ pub fn cell_data_to_point_data(input: &PolyData) -> PolyData {
         let mut buf = vec![0.0f64; nc];
 
         let mut cell_idx = 0usize;
-        let cell_arrays: [&crate::data::CellArray; 4] = [&input.verts, &input.lines, &input.polys, &input.strips];
+        let cell_arrays: [&crate::data::CellArray; 4] =
+            [&input.verts, &input.lines, &input.polys, &input.strips];
         let num_tuples = arr.num_tuples();
         for cells in &cell_arrays {
             let off_arr = cells.offsets();
             let con = cells.connectivity();
             let n_cells = cells.num_cells();
             for ci in 0..n_cells {
-                if cell_idx >= num_tuples { break; }
+                if cell_idx >= num_tuples {
+                    break;
+                }
                 arr.tuple_as_f64(cell_idx, &mut buf);
                 let cs = off_arr[ci] as usize;
                 let ce = off_arr[ci + 1] as usize;
@@ -36,9 +39,13 @@ pub fn cell_data_to_point_data(input: &PolyData) -> PolyData {
                     let pi = con[idx] as usize;
                     let off = pi * nc;
                     for c in 0..nc {
-                        unsafe { *sums.get_unchecked_mut(off + c) += buf[c]; }
+                        unsafe {
+                            *sums.get_unchecked_mut(off + c) += buf[c];
+                        }
                     }
-                    unsafe { *counts.get_unchecked_mut(pi) += 1; }
+                    unsafe {
+                        *counts.get_unchecked_mut(pi) += 1;
+                    }
                 }
                 cell_idx += 1;
             }
@@ -71,8 +78,10 @@ pub fn cell_data_to_point_data(input: &PolyData) -> PolyData {
 pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
     let mut pd = input.clone();
 
-    let total_cells = input.verts.num_cells() + input.lines.num_cells()
-        + input.polys.num_cells() + input.strips.num_cells();
+    let total_cells = input.verts.num_cells()
+        + input.lines.num_cells()
+        + input.polys.num_cells()
+        + input.strips.num_cells();
 
     for arr_idx in 0..input.point_data().num_arrays() {
         let arr = match input.point_data().get_array_by_index(arr_idx) {
@@ -85,7 +94,8 @@ pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
         let mut buf = vec![0.0f64; nc];
         let mut avg = vec![0.0f64; nc];
 
-        let cell_arrays: [&crate::data::CellArray; 4] = [&input.verts, &input.lines, &input.polys, &input.strips];
+        let cell_arrays: [&crate::data::CellArray; 4] =
+            [&input.verts, &input.lines, &input.polys, &input.strips];
         for cells in &cell_arrays {
             let off = cells.offsets();
             let con = cells.connectivity();
@@ -93,7 +103,9 @@ pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
             for ci in 0..n_cells {
                 let cs = off[ci] as usize;
                 let ce = off[ci + 1] as usize;
-                for v in avg.iter_mut() { *v = 0.0; }
+                for v in avg.iter_mut() {
+                    *v = 0.0;
+                }
                 for idx in cs..ce {
                     arr.tuple_as_f64(con[idx] as usize, &mut buf);
                     for c in 0..nc {
@@ -101,7 +113,9 @@ pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
                     }
                 }
                 let inv = 1.0 / (ce - cs) as f64;
-                for v in avg.iter_mut() { *v *= inv; }
+                for v in avg.iter_mut() {
+                    *v *= inv;
+                }
                 cell_values.extend_from_slice(&avg);
             }
         }
@@ -151,11 +165,7 @@ mod tests {
     #[test]
     fn point_to_cell_averaging() {
         let mut pd = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
         let pt_scalars = DataArray::from_vec("temp", vec![10.0, 20.0, 30.0], 1);
@@ -174,11 +184,7 @@ mod tests {
     #[test]
     fn multicomponent_conversion() {
         let mut pd = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
         let vectors = DataArray::from_vec(

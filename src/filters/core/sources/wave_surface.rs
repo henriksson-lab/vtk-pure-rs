@@ -19,7 +19,8 @@ pub fn sine_wave_surface(
         for i in 0..=n {
             let x = x_extent * i as f64 / n as f64 - x_extent / 2.0;
             let y = y_extent * j as f64 / n as f64 - y_extent / 2.0;
-            let z = amplitude * (2.0 * std::f64::consts::PI * x / wavelength).sin()
+            let z = amplitude
+                * (2.0 * std::f64::consts::PI * x / wavelength).sin()
                 * (2.0 * std::f64::consts::PI * y / wavelength).cos();
             points.push([x, y, z]);
             height_data.push(z);
@@ -30,17 +31,20 @@ pub fn sine_wave_surface(
     for j in 0..n {
         for i in 0..n {
             let p0 = (j * row + i) as i64;
-            polys.push_cell(&[p0, p0+1, p0+row as i64+1]);
-            polys.push_cell(&[p0, p0+row as i64+1, p0+row as i64]);
+            polys.push_cell(&[p0, p0 + 1, p0 + row as i64 + 1]);
+            polys.push_cell(&[p0, p0 + row as i64 + 1, p0 + row as i64]);
         }
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Height", height_data, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Height",
+            height_data,
+            1,
+        )));
     mesh
 }
 
@@ -54,8 +58,9 @@ pub fn ripple_surface(radius: f64, amplitude: f64, wavelength: f64, resolution: 
         for i in 0..=n {
             let x = 2.0 * radius * i as f64 / n as f64 - radius;
             let y = 2.0 * radius * j as f64 / n as f64 - radius;
-            let r = (x*x + y*y).sqrt();
-            let z = amplitude * (2.0 * std::f64::consts::PI * r / wavelength).sin()
+            let r = (x * x + y * y).sqrt();
+            let z = amplitude
+                * (2.0 * std::f64::consts::PI * r / wavelength).sin()
                 * (-r / radius).exp().max(0.01);
             points.push([x, y, z]);
         }
@@ -65,8 +70,8 @@ pub fn ripple_surface(radius: f64, amplitude: f64, wavelength: f64, resolution: 
     for j in 0..n {
         for i in 0..n {
             let p0 = (j * row + i) as i64;
-            polys.push_cell(&[p0, p0+1, p0+row as i64+1]);
-            polys.push_cell(&[p0, p0+row as i64+1, p0+row as i64]);
+            polys.push_cell(&[p0, p0 + 1, p0 + row as i64 + 1]);
+            polys.push_cell(&[p0, p0 + row as i64 + 1, p0 + row as i64]);
         }
     }
 

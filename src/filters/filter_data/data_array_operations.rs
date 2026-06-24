@@ -9,11 +9,16 @@ pub fn standardize_array(mesh: &PolyData, array_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
-    if n < 2 { return mesh.clone(); }
+    if n < 2 {
+        return mesh.clone();
+    }
 
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
-    for i in 0..n { arr.tuple_as_f64(i, &mut buf); values.push(buf[0]); }
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values.push(buf[0]);
+    }
 
     let mean = values.iter().sum::<f64>() / n as f64;
     let std = (values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
@@ -25,9 +30,13 @@ pub fn standardize_array(mesh: &PolyData, array_name: &str) -> PolyData {
     };
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&format!("{array_name}_zscore"), standardized, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            &format!("{array_name}_zscore"),
+            standardized,
+            1,
+        )));
     result
 }
 
@@ -50,13 +59,21 @@ pub fn min_max_normalize(mesh: &PolyData, array_name: &str) -> PolyData {
     let mut normalized = Vec::with_capacity(n);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        normalized.push(if range > 1e-15 { (buf[0] - min_v) / range } else { 0.5 });
+        normalized.push(if range > 1e-15 {
+            (buf[0] - min_v) / range
+        } else {
+            0.5
+        });
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&format!("{array_name}_norm"), normalized, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            &format!("{array_name}_norm"),
+            normalized,
+            1,
+        )));
     result
 }
 
@@ -81,14 +98,20 @@ pub fn bin_array(mesh: &PolyData, array_name: &str, n_bins: usize) -> PolyData {
         arr.tuple_as_f64(i, &mut buf);
         let bin = if range > 1e-15 {
             (((buf[0] - min_v) / range * n_bins as f64) as usize).min(n_bins - 1)
-        } else { 0 };
+        } else {
+            0
+        };
         binned.push(bin as f64);
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&format!("{array_name}_bin"), binned, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            &format!("{array_name}_bin"),
+            binned,
+            1,
+        )));
     result
 }
 
@@ -109,9 +132,13 @@ pub fn cumulative_sum(mesh: &PolyData, array_name: &str) -> PolyData {
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&format!("{array_name}_cumsum"), cumsum, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            &format!("{array_name}_cumsum"),
+            cumsum,
+            1,
+        )));
     result
 }
 
@@ -124,7 +151,10 @@ pub fn rolling_mean(mesh: &PolyData, array_name: &str, window: usize) -> PolyDat
     let n = arr.num_tuples();
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
-    for i in 0..n { arr.tuple_as_f64(i, &mut buf); values.push(buf[0]); }
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values.push(buf[0]);
+    }
 
     let mut rolling = Vec::with_capacity(n);
     for i in 0..n {
@@ -134,9 +164,13 @@ pub fn rolling_mean(mesh: &PolyData, array_name: &str, window: usize) -> PolyDat
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&format!("{array_name}_rolling"), rolling, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            &format!("{array_name}_rolling"),
+            rolling,
+            1,
+        )));
     result
 }
 
@@ -145,9 +179,13 @@ mod tests {
     use super::*;
 
     fn make_mesh() -> PolyData {
-        let mut m = PolyData::from_points(vec![[0.0;3];5]);
-        m.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![10.0, 20.0, 30.0, 40.0, 50.0], 1)));
+        let mut m = PolyData::from_points(vec![[0.0; 3]; 5]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![10.0, 20.0, 30.0, 40.0, 50.0],
+                1,
+            )));
         m
     }
 
@@ -165,8 +203,10 @@ mod tests {
         let result = min_max_normalize(&make_mesh(), "val");
         let arr = result.point_data().get_array("val_norm").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert!((buf[0] - 0.0).abs() < 0.01);
-        arr.tuple_as_f64(4, &mut buf); assert!((buf[0] - 1.0).abs() < 0.01);
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.0).abs() < 0.01);
+        arr.tuple_as_f64(4, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 0.01);
     }
 
     #[test]

@@ -49,7 +49,10 @@ impl ImplicitArray {
 pub fn to_implicit_array(input: &DataArray<f64>, tolerance: f64) -> ImplicitArray {
     let n = input.num_tuples();
     if n == 0 {
-        return ImplicitArray::Constant { value: 0.0, count: 0 };
+        return ImplicitArray::Constant {
+            value: 0.0,
+            count: 0,
+        };
     }
     if input.num_components() != 1 {
         return ImplicitArray::Explicit(input.clone());
@@ -60,7 +63,10 @@ pub fn to_implicit_array(input: &DataArray<f64>, tolerance: f64) -> ImplicitArra
     // Check constant
     let is_constant = (1..n).all(|i| (input.tuple(i)[0] - first).abs() <= tolerance);
     if is_constant {
-        return ImplicitArray::Constant { value: first, count: n };
+        return ImplicitArray::Constant {
+            value: first,
+            count: n,
+        };
     }
 
     // Check affine (linear)
@@ -71,7 +77,11 @@ pub fn to_implicit_array(input: &DataArray<f64>, tolerance: f64) -> ImplicitArra
             (input.tuple(i)[0] - expected).abs() <= tolerance
         });
         if is_affine {
-            return ImplicitArray::Affine { start: first, step, count: n };
+            return ImplicitArray::Affine {
+                start: first,
+                step,
+                count: n,
+            };
         }
     }
 
@@ -90,7 +100,11 @@ pub fn ramer_douglas_peucker(points: &[[f64; 3]], epsilon: f64) -> Vec<usize> {
     keep[0] = true;
     keep[points.len() - 1] = true;
     rdp_recursive(points, 0, points.len() - 1, epsilon, &mut keep);
-    keep.iter().enumerate().filter(|(_, &k)| k).map(|(i, _)| i).collect()
+    keep.iter()
+        .enumerate()
+        .filter(|(_, &k)| k)
+        .map(|(i, _)| i)
+        .collect()
 }
 
 fn rdp_recursive(points: &[[f64; 3]], start: usize, end: usize, epsilon: f64, keep: &mut [bool]) {

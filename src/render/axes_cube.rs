@@ -69,11 +69,7 @@ impl AxesCube {
 
         // Extract the camera forward direction from the view matrix.
         // In a standard view matrix, the third row gives the -forward direction.
-        let forward = [
-            view_matrix[2][0],
-            view_matrix[2][1],
-            view_matrix[2][2],
-        ];
+        let forward = [view_matrix[2][0], view_matrix[2][1], view_matrix[2][2]];
 
         let half = (self.size / 2.0) as f64;
         let mut result = Vec::new();
@@ -96,7 +92,11 @@ impl AxesCube {
                 let screen_x = (sx * half) as f32;
                 let screen_y = (sy * half) as f32;
 
-                result.push(([screen_x, screen_y], self.colors[i], self.labels[i].as_str()));
+                result.push((
+                    [screen_x, screen_y],
+                    self.colors[i],
+                    self.labels[i].as_str(),
+                ));
             }
         }
 

@@ -7,8 +7,12 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Gather PolyData from all partitions into one (serial: just merge).
 pub fn gather_poly_data(partitions: &[PolyData]) -> PolyData {
-    if partitions.is_empty() { return PolyData::new(); }
-    if partitions.len() == 1 { return partitions[0].clone(); }
+    if partitions.is_empty() {
+        return PolyData::new();
+    }
+    if partitions.len() == 1 {
+        return partitions[0].clone();
+    }
 
     let mut result = partitions[0].clone();
     for part in &partitions[1..] {
@@ -41,7 +45,11 @@ pub fn reduce_scalar(values: &[f64], op: ReduceOp) -> f64 {
         ReduceOp::Min => values.iter().cloned().fold(f64::MAX, f64::min),
         ReduceOp::Max => values.iter().cloned().fold(f64::MIN, f64::max),
         ReduceOp::Mean => {
-            if values.is_empty() { 0.0 } else { values.iter().sum::<f64>() / values.len() as f64 }
+            if values.is_empty() {
+                0.0
+            } else {
+                values.iter().sum::<f64>() / values.len() as f64
+            }
         }
     }
 }
@@ -60,7 +68,9 @@ pub fn scatter_poly_data(data: &PolyData, num_ranks: usize) -> Vec<PolyData> {
     for r in 0..num_ranks {
         let start = r * per_rank;
         let end = ((r + 1) * per_rank).min(nc);
-        if start >= nc { break; }
+        if start >= nc {
+            break;
+        }
 
         let mut point_map = vec![i64::MAX; data.points.len()];
         let mut pts = crate::data::Points::<f64>::new();
@@ -94,8 +104,14 @@ mod tests {
 
     #[test]
     fn gather_two() {
-        let a = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
-        let b = PolyData::from_triangles(vec![[2.0,0.0,0.0],[3.0,0.0,0.0],[2.0,1.0,0.0]], vec![[0,1,2]]);
+        let a = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let b = PolyData::from_triangles(
+            vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let merged = gather_poly_data(&[a, b]);
         assert_eq!(merged.points.len(), 6);
         assert_eq!(merged.polys.num_cells(), 2);
@@ -112,8 +128,15 @@ mod tests {
     #[test]
     fn scatter_roundtrip() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[2.0,0.0,0.0],[3.0,0.0,0.0],[2.0,1.0,0.0]],
-            vec![[0,1,2],[3,4,5]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [2.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
         );
         let parts = scatter_poly_data(&pd, 2);
         assert_eq!(parts.len(), 2);

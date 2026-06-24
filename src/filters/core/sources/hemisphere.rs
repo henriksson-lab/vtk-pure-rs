@@ -16,7 +16,12 @@ pub struct HemisphereParams {
 
 impl Default for HemisphereParams {
     fn default() -> Self {
-        Self { radius: 1.0, theta_resolution: 16, phi_resolution: 32, cap: true }
+        Self {
+            radius: 1.0,
+            theta_resolution: 16,
+            phi_resolution: 32,
+            cap: true,
+        }
     }
 }
 
@@ -86,8 +91,14 @@ mod tests {
 
     #[test]
     fn no_cap() {
-        let h = hemisphere(&HemisphereParams { cap: false, ..Default::default() });
-        let h_cap = hemisphere(&HemisphereParams { cap: true, ..Default::default() });
+        let h = hemisphere(&HemisphereParams {
+            cap: false,
+            ..Default::default()
+        });
+        let h_cap = hemisphere(&HemisphereParams {
+            cap: true,
+            ..Default::default()
+        });
         assert!(h.polys.num_cells() < h_cap.polys.num_cells());
     }
 }

@@ -25,9 +25,7 @@ pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
         values[i] = buf[0];
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let mut grad: Vec<f64> = vec![0.0; n * 3];
 
@@ -72,9 +70,12 @@ pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GradientVector", grad, 3),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientVector",
+            grad,
+            3,
+        )));
     img
 }
 
@@ -84,9 +85,8 @@ mod tests {
 
     fn make_image(nx: usize, ny: usize, nz: usize, values: Vec<f64>) -> ImageData {
         let mut img = ImageData::with_dimensions(nx, ny, nz);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
         img
     }
 

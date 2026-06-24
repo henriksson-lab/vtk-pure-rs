@@ -11,7 +11,9 @@ pub fn repair_mesh(mesh: &PolyData, merge_tolerance: f64, min_component_faces: u
     let step2 = merge_close_vertices_simple(&step1, merge_tolerance);
     let step3 = if min_component_faces > 0 {
         remove_small_components_simple(&step2, min_component_faces)
-    } else { step2 };
+    } else {
+        step2
+    };
     step3
 }
 
@@ -19,28 +21,39 @@ pub fn repair_mesh(mesh: &PolyData, merge_tolerance: f64, min_component_faces: u
 pub fn remove_degenerate_triangles(mesh: &PolyData) -> PolyData {
     let mut polys = CellArray::new();
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         // Check for duplicate vertices
         let mut ok = true;
         for i in 0..cell.len() {
-            for j in i+1..cell.len() {
-                if cell[i] == cell[j] { ok = false; break; }
+            for j in i + 1..cell.len() {
+                if cell[i] == cell[j] {
+                    ok = false;
+                    break;
+                }
             }
-            if !ok { break; }
+            if !ok {
+                break;
+            }
         }
-        if !ok { continue; }
+        if !ok {
+            continue;
+        }
 
         // Check for zero area (for triangles)
         if cell.len() == 3 {
             let a = mesh.points.get(cell[0] as usize);
             let b = mesh.points.get(cell[1] as usize);
             let c = mesh.points.get(cell[2] as usize);
-            let e1 = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
-            let e2 = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
-            let nx = e1[1]*e2[2] - e1[2]*e2[1];
-            let ny = e1[2]*e2[0] - e1[0]*e2[2];
-            let nz = e1[0]*e2[1] - e1[1]*e2[0];
-            if nx*nx + ny*ny + nz*nz < 1e-20 { continue; }
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let nx = e1[1] * e2[2] - e1[2] * e2[1];
+            let ny = e1[2] * e2[0] - e1[0] * e2[2];
+            let nz = e1[0] * e2[1] - e1[1] * e2[0];
+            if nx * nx + ny * ny + nz * nz < 1e-20 {
+                continue;
+            }
         }
         polys.push_cell(cell);
     }
@@ -58,17 +71,21 @@ pub fn merge_close_vertices_simple(mesh: &PolyData, tolerance: f64) -> PolyData 
     let mut merged_to: Vec<Option<usize>> = vec![None; n];
 
     for i in 0..n {
-        if merged_to[i].is_some() { continue; }
+        if merged_to[i].is_some() {
+            continue;
+        }
         let pi = mesh.points.get(i);
         let new_idx = new_points.len();
         new_points.push(pi);
         mapping[i] = new_idx;
         merged_to[i] = Some(new_idx);
 
-        for j in i+1..n {
-            if merged_to[j].is_some() { continue; }
+        for j in i + 1..n {
+            if merged_to[j].is_some() {
+                continue;
+            }
             let pj = mesh.points.get(j);
-            let d2 = (pi[0]-pj[0]).powi(2) + (pi[1]-pj[1]).powi(2) + (pi[2]-pj[2]).powi(2);
+            let d2 = (pi[0] - pj[0]).powi(2) + (pi[1] - pj[1]).powi(2) + (pi[2] - pj[2]).powi(2);
             if d2 < tol2 {
                 mapping[j] = new_idx;
                 merged_to[j] = Some(new_idx);
@@ -82,7 +99,9 @@ pub fn merge_close_vertices_simple(mesh: &PolyData, tolerance: f64) -> PolyData 
         // Skip degenerate after merge
         let mut unique = new_ids.clone();
         unique.dedup();
-        if unique.len() >= 3 { polys.push_cell(&new_ids); }
+        if unique.len() >= 3 {
+            polys.push_cell(&new_ids);
+        }
     }
 
     let mut result = PolyData::new();
@@ -94,18 +113,24 @@ pub fn merge_close_vertices_simple(mesh: &PolyData, tolerance: f64) -> PolyData 
 /// Remove connected components with fewer than min_faces faces.
 fn remove_small_components_simple(mesh: &PolyData, min_faces: usize) -> PolyData {
     let n_cells = mesh.polys.num_cells();
-    if n_cells == 0 { return mesh.clone(); }
+    if n_cells == 0 {
+        return mesh.clone();
+    }
 
     let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
 
     // Build adjacency via shared edges
-    let mut edge_to_cells: std::collections::HashMap<(usize,usize), Vec<usize>> = std::collections::HashMap::new();
+    let mut edge_to_cells: std::collections::HashMap<(usize, usize), Vec<usize>> =
+        std::collections::HashMap::new();
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
-            let b = cell[(i+1)%nc] as usize;
-            edge_to_cells.entry((a.min(b), a.max(b))).or_default().push(ci);
+            let b = cell[(i + 1) % nc] as usize;
+            edge_to_cells
+                .entry((a.min(b), a.max(b)))
+                .or_default()
+                .push(ci);
         }
     }
 
@@ -113,7 +138,9 @@ fn remove_small_components_simple(mesh: &PolyData, min_faces: usize) -> PolyData
     let mut next_label = 0;
 
     for seed in 0..n_cells {
-        if labels[seed] != usize::MAX { continue; }
+        if labels[seed] != usize::MAX {
+            continue;
+        }
         let mut queue = std::collections::VecDeque::new();
         queue.push_back(seed);
         labels[seed] = next_label;
@@ -122,7 +149,7 @@ fn remove_small_components_simple(mesh: &PolyData, min_faces: usize) -> PolyData
             let nc = cell.len();
             for i in 0..nc {
                 let a = cell[i] as usize;
-                let b = cell[(i+1)%nc] as usize;
+                let b = cell[(i + 1) % nc] as usize;
                 let edge = (a.min(b), a.max(b));
                 if let Some(neighbors) = edge_to_cells.get(&edge) {
                     for &ni in neighbors {
@@ -139,7 +166,11 @@ fn remove_small_components_simple(mesh: &PolyData, min_faces: usize) -> PolyData
 
     // Count per component
     let mut comp_sizes = vec![0usize; next_label];
-    for &l in &labels { if l < next_label { comp_sizes[l] += 1; } }
+    for &l in &labels {
+        if l < next_label {
+            comp_sizes[l] += 1;
+        }
+    }
 
     // Keep cells from large components
     let mut new_points = Points::<f64>::new();
@@ -147,7 +178,9 @@ fn remove_small_components_simple(mesh: &PolyData, min_faces: usize) -> PolyData
     let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     for (ci, cell) in all_cells.iter().enumerate() {
-        if comp_sizes[labels[ci]] < min_faces { continue; }
+        if comp_sizes[labels[ci]] < min_faces {
+            continue;
+        }
         let mut new_ids = Vec::new();
         for &pid in cell {
             let old = pid as usize;
@@ -174,8 +207,13 @@ mod tests {
     #[test]
     fn remove_degenerate() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.5,0.0,0.0]],
-            vec![[0,1,2],[0,0,3]], // second is degenerate (duplicate vertex)
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.5, 0.0, 0.0],
+            ],
+            vec![[0, 1, 2], [0, 0, 3]], // second is degenerate (duplicate vertex)
         );
         let result = remove_degenerate_triangles(&mesh);
         assert_eq!(result.polys.num_cells(), 1);
@@ -184,9 +222,15 @@ mod tests {
     #[test]
     fn merge_close() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],
-                 [0.001,0.0,0.0],[1.001,0.0,0.0],[0.0,1.001,0.0]],
-            vec![[0,1,2],[3,4,5]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.001, 0.0, 0.0],
+                [1.001, 0.0, 0.0],
+                [0.0, 1.001, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
         );
         let result = merge_close_vertices_simple(&mesh, 0.01);
         assert!(result.points.len() <= 4); // should merge near-duplicate points
@@ -195,8 +239,8 @@ mod tests {
     #[test]
     fn full_repair() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let result = repair_mesh(&mesh, 0.001, 0);
         assert_eq!(result.polys.num_cells(), 1);
@@ -208,10 +252,15 @@ mod tests {
         // Plus one isolated triangle → component of 1 face
         let mesh = PolyData::from_triangles(
             vec![
-                [0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[0.5,-1.0,0.0],
-                [10.0,10.0,0.0],[11.0,10.0,0.0],[10.5,11.0,0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, -1.0, 0.0],
+                [10.0, 10.0, 0.0],
+                [11.0, 10.0, 0.0],
+                [10.5, 11.0, 0.0],
             ],
-            vec![[0,1,2],[0,1,3],[4,5,6]], // first two share edge 0-1
+            vec![[0, 1, 2], [0, 1, 3], [4, 5, 6]], // first two share edge 0-1
         );
         let result = remove_small_components_simple(&mesh, 2);
         assert_eq!(result.polys.num_cells(), 2); // only the connected pair

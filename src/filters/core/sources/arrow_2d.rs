@@ -16,7 +16,12 @@ pub struct Arrow2dParams {
 
 impl Default for Arrow2dParams {
     fn default() -> Self {
-        Self { length: 1.0, head_width: 0.3, head_length: 0.3, shaft_width: 0.1 }
+        Self {
+            length: 1.0,
+            head_width: 0.3,
+            head_length: 0.3,
+            shaft_width: 0.1,
+        }
     }
 }
 
@@ -29,21 +34,23 @@ pub fn arrow_2d(params: &Arrow2dParams) -> PolyData {
     let shaft_end = l - hl;
 
     let pts = vec![
-        [0.0, -sw/2.0, 0.0],       // 0: shaft bottom-left
-        [shaft_end, -sw/2.0, 0.0],  // 1: shaft bottom-right
-        [shaft_end, -hw/2.0, 0.0],  // 2: head bottom
-        [l, 0.0, 0.0],              // 3: tip
-        [shaft_end, hw/2.0, 0.0],   // 4: head top
-        [shaft_end, sw/2.0, 0.0],   // 5: shaft top-right
-        [0.0, sw/2.0, 0.0],         // 6: shaft top-left
+        [0.0, -sw / 2.0, 0.0],       // 0: shaft bottom-left
+        [shaft_end, -sw / 2.0, 0.0], // 1: shaft bottom-right
+        [shaft_end, -hw / 2.0, 0.0], // 2: head bottom
+        [l, 0.0, 0.0],               // 3: tip
+        [shaft_end, hw / 2.0, 0.0],  // 4: head top
+        [shaft_end, sw / 2.0, 0.0],  // 5: shaft top-right
+        [0.0, sw / 2.0, 0.0],        // 6: shaft top-left
     ];
 
     let mut points = Points::<f64>::new();
-    for p in &pts { points.push(*p); }
+    for p in &pts {
+        points.push(*p);
+    }
 
     let mut polys = CellArray::new();
     polys.push_cell(&[0, 1, 5, 6]); // shaft quad
-    polys.push_cell(&[2, 3, 4]);     // head triangle
+    polys.push_cell(&[2, 3, 4]); // head triangle
 
     let mut mesh = PolyData::new();
     mesh.points = points;
@@ -64,7 +71,10 @@ mod tests {
 
     #[test]
     fn custom_arrow() {
-        let a = arrow_2d(&Arrow2dParams { length: 2.0, ..Default::default() });
+        let a = arrow_2d(&Arrow2dParams {
+            length: 2.0,
+            ..Default::default()
+        });
         let tip = a.points.get(3);
         assert!((tip[0] - 2.0).abs() < 1e-10);
     }

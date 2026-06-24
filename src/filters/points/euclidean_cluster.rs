@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::VecDeque;
 
 /// DBSCAN-like Euclidean clustering for point clouds.
 ///
@@ -72,9 +72,12 @@ pub fn euclidean_cluster(input: &PolyData, epsilon: f64, min_points: usize) -> P
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.verts = out_verts;
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ClusterId", cluster_f64, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ClusterId",
+            cluster_f64,
+            1,
+        )));
     pd
 }
 

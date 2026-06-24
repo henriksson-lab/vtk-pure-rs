@@ -12,7 +12,11 @@ pub fn hyper_tree_grid_gradient(htg: &HyperTreeGrid, array_name: &str) -> HyperT
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 1.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            1.0
+        },
     ];
 
     let arr = match htg.cell_data().get_array(array_name) {
@@ -26,9 +30,16 @@ pub fn hyper_tree_grid_gradient(htg: &HyperTreeGrid, array_name: &str) -> HyperT
     let mut buf = [0.0f64];
     let _val = |i: usize, j: usize, k: usize| -> f64 {
         let idx = ci(i, j, k);
-        if idx < arr.num_tuples() { arr.tuple_as_f64(idx, &mut [0.0f64]); }
+        if idx < arr.num_tuples() {
+            arr.tuple_as_f64(idx, &mut [0.0f64]);
+        }
         let mut b = [0.0f64];
-        if idx < arr.num_tuples() { arr.tuple_as_f64(idx, &mut b); b[0] } else { 0.0 }
+        if idx < arr.num_tuples() {
+            arr.tuple_as_f64(idx, &mut b);
+            b[0]
+        } else {
+            0.0
+        }
     };
 
     // Read all values first
@@ -68,16 +79,28 @@ pub fn hyper_tree_grid_gradient(htg: &HyperTreeGrid, array_name: &str) -> HyperT
                     gz[idx] = (values[ci(i, j, kp)] - values[ci(i, j, km)]) / dz;
                 }
 
-                gmag[idx] = (gx[idx]*gx[idx] + gy[idx]*gy[idx] + gz[idx]*gz[idx]).sqrt();
+                gmag[idx] = (gx[idx] * gx[idx] + gy[idx] * gy[idx] + gz[idx] * gz[idx]).sqrt();
             }
         }
     }
 
     let mut result = htg.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("GradientX", gx, 1)));
-    result.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("GradientY", gy, 1)));
-    result.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("GradientZ", gz, 1)));
-    result.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("GradientMagnitude", gmag, 1)));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("GradientX", gx, 1)));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("GradientY", gy, 1)));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("GradientZ", gz, 1)));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientMagnitude",
+            gmag,
+            1,
+        )));
     result
 }
 
@@ -89,7 +112,8 @@ mod tests {
     fn linear_gradient() {
         let mut htg = HyperTreeGrid::new([5, 1, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let vals = vec![0.0, 1.0, 2.0, 3.0, 4.0];
-        htg.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("f", vals, 1)));
+        htg.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("f", vals, 1)));
 
         let result = hyper_tree_grid_gradient(&htg, "f");
         let gx = result.cell_data().get_array("GradientX").unwrap();

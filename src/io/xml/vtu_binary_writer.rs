@@ -18,13 +18,19 @@ impl VtuBinaryWriter {
 
     pub fn write_to<W: Write>(w: &mut W, grid: &UnstructuredGrid) -> Result<(), VtkError> {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <UnstructuredGrid>")?;
 
         let n_points = grid.points.len();
         let n_cells = grid.cells().num_cells();
 
-        writeln!(w, "    <Piece NumberOfPoints=\"{n_points}\" NumberOfCells=\"{n_cells}\">")?;
+        writeln!(
+            w,
+            "    <Piece NumberOfPoints=\"{n_points}\" NumberOfCells=\"{n_cells}\">"
+        )?;
 
         // Points
         writeln!(w, "      <Points>")?;
@@ -60,14 +66,20 @@ impl VtuBinaryWriter {
             offsets.push(off);
         }
         let off_arr = AnyDataArray::I64(DataArray::from_vec("offsets", offsets, 1));
-        writeln!(w, "        <DataArray type=\"Int64\" Name=\"offsets\" format=\"binary\">{}</DataArray>",
-            binary::encode_data_array_binary(&off_arr))?;
+        writeln!(
+            w,
+            "        <DataArray type=\"Int64\" Name=\"offsets\" format=\"binary\">{}</DataArray>",
+            binary::encode_data_array_binary(&off_arr)
+        )?;
 
         // Types
         let types: Vec<u8> = (0..n_cells).map(|i| grid.cell_type(i) as u8).collect();
         let types_arr = AnyDataArray::U8(DataArray::from_vec("types", types, 1));
-        writeln!(w, "        <DataArray type=\"UInt8\" Name=\"types\" format=\"binary\">{}</DataArray>",
-            binary::encode_data_array_binary(&types_arr))?;
+        writeln!(
+            w,
+            "        <DataArray type=\"UInt8\" Name=\"types\" format=\"binary\">{}</DataArray>",
+            binary::encode_data_array_binary(&types_arr)
+        )?;
 
         writeln!(w, "      </Cells>")?;
 

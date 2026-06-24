@@ -19,7 +19,11 @@ pub fn select_enclosed_points(surface: &PolyData, probe: &PolyData) -> PolyData 
         .flat_map(|cell| {
             let p0 = surface.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {
-                (p0, surface.points.get(cell[i] as usize), surface.points.get(cell[i + 1] as usize))
+                (
+                    p0,
+                    surface.points.get(cell[i] as usize),
+                    surface.points.get(cell[i + 1] as usize),
+                )
             })
         })
         .collect();
@@ -41,20 +45,18 @@ pub fn select_enclosed_points(surface: &PolyData, probe: &PolyData) -> PolyData 
         }
     }
 
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("InsideOut", inside, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "InsideOut",
+            inside,
+            1,
+        )));
     pd
 }
 
 /// Möller–Trumbore ray-triangle intersection.
 /// Ray origin = p, direction = +X.
-fn ray_intersects_triangle(
-    origin: [f64; 3],
-    v0: [f64; 3],
-    v1: [f64; 3],
-    v2: [f64; 3],
-) -> bool {
+fn ray_intersects_triangle(origin: [f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> bool {
     let dir = [1.0, 0.0, 0.0]; // +X ray
     let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
     let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
@@ -83,7 +85,11 @@ fn ray_intersects_triangle(
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {

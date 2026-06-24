@@ -82,8 +82,8 @@ mod tests {
     #[test]
     fn random_scalars() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let result = random_point_scalars(&pd, "noise", 0.0, 1.0, 42);
         let arr = result.point_data().get_array("noise").unwrap();
@@ -96,8 +96,8 @@ mod tests {
     #[test]
     fn random_vectors() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]);
-        pd.points.push([1.0,0.0,0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
         let result = random_point_vectors(&pd, "vel", -1.0, 1.0, 99);
         let arr = result.point_data().get_array("vel").unwrap();
         assert_eq!(arr.num_components(), 3);
@@ -107,8 +107,13 @@ mod tests {
     #[test]
     fn random_cell_data() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
         );
         let result = random_cell_scalars(&pd, "cval", 0.0, 100.0, 7);
         let arr = result.cell_data().get_array("cval").unwrap();

@@ -18,7 +18,8 @@ pub struct TopologyInfo {
 pub fn topology_info(mesh: &PolyData) -> TopologyInfo {
     let v = mesh.points.len();
     let f = mesh.polys.num_cells();
-    let mut edge_count: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
@@ -39,7 +40,9 @@ pub fn topology_info(mesh: &PolyData) -> TopologyInfo {
     let genus = (2 - euler - boundary_loops as isize) / 2;
 
     TopologyInfo {
-        vertices: v, edges: e, faces: f,
+        vertices: v,
+        edges: e,
+        faces: f,
         euler_characteristic: euler,
         genus: genus.max(0),
         boundary_loops,
@@ -48,12 +51,18 @@ pub fn topology_info(mesh: &PolyData) -> TopologyInfo {
     }
 }
 
-fn count_boundary_loops(edge_count: &std::collections::HashMap<(usize, usize), usize>, _mesh: &PolyData) -> usize {
-    let boundary_edges: Vec<(usize, usize)> = edge_count.iter()
+fn count_boundary_loops(
+    edge_count: &std::collections::HashMap<(usize, usize), usize>,
+    _mesh: &PolyData,
+) -> usize {
+    let boundary_edges: Vec<(usize, usize)> = edge_count
+        .iter()
         .filter(|(_, &c)| c == 1)
         .map(|(&e, _)| e)
         .collect();
-    if boundary_edges.is_empty() { return 0; }
+    if boundary_edges.is_empty() {
+        return 0;
+    }
 
     let mut adj: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
     for &(a, b) in &boundary_edges {
@@ -64,11 +73,15 @@ fn count_boundary_loops(edge_count: &std::collections::HashMap<(usize, usize), u
     let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
     let mut loops = 0;
     for &start in adj.keys() {
-        if visited.contains(&start) { continue; }
+        if visited.contains(&start) {
+            continue;
+        }
         let mut cur = start;
         loop {
             visited.insert(cur);
-            let next = adj.get(&cur).and_then(|nbs| nbs.iter().find(|&&n| !visited.contains(&n)));
+            let next = adj
+                .get(&cur)
+                .and_then(|nbs| nbs.iter().find(|&&n| !visited.contains(&n)));
             match next {
                 Some(&n) => cur = n,
                 None => break,
@@ -84,7 +97,10 @@ mod tests {
     use super::*;
     #[test]
     fn test_single_tri() {
-        let mesh = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], vec![[0,1,2]]);
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let info = topology_info(&mesh);
         assert_eq!(info.vertices, 3);
         assert_eq!(info.edges, 3);
@@ -95,8 +111,13 @@ mod tests {
     #[test]
     fn test_closed_tetra() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],
-            vec![[0,2,1],[0,1,3],[1,2,3],[0,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
         );
         let info = topology_info(&mesh);
         assert!(info.is_closed);

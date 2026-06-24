@@ -3,7 +3,7 @@
 //! Enables processing datasets that are too large to hold fully in memory
 //! by yielding smaller pieces one at a time.
 
-use crate::data::{CellArray, ImageData, Points, PolyData, AnyDataArray, DataArray};
+use crate::data::{AnyDataArray, CellArray, DataArray, ImageData, Points, PolyData};
 
 /// A generic data stream wrapping an iterator of chunks.
 pub struct DataStream<T> {
@@ -13,7 +13,9 @@ pub struct DataStream<T> {
 impl<T> DataStream<T> {
     /// Create a stream from any iterator.
     pub fn new(iter: impl Iterator<Item = T> + 'static) -> Self {
-        Self { inner: Box::new(iter) }
+        Self {
+            inner: Box::new(iter),
+        }
     }
 }
 
@@ -38,7 +40,11 @@ pub struct StreamingPolyData {
 impl StreamingPolyData {
     pub fn new(data: PolyData, chunk_size: usize) -> Self {
         assert!(chunk_size > 0);
-        Self { data, chunk_size, cursor: 0 }
+        Self {
+            data,
+            chunk_size,
+            cursor: 0,
+        }
     }
 }
 
@@ -163,8 +169,11 @@ mod tests {
     #[test]
     fn streaming_image_data_slices() {
         let img = ImageData::from_function(
-            [4, 4, 3], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0],
-            "val", |x, y, z| x + y + z,
+            [4, 4, 3],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "val",
+            |x, y, z| x + y + z,
         );
         let stream = StreamingImageData::new(img);
         let slices: Vec<ImageData> = stream.collect();

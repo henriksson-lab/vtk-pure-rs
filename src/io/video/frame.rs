@@ -14,7 +14,12 @@ pub struct FrameSequence {
 impl FrameSequence {
     /// Create a new empty frame sequence.
     pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height, frames: Vec::new(), fps: 30 }
+        Self {
+            width,
+            height,
+            frames: Vec::new(),
+            fps: 30,
+        }
     }
 
     /// Set the frame rate.
@@ -26,7 +31,12 @@ impl FrameSequence {
     /// Add an RGBA frame. Panics if the frame size doesn't match.
     pub fn add_frame(&mut self, rgba: Vec<u8>) {
         let expected = (self.width * self.height * 4) as usize;
-        assert_eq!(rgba.len(), expected, "frame size mismatch: expected {expected}, got {}", rgba.len());
+        assert_eq!(
+            rgba.len(),
+            expected,
+            "frame size mismatch: expected {expected}, got {}",
+            rgba.len()
+        );
         self.frames.push(rgba);
     }
 
@@ -37,7 +47,9 @@ impl FrameSequence {
 
     /// Duration in seconds.
     pub fn duration_secs(&self) -> f64 {
-        if self.fps == 0 { return 0.0; }
+        if self.fps == 0 {
+            return 0.0;
+        }
         self.frames.len() as f64 / self.fps as f64
     }
 

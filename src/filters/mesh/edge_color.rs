@@ -64,9 +64,12 @@ pub fn color_edges_by_angle(input: &PolyData, sharp_threshold_deg: f64) -> PolyD
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.lines = out_lines;
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("EdgeColor", colors, 3),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "EdgeColor",
+            colors,
+            3,
+        )));
     pd
 }
 
@@ -173,7 +176,7 @@ mod tests {
         let result = color_edges_by_angle(&pd, 30.0);
         let arr = result.cell_data().get_array("EdgeColor").unwrap();
         assert_eq!(arr.num_tuples(), 3); // 3 boundary edges
-        // All boundary edges are sharp (red).
+                                         // All boundary edges are sharp (red).
         for i in 0..3 {
             let mut c = [0.0f64; 3];
             arr.tuple_as_f64(i, &mut c);

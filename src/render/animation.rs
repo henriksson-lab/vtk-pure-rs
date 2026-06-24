@@ -18,7 +18,11 @@ impl Easing {
             Easing::EaseInQuad => t * t,
             Easing::EaseOutQuad => t * (2.0 - t),
             Easing::EaseInOutQuad => {
-                if t < 0.5 { 2.0 * t * t } else { -1.0 + (4.0 - 2.0 * t) * t }
+                if t < 0.5 {
+                    2.0 * t * t
+                } else {
+                    -1.0 + (4.0 - 2.0 * t) * t
+                }
             }
             Easing::EaseInCubic => t * t * t,
             Easing::EaseOutCubic => {
@@ -45,13 +49,20 @@ pub struct Track<T: Clone> {
 
 impl<T: Clone> Track<T> {
     pub fn new() -> Self {
-        Self { keyframes: Vec::new() }
+        Self {
+            keyframes: Vec::new(),
+        }
     }
 
     /// Add a keyframe at the given time.
     pub fn add(&mut self, time: f64, value: T, easing: Easing) {
-        self.keyframes.push(Keyframe { time, value, easing });
-        self.keyframes.sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
+        self.keyframes.push(Keyframe {
+            time,
+            value,
+            easing,
+        });
+        self.keyframes
+            .sort_by(|a, b| a.time.partial_cmp(&b.time).unwrap());
     }
 
     /// Number of keyframes.
@@ -180,12 +191,7 @@ impl CameraAnimation {
     }
 
     /// Create a zoom animation (dolly in/out).
-    pub fn zoom(
-        start_pos: [f64; 3],
-        end_pos: [f64; 3],
-        focal: [f64; 3],
-        duration: f64,
-    ) -> Self {
+    pub fn zoom(start_pos: [f64; 3], end_pos: [f64; 3], focal: [f64; 3], duration: f64) -> Self {
         let mut anim = Self::new();
         anim.position.add(0.0, start_pos, Easing::EaseInOutQuad);
         anim.position.add(duration, end_pos, Easing::EaseInOutQuad);

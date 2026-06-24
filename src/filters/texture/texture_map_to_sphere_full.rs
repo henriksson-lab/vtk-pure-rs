@@ -16,7 +16,9 @@ pub fn texture_map_to_sphere_full(
     prevent_seam: bool,
 ) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     // Compute spherical coordinates using flat slice access
     let pts = input.points.as_flat_slice();
@@ -28,7 +30,7 @@ pub fn texture_map_to_sphere_full(
         let dx = pts[b] - center[0];
         let dy = pts[b + 1] - center[1];
         let dz = pts[b + 2] - center[2];
-        let r = (dx*dx + dy*dy + dz*dz).sqrt();
+        let r = (dx * dx + dy * dy + dz * dz).sqrt();
         let theta = if r > 1e-15 { (dz / r).acos() } else { 0.0 };
         let phi = dy.atan2(dx);
         thetas.push(theta);
@@ -45,9 +47,11 @@ pub fn texture_map_to_sphere_full(
             tcoords.push(v);
         }
         let mut result = input.clone();
-        result.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("TCoords", tcoords, 2),
-        ));
+        result
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "TCoords", tcoords, 2,
+            )));
         result.point_data_mut().set_active_tcoords("TCoords");
         return result;
     }
@@ -118,9 +122,11 @@ pub fn texture_map_to_sphere_full(
     result.lines = input.lines.clone();
     result.verts = input.verts.clone();
 
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("TCoords", tcoords, 2),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", tcoords, 2,
+        )));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
@@ -137,14 +143,18 @@ mod tests {
             let theta = std::f64::consts::PI * i as f64 / n as f64;
             for j in 0..=n {
                 let phi = 2.0 * std::f64::consts::PI * j as f64 / n as f64 - std::f64::consts::PI;
-                pts.push([theta.sin()*phi.cos(), theta.sin()*phi.sin(), theta.cos()]);
+                pts.push([
+                    theta.sin() * phi.cos(),
+                    theta.sin() * phi.sin(),
+                    theta.cos(),
+                ]);
             }
         }
         for i in 0..n {
             for j in 0..n {
-                let bl = i * (n+1) + j;
-                tris.push([bl, bl+1, bl+n+2]);
-                tris.push([bl, bl+n+2, bl+n+1]);
+                let bl = i * (n + 1) + j;
+                tris.push([bl, bl + 1, bl + n + 2]);
+                tris.push([bl, bl + n + 2, bl + n + 1]);
             }
         }
         PolyData::from_triangles(pts, tris)
@@ -153,7 +163,7 @@ mod tests {
     #[test]
     fn simple_mapping() {
         let mesh = make_sphere_points();
-        let result = texture_map_to_sphere_full(&mesh, [0.0,0.0,0.0], false);
+        let result = texture_map_to_sphere_full(&mesh, [0.0, 0.0, 0.0], false);
         let tc = result.point_data().tcoords().unwrap();
         assert_eq!(tc.num_tuples(), mesh.points.len());
         let mut buf = [0.0f64; 2];
@@ -167,7 +177,7 @@ mod tests {
     #[test]
     fn seam_correction() {
         let mesh = make_sphere_points();
-        let result = texture_map_to_sphere_full(&mesh, [0.0,0.0,0.0], true);
+        let result = texture_map_to_sphere_full(&mesh, [0.0, 0.0, 0.0], true);
         // Should have more points than original (duplicated at seam)
         assert!(result.points.len() >= mesh.points.len());
         assert!(result.point_data().tcoords().is_some());
@@ -175,7 +185,7 @@ mod tests {
 
     #[test]
     fn empty() {
-        let result = texture_map_to_sphere_full(&PolyData::new(), [0.0;3], true);
+        let result = texture_map_to_sphere_full(&PolyData::new(), [0.0; 3], true);
         assert_eq!(result.points.len(), 0);
     }
 }

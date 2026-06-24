@@ -3,7 +3,12 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create a tube (hollow cylinder) with inner and outer radius.
-pub fn tube_source(inner_radius: f64, outer_radius: f64, height: f64, resolution: usize) -> PolyData {
+pub fn tube_source(
+    inner_radius: f64,
+    outer_radius: f64,
+    height: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(3);
     let half_h = height * 0.5;
     let mut pts = Points::<f64>::new();
@@ -17,16 +22,16 @@ pub fn tube_source(inner_radius: f64, outer_radius: f64, height: f64, resolution
         let si = angle.sin();
         pts.push([outer_radius * co, outer_radius * si, -half_h]); // bottom outer
         pts.push([inner_radius * co, inner_radius * si, -half_h]); // bottom inner
-        pts.push([outer_radius * co, outer_radius * si, half_h]);  // top outer
-        pts.push([inner_radius * co, inner_radius * si, half_h]);  // top inner
+        pts.push([outer_radius * co, outer_radius * si, half_h]); // top outer
+        pts.push([inner_radius * co, inner_radius * si, half_h]); // top inner
     }
 
     for i in 0..res {
         let j = (i + 1) % res;
-        let bo = i * 4;      // bottom outer
-        let bi = i * 4 + 1;  // bottom inner
-        let to = i * 4 + 2;  // top outer
-        let ti = i * 4 + 3;  // top inner
+        let bo = i * 4; // bottom outer
+        let bi = i * 4 + 1; // bottom inner
+        let to = i * 4 + 2; // top outer
+        let ti = i * 4 + 3; // top inner
         let nbo = j * 4;
         let nbi = j * 4 + 1;
         let nto = j * 4 + 2;

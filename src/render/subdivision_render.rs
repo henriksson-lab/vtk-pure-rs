@@ -3,8 +3,8 @@
 //! Each subdivision level splits every triangle into 4 triangles by
 //! inserting midpoints along edges.
 
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Configuration for subdivision surface rendering.
 #[derive(Debug, Clone)]
@@ -54,7 +54,11 @@ fn subdivide_once(pd: &PolyData) -> PolyData {
     // Map from edge (min_idx, max_idx) to midpoint index
     let mut midpoint_cache: HashMap<(usize, usize), usize> = HashMap::new();
 
-    let get_midpoint = |a: usize, b: usize, points: &mut Points<f64>, cache: &mut HashMap<(usize, usize), usize>| -> usize {
+    let get_midpoint = |a: usize,
+                        b: usize,
+                        points: &mut Points<f64>,
+                        cache: &mut HashMap<(usize, usize), usize>|
+     -> usize {
         let key = if a < b { (a, b) } else { (b, a) };
         if let Some(&idx) = cache.get(&key) {
             return idx;

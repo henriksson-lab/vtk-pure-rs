@@ -31,16 +31,18 @@ pub fn compute_displacement(source: &PolyData, target: &PolyData) -> PolyData {
     }
 
     let mut pd = source.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(
-        "Displacement",
-        displacements,
-        3,
-    )));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(
-        "DisplacementMagnitude",
-        magnitudes,
-        1,
-    )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Displacement",
+            displacements,
+            3,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DisplacementMagnitude",
+            magnitudes,
+            1,
+        )));
     pd
 }
 
@@ -55,7 +57,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = compute_displacement(&pd, &pd);
-        let mag = result.point_data().get_array("DisplacementMagnitude").unwrap();
+        let mag = result
+            .point_data()
+            .get_array("DisplacementMagnitude")
+            .unwrap();
         let mut val = [0.0f64];
         for i in 0..3 {
             mag.tuple_as_f64(i, &mut val);
@@ -83,7 +88,10 @@ mod tests {
         assert!(vec3[1].abs() < 1e-12);
         assert!(vec3[2].abs() < 1e-12);
 
-        let mag = result.point_data().get_array("DisplacementMagnitude").unwrap();
+        let mag = result
+            .point_data()
+            .get_array("DisplacementMagnitude")
+            .unwrap();
         let mut val = [0.0f64];
         mag.tuple_as_f64(0, &mut val);
         assert!((val[0] - 1.0).abs() < 1e-12);
@@ -101,7 +109,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = compute_displacement(&source, &target);
-        let mag = result.point_data().get_array("DisplacementMagnitude").unwrap();
+        let mag = result
+            .point_data()
+            .get_array("DisplacementMagnitude")
+            .unwrap();
         let mut val = [0.0f64];
         mag.tuple_as_f64(0, &mut val);
         let expected: f64 = 3.0f64.sqrt();

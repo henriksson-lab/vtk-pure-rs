@@ -30,8 +30,14 @@ pub fn compute_ghost_layers(partitions: &[Partition]) -> Vec<GhostLayer> {
         for (local_idx, &global_id) in part.global_point_ids.iter().enumerate() {
             // Check if this global point exists in any other partition
             for (other_rank, other_part) in partitions.iter().enumerate() {
-                if other_rank == rank { continue; }
-                if let Some(other_local) = other_part.global_point_ids.iter().position(|&g| g == global_id) {
+                if other_rank == rank {
+                    continue;
+                }
+                if let Some(other_local) = other_part
+                    .global_point_ids
+                    .iter()
+                    .position(|&g| g == global_id)
+                {
                     shared.push((local_idx, other_rank, other_local));
                 }
             }
@@ -51,7 +57,11 @@ pub fn compute_ghost_layers(partitions: &[Partition]) -> Vec<GhostLayer> {
 ///
 /// Returns a new PolyData with ghost points appended and a
 /// "GhostType" point data array (0 = owned, 1 = ghost).
-pub fn add_ghost_points(partition: &Partition, neighbors: &[Partition], layer: &GhostLayer) -> PolyData {
+pub fn add_ghost_points(
+    partition: &Partition,
+    neighbors: &[Partition],
+    layer: &GhostLayer,
+) -> PolyData {
     let mut result = partition.data.clone();
     let owned_count = result.points.len();
 
@@ -67,9 +77,11 @@ pub fn add_ghost_points(partition: &Partition, neighbors: &[Partition], layer: &
     }
 
     let ghost_f64: Vec<f64> = ghost_type.iter().map(|&v| v as f64).collect();
-    result.point_data_mut().add_array(crate::data::AnyDataArray::F64(
-        crate::data::DataArray::from_vec("GhostType", ghost_f64, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(crate::data::AnyDataArray::F64(
+            crate::data::DataArray::from_vec("GhostType", ghost_f64, 1),
+        ));
 
     result
 }
@@ -83,9 +95,15 @@ mod tests {
     fn ghost_detection() {
         // Two triangles sharing an edge (points 1,2)
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],
-                 [1.0,0.0,0.0],[2.0,0.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2],[3,4,5]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
         );
         let parts = decompose_poly_data(&pd, 2);
         let layers = compute_ghost_layers(&parts);

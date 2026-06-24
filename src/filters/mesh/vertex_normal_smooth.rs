@@ -11,10 +11,12 @@ pub fn smooth_vertex_normals(mesh: &PolyData, iterations: usize) -> PolyData {
 
     let n = mesh.points.len();
     let mut buf = [0.0f64; 3];
-    let mut normals: Vec<[f64; 3]> = (0..n).map(|i| {
-        normals_arr.tuple_as_f64(i, &mut buf);
-        [buf[0], buf[1], buf[2]]
-    }).collect();
+    let mut normals: Vec<[f64; 3]> = (0..n)
+        .map(|i| {
+            normals_arr.tuple_as_f64(i, &mut buf);
+            [buf[0], buf[1], buf[2]]
+        })
+        .collect();
 
     // Build adjacency
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -33,7 +35,9 @@ pub fn smooth_vertex_normals(mesh: &PolyData, iterations: usize) -> PolyData {
     for _ in 0..iterations {
         let mut new_normals = normals.clone();
         for i in 0..n {
-            if neighbors[i].is_empty() { continue; }
+            if neighbors[i].is_empty() {
+                continue;
+            }
             let mut avg = normals[i];
             for &nb in &neighbors[i] {
                 avg[0] += normals[nb][0];
@@ -50,7 +54,9 @@ pub fn smooth_vertex_normals(mesh: &PolyData, iterations: usize) -> PolyData {
 
     let data: Vec<f64> = normals.iter().flat_map(|n| n.iter().copied()).collect();
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Normals", data, 3)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Normals", data, 3)));
     result
 }
 
@@ -60,12 +66,18 @@ mod tests {
     #[test]
     fn test_smooth_normals() {
         let mut mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], [1.5, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
         // Add normals pointing up
         let ndata: Vec<f64> = (0..4).flat_map(|_| vec![0.0, 0.0, 1.0]).collect();
-        mesh.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Normals", ndata, 3)));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Normals", ndata, 3)));
         let result = smooth_vertex_normals(&mesh, 3);
         let arr = result.point_data().get_array("Normals").unwrap();
         assert_eq!(arr.num_tuples(), 4);

@@ -1,3 +1,4 @@
+pub mod boundary_quality;
 pub mod cell_centers;
 pub mod cell_data_to_point_data_avg;
 pub mod cell_quality;
@@ -13,4 +14,3 @@ pub mod separate_cells;
 pub mod shrink;
 pub mod strip;
 pub mod triangulate_strips;
-pub mod boundary_quality;

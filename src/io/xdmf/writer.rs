@@ -26,7 +26,9 @@ impl XdmfWriter {
         // Triangulate polys
         let mut tris: Vec<[usize; 3]> = Vec::new();
         for cell in pd.polys.iter() {
-            if cell.len() < 3 { continue; }
+            if cell.len() < 3 {
+                continue;
+            }
             for i in 1..cell.len() - 1 {
                 tris.push([cell[0] as usize, cell[i] as usize, cell[i + 1] as usize]);
             }
@@ -39,8 +41,14 @@ impl XdmfWriter {
         writeln!(w, r#"    <Grid Name="mesh" GridType="Uniform">"#)?;
 
         // Topology
-        writeln!(w, r#"      <Topology TopologyType="Triangle" NumberOfElements="{n_tris}">"#)?;
-        writeln!(w, r#"        <DataItem Format="XML" DataType="Int" Dimensions="{n_tris} 3">"#)?;
+        writeln!(
+            w,
+            r#"      <Topology TopologyType="Triangle" NumberOfElements="{n_tris}">"#
+        )?;
+        writeln!(
+            w,
+            r#"        <DataItem Format="XML" DataType="Int" Dimensions="{n_tris} 3">"#
+        )?;
         for tri in &tris {
             writeln!(w, "          {} {} {}", tri[0], tri[1], tri[2])?;
         }
@@ -49,7 +57,10 @@ impl XdmfWriter {
 
         // Geometry
         writeln!(w, r#"      <Geometry GeometryType="XYZ">"#)?;
-        writeln!(w, r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{n_pts} 3">"#)?;
+        writeln!(
+            w,
+            r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{n_pts} 3">"#
+        )?;
         for i in 0..n_pts {
             let p = pd.points.get(i);
             writeln!(w, "          {} {} {}", p[0], p[1], p[2])?;
@@ -63,13 +74,28 @@ impl XdmfWriter {
             let name = arr.name();
             let nc = arr.num_components();
             let nt = arr.num_tuples();
-            let attr_type = if nc == 1 { "Scalar" } else if nc == 3 { "Vector" } else { "Matrix" };
-
-            writeln!(w, r#"      <Attribute Name="{name}" AttributeType="{attr_type}" Center="Node">"#)?;
-            if nc == 1 {
-                writeln!(w, r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{nt}">"#)?;
+            let attr_type = if nc == 1 {
+                "Scalar"
+            } else if nc == 3 {
+                "Vector"
             } else {
-                writeln!(w, r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{nt} {nc}">"#)?;
+                "Matrix"
+            };
+
+            writeln!(
+                w,
+                r#"      <Attribute Name="{name}" AttributeType="{attr_type}" Center="Node">"#
+            )?;
+            if nc == 1 {
+                writeln!(
+                    w,
+                    r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{nt}">"#
+                )?;
+            } else {
+                writeln!(
+                    w,
+                    r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{nt} {nc}">"#
+                )?;
             }
             let mut buf = vec![0.0f64; nc];
             for i in 0..nt {
@@ -106,8 +132,11 @@ impl XdmfWriter {
         writeln!(w, r#"    <Grid Name="image" GridType="Uniform">"#)?;
 
         // 3DCoRectMesh topology
-        writeln!(w, r#"      <Topology TopologyType="3DCoRectMesh" Dimensions="{} {} {}"/>"#,
-            dims[2], dims[1], dims[0])?;
+        writeln!(
+            w,
+            r#"      <Topology TopologyType="3DCoRectMesh" Dimensions="{} {} {}"/>"#,
+            dims[2], dims[1], dims[0]
+        )?;
 
         // Origin + spacing geometry
         writeln!(w, r#"      <Geometry GeometryType="ORIGIN_DXDYDZ">"#)?;
@@ -127,13 +156,22 @@ impl XdmfWriter {
             let nt = arr.num_tuples();
             let attr_type = if nc == 1 { "Scalar" } else { "Vector" };
 
-            writeln!(w, r#"      <Attribute Name="{name}" AttributeType="{attr_type}" Center="Node">"#)?;
+            writeln!(
+                w,
+                r#"      <Attribute Name="{name}" AttributeType="{attr_type}" Center="Node">"#
+            )?;
             if nc == 1 {
-                writeln!(w, r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{} {} {}">"#,
-                    dims[2], dims[1], dims[0])?;
+                writeln!(
+                    w,
+                    r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{} {} {}">"#,
+                    dims[2], dims[1], dims[0]
+                )?;
             } else {
-                writeln!(w, r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{} {} {} {}">"#,
-                    dims[2], dims[1], dims[0], nc)?;
+                writeln!(
+                    w,
+                    r#"        <DataItem Format="XML" DataType="Float" Precision="8" Dimensions="{} {} {} {}">"#,
+                    dims[2], dims[1], dims[0], nc
+                )?;
             }
             let mut buf = vec![0.0f64; nc];
             for i in 0..nt {

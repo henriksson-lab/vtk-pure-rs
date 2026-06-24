@@ -71,11 +71,21 @@ impl VtmReader {
 fn load_block(path: &Path, filename: &str) -> Option<Block> {
     let ext = filename.rsplit('.').next().unwrap_or("");
     match ext {
-        "vtp" => crate::io::xml::VtpReader::read(path).ok().map(Block::PolyData),
-        "vtu" => crate::io::xml::VtuReader::read(path).ok().map(Block::UnstructuredGrid),
-        "vti" => crate::io::xml::VtiReader::read(path).ok().map(Block::ImageData),
-        "vtr" => crate::io::xml::VtrReader::read(path).ok().map(Block::RectilinearGrid),
-        "vts" => crate::io::xml::VtsReader::read(path).ok().map(Block::StructuredGrid),
+        "vtp" => crate::io::xml::VtpReader::read(path)
+            .ok()
+            .map(Block::PolyData),
+        "vtu" => crate::io::xml::VtuReader::read(path)
+            .ok()
+            .map(Block::UnstructuredGrid),
+        "vti" => crate::io::xml::VtiReader::read(path)
+            .ok()
+            .map(Block::ImageData),
+        "vtr" => crate::io::xml::VtrReader::read(path)
+            .ok()
+            .map(Block::RectilinearGrid),
+        "vts" => crate::io::xml::VtsReader::read(path)
+            .ok()
+            .map(Block::StructuredGrid),
         _ => None,
     }
 }

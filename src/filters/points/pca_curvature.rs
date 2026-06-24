@@ -13,9 +13,13 @@ pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
 
     if n == 0 || k == 0 {
         let mut result = input.clone();
-        result.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Curvature", curvatures, 1),
-        ));
+        result
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Curvature",
+                curvatures,
+                1,
+            )));
         return result;
     }
 
@@ -77,9 +81,13 @@ pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
     }
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Curvature", curvatures, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Curvature",
+            curvatures,
+            1,
+        )));
     result
 }
 
@@ -146,7 +154,11 @@ mod tests {
         // Interior points should have very low curvature
         let mut buf = [0.0f64];
         arr.tuple_as_f64(12, &mut buf); // center point
-        assert!(buf[0] < 0.1, "flat surface curvature should be near zero, got {}", buf[0]);
+        assert!(
+            buf[0] < 0.1,
+            "flat surface curvature should be near zero, got {}",
+            buf[0]
+        );
     }
 
     #[test]

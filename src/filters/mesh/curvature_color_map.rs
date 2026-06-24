@@ -49,7 +49,9 @@ pub fn curvature_to_color(input: &PolyData, array_name: &str) -> PolyData {
     }
 
     let color_arr = DataArray::from_vec("CurvatureColor", colors, 3);
-    output.point_data_mut().add_array(AnyDataArray::F64(color_arr));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(color_arr));
     output
 }
 
@@ -102,9 +104,15 @@ mod tests {
         let arr = result.point_data().get_array("CurvatureColor").unwrap();
         let mut buf = [0.0f64; 3];
         arr.tuple_as_f64(0, &mut buf); // curvature = -1.0
-        // Should be blue: r~0, g~0, b~1
-        assert!(buf[2] > 0.9, "Blue channel should be high for negative curvature");
-        assert!(buf[0] < 0.1, "Red channel should be low for negative curvature");
+                                       // Should be blue: r~0, g~0, b~1
+        assert!(
+            buf[2] > 0.9,
+            "Blue channel should be high for negative curvature"
+        );
+        assert!(
+            buf[0] < 0.1,
+            "Red channel should be low for negative curvature"
+        );
     }
 
     #[test]
@@ -114,8 +122,14 @@ mod tests {
         let arr = result.point_data().get_array("CurvatureColor").unwrap();
         let mut buf = [0.0f64; 3];
         arr.tuple_as_f64(2, &mut buf); // curvature = +1.0
-        // Should be red: r~1, g~0, b~0
-        assert!(buf[0] > 0.9, "Red channel should be high for positive curvature");
-        assert!(buf[1] < 0.1, "Green channel should be low for positive curvature");
+                                       // Should be red: r~1, g~0, b~0
+        assert!(
+            buf[0] > 0.9,
+            "Red channel should be high for positive curvature"
+        );
+        assert!(
+            buf[1] < 0.1,
+            "Green channel should be low for positive curvature"
+        );
     }
 }

@@ -7,10 +7,14 @@ pub fn gothic_window(width: f64, height: f64, n_arch: usize) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut lines = CellArray::new();
     // Rectangular frame
-    let f0 = pts.len(); pts.push([-hw, 0.0, 0.0]);
-    let f1 = pts.len(); pts.push([hw, 0.0, 0.0]);
-    let f2 = pts.len(); pts.push([hw, 0.0, height]);
-    let f3 = pts.len(); pts.push([-hw, 0.0, height]);
+    let f0 = pts.len();
+    pts.push([-hw, 0.0, 0.0]);
+    let f1 = pts.len();
+    pts.push([hw, 0.0, 0.0]);
+    let f2 = pts.len();
+    pts.push([hw, 0.0, height]);
+    let f3 = pts.len();
+    pts.push([-hw, 0.0, height]);
     lines.push_cell(&[f0 as i64, f1 as i64]);
     lines.push_cell(&[f0 as i64, f3 as i64]);
     lines.push_cell(&[f1 as i64, f2 as i64]);
@@ -24,7 +28,9 @@ pub fn gothic_window(width: f64, height: f64, n_arch: usize) -> PolyData {
         let z = height + r * (angle.cos() - 1.0) + r * (std::f64::consts::PI / 3.0).cos();
         pts.push([x.min(0.0), 0.0, z]);
     }
-    for i in 0..na { lines.push_cell(&[(arch_base+i) as i64, (arch_base+i+1) as i64]); }
+    for i in 0..na {
+        lines.push_cell(&[(arch_base + i) as i64, (arch_base + i + 1) as i64]);
+    }
     let arch_right = pts.len();
     for i in 0..=na {
         let t = i as f64 / na as f64;
@@ -33,12 +39,19 @@ pub fn gothic_window(width: f64, height: f64, n_arch: usize) -> PolyData {
         let z = height + r * (angle.cos() - 1.0) + r * (std::f64::consts::PI / 3.0).cos();
         pts.push([x.max(0.0), 0.0, z]);
     }
-    for i in 0..na { lines.push_cell(&[(arch_right+i) as i64, (arch_right+i+1) as i64]); }
+    for i in 0..na {
+        lines.push_cell(&[(arch_right + i) as i64, (arch_right + i + 1) as i64]);
+    }
     // Central mullion
-    let m0 = pts.len(); pts.push([0.0, 0.0, 0.0]);
-    let m1 = pts.len(); pts.push([0.0, 0.0, height]);
+    let m0 = pts.len();
+    pts.push([0.0, 0.0, 0.0]);
+    let m1 = pts.len();
+    pts.push([0.0, 0.0, height]);
     lines.push_cell(&[m0 as i64, m1 as i64]);
-    let mut m = PolyData::new(); m.points = pts; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

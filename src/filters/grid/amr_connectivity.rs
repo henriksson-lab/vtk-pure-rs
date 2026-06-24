@@ -29,16 +29,16 @@ pub fn amr_connected_regions(
         active[i] = buf[0] >= threshold;
     }
 
-    let ci = |i: usize, j: usize, k: usize| -> usize {
-        i + j * gs[0] + k * gs[0] * gs[1]
-    };
+    let ci = |i: usize, j: usize, k: usize| -> usize { i + j * gs[0] + k * gs[0] * gs[1] };
 
     // Flood-fill connected components
     let mut labels = vec![-1i64; n];
     let mut next_label = 0i64;
 
     for seed in 0..n {
-        if !active[seed] || labels[seed] >= 0 { continue; }
+        if !active[seed] || labels[seed] >= 0 {
+            continue;
+        }
 
         // BFS from seed
         let mut queue = std::collections::VecDeque::new();
@@ -53,12 +53,24 @@ pub fn amr_connected_regions(
 
             // Check 6-connected neighbors
             let neighbors = [
-                if i > 0 { Some(ci(i-1,j,k)) } else { None },
-                if i+1 < gs[0] { Some(ci(i+1,j,k)) } else { None },
-                if j > 0 { Some(ci(i,j-1,k)) } else { None },
-                if j+1 < gs[1] { Some(ci(i,j+1,k)) } else { None },
-                if k > 0 { Some(ci(i,j,k-1)) } else { None },
-                if k+1 < gs[2] { Some(ci(i,j,k+1)) } else { None },
+                if i > 0 { Some(ci(i - 1, j, k)) } else { None },
+                if i + 1 < gs[0] {
+                    Some(ci(i + 1, j, k))
+                } else {
+                    None
+                },
+                if j > 0 { Some(ci(i, j - 1, k)) } else { None },
+                if j + 1 < gs[1] {
+                    Some(ci(i, j + 1, k))
+                } else {
+                    None
+                },
+                if k > 0 { Some(ci(i, j, k - 1)) } else { None },
+                if k + 1 < gs[2] {
+                    Some(ci(i, j, k + 1))
+                } else {
+                    None
+                },
             ];
 
             for ni in neighbors.into_iter().flatten() {
@@ -72,12 +84,19 @@ pub fn amr_connected_regions(
         next_label += 1;
     }
 
-    let region_data: Vec<f64> = labels.iter().map(|&l| if l >= 0 { l as f64 } else { -1.0 }).collect();
+    let region_data: Vec<f64> = labels
+        .iter()
+        .map(|&l| if l >= 0 { l as f64 } else { -1.0 })
+        .collect();
 
     let mut result = htg.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("RegionId", region_data, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "RegionId",
+            region_data,
+            1,
+        )));
     result
 }
 
@@ -91,7 +110,11 @@ pub fn count_amr_regions(htg: &HyperTreeGrid) -> usize {
                 arr.tuple_as_f64(i, &mut buf);
                 max_id = max_id.max(buf[0] as i64);
             }
-            if max_id >= 0 { (max_id + 1) as usize } else { 0 }
+            if max_id >= 0 {
+                (max_id + 1) as usize
+            } else {
+                0
+            }
         }
         None => 0,
     }
@@ -105,9 +128,12 @@ mod tests {
     fn two_regions() {
         let mut htg = HyperTreeGrid::new([5, 1, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         // Two groups separated by a gap: [1, 1, 0, 1, 1]
-        htg.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![1.0, 1.0, 0.0, 1.0, 1.0], 1),
-        ));
+        htg.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 1.0, 0.0, 1.0, 1.0],
+                1,
+            )));
         let result = amr_connected_regions(&htg, "val", 0.5);
         let count = count_amr_regions(&result);
         assert_eq!(count, 2);
@@ -117,9 +143,8 @@ mod tests {
     fn single_region() {
         let mut htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let vals = vec![1.0; 9];
-        htg.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vals, 1),
-        ));
+        htg.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", vals, 1)));
         let result = amr_connected_regions(&htg, "val", 0.5);
         assert_eq!(count_amr_regions(&result), 1);
     }
@@ -127,9 +152,12 @@ mod tests {
     #[test]
     fn no_active_cells() {
         let mut htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
-        htg.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0; 4], 1),
-        ));
+        htg.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0; 4],
+                1,
+            )));
         let result = amr_connected_regions(&htg, "val", 0.5);
         assert_eq!(count_amr_regions(&result), 0);
     }

@@ -3,7 +3,7 @@ use crate::data::{CellArray, Points, PolyData};
 /// Fluent builder for constructing PolyData incrementally.
 ///
 /// ```
-/// use crate::data::PolyDataBuilder;
+/// use vtk_pure_rs::data::PolyDataBuilder;
 ///
 /// let pd = PolyDataBuilder::new()
 ///     .point([0.0, 0.0, 0.0])
@@ -92,7 +92,9 @@ impl PolyDataBuilder {
 }
 
 impl Default for PolyDataBuilder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -114,7 +116,12 @@ mod tests {
     #[test]
     fn build_mixed() {
         let pd = PolyDataBuilder::new()
-            .points(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]])
+            .points(&[
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ])
             .triangle(0, 1, 2)
             .quad(0, 1, 3, 2)
             .line(0, 1)

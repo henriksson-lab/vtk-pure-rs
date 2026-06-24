@@ -22,10 +22,12 @@ pub fn image_fft_2d(input: &ImageData, scalar_name: &str) -> ImageData {
 
     // Read input data
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..n).map(|i| {
-        arr.tuple_as_f64(i, &mut buf);
-        buf[0]
-    }).collect();
+    let vals: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
 
     // Pad to next power of two
     let fft_nx = nx.next_power_of_two();
@@ -79,7 +81,11 @@ pub fn image_fft_2d(input: &ImageData, scalar_name: &str) -> ImageData {
     ImageData::with_dimensions(nx, ny, dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("Magnitude", magnitude, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+            "Magnitude",
+            magnitude,
+            1,
+        )))
         .with_point_array(AnyDataArray::F64(DataArray::from_vec("Phase", phase, 1)))
 }
 

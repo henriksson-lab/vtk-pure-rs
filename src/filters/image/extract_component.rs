@@ -68,10 +68,7 @@ mod tests {
             .add_array(AnyDataArray::F64(DataArray::from_vec("rgb", vals, 3)));
 
         let result = extract_component(&img, "rgb", 0);
-        let out_arr = result
-            .point_data()
-            .get_array("rgb_Component0")
-            .unwrap();
+        let out_arr = result.point_data().get_array("rgb_Component0").unwrap();
         assert_eq!(out_arr.num_tuples(), n);
         assert_eq!(out_arr.num_components(), 1);
         let mut val = [0.0f64];
@@ -92,10 +89,7 @@ mod tests {
             .add_array(AnyDataArray::F64(DataArray::from_vec("data", vals, 2)));
 
         let result = extract_component(&img, "data", 1);
-        let out_arr = result
-            .point_data()
-            .get_array("data_Component1")
-            .unwrap();
+        let out_arr = result.point_data().get_array("data_Component1").unwrap();
         let mut val = [0.0f64];
         out_arr.tuple_as_f64(1, &mut val);
         assert!((val[0] - 10.0).abs() < 1e-12);

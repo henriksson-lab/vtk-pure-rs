@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, DataSet};
+use crate::data::{CellArray, DataSet, Points, PolyData};
 
 /// Generate a wireframe bounding box outline from any PolyData.
 ///
@@ -24,9 +24,18 @@ pub fn outline(input: &PolyData) -> PolyData {
     let mut lines = CellArray::new();
     // 12 edges
     let edges: [[i64; 2]; 12] = [
-        [0, 1], [1, 2], [2, 3], [3, 0], // bottom face
-        [4, 5], [5, 6], [6, 7], [7, 4], // top face
-        [0, 4], [1, 5], [2, 6], [3, 7], // vertical edges
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 0], // bottom face
+        [4, 5],
+        [5, 6],
+        [6, 7],
+        [7, 4], // top face
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7], // vertical edges
     ];
     for e in &edges {
         lines.push_cell(e);

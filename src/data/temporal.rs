@@ -27,7 +27,9 @@ impl TemporalDataSet {
 
     /// Time range [min, max].
     pub fn time_range(&self) -> Option<[f64; 2]> {
-        if self.steps.is_empty() { return None; }
+        if self.steps.is_empty() {
+            return None;
+        }
         Some([self.steps.first().unwrap().0, self.steps.last().unwrap().0])
     }
 
@@ -43,8 +45,12 @@ impl TemporalDataSet {
 
     /// Get the PolyData nearest to the given time.
     pub fn at_time(&self, time: f64) -> Option<&PolyData> {
-        if self.steps.is_empty() { return None; }
-        let idx = self.steps.iter()
+        if self.steps.is_empty() {
+            return None;
+        }
+        let idx = self
+            .steps
+            .iter()
             .enumerate()
             .min_by(|(_, (ta, _)), (_, (tb, _))| {
                 (ta - time).abs().partial_cmp(&(tb - time).abs()).unwrap()
@@ -56,7 +62,9 @@ impl TemporalDataSet {
     /// Find the two bracketing steps for interpolation at a given time.
     /// Returns (step_a, step_b, interpolation_factor).
     pub fn bracket(&self, time: f64) -> Option<(&PolyData, &PolyData, f64)> {
-        if self.steps.len() < 2 { return None; }
+        if self.steps.len() < 2 {
+            return None;
+        }
         for i in 0..self.steps.len() - 1 {
             let (t0, pd0) = &self.steps[i];
             let (t1, pd1) = &self.steps[i + 1];
@@ -75,24 +83,31 @@ impl TemporalDataSet {
     /// Interpolate point positions between two bracketing time steps.
     pub fn interpolate_positions(&self, time: f64) -> Option<PolyData> {
         let (pd0, pd1, t) = self.bracket(time)?;
-        if pd0.points.len() != pd1.points.len() { return None; }
+        if pd0.points.len() != pd1.points.len() {
+            return None;
+        }
 
         let mut result = pd0.clone();
         for i in 0..result.points.len() {
             let p0 = pd0.points.get(i);
             let p1 = pd1.points.get(i);
-            result.points.set(i, [
-                p0[0] + t * (p1[0] - p0[0]),
-                p0[1] + t * (p1[1] - p0[1]),
-                p0[2] + t * (p1[2] - p0[2]),
-            ]);
+            result.points.set(
+                i,
+                [
+                    p0[0] + t * (p1[0] - p0[0]),
+                    p0[1] + t * (p1[1] - p0[1]),
+                    p0[2] + t * (p1[2] - p0[2]),
+                ],
+            );
         }
         Some(result)
     }
 }
 
 impl Default for TemporalDataSet {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -101,7 +116,11 @@ mod tests {
 
     fn make_pd(x_offset: f64) -> PolyData {
         PolyData::from_triangles(
-            vec![[x_offset, 0.0, 0.0], [x_offset + 1.0, 0.0, 0.0], [x_offset, 1.0, 0.0]],
+            vec![
+                [x_offset, 0.0, 0.0],
+                [x_offset + 1.0, 0.0, 0.0],
+                [x_offset, 1.0, 0.0],
+            ],
             vec![[0, 1, 2]],
         )
     }

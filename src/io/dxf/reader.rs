@@ -1,5 +1,5 @@
-use std::io::BufRead;
 use crate::data::{CellArray, Points, PolyData};
+use std::io::BufRead;
 
 /// Reader for AutoCAD DXF format (3DFACE and LINE entities).
 pub struct DxfReader<R: BufRead> {
@@ -18,14 +18,17 @@ impl<R: BufRead> DxfReader<R> {
         loop {
             buf.clear();
             let n = self.reader.read_line(&mut buf).map_err(|e| e.to_string())?;
-            if n == 0 { break; }
+            if n == 0 {
+                break;
+            }
             lines.push(buf.trim().to_string());
         }
 
         let mut points = Points::<f64>::new();
         let mut polys = CellArray::new();
         let mut line_cells = CellArray::new();
-        let mut point_map: std::collections::HashMap<[i64; 3], usize> = std::collections::HashMap::new();
+        let mut point_map: std::collections::HashMap<[i64; 3], usize> =
+            std::collections::HashMap::new();
 
         let mut i = 0;
         while i < lines.len() {
@@ -94,7 +97,9 @@ fn parse_3dface(lines: &[String]) -> (Vec<[f64; 3]>, usize) {
             Ok(c) => c,
             Err(_) => break,
         };
-        if code == 0 { break; } // next entity
+        if code == 0 {
+            break;
+        } // next entity
 
         let value = &lines[i + 1];
         i += 2;
@@ -128,7 +133,9 @@ fn parse_line(lines: &[String]) -> (Vec<[f64; 3]>, usize) {
             Ok(c) => c,
             Err(_) => break,
         };
-        if code == 0 { break; }
+        if code == 0 {
+            break;
+        }
 
         let value = &lines[i + 1];
         i += 2;
@@ -148,7 +155,11 @@ fn parse_line(lines: &[String]) -> (Vec<[f64; 3]>, usize) {
 }
 
 fn quantize(p: [f64; 3]) -> [i64; 3] {
-    [(p[0] * 1e8) as i64, (p[1] * 1e8) as i64, (p[2] * 1e8) as i64]
+    [
+        (p[0] * 1e8) as i64,
+        (p[1] * 1e8) as i64,
+        (p[2] * 1e8) as i64,
+    ]
 }
 
 /// Read a DXF file from a file path.
@@ -160,7 +171,9 @@ pub fn read_dxf_file(path: &std::path::Path) -> Result<PolyData, String> {
 /// Write a DXF file to a file path.
 pub fn write_dxf_file(mesh: &PolyData, path: &std::path::Path) -> Result<(), String> {
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
-    crate::io::dxf::DxfWriter::new(std::io::BufWriter::new(file)).write(mesh).map_err(|e| e.to_string())
+    crate::io::dxf::DxfWriter::new(std::io::BufWriter::new(file))
+        .write(mesh)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -174,7 +187,9 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let mut buf = Vec::new();
-        crate::io::dxf::DxfWriter::new(&mut buf).write(&mesh).unwrap();
+        crate::io::dxf::DxfWriter::new(&mut buf)
+            .write(&mesh)
+            .unwrap();
 
         let loaded = DxfReader::new(&buf[..]).read().unwrap();
         assert_eq!(loaded.points.len(), 3);
@@ -187,11 +202,18 @@ mod tests {
     #[test]
     fn roundtrip_quad() {
         let mesh = PolyData::from_quads(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2, 3]],
         );
         let mut buf = Vec::new();
-        crate::io::dxf::DxfWriter::new(&mut buf).write(&mesh).unwrap();
+        crate::io::dxf::DxfWriter::new(&mut buf)
+            .write(&mesh)
+            .unwrap();
 
         let loaded = DxfReader::new(&buf[..]).read().unwrap();
         assert_eq!(loaded.points.len(), 4);

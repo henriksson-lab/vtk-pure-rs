@@ -61,9 +61,7 @@ pub fn compute_pca(input: &PolyData) -> PcaResult {
     }
 
     // Eigendecomposition of 3x3 symmetric matrix using Cardano's method
-    let (eigenvalues, axes) = symmetric_eigen_3x3(
-        cov[0], cov[1], cov[2], cov[3], cov[4], cov[5],
-    );
+    let (eigenvalues, axes) = symmetric_eigen_3x3(cov[0], cov[1], cov[2], cov[3], cov[4], cov[5]);
 
     PcaResult {
         centroid: [cx, cy, cz],
@@ -80,7 +78,12 @@ pub fn compute_pca(input: &PolyData) -> PcaResult {
 ///
 /// Returns (eigenvalues sorted descending, corresponding eigenvectors).
 fn symmetric_eigen_3x3(
-    a: f64, b: f64, c: f64, d: f64, e: f64, f: f64,
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    f: f64,
 ) -> ([f64; 3], [[f64; 3]; 3]) {
     // Characteristic equation: det(A - lI) = 0
     // -l^3 + (a+d+f)l^2 - (ad+af+df-b^2-c^2-e^2)l + det(A) = 0
@@ -89,11 +92,7 @@ fn symmetric_eigen_3x3(
     if p1 < 1e-30 {
         // Matrix is diagonal
         let mut evals = [a, d, f];
-        let mut evecs: [[f64; 3]; 3] = [
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-        ];
+        let mut evecs: [[f64; 3]; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         // Sort descending
         for i in 0..3 {
             for j in (i + 1)..3 {
@@ -120,8 +119,7 @@ fn symmetric_eigen_3x3(
     let b33: f64 = (f - q) * inv_p;
 
     // det(B)
-    let det_b: f64 = b11 * (b22 * b33 - b23 * b23)
-        - b12 * (b12 * b33 - b23 * b13)
+    let det_b: f64 = b11 * (b22 * b33 - b23 * b23) - b12 * (b12 * b33 - b23 * b13)
         + b13 * (b12 * b23 - b22 * b13);
 
     let half_det: f64 = det_b / 2.0;
@@ -168,9 +166,15 @@ fn symmetric_eigen_3x3(
 }
 
 fn compute_eigenvector(
-    a: f64, b: f64, c: f64,
-    d: f64, e: f64, f_val: f64,
-    g: f64, h: f64, i: f64,
+    a: f64,
+    b: f64,
+    c: f64,
+    d: f64,
+    e: f64,
+    f_val: f64,
+    g: f64,
+    h: f64,
+    i: f64,
 ) -> [f64; 3] {
     // Use cross products of rows to find the eigenvector
     let r0 = [a, b, c];

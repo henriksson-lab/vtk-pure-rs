@@ -1,5 +1,5 @@
-use rayon::prelude::*;
 use crate::data::{CellArray, DataArray, ImageData, Points, PolyData};
+use rayon::prelude::*;
 
 /// Extract an isosurface from scalar data on an ImageData grid using marching cubes.
 ///
@@ -18,7 +18,7 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
     let org = image.origin();
 
     // Pre-allocate output buffers (estimate ~2% of voxels produce triangles)
-    let est = ((dims[0]-1) * (dims[1]-1) * (dims[2]-1)) / 50 + 64;
+    let est = ((dims[0] - 1) * (dims[1] - 1) * (dims[2] - 1)) / 50 + 64;
     let mut pts_flat: Vec<f64> = Vec::with_capacity(est * 9);
     let mut nrm_flat: Vec<f64> = Vec::with_capacity(est * 9);
     let mut conn: Vec<i64> = Vec::with_capacity(est * 3);
@@ -37,24 +37,38 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
                 // Inline index computation (avoid method call overhead)
                 let base = k * nxy + j * nx + i;
                 let corners = [
-                    base, base + 1, base + nx + 1, base + nx,
-                    base + nxy, base + nxy + 1, base + nxy + nx + 1, base + nxy + nx,
+                    base,
+                    base + 1,
+                    base + nx + 1,
+                    base + nx,
+                    base + nxy,
+                    base + nxy + 1,
+                    base + nxy + nx + 1,
+                    base + nxy + nx,
                 ];
 
-                let values: [f64; 8] = unsafe {[
-                    *scalars.get_unchecked(corners[0]),
-                    *scalars.get_unchecked(corners[1]),
-                    *scalars.get_unchecked(corners[2]),
-                    *scalars.get_unchecked(corners[3]),
-                    *scalars.get_unchecked(corners[4]),
-                    *scalars.get_unchecked(corners[5]),
-                    *scalars.get_unchecked(corners[6]),
-                    *scalars.get_unchecked(corners[7]),
-                ]};
+                let values: [f64; 8] = unsafe {
+                    [
+                        *scalars.get_unchecked(corners[0]),
+                        *scalars.get_unchecked(corners[1]),
+                        *scalars.get_unchecked(corners[2]),
+                        *scalars.get_unchecked(corners[3]),
+                        *scalars.get_unchecked(corners[4]),
+                        *scalars.get_unchecked(corners[5]),
+                        *scalars.get_unchecked(corners[6]),
+                        *scalars.get_unchecked(corners[7]),
+                    ]
+                };
 
                 let positions: [[f64; 3]; 8] = [
-                    [x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],
-                    [x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],
+                    [x0, y0, z0],
+                    [x1, y0, z0],
+                    [x1, y1, z0],
+                    [x0, y1, z0],
+                    [x0, y0, z1],
+                    [x1, y0, z1],
+                    [x1, y1, z1],
+                    [x0, y1, z1],
                 ];
 
                 // Compute cube index
@@ -76,7 +90,12 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
 
                 // Compute gradients lazily — only for corners that are edge endpoints
                 // Inline gradient: for interior voxels, all 8 corners have valid neighbors
-                let interior = i > 0 && i + 1 < dims[0] - 1 && j > 0 && j + 1 < dims[1] - 1 && k > 0 && k + 1 < dims[2] - 1;
+                let interior = i > 0
+                    && i + 1 < dims[0] - 1
+                    && j > 0
+                    && j + 1 < dims[1] - 1
+                    && k > 0
+                    && k + 1 < dims[2] - 1;
                 let mut grads: [[f64; 3]; 8] = [[0.0; 3]; 8];
                 let mut grad_computed = [false; 8];
 
@@ -91,9 +110,15 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
                                     // Fast path: no boundary checks
                                     unsafe {
                                         grads[ec] = [
-                                            (*scalars.get_unchecked(ci + 1) - *scalars.get_unchecked(ci - 1)) * 0.5,
-                                            (*scalars.get_unchecked(ci + nx) - *scalars.get_unchecked(ci - nx)) * 0.5,
-                                            (*scalars.get_unchecked(ci + nxy) - *scalars.get_unchecked(ci - nxy)) * 0.5,
+                                            (*scalars.get_unchecked(ci + 1)
+                                                - *scalars.get_unchecked(ci - 1))
+                                                * 0.5,
+                                            (*scalars.get_unchecked(ci + nx)
+                                                - *scalars.get_unchecked(ci - nx))
+                                                * 0.5,
+                                            (*scalars.get_unchecked(ci + nxy)
+                                                - *scalars.get_unchecked(ci - nxy))
+                                                * 0.5,
                                         ];
                                     }
                                 } else {
@@ -144,7 +169,10 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
     let mut pd = PolyData::new();
     pd.points = points;
     pd.polys = polys;
-    pd.point_data_mut().add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("Normals", nrm_flat, 3)));
+    pd.point_data_mut()
+        .add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "Normals", nrm_flat, 3,
+        )));
     pd.point_data_mut().set_active_normals("Normals");
     pd
 }
@@ -198,9 +226,18 @@ fn lerp3(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
 
 // Edge endpoint vertex indices (which two corners each edge connects)
 const EDGE_VERTICES: [(usize, usize); 12] = [
-    (0, 1), (1, 2), (2, 3), (3, 0), // bottom face
-    (4, 5), (5, 6), (6, 7), (7, 4), // top face
-    (0, 4), (1, 5), (2, 6), (3, 7), // vertical edges
+    (0, 1),
+    (1, 2),
+    (2, 3),
+    (3, 0), // bottom face
+    (4, 5),
+    (5, 6),
+    (6, 7),
+    (7, 4), // top face
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7), // vertical edges
 ];
 
 // Marching cubes edge table: for each of 256 cube configurations,
@@ -555,14 +592,17 @@ pub fn marching_cubes_par(image: &ImageData, scalars: &[f64], iso_value: f64) ->
                             cube_index |= 1 << bit;
                         }
                     }
-                    if cube_index == 0 || cube_index == 255 { continue; }
+                    if cube_index == 0 || cube_index == 255 {
+                        continue;
+                    }
 
                     let edge_flags = EDGE_TABLE[cube_index as usize];
-                    if edge_flags == 0 { continue; }
+                    if edge_flags == 0 {
+                        continue;
+                    }
 
-                    let grads: [[f64; 3]; 8] = std::array::from_fn(|c| {
-                        gradient_at(scalars, corners[c], nx, ny, dims)
-                    });
+                    let grads: [[f64; 3]; 8] =
+                        std::array::from_fn(|c| gradient_at(scalars, corners[c], nx, ny, dims));
 
                     let mut edge_verts = [0usize; 12];
                     for edge in 0..12 {
@@ -575,9 +615,9 @@ pub fn marching_cubes_par(image: &ImageData, scalars: &[f64], iso_value: f64) ->
                             };
                             let p = lerp3(positions[e0], positions[e1], t);
                             let n = lerp3(grads[e0], grads[e1], t);
-                            let nlen = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
+                            let nlen = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
                             let normal = if nlen > 1e-10 {
-                                [-n[0]/nlen, -n[1]/nlen, -n[2]/nlen]
+                                [-n[0] / nlen, -n[1] / nlen, -n[2] / nlen]
                             } else {
                                 [0.0, 0.0, 1.0]
                             };

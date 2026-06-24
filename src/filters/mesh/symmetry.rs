@@ -1,4 +1,4 @@
-use crate::data::{PolyData, DataSet, KdTree};
+use crate::data::{DataSet, KdTree, PolyData};
 
 /// Check if a mesh is approximately symmetric across a coordinate plane.
 ///
@@ -7,7 +7,9 @@ use crate::data::{PolyData, DataSet, KdTree};
 /// Returns the fraction of points with a match (1.0 = perfectly symmetric).
 pub fn symmetry_score(input: &PolyData, plane: usize, tolerance: f64) -> f64 {
     let n = input.points.len();
-    if n == 0 { return 1.0; }
+    if n == 0 {
+        return 1.0;
+    }
 
     let bb = input.bounds();
     let center = match plane {
@@ -27,7 +29,9 @@ pub fn symmetry_score(input: &PolyData, plane: usize, tolerance: f64) -> f64 {
         mirror[plane.min(2)] = 2.0 * center - mirror[plane.min(2)];
 
         if let Some((_, d2)) = tree.nearest(mirror) {
-            if d2 <= tol2 { matched += 1; }
+            if d2 <= tol2 {
+                matched += 1;
+            }
         }
     }
 
@@ -43,8 +47,13 @@ pub fn best_symmetry_plane(input: &PolyData, tolerance: f64) -> (usize, f64) {
         symmetry_score(input, 1, tolerance),
         symmetry_score(input, 2, tolerance),
     ];
-    let best = if scores[0] >= scores[1] && scores[0] >= scores[2] { 0 }
-        else if scores[1] >= scores[2] { 1 } else { 2 };
+    let best = if scores[0] >= scores[1] && scores[0] >= scores[2] {
+        0
+    } else if scores[1] >= scores[2] {
+        1
+    } else {
+        2
+    };
     (best, scores[best])
 }
 

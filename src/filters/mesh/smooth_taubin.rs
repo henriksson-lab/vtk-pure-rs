@@ -9,15 +9,21 @@ use crate::data::{Points, PolyData};
 /// Typical values: lambda=0.5, mu=-0.53 (mu < -lambda to avoid shrinkage).
 pub fn taubin_smooth(input: &PolyData, lambda: f64, mu: f64, iterations: usize) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
-            let b = cell[(i+1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-            if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+            let b = cell[(i + 1) % cell.len()] as usize;
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
         }
     }
 
@@ -31,7 +37,9 @@ pub fn taubin_smooth(input: &PolyData, lambda: f64, mu: f64, iterations: usize) 
     }
 
     let mut points = Points::<f64>::new();
-    for p in &pts { points.push(*p); }
+    for p in &pts {
+        points.push(*p);
+    }
     let mut pd = input.clone();
     pd.points = points;
     pd
@@ -41,13 +49,19 @@ fn laplacian_step(pts: &[[f64; 3]], neighbors: &[Vec<usize>], factor: f64) -> Ve
     let n = pts.len();
     let mut new_pts = pts.to_vec();
     for i in 0..n {
-        if neighbors[i].is_empty() { continue; }
+        if neighbors[i].is_empty() {
+            continue;
+        }
         let cnt = neighbors[i].len() as f64;
         let mut avg = [0.0; 3];
         for &j in &neighbors[i] {
-            avg[0] += pts[j][0]; avg[1] += pts[j][1]; avg[2] += pts[j][2];
+            avg[0] += pts[j][0];
+            avg[1] += pts[j][1];
+            avg[2] += pts[j][2];
         }
-        avg[0] /= cnt; avg[1] /= cnt; avg[2] /= cnt;
+        avg[0] /= cnt;
+        avg[1] /= cnt;
+        avg[2] /= cnt;
         new_pts[i] = [
             pts[i][0] + factor * (avg[0] - pts[i][0]),
             pts[i][1] + factor * (avg[1] - pts[i][1]),

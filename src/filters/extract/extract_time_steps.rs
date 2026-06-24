@@ -10,7 +10,9 @@ pub fn extract_time_step_by_index(temporal: &TemporalDataSet, index: usize) -> O
 /// Extract a time step closest to the given time value.
 pub fn extract_time_step_at_time(temporal: &TemporalDataSet, time: f64) -> Option<PolyData> {
     let times = temporal.times();
-    if times.is_empty() { return None; }
+    if times.is_empty() {
+        return None;
+    }
 
     let mut best_idx = 0;
     let mut best_diff = (times[0] - time).abs();
@@ -57,7 +59,9 @@ pub fn extract_every_nth_step(temporal: &TemporalDataSet, n: usize) -> TemporalD
 /// Snap a time value to the nearest available time step.
 pub fn snap_to_nearest_time_step(temporal: &TemporalDataSet, time: f64) -> Option<f64> {
     let times = temporal.times();
-    if times.is_empty() { return None; }
+    if times.is_empty() {
+        return None;
+    }
     let mut best = times[0];
     let mut best_diff = (best - time).abs();
     for &t in &times[1..] {

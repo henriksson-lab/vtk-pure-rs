@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
+use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 
 /// Compute the distance from each point of `source` to the nearest point of `target`.
 ///
@@ -12,9 +12,7 @@ pub fn poly_data_distance(source: &PolyData, target: &PolyData) -> PolyData {
         return source.clone();
     }
 
-    let tgt_pts: Vec<[f64; 3]> = (0..n_tgt)
-        .map(|i| target.points.get(i))
-        .collect();
+    let tgt_pts: Vec<[f64; 3]> = (0..n_tgt).map(|i| target.points.get(i)).collect();
     let tree = KdTree::build(&tgt_pts);
 
     let mut distances = vec![0.0f64; n_src];
@@ -26,9 +24,10 @@ pub fn poly_data_distance(source: &PolyData, target: &PolyData) -> PolyData {
     }
 
     let mut pd = source.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Distance", distances, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Distance", distances, 1,
+        )));
     pd
 }
 

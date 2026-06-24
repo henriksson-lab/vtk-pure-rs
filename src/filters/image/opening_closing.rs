@@ -70,9 +70,11 @@ fn morphological_op(input: &ImageData, scalars: &str, dilate: bool) -> ImageData
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, result.clone(), 1),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -90,9 +92,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let mut values = vec![0.0f64; 25];
         values[12] = 1.0; // center pixel
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
         img
     }
 
@@ -101,9 +102,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let mut values = vec![1.0f64; 25];
         values[12] = 0.0; // center hole
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
         img
     }
 

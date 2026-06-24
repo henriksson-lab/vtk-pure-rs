@@ -27,7 +27,9 @@ pub fn extract_component(input: &PolyData, component_id: usize) -> PolyData {
     let union = |parent: &mut Vec<usize>, rank: &mut Vec<usize>, a: usize, b: usize| {
         let ra = find(parent, a);
         let rb = find(parent, b);
-        if ra == rb { return; }
+        if ra == rb {
+            return;
+        }
         if rank[ra] < rank[rb] {
             parent[ra] = rb;
         } else if rank[ra] > rank[rb] {
@@ -82,20 +84,22 @@ pub fn extract_component(input: &PolyData, component_id: usize) -> PolyData {
     // Remap cells
     let mut out_polys = CellArray::new();
     for cell in input.polys.iter() {
-        if cell.iter().all(|&id| point_map.contains_key(&(id as usize))) {
-            let mapped: Vec<i64> = cell.iter()
-                .map(|&id| point_map[&(id as usize)])
-                .collect();
+        if cell
+            .iter()
+            .all(|&id| point_map.contains_key(&(id as usize)))
+        {
+            let mapped: Vec<i64> = cell.iter().map(|&id| point_map[&(id as usize)]).collect();
             out_polys.push_cell(&mapped);
         }
     }
 
     let mut out_lines = CellArray::new();
     for cell in input.lines.iter() {
-        if cell.iter().all(|&id| point_map.contains_key(&(id as usize))) {
-            let mapped: Vec<i64> = cell.iter()
-                .map(|&id| point_map[&(id as usize)])
-                .collect();
+        if cell
+            .iter()
+            .all(|&id| point_map.contains_key(&(id as usize)))
+        {
+            let mapped: Vec<i64> = cell.iter().map(|&id| point_map[&(id as usize)]).collect();
             out_lines.push_cell(&mapped);
         }
     }
@@ -110,7 +114,9 @@ pub fn extract_component(input: &PolyData, component_id: usize) -> PolyData {
 /// Count the number of connected components.
 pub fn num_components(input: &PolyData) -> usize {
     let n = input.points.len();
-    if n == 0 { return 0; }
+    if n == 0 {
+        return 0;
+    }
 
     let mut parent: Vec<usize> = (0..n).collect();
     let mut rank: Vec<usize> = vec![0; n];
@@ -126,10 +132,17 @@ pub fn num_components(input: &PolyData) -> usize {
     let union = |parent: &mut Vec<usize>, rank: &mut Vec<usize>, a: usize, b: usize| {
         let ra = find(parent, a);
         let rb = find(parent, b);
-        if ra == rb { return; }
-        if rank[ra] < rank[rb] { parent[ra] = rb; }
-        else if rank[ra] > rank[rb] { parent[rb] = ra; }
-        else { parent[rb] = ra; rank[ra] += 1; }
+        if ra == rb {
+            return;
+        }
+        if rank[ra] < rank[rb] {
+            parent[ra] = rb;
+        } else if rank[ra] > rank[rb] {
+            parent[rb] = ra;
+        } else {
+            parent[rb] = ra;
+            rank[ra] += 1;
+        }
     };
 
     for cell in input.polys.iter() {

@@ -54,17 +54,23 @@ pub fn lsystem_to_polydata(instructions: &str, step: f64, angle_deg: f64) -> Pol
             '-' => dir -= angle,
             '[' => {
                 stack.push((x, y, dir));
-                if current_line.len() >= 2 { lines.push_cell(&current_line); }
+                if current_line.len() >= 2 {
+                    lines.push_cell(&current_line);
+                }
                 current_line.clear();
                 let idx = pts.len();
                 pts.push([x, y, 0.0]);
                 current_line.push(idx as i64);
             }
             ']' => {
-                if current_line.len() >= 2 { lines.push_cell(&current_line); }
+                if current_line.len() >= 2 {
+                    lines.push_cell(&current_line);
+                }
                 current_line.clear();
                 if let Some((sx, sy, sd)) = stack.pop() {
-                    x = sx; y = sy; dir = sd;
+                    x = sx;
+                    y = sy;
+                    dir = sd;
                     let idx = pts.len();
                     pts.push([x, y, 0.0]);
                     current_line.push(idx as i64);
@@ -73,7 +79,9 @@ pub fn lsystem_to_polydata(instructions: &str, step: f64, angle_deg: f64) -> Pol
             _ => {}
         }
     }
-    if current_line.len() >= 2 { lines.push_cell(&current_line); }
+    if current_line.len() >= 2 {
+        lines.push_cell(&current_line);
+    }
 
     let mut result = PolyData::new();
     result.points = pts;
@@ -83,7 +91,10 @@ pub fn lsystem_to_polydata(instructions: &str, step: f64, angle_deg: f64) -> Pol
 
 /// Generate Koch snowflake.
 pub fn koch_snowflake(iterations: usize, step: f64) -> PolyData {
-    let rules = [LRule { from: 'F', to: "F+F--F+F".to_string() }];
+    let rules = [LRule {
+        from: 'F',
+        to: "F+F--F+F".to_string(),
+    }];
     let s = lsystem_generate("F--F--F", &rules, iterations);
     lsystem_to_polydata(&s, step, 60.0)
 }
@@ -91,8 +102,14 @@ pub fn koch_snowflake(iterations: usize, step: f64) -> PolyData {
 /// Generate Hilbert curve.
 pub fn hilbert_curve(iterations: usize, step: f64) -> PolyData {
     let rules = [
-        LRule { from: 'A', to: "-BF+AFA+FB-".to_string() },
-        LRule { from: 'B', to: "+AF-BFB-FA+".to_string() },
+        LRule {
+            from: 'A',
+            to: "-BF+AFA+FB-".to_string(),
+        },
+        LRule {
+            from: 'B',
+            to: "+AF-BFB-FA+".to_string(),
+        },
     ];
     let s = lsystem_generate("A", &rules, iterations);
     lsystem_to_polydata(&s, step, 90.0)
@@ -103,7 +120,10 @@ mod tests {
     use super::*;
     #[test]
     fn test_generate() {
-        let rules = [LRule { from: 'F', to: "F+F".to_string() }];
+        let rules = [LRule {
+            from: 'F',
+            to: "F+F".to_string(),
+        }];
         let s = lsystem_generate("F", &rules, 2);
         assert_eq!(s, "F+F+F+F");
     }

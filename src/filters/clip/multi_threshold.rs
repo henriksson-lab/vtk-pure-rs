@@ -44,9 +44,8 @@ pub fn multi_threshold(
         }
 
         // Mean scalar over the cell
-        let mean: f64 = cell.iter()
-            .map(|&id| scalar_data[id as usize])
-            .sum::<f64>() / cell.len() as f64;
+        let mean: f64 =
+            cell.iter().map(|&id| scalar_data[id as usize]).sum::<f64>() / cell.len() as f64;
 
         // Check which interval matches
         let mut matched = None;
@@ -68,11 +67,15 @@ pub fn multi_threshold(
     pd.polys = out_polys;
     // Copy point data
     for i in 0..input.point_data().num_arrays() {
-        pd.point_data_mut().add_array(input.point_data().get_array_by_index(i).unwrap().clone());
+        pd.point_data_mut()
+            .add_array(input.point_data().get_array_by_index(i).unwrap().clone());
     }
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ThresholdId", threshold_ids, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ThresholdId",
+            threshold_ids,
+            1,
+        )));
     pd
 }
 
@@ -90,56 +93,75 @@ mod tests {
         // 2 triangles
         pd.polys.push_cell(&[0, 1, 2]); // mean scalar = (0+1+2)/3 = 1.0
         pd.polys.push_cell(&[0, 2, 3]); // mean scalar = (0+2+3)/3 = 1.67
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 1.0, 2.0, 3.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 1.0, 2.0, 3.0],
+                1,
+            )));
         pd
     }
 
     #[test]
     fn single_interval_matches_some() {
         let pd = make_test_mesh();
-        let result = multi_threshold(&pd, "val", &[
-            ThresholdInterval { min: 0.0, max: 1.2 },
-        ]);
+        let result = multi_threshold(&pd, "val", &[ThresholdInterval { min: 0.0, max: 1.2 }]);
         assert_eq!(result.polys.num_cells(), 1);
     }
 
     #[test]
     fn multiple_intervals() {
         let pd = make_test_mesh();
-        let result = multi_threshold(&pd, "val", &[
-            ThresholdInterval { min: 0.0, max: 1.2 },
-            ThresholdInterval { min: 1.5, max: 2.0 },
-        ]);
+        let result = multi_threshold(
+            &pd,
+            "val",
+            &[
+                ThresholdInterval { min: 0.0, max: 1.2 },
+                ThresholdInterval { min: 1.5, max: 2.0 },
+            ],
+        );
         assert_eq!(result.polys.num_cells(), 2);
     }
 
     #[test]
     fn no_match() {
         let pd = make_test_mesh();
-        let result = multi_threshold(&pd, "val", &[
-            ThresholdInterval { min: 5.0, max: 10.0 },
-        ]);
+        let result = multi_threshold(
+            &pd,
+            "val",
+            &[ThresholdInterval {
+                min: 5.0,
+                max: 10.0,
+            }],
+        );
         assert_eq!(result.polys.num_cells(), 0);
     }
 
     #[test]
     fn missing_scalars() {
         let pd = make_test_mesh();
-        let result = multi_threshold(&pd, "missing", &[
-            ThresholdInterval { min: 0.0, max: 10.0 },
-        ]);
+        let result = multi_threshold(
+            &pd,
+            "missing",
+            &[ThresholdInterval {
+                min: 0.0,
+                max: 10.0,
+            }],
+        );
         assert_eq!(result.polys.num_cells(), 0);
     }
 
     #[test]
     fn threshold_id_array() {
         let pd = make_test_mesh();
-        let result = multi_threshold(&pd, "val", &[
-            ThresholdInterval { min: 0.0, max: 1.2 },
-            ThresholdInterval { min: 1.5, max: 2.0 },
-        ]);
+        let result = multi_threshold(
+            &pd,
+            "val",
+            &[
+                ThresholdInterval { min: 0.0, max: 1.2 },
+                ThresholdInterval { min: 1.5, max: 2.0 },
+            ],
+        );
         let arr = result.cell_data().get_array("ThresholdId").unwrap();
         let mut ids = vec![0.0f64; 2];
         let mut b = [0.0f64];

@@ -1,7 +1,7 @@
 //! BoundaryMeshQuality — compute quality metrics for boundary edges.
 
-use std::collections::HashMap;
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Boundary edge quality statistics.
 #[derive(Debug, Clone)]
@@ -55,8 +55,8 @@ pub fn boundary_mesh_quality(input: &PolyData) -> PolyData {
     for &(a, b) in &boundary_edges {
         let pa = input.points.get(a);
         let pb = input.points.get(b);
-        let len = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-            .sqrt();
+        let len =
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
         edge_lengths.push(len);
         point_edge_length[a] += len;
         point_edge_count[a] += 1;
@@ -98,12 +98,20 @@ pub fn boundary_mesh_quality(input: &PolyData) -> PolyData {
     }
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryEdgeLength", boundary_edge_length, 1),
-    ));
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryAngle", boundary_angle, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryEdgeLength",
+            boundary_edge_length,
+            1,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryAngle",
+            boundary_angle,
+            1,
+        )));
     result
 }
 
@@ -127,10 +135,17 @@ mod tests {
         // Each vertex has 2 boundary neighbors, so boundary angle should be nonzero
         let mut buf = [0.0f64];
         angle_arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] > 0.0, "boundary angle should be positive at vertex 0");
+        assert!(
+            buf[0] > 0.0,
+            "boundary angle should be positive at vertex 0"
+        );
 
         // Vertex 0 is at origin, angle between edges to (1,0,0) and (0,1,0) = 90 degrees
-        assert!((buf[0] - 90.0).abs() < 1e-6, "expected 90 deg, got {}", buf[0]);
+        assert!(
+            (buf[0] - 90.0).abs() < 1e-6,
+            "expected 90 deg, got {}",
+            buf[0]
+        );
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use rayon::prelude::*;
 use crate::data::PolyData;
+use rayon::prelude::*;
 
 /// Laplacian smoothing of a PolyData mesh.
 pub fn smooth(
@@ -25,7 +25,9 @@ pub fn smooth(
         }
     }
     let mut adj_offset = vec![0u32; n + 1];
-    for i in 0..n { adj_offset[i + 1] = adj_offset[i] + adj_count[i]; }
+    for i in 0..n {
+        adj_offset[i + 1] = adj_offset[i] + adj_count[i];
+    }
     let total_adj = adj_offset[n] as usize;
     let mut adj_list = vec![0u32; total_adj];
     let mut adj_pos = adj_offset[..n].to_vec(); // write cursor per vertex
@@ -35,7 +37,9 @@ pub fn smooth(
         for j in 0..len {
             let a = cell[j] as usize;
             for k in 0..len {
-                if k == j { continue; }
+                if k == j {
+                    continue;
+                }
                 let b = cell[k] as u32;
                 let pos = adj_pos[a] as usize;
                 adj_list[pos] = b;
@@ -60,7 +64,9 @@ pub fn smooth(
     }
     // Rebuild offsets after dedup
     adj_offset[0] = 0;
-    for i in 0..n { adj_offset[i + 1] = adj_offset[i] + adj_count[i]; }
+    for i in 0..n {
+        adj_offset[i + 1] = adj_offset[i] + adj_count[i];
+    }
 
     // Boundary detection using edge counting with flat array
     let boundary: Vec<bool> = if fix_boundary {
@@ -119,7 +125,9 @@ pub fn smooth(
 
     // Write back
     for i in 0..n {
-        output.points.set(i, [pos[i*3], pos[i*3+1], pos[i*3+2]]);
+        output
+            .points
+            .set(i, [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]]);
     }
     output
 }
@@ -133,7 +141,9 @@ pub fn smooth_par(
 ) -> PolyData {
     let mut output = input.clone();
     let n = output.points.len();
-    if n == 0 || iterations == 0 { return output; }
+    if n == 0 || iterations == 0 {
+        return output;
+    }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
@@ -145,24 +155,49 @@ pub fn smooth_par(
             neighbors[b].push(a);
         }
     }
-    for nbrs in &mut neighbors { nbrs.sort_unstable(); nbrs.dedup(); }
+    for nbrs in &mut neighbors {
+        nbrs.sort_unstable();
+        nbrs.dedup();
+    }
 
-    let boundary = if fix_boundary { find_boundary_vertices(input) } else { HashSet::new() };
+    let boundary = if fix_boundary {
+        find_boundary_vertices(input)
+    } else {
+        HashSet::new()
+    };
     let factor = relaxation_factor.clamp(0.0, 1.0);
 
     for _ in 0..iterations {
         let current: Vec<[f64; 3]> = (0..n).map(|i| output.points.get(i)).collect();
-        let new_positions: Vec<[f64; 3]> = (0..n).into_par_iter().map(|i| {
-            let p = current[i];
-            let nbrs = &neighbors[i];
-            if boundary.contains(&i) || nbrs.is_empty() { return p; }
-            let mut avg = [0.0f64; 3];
-            let count = nbrs.len() as f64;
-            for &nb in nbrs { let q = current[nb]; avg[0]+=q[0]; avg[1]+=q[1]; avg[2]+=q[2]; }
-            avg[0]/=count; avg[1]/=count; avg[2]/=count;
-            [p[0]+factor*(avg[0]-p[0]), p[1]+factor*(avg[1]-p[1]), p[2]+factor*(avg[2]-p[2])]
-        }).collect();
-        for (i, &pos) in new_positions.iter().enumerate() { output.points.set(i, pos); }
+        let new_positions: Vec<[f64; 3]> = (0..n)
+            .into_par_iter()
+            .map(|i| {
+                let p = current[i];
+                let nbrs = &neighbors[i];
+                if boundary.contains(&i) || nbrs.is_empty() {
+                    return p;
+                }
+                let mut avg = [0.0f64; 3];
+                let count = nbrs.len() as f64;
+                for &nb in nbrs {
+                    let q = current[nb];
+                    avg[0] += q[0];
+                    avg[1] += q[1];
+                    avg[2] += q[2];
+                }
+                avg[0] /= count;
+                avg[1] /= count;
+                avg[2] /= count;
+                [
+                    p[0] + factor * (avg[0] - p[0]),
+                    p[1] + factor * (avg[1] - p[1]),
+                    p[2] + factor * (avg[2] - p[2]),
+                ]
+            })
+            .collect();
+        for (i, &pos) in new_positions.iter().enumerate() {
+            output.points.set(i, pos);
+        }
     }
     output
 }
@@ -208,7 +243,10 @@ fn find_boundary_vertices(input: &PolyData) -> HashSet<usize> {
     }
     let mut boundary = HashSet::new();
     for (&(a, b), &count) in &edge_count {
-        if count == 1 { boundary.insert(a); boundary.insert(b); }
+        if count == 1 {
+            boundary.insert(a);
+            boundary.insert(b);
+        }
     }
     boundary
 }
@@ -220,8 +258,13 @@ mod tests {
     #[test]
     fn smooth_preserves_topology() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
         );
         let result = smooth(&pd, 5, 0.5, false);
         assert_eq!(result.points.len(), 4);
@@ -231,19 +274,29 @@ mod tests {
     #[test]
     fn smooth_moves_interior() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[2.0,0.0,0.0],[2.0,2.0,0.0],[0.0,2.0,0.0],[0.5,0.5,0.0]],
-            vec![[0,1,4],[1,2,4],[2,3,4],[3,0,4]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [2.0, 2.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.5, 0.5, 0.0],
+            ],
+            vec![[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]],
         );
         let before = pd.points.get(4);
         let result = smooth(&pd, 10, 0.5, false);
         let after = result.points.get(4);
-        assert!((after[0]-1.0).abs() < (before[0]-1.0).abs(), "x should move toward center");
+        assert!(
+            (after[0] - 1.0).abs() < (before[0] - 1.0).abs(),
+            "x should move toward center"
+        );
     }
 
     #[test]
     fn zero_iterations_noop() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let result = smooth(&pd, 0, 0.5, false);
         assert_eq!(result.points.get(0), pd.points.get(0));

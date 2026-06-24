@@ -68,11 +68,7 @@ pub fn cell_distance_selector(
 /// Select points within a radius of a query point using brute-force search.
 ///
 /// Returns a PolyData with only the selected points (as vertex cells).
-pub fn radius_selector(
-    input: &PolyData,
-    center: [f64; 3],
-    radius: f64,
-) -> PolyData {
+pub fn radius_selector(input: &PolyData, center: [f64; 3], radius: f64) -> PolyData {
     let r2 = radius * radius;
     let mut selected: Vec<usize> = Vec::new();
 
@@ -112,7 +108,9 @@ pub fn linear_selector(
     let num_cells_total = input.polys.num_cells();
     for ci in 0..num_cells_total {
         let cell = input.polys.cell(ci);
-        if cell.is_empty() { continue; }
+        if cell.is_empty() {
+            continue;
+        }
         // Compute centroid
         let mut cx = 0.0;
         let mut cy = 0.0;
@@ -124,7 +122,9 @@ pub fn linear_selector(
             cz += p[2];
         }
         let n = cell.len() as f64;
-        cx /= n; cy /= n; cz /= n;
+        cx /= n;
+        cy /= n;
+        cz /= n;
 
         // Distance from centroid to line segment
         let to_point = [cx - line_start[0], cy - line_start[1], cz - line_start[2]];
@@ -147,7 +147,12 @@ pub fn linear_selector(
         }
     }
 
-    extract_cells_by_indices(input, &selected, "SelectedByLine", &vec![1.0; selected.len()])
+    extract_cells_by_indices(
+        input,
+        &selected,
+        "SelectedByLine",
+        &vec![1.0; selected.len()],
+    )
 }
 
 // --- helpers ---
@@ -165,7 +170,9 @@ fn extract_cells_by_indices(
     let total_cells = input.polys.num_cells();
 
     for &ci in cell_indices {
-        if ci >= total_cells { continue; }
+        if ci >= total_cells {
+            continue;
+        }
         let cell = input.polys.cell(ci);
         for &vid in cell {
             let vi = vid as usize;
@@ -178,7 +185,9 @@ fn extract_cells_by_indices(
 
     let mut new_polys = crate::data::CellArray::new();
     for &ci in cell_indices {
-        if ci >= total_cells { continue; }
+        if ci >= total_cells {
+            continue;
+        }
         let cell = input.polys.cell(ci);
         let remapped: Vec<i64> = cell.iter().map(|&v| point_map[v as usize]).collect();
         new_polys.push_cell(&remapped);
@@ -187,9 +196,13 @@ fn extract_cells_by_indices(
     let mut result = PolyData::new();
     result.points = new_points;
     result.polys = new_polys;
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(data_name, data_values.to_vec(), 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            data_name,
+            data_values.to_vec(),
+            1,
+        )));
     result
 }
 
@@ -216,8 +229,12 @@ mod tests {
         // 2x2 grid of triangles
         PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [2.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [2.0, 1.0, 0.0],
             ],
             vec![[0, 1, 4], [0, 4, 3], [1, 2, 5], [1, 5, 4]],
         )

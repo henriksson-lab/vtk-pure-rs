@@ -128,7 +128,12 @@ fn binary_morphology(input: &ImageData, scalars: &str, dilate: bool) -> ImageDat
 mod tests {
     use super::*;
 
-    fn make_test_image(nx: usize, ny: usize, nz: usize, ones: &[(usize, usize, usize)]) -> ImageData {
+    fn make_test_image(
+        nx: usize,
+        ny: usize,
+        nz: usize,
+        ones: &[(usize, usize, usize)],
+    ) -> ImageData {
         let n: usize = nx * ny * nz;
         let mut data: Vec<f64> = vec![0.0; n];
         for &(x, y, z) in ones {
@@ -136,9 +141,8 @@ mod tests {
             data[idx] = 1.0;
         }
         let mut img = ImageData::with_dimensions(nx, ny, nz);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Mask", data, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Mask", data, 1)));
         img
     }
 

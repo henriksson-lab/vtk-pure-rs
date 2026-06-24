@@ -37,9 +37,8 @@ pub fn sum_projection_z(input: &ImageData, scalars: &str) -> ImageData {
     out.set_spacing([spacing[0], spacing[1], 1.0]);
     let origin = input.origin();
     out.set_origin(origin);
-    out.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, 1),
-    ));
+    out.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
     out
 }
 
@@ -53,15 +52,23 @@ mod tests {
         let mut img = ImageData::with_dimensions(2, 2, 3);
         let mut vals: Vec<f64> = vec![0.0; 12];
         // z=0 layer
-        vals[0] = 1.0; vals[1] = 2.0; vals[2] = 3.0; vals[3] = 4.0;
+        vals[0] = 1.0;
+        vals[1] = 2.0;
+        vals[2] = 3.0;
+        vals[3] = 4.0;
         // z=1 layer
-        vals[4] = 10.0; vals[5] = 20.0; vals[6] = 30.0; vals[7] = 40.0;
+        vals[4] = 10.0;
+        vals[5] = 20.0;
+        vals[6] = 30.0;
+        vals[7] = 40.0;
         // z=2 layer
-        vals[8] = 100.0; vals[9] = 200.0; vals[10] = 300.0; vals[11] = 400.0;
+        vals[8] = 100.0;
+        vals[9] = 200.0;
+        vals[10] = 300.0;
+        vals[11] = 400.0;
 
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("s", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", vals, 1)));
 
         let result = sum_projection_z(&img, "s");
         let dims = result.dimensions();
@@ -71,26 +78,31 @@ mod tests {
 
         let arr = result.point_data().get_array("s").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 111.0);
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 222.0);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 333.0);
-        arr.tuple_as_f64(3, &mut buf); assert_eq!(buf[0], 444.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 111.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 222.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 333.0);
+        arr.tuple_as_f64(3, &mut buf);
+        assert_eq!(buf[0], 444.0);
     }
 
     #[test]
     fn single_slice_unchanged() {
         let mut img = ImageData::with_dimensions(3, 2, 1);
         let vals: Vec<f64> = vec![5.0, 3.0, 1.0, 2.0, 4.0, 6.0];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("data", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("data", vals, 1)));
 
         let result = sum_projection_z(&img, "data");
         assert_eq!(result.dimensions()[2], 1);
         let arr = result.point_data().get_array("data").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 5.0);
-        arr.tuple_as_f64(5, &mut buf); assert_eq!(buf[0], 6.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 5.0);
+        arr.tuple_as_f64(5, &mut buf);
+        assert_eq!(buf[0], 6.0);
     }
 
     #[test]

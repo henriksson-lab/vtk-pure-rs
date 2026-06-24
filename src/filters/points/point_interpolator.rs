@@ -82,9 +82,10 @@ pub fn interpolate_points(
             }
 
             // Compute weights
-            let weights: Vec<f64> = neighbors.iter().map(|&(_, d)| {
-                kernel_weight(kernel, d)
-            }).collect();
+            let weights: Vec<f64> = neighbors
+                .iter()
+                .map(|&(_, d)| kernel_weight(kernel, d))
+                .collect();
 
             let w_sum: f64 = weights.iter().sum();
             if w_sum < 1e-15 {
@@ -104,9 +105,9 @@ pub fn interpolate_points(
             }
         }
 
-        result.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec(&name, out_data, nc),
-        ));
+        result
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(&name, out_data, nc)));
     }
 
     result
@@ -115,18 +116,28 @@ pub fn interpolate_points(
 fn kernel_weight(kernel: InterpolationKernel, dist: f64) -> f64 {
     match kernel {
         InterpolationKernel::InverseDistance { power } => {
-            if dist < 1e-15 { 1e15 } else { 1.0 / dist.powf(power) }
+            if dist < 1e-15 {
+                1e15
+            } else {
+                1.0 / dist.powf(power)
+            }
         }
-        InterpolationKernel::Gaussian { sigma } => {
-            (-dist * dist / (2.0 * sigma * sigma)).exp()
-        }
+        InterpolationKernel::Gaussian { sigma } => (-dist * dist / (2.0 * sigma * sigma)).exp(),
         InterpolationKernel::Shepard { radius, power } => {
-            if dist >= radius { 0.0 }
-            else if dist < 1e-15 { 1e15 }
-            else { ((radius - dist) / (radius * dist)).powf(power) }
+            if dist >= radius {
+                0.0
+            } else if dist < 1e-15 {
+                1e15
+            } else {
+                ((radius - dist) / (radius * dist)).powf(power)
+            }
         }
         InterpolationKernel::NearestNeighbor => {
-            if dist < 1e-15 { 1e15 } else { 1.0 / (dist + 1e-15) }
+            if dist < 1e-15 {
+                1e15
+            } else {
+                1.0 / (dist + 1e-15)
+            }
         }
         InterpolationKernel::SPHCubicSpline { smoothing_length } => {
             let q = dist / smoothing_length;
@@ -161,7 +172,9 @@ pub fn compute_point_density(
         let pi = mesh.points.get(i);
         let mut sum = 0.0;
         for j in 0..n {
-            if i == j { continue; }
+            if i == j {
+                continue;
+            }
             let pj = mesh.points.get(j);
             let dx = pi[0] - pj[0];
             let dy = pi[1] - pj[1];
@@ -175,9 +188,11 @@ pub fn compute_point_density(
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Density", density, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Density", density, 1,
+        )));
     result
 }
 
@@ -188,14 +203,13 @@ mod tests {
 
     fn make_source() -> PolyData {
         let mut mesh = PolyData::new();
-        mesh.points = Points::from(vec![
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]);
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temperature", vec![100.0, 200.0, 300.0], 1),
-        ));
+        mesh.points = Points::from(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temperature",
+                vec![100.0, 200.0, 300.0],
+                1,
+            )));
         mesh.point_data_mut().set_active_scalars("temperature");
         mesh
     }
@@ -214,9 +228,11 @@ mod tests {
         let source = make_source();
         let target = make_target();
         let result = interpolate_points(
-            &source, &target,
+            &source,
+            &target,
             InterpolationKernel::InverseDistance { power: 2.0 },
-            5.0, 10,
+            5.0,
+            10,
         );
 
         let arr = result.point_data().get_array("temperature").unwrap();
@@ -231,9 +247,11 @@ mod tests {
         let source = make_source();
         let target = make_target();
         let result = interpolate_points(
-            &source, &target,
+            &source,
+            &target,
             InterpolationKernel::Gaussian { sigma: 1.0 },
-            5.0, 10,
+            5.0,
+            10,
         );
         assert!(result.point_data().get_array("temperature").is_some());
     }
@@ -243,9 +261,13 @@ mod tests {
         let source = make_source();
         let target = make_target();
         let result = interpolate_points(
-            &source, &target,
-            InterpolationKernel::SPHCubicSpline { smoothing_length: 2.0 },
-            5.0, 10,
+            &source,
+            &target,
+            InterpolationKernel::SPHCubicSpline {
+                smoothing_length: 2.0,
+            },
+            5.0,
+            10,
         );
         assert!(result.point_data().get_array("temperature").is_some());
     }
@@ -260,11 +282,8 @@ mod tests {
             [10.0, 0.0, 0.0], // isolated point
         ]);
 
-        let result = compute_point_density(
-            &mesh,
-            InterpolationKernel::Gaussian { sigma: 0.5 },
-            2.0,
-        );
+        let result =
+            compute_point_density(&mesh, InterpolationKernel::Gaussian { sigma: 0.5 }, 2.0);
 
         let arr = result.point_data().get_array("Density").unwrap();
         let mut buf = [0.0f64];
@@ -282,9 +301,11 @@ mod tests {
         let source = PolyData::new();
         let target = make_target();
         let result = interpolate_points(
-            &source, &target,
+            &source,
+            &target,
             InterpolationKernel::NearestNeighbor,
-            5.0, 10,
+            5.0,
+            10,
         );
         assert_eq!(result.points.len(), target.points.len());
     }

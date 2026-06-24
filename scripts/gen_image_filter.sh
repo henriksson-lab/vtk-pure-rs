@@ -3,19 +3,52 @@
 # Usage: ./scripts/gen_image_filter.sh name "description" "operation"
 # Example: ./scripts/gen_image_filter.sh sqrt "Square root of pixel values" "buf[0].sqrt()"
 
-NAME=$1
-DESC=$2
-OP=$3
+set -euo pipefail
+
+NAME=${1:-}
+DESC=${2:-}
+OP=${3:-}
+DIR="src/filters/image"
+MOD_FILE="$DIR/mod.rs"
 
 if [ -z "$NAME" ] || [ -z "$DESC" ] || [ -z "$OP" ]; then
     echo "Usage: $0 <name> <description> <operation_on_buf[0]>"
     exit 1
 fi
 
-cat > "crates/vtk-filters-image/src/${NAME}.rs" << ENDOFFILE
+if ! [[ "$NAME" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    echo "Invalid Rust module/function name: $NAME" >&2
+    exit 1
+fi
+
+if [ ! -d "$DIR" ]; then
+    echo "Missing directory: $DIR" >&2
+    exit 1
+fi
+
+if [ ! -f "$MOD_FILE" ]; then
+    echo "Missing module file: $MOD_FILE" >&2
+    exit 1
+fi
+
+register_module() {
+    local name=$1
+    local mod_line="pub mod ${name};"
+    if ! grep -Fxq "$mod_line" "$MOD_FILE"; then
+        printf '%s\n' "$mod_line" >> "$MOD_FILE"
+        echo "Registered $name in $MOD_FILE"
+    fi
+}
+
+if [ -e "$DIR/${NAME}.rs" ] && [ "${FORCE:-0}" != "1" ]; then
+    echo "$DIR/${NAME}.rs already exists; set FORCE=1 to overwrite" >&2
+    exit 1
+fi
+
+cat > "$DIR/${NAME}.rs" << ENDOFFILE
 //! ${DESC}
 
-use vtk_data::{AnyDataArray, DataArray, ImageData};
+use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// ${DESC}
 pub fn ${NAME}(input: &ImageData, scalars: &str) -> ImageData {
@@ -47,4 +80,5 @@ mod tests {
 }
 ENDOFFILE
 
-echo "Created crates/vtk-filters-image/src/${NAME}.rs"
+register_module "$NAME"
+echo "Created $DIR/${NAME}.rs"

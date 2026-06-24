@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, RectilinearGrid, DataSet};
+use crate::data::{CellArray, DataSet, Points, PolyData, RectilinearGrid};
 
 /// Convert the outer surface of a RectilinearGrid to PolyData quads.
 ///
@@ -18,9 +18,7 @@ pub fn rectilinear_to_poly_data(input: &RectilinearGrid) -> PolyData {
     let mut polys = CellArray::new();
 
     // Generate all grid points
-    let point_idx = |i: usize, j: usize, k: usize| -> i64 {
-        (k * ny * nx + j * nx + i) as i64
-    };
+    let point_idx = |i: usize, j: usize, k: usize| -> i64 { (k * ny * nx + j * nx + i) as i64 };
 
     for k in 0..nz {
         for j in 0..ny {
@@ -31,29 +29,71 @@ pub fn rectilinear_to_poly_data(input: &RectilinearGrid) -> PolyData {
     }
 
     // -X face (i=0)
-    for k in 0..nz-1 { for j in 0..ny-1 {
-        polys.push_cell(&[point_idx(0,j,k), point_idx(0,j,k+1), point_idx(0,j+1,k+1), point_idx(0,j+1,k)]);
-    }}
+    for k in 0..nz - 1 {
+        for j in 0..ny - 1 {
+            polys.push_cell(&[
+                point_idx(0, j, k),
+                point_idx(0, j, k + 1),
+                point_idx(0, j + 1, k + 1),
+                point_idx(0, j + 1, k),
+            ]);
+        }
+    }
     // +X face (i=nx-1)
-    for k in 0..nz-1 { for j in 0..ny-1 {
-        polys.push_cell(&[point_idx(nx-1,j,k), point_idx(nx-1,j+1,k), point_idx(nx-1,j+1,k+1), point_idx(nx-1,j,k+1)]);
-    }}
+    for k in 0..nz - 1 {
+        for j in 0..ny - 1 {
+            polys.push_cell(&[
+                point_idx(nx - 1, j, k),
+                point_idx(nx - 1, j + 1, k),
+                point_idx(nx - 1, j + 1, k + 1),
+                point_idx(nx - 1, j, k + 1),
+            ]);
+        }
+    }
     // -Y face
-    for k in 0..nz-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,0,k), point_idx(i+1,0,k), point_idx(i+1,0,k+1), point_idx(i,0,k+1)]);
-    }}
+    for k in 0..nz - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, 0, k),
+                point_idx(i + 1, 0, k),
+                point_idx(i + 1, 0, k + 1),
+                point_idx(i, 0, k + 1),
+            ]);
+        }
+    }
     // +Y face
-    for k in 0..nz-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,ny-1,k), point_idx(i,ny-1,k+1), point_idx(i+1,ny-1,k+1), point_idx(i+1,ny-1,k)]);
-    }}
+    for k in 0..nz - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, ny - 1, k),
+                point_idx(i, ny - 1, k + 1),
+                point_idx(i + 1, ny - 1, k + 1),
+                point_idx(i + 1, ny - 1, k),
+            ]);
+        }
+    }
     // -Z face
-    for j in 0..ny-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,j,0), point_idx(i,j+1,0), point_idx(i+1,j+1,0), point_idx(i+1,j,0)]);
-    }}
+    for j in 0..ny - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, j, 0),
+                point_idx(i, j + 1, 0),
+                point_idx(i + 1, j + 1, 0),
+                point_idx(i + 1, j, 0),
+            ]);
+        }
+    }
     // +Z face
-    for j in 0..ny-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,j,nz-1), point_idx(i+1,j,nz-1), point_idx(i+1,j+1,nz-1), point_idx(i,j+1,nz-1)]);
-    }}
+    for j in 0..ny - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, j, nz - 1),
+                point_idx(i + 1, j, nz - 1),
+                point_idx(i + 1, j + 1, nz - 1),
+                point_idx(i, j + 1, nz - 1),
+            ]);
+        }
+    }
 
     let mut pd = PolyData::new();
     pd.points = points;
@@ -74,7 +114,7 @@ mod tests {
 
         let result = rectilinear_to_poly_data(&grid);
         assert_eq!(result.points.len(), 12); // 3*2*2
-        // 6 faces: -X(1), +X(1), -Y(2), +Y(2), -Z(2), +Z(2) = 10
+                                             // 6 faces: -X(1), +X(1), -Y(2), +Y(2), -Z(2), +Z(2) = 10
         assert_eq!(result.polys.num_cells(), 10);
     }
 

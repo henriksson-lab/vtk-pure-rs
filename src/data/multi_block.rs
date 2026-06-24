@@ -1,5 +1,7 @@
-use crate::data::{FieldData, PolyData, ImageData, UnstructuredGrid, RectilinearGrid, StructuredGrid};
 use crate::data::traits::DataObject;
+use crate::data::{
+    FieldData, ImageData, PolyData, RectilinearGrid, StructuredGrid, UnstructuredGrid,
+};
 
 /// A block in a MultiBlockDataSet, which can hold different dataset types.
 #[derive(Debug, Clone)]
@@ -13,22 +15,34 @@ pub enum Block {
 }
 
 impl From<PolyData> for Block {
-    fn from(pd: PolyData) -> Self { Block::PolyData(pd) }
+    fn from(pd: PolyData) -> Self {
+        Block::PolyData(pd)
+    }
 }
 impl From<ImageData> for Block {
-    fn from(id: ImageData) -> Self { Block::ImageData(id) }
+    fn from(id: ImageData) -> Self {
+        Block::ImageData(id)
+    }
 }
 impl From<UnstructuredGrid> for Block {
-    fn from(ug: UnstructuredGrid) -> Self { Block::UnstructuredGrid(ug) }
+    fn from(ug: UnstructuredGrid) -> Self {
+        Block::UnstructuredGrid(ug)
+    }
 }
 impl From<RectilinearGrid> for Block {
-    fn from(rg: RectilinearGrid) -> Self { Block::RectilinearGrid(rg) }
+    fn from(rg: RectilinearGrid) -> Self {
+        Block::RectilinearGrid(rg)
+    }
 }
 impl From<StructuredGrid> for Block {
-    fn from(sg: StructuredGrid) -> Self { Block::StructuredGrid(sg) }
+    fn from(sg: StructuredGrid) -> Self {
+        Block::StructuredGrid(sg)
+    }
 }
 impl From<MultiBlockDataSet> for Block {
-    fn from(mb: MultiBlockDataSet) -> Self { Block::MultiBlock(mb) }
+    fn from(mb: MultiBlockDataSet) -> Self {
+        Block::MultiBlock(mb)
+    }
 }
 
 impl std::fmt::Display for Block {
@@ -56,7 +70,7 @@ impl std::fmt::Display for MultiBlockDataSet {
 /// type, including nested MultiBlockDataSets.
 #[derive(Debug, Clone, Default)]
 pub struct MultiBlockDataSet {
-    blocks: Vec<(Option<String>, Block)>,
+    blocks: Vec<(Option<String>, Option<Block>)>,
     field_data: FieldData,
 }
 
@@ -67,12 +81,40 @@ impl MultiBlockDataSet {
 
     /// Add a named block.
     pub fn add_block(&mut self, name: impl Into<String>, block: Block) {
-        self.blocks.push((Some(name.into()), block));
+        self.blocks.push((Some(name.into()), Some(block)));
     }
 
     /// Add an unnamed block.
     pub fn add_unnamed_block(&mut self, block: Block) {
-        self.blocks.push((None, block));
+        self.blocks.push((None, Some(block)));
+    }
+
+    /// Set the number of blocks, initializing new slots to null.
+    pub fn set_number_of_blocks(&mut self, num_blocks: usize) {
+        self.blocks.resize_with(num_blocks, || (None, None));
+    }
+
+    /// Set a block at an index, growing with null slots as VTK's `SetBlock` does.
+    pub fn set_block(&mut self, idx: usize, block: Block) -> Option<Block> {
+        if idx >= self.blocks.len() {
+            self.set_number_of_blocks(idx + 1);
+        }
+        let (_, existing) = &mut self.blocks[idx];
+        existing.replace(block)
+    }
+
+    /// Clear a block while preserving its metadata/name slot.
+    pub fn clear_block(&mut self, idx: usize) -> Option<Block> {
+        self.blocks.get_mut(idx).and_then(|(_, block)| block.take())
+    }
+
+    /// Set or clear the name for an existing block.
+    pub fn set_block_name(&mut self, idx: usize, name: Option<impl Into<String>>) -> bool {
+        let Some((existing, _)) = self.blocks.get_mut(idx) else {
+            return false;
+        };
+        *existing = name.map(Into::into);
+        true
     }
 
     /// Number of blocks.
@@ -82,7 +124,7 @@ impl MultiBlockDataSet {
 
     /// Get block by index.
     pub fn block(&self, idx: usize) -> Option<&Block> {
-        self.blocks.get(idx).map(|(_, b)| b)
+        self.blocks.get(idx).and_then(|(_, b)| b.as_ref())
     }
 
     /// Get block name by index.
@@ -93,24 +135,47 @@ impl MultiBlockDataSet {
     /// Get block by name (first match).
     pub fn block_by_name(&self, name: &str) -> Option<&Block> {
         self.blocks.iter().find_map(|(n, b)| {
-            if n.as_deref() == Some(name) { Some(b) } else { None }
+            if n.as_deref() == Some(name) {
+                b.as_ref()
+            } else {
+                None
+            }
         })
     }
 
     /// Iterate over all blocks with their optional names.
     pub fn iter(&self) -> impl Iterator<Item = (Option<&str>, &Block)> {
-        self.blocks.iter().map(|(n, b)| (n.as_deref(), b))
+        self.blocks
+            .iter()
+            .filter_map(|(n, b)| b.as_ref().map(|b| (n.as_deref(), b)))
     }
 
     /// Remove a block by index. Returns the removed block.
     pub fn remove_block(&mut self, idx: usize) -> (Option<String>, Block) {
-        self.blocks.remove(idx)
+        let (name, block) = self.blocks.remove(idx);
+        (
+            name,
+            block.expect("cannot remove a null block as a concrete Block"),
+        )
+    }
+
+    /// Remove a block by index, returning `None` if the index is out of bounds.
+    pub fn try_remove_block(&mut self, idx: usize) -> Option<(Option<String>, Block)> {
+        if idx >= self.blocks.len() {
+            return None;
+        }
+        let (name, block) = self.blocks.remove(idx);
+        block.map(|block| (name, block))
     }
 
     /// Remove a block by name. Returns the removed block if found.
     pub fn remove_by_name(&mut self, name: &str) -> Option<Block> {
-        if let Some(idx) = self.blocks.iter().position(|(n, _)| n.as_deref() == Some(name)) {
-            Some(self.blocks.remove(idx).1)
+        if let Some(idx) = self
+            .blocks
+            .iter()
+            .position(|(n, b)| n.as_deref() == Some(name) && b.is_some())
+        {
+            self.blocks.remove(idx).1
         } else {
             None
         }
@@ -118,32 +183,44 @@ impl MultiBlockDataSet {
 
     /// Get all PolyData blocks.
     pub fn poly_data_blocks(&self) -> Vec<(Option<&str>, &PolyData)> {
-        self.blocks.iter().filter_map(|(n, b)| match b {
-            Block::PolyData(pd) => Some((n.as_deref(), pd)),
-            _ => None,
-        }).collect()
+        self.blocks
+            .iter()
+            .filter_map(|(n, b)| match b.as_ref()? {
+                Block::PolyData(pd) => Some((n.as_deref(), pd)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Get all ImageData blocks.
     pub fn image_data_blocks(&self) -> Vec<(Option<&str>, &ImageData)> {
-        self.blocks.iter().filter_map(|(n, b)| match b {
-            Block::ImageData(id) => Some((n.as_deref(), id)),
-            _ => None,
-        }).collect()
+        self.blocks
+            .iter()
+            .filter_map(|(n, b)| match b.as_ref()? {
+                Block::ImageData(id) => Some((n.as_deref(), id)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Get all UnstructuredGrid blocks.
     pub fn unstructured_grid_blocks(&self) -> Vec<(Option<&str>, &UnstructuredGrid)> {
-        self.blocks.iter().filter_map(|(n, b)| match b {
-            Block::UnstructuredGrid(ug) => Some((n.as_deref(), ug)),
-            _ => None,
-        }).collect()
+        self.blocks
+            .iter()
+            .filter_map(|(n, b)| match b.as_ref()? {
+                Block::UnstructuredGrid(ug) => Some((n.as_deref(), ug)),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Flatten all nested MultiBlockDataSets into a single level.
     pub fn flatten(&self) -> Vec<(Option<String>, Block)> {
         let mut result = Vec::new();
         for (name, block) in &self.blocks {
+            let Some(block) = block else {
+                continue;
+            };
             match block {
                 Block::MultiBlock(inner) => {
                     for (sub_name, sub_block) in inner.flatten() {
@@ -175,8 +252,11 @@ impl MultiBlockDataSet {
         let mut count = 0;
         for (_, block) in &self.blocks {
             match block {
-                Block::MultiBlock(inner) => count += inner.total_blocks_recursive(),
-                _ => count += 1,
+                None => {}
+                Some(block) => match block {
+                    Block::MultiBlock(inner) => count += inner.total_blocks_recursive(),
+                    _ => count += 1,
+                },
             }
         }
         count
@@ -205,7 +285,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         mb.add_block("mesh", Block::PolyData(pd));
-        mb.add_block("image", Block::ImageData(ImageData::with_dimensions(2, 2, 2)));
+        mb.add_block(
+            "image",
+            Block::ImageData(ImageData::with_dimensions(2, 2, 2)),
+        );
 
         assert_eq!(mb.num_blocks(), 2);
         assert_eq!(mb.block_name(0), Some("mesh"));
@@ -296,5 +379,34 @@ mod tests {
         let block: Block = PolyData::new().into();
         let s = format!("{block}");
         assert!(s.contains("PolyData"));
+    }
+
+    #[test]
+    fn checked_mutation_and_removal() {
+        let mut mb = MultiBlockDataSet::new();
+        mb.add_block("empty", PolyData::new().into());
+        assert_eq!(mb.num_blocks(), 1);
+        assert!(mb.set_block_name(0, Some("renamed")));
+        assert_eq!(mb.block_name(0), Some("renamed"));
+        assert!(matches!(
+            mb.set_block(0, ImageData::with_dimensions(1, 1, 1).into()),
+            Some(Block::PolyData(_))
+        ));
+        assert!(mb.set_block(3, PolyData::new().into()).is_none());
+        assert_eq!(mb.num_blocks(), 4);
+        assert!(mb.block(1).is_none());
+        assert!(mb.try_remove_block(10).is_none());
+        assert!(mb.try_remove_block(0).is_some());
+        assert_eq!(mb.num_blocks(), 3);
+    }
+
+    #[test]
+    fn set_number_of_blocks_creates_null_slots() {
+        let mut mb = MultiBlockDataSet::new();
+        mb.set_number_of_blocks(2);
+        assert_eq!(mb.num_blocks(), 2);
+        assert!(mb.block(0).is_none());
+        mb.set_block_name(1, Some("empty"));
+        assert_eq!(mb.block_name(1), Some("empty"));
     }
 }

@@ -70,10 +70,7 @@ pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
 
         // Generate quads between consecutive pairs
         for i in 0..n - 1 {
-            polys.push_cell(&[
-                left_ids[i], right_ids[i],
-                right_ids[i + 1], left_ids[i + 1],
-            ]);
+            polys.push_cell(&[left_ids[i], right_ids[i], right_ids[i + 1], left_ids[i + 1]]);
         }
     }
 

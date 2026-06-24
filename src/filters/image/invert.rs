@@ -38,9 +38,10 @@ pub fn invert_scalars(input: &ImageData, scalars: &str) -> ImageData {
     let inverted: Vec<f64> = values.iter().map(|&v| max_val - v + min_val).collect();
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Inverted", inverted, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Inverted", inverted, 1,
+        )));
     img
 }
 
@@ -51,9 +52,8 @@ mod tests {
 
     fn make_image_with_scalars(values: Vec<f64>) -> ImageData {
         let mut img = ImageData::with_dimensions(2, 2, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
         img
     }
 

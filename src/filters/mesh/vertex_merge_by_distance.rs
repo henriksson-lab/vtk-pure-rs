@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, KdTree};
+use crate::data::{CellArray, KdTree, Points, PolyData};
 use std::collections::HashMap;
 
 /// Merge vertices that are within `distance` of each other using k-d tree.
@@ -7,9 +7,11 @@ use std::collections::HashMap;
 /// first-encountered vertex in each cluster.
 pub fn merge_close_vertices(input: &PolyData, distance: f64) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
-    let pts: Vec<[f64;3]> = (0..n).map(|i| input.points.get(i)).collect();
+    let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
     let tree = KdTree::build(&pts);
     let d2 = distance * distance;
 
@@ -17,7 +19,9 @@ pub fn merge_close_vertices(input: &PolyData, distance: f64) -> PolyData {
     let mut out_pts = Points::<f64>::new();
 
     for i in 0..n {
-        if remap[i] != usize::MAX { continue; }
+        if remap[i] != usize::MAX {
+            continue;
+        }
         let idx = out_pts.len();
         out_pts.push(pts[i]);
         remap[i] = idx;
@@ -33,15 +37,23 @@ pub fn merge_close_vertices(input: &PolyData, distance: f64) -> PolyData {
     let mut out_polys = CellArray::new();
     for cell in input.polys.iter() {
         let mapped: Vec<i64> = cell.iter().map(|&id| remap[id as usize] as i64).collect();
-        let mut unique = mapped.clone(); unique.sort(); unique.dedup();
-        if unique.len() >= 3 { out_polys.push_cell(&mapped); }
+        let mut unique = mapped.clone();
+        unique.sort();
+        unique.dedup();
+        if unique.len() >= 3 {
+            out_polys.push_cell(&mapped);
+        }
     }
 
     let mut out_lines = CellArray::new();
     for cell in input.lines.iter() {
         let mapped: Vec<i64> = cell.iter().map(|&id| remap[id as usize] as i64).collect();
-        let mut unique = mapped.clone(); unique.sort(); unique.dedup();
-        if unique.len() >= 2 { out_lines.push_cell(&mapped); }
+        let mut unique = mapped.clone();
+        unique.sort();
+        unique.dedup();
+        if unique.len() >= 2 {
+            out_lines.push_cell(&mapped);
+        }
     }
 
     let mut pd = PolyData::new();
@@ -58,13 +70,13 @@ mod tests {
     #[test]
     fn merge_duplicates() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]);
-        pd.points.push([0.001,0.0,0.0]); // close to 0
-        pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.001,0.0,0.0]); // close to 2
-        pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,2,4]);
-        pd.polys.push_cell(&[1,3,4]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.001, 0.0, 0.0]); // close to 0
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.001, 0.0, 0.0]); // close to 2
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 2, 4]);
+        pd.polys.push_cell(&[1, 3, 4]);
 
         let result = merge_close_vertices(&pd, 0.01);
         assert!(result.points.len() < 5);
@@ -73,8 +85,10 @@ mod tests {
     #[test]
     fn no_merge_far() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = merge_close_vertices(&pd, 0.001);
         assert_eq!(result.points.len(), 3);

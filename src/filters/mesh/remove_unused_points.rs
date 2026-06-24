@@ -48,10 +48,7 @@ fn mark_used(cells: &CellArray, used: &mut [bool]) {
 fn remap_cell_array(src: &CellArray, old_to_new: &[i64]) -> CellArray {
     let mut dst = CellArray::new();
     for cell in src.iter() {
-        let remapped: Vec<i64> = cell
-            .iter()
-            .map(|&id| old_to_new[id as usize])
-            .collect();
+        let remapped: Vec<i64> = cell.iter().map(|&id| old_to_new[id as usize]).collect();
         dst.push_cell(&remapped);
     }
     dst

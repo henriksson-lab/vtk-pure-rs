@@ -19,10 +19,7 @@ pub fn extract_surface(grid: &UnstructuredGrid) -> PolyData {
         for face in faces {
             let mut key = face.clone();
             key.sort();
-            face_count
-                .entry(key)
-                .and_modify(|_| {})
-                .or_insert(face);
+            face_count.entry(key).and_modify(|_| {}).or_insert(face);
             // Track count separately
         }
     }

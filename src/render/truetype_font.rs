@@ -128,12 +128,7 @@ impl TrueTypeFont {
     /// Render text to an RGBA image buffer.
     ///
     /// Returns (pixels, width, height) where pixels is RGBA u8 data.
-    pub fn render_to_rgba(
-        &self,
-        text: &str,
-        px_size: f32,
-        color: [u8; 3],
-    ) -> (Vec<u8>, u32, u32) {
+    pub fn render_to_rgba(&self, text: &str, px_size: f32, color: [u8; 3]) -> (Vec<u8>, u32, u32) {
         let layout = self.layout(text, px_size);
 
         let img_w = (layout.total_width.ceil() as u32).max(1);
@@ -148,7 +143,9 @@ impl TrueTypeFont {
             for row in 0..pg.glyph.height {
                 for col in 0..pg.glyph.width {
                     let coverage = pg.glyph.bitmap[row * pg.glyph.width + col];
-                    if coverage == 0 { continue; }
+                    if coverage == 0 {
+                        continue;
+                    }
 
                     let px = gx + col as i32;
                     let py = gy + row as i32;
@@ -162,8 +159,10 @@ impl TrueTypeFont {
                         let alpha = coverage as f32 / 255.0;
                         let inv = 1.0 - alpha;
                         pixels[idx] = (color[0] as f32 * alpha + pixels[idx] as f32 * inv) as u8;
-                        pixels[idx + 1] = (color[1] as f32 * alpha + pixels[idx + 1] as f32 * inv) as u8;
-                        pixels[idx + 2] = (color[2] as f32 * alpha + pixels[idx + 2] as f32 * inv) as u8;
+                        pixels[idx + 1] =
+                            (color[1] as f32 * alpha + pixels[idx + 1] as f32 * inv) as u8;
+                        pixels[idx + 2] =
+                            (color[2] as f32 * alpha + pixels[idx + 2] as f32 * inv) as u8;
                         pixels[idx + 3] = ((alpha * 255.0) as u8).max(pixels[idx + 3]);
                     }
                 }
@@ -213,7 +212,9 @@ impl TrueTypeFont {
             for row in 0..pg.glyph.height {
                 for col in 0..pg.glyph.width {
                     let coverage = pg.glyph.bitmap[row * pg.glyph.width + col];
-                    if coverage < 32 { continue; } // skip near-zero
+                    if coverage < 32 {
+                        continue;
+                    } // skip near-zero
 
                     let px = pg.x + col as f32;
                     let py = pg.y + row as f32;
@@ -235,7 +236,14 @@ impl TrueTypeFont {
                     colors.push(c);
                     colors.push(c);
                     colors.push(c);
-                    indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+                    indices.extend_from_slice(&[
+                        base,
+                        base + 1,
+                        base + 2,
+                        base,
+                        base + 2,
+                        base + 3,
+                    ]);
                 }
             }
         }
@@ -292,7 +300,9 @@ mod tests {
             "C:\\Windows\\Fonts\\arial.ttf",
         ];
         let font = paths.iter().find_map(|p| {
-            std::fs::read(p).ok().and_then(|data| TrueTypeFont::from_bytes(&data).ok())
+            std::fs::read(p)
+                .ok()
+                .and_then(|data| TrueTypeFont::from_bytes(&data).ok())
         });
         let Some(font) = font else {
             // No system font found — skip test

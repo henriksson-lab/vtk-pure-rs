@@ -31,11 +31,11 @@ impl TransferFunctionEditor {
     }
 
     /// Create with custom color and opacity points.
-    pub fn new(
-        color_points: Vec<(f64, [f32; 3])>,
-        opacity_points: Vec<(f64, f64)>,
-    ) -> Self {
-        let mut editor = Self { color_points, opacity_points };
+    pub fn new(color_points: Vec<(f64, [f32; 3])>, opacity_points: Vec<(f64, f64)>) -> Self {
+        let mut editor = Self {
+            color_points,
+            opacity_points,
+        };
         editor.sort();
         editor
     }
@@ -43,13 +43,15 @@ impl TransferFunctionEditor {
     /// Add a color control point.
     pub fn add_color_point(&mut self, position: f64, color: [f32; 3]) {
         self.color_points.push((position, color));
-        self.color_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        self.color_points
+            .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     }
 
     /// Add an opacity control point.
     pub fn add_opacity_point(&mut self, position: f64, opacity: f64) {
         self.opacity_points.push((position, opacity));
-        self.opacity_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        self.opacity_points
+            .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     }
 
     /// Remove a color control point by index.
@@ -70,7 +72,8 @@ impl TransferFunctionEditor {
     pub fn move_color_point(&mut self, index: usize, new_position: f64) {
         if index < self.color_points.len() {
             self.color_points[index].0 = new_position.clamp(0.0, 1.0);
-            self.color_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            self.color_points
+                .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         }
     }
 
@@ -93,8 +96,10 @@ impl TransferFunctionEditor {
     }
 
     fn sort(&mut self) {
-        self.color_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-        self.opacity_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        self.color_points
+            .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        self.opacity_points
+            .sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     }
 }
 

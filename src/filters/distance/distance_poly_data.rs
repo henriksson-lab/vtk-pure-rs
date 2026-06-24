@@ -38,9 +38,10 @@ pub fn distance_poly_data(source: &PolyData, target: &PolyData) -> PolyData {
         distances.push(min_d2.sqrt());
     }
 
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Distance", distances, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Distance", distances, 1,
+        )));
     pd
 }
 
@@ -51,17 +52,23 @@ fn point_triangle_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f
 
     let d1 = dot(ab, ap);
     let d2 = dot(ac, ap);
-    if d1 <= 0.0 && d2 <= 0.0 { return dist2(p, a); }
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return dist2(p, a);
+    }
 
     let bp = sub(p, b);
     let d3 = dot(ab, bp);
     let d4 = dot(ac, bp);
-    if d3 >= 0.0 && d4 <= d3 { return dist2(p, b); }
+    if d3 >= 0.0 && d4 <= d3 {
+        return dist2(p, b);
+    }
 
     let cp = sub(p, c);
     let d5 = dot(ab, cp);
     let d6 = dot(ac, cp);
-    if d6 >= 0.0 && d5 <= d6 { return dist2(p, c); }
+    if d6 >= 0.0 && d5 <= d6 {
+        return dist2(p, c);
+    }
 
     let vc = d1 * d4 - d3 * d2;
     if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
@@ -78,18 +85,39 @@ fn point_triangle_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f
     let va = d3 * d6 - d5 * d4;
     if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
         let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-        return dist2(p, [b[0] + w * (c[0] - b[0]), b[1] + w * (c[1] - b[1]), b[2] + w * (c[2] - b[2])]);
+        return dist2(
+            p,
+            [
+                b[0] + w * (c[0] - b[0]),
+                b[1] + w * (c[1] - b[1]),
+                b[2] + w * (c[2] - b[2]),
+            ],
+        );
     }
 
     let denom = 1.0 / (va + vb + vc);
     let v = vb * denom;
     let w = vc * denom;
-    dist2(p, [a[0] + ab[0] * v + ac[0] * w, a[1] + ab[1] * v + ac[1] * w, a[2] + ab[2] * v + ac[2] * w])
+    dist2(
+        p,
+        [
+            a[0] + ab[0] * v + ac[0] * w,
+            a[1] + ab[1] * v + ac[1] * w,
+            a[2] + ab[2] * v + ac[2] * w,
+        ],
+    )
 }
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
-fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 { let d = sub(a, b); dot(d, d) }
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let d = sub(a, b);
+    dot(d, d)
+}
 
 #[cfg(test)]
 mod tests {

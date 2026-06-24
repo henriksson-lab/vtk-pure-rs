@@ -6,15 +6,22 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// t=1,2,4,8,... time scales. Adds "SpectralDesc" multi-component array.
 pub fn spectral_descriptor(input: &PolyData, num_scales: usize) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
     let ns = num_scales.max(1).min(8);
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a=cell[i] as usize; let b=cell[(i+1)%cell.len()] as usize;
-            if !neighbors[a].contains(&b){neighbors[a].push(b);}
-            if !neighbors[b].contains(&a){neighbors[b].push(a);}
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % cell.len()] as usize;
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
         }
     }
 
@@ -27,11 +34,14 @@ pub fn spectral_descriptor(input: &PolyData, num_scales: usize) -> PolyData {
         let mut scale_idx = 0;
         let mut next_record = 1usize;
 
-        for step in 1..=(1 << (ns-1)) {
+        for step in 1..=(1 << (ns - 1)) {
             let mut new = heat.clone();
             for i in 0..n {
-                if neighbors[i].is_empty() { continue; }
-                let avg: f64 = neighbors[i].iter().map(|&j| heat[j]).sum::<f64>() / neighbors[i].len() as f64;
+                if neighbors[i].is_empty() {
+                    continue;
+                }
+                let avg: f64 =
+                    neighbors[i].iter().map(|&j| heat[j]).sum::<f64>() / neighbors[i].len() as f64;
                 new[i] = heat[i] + dt * (avg - heat[i]);
             }
             heat = new;
@@ -45,7 +55,12 @@ pub fn spectral_descriptor(input: &PolyData, num_scales: usize) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("SpectralDesc", desc, ns)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SpectralDesc",
+            desc,
+            ns,
+        )));
     pd
 }
 
@@ -56,8 +71,10 @@ mod tests {
     #[test]
     fn descriptor_basic() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = spectral_descriptor(&pd, 3);
         let arr = result.point_data().get_array("SpectralDesc").unwrap();
@@ -67,8 +84,10 @@ mod tests {
     #[test]
     fn decreasing_with_scale() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = spectral_descriptor(&pd, 2);
         let arr = result.point_data().get_array("SpectralDesc").unwrap();

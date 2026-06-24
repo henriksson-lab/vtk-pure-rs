@@ -45,8 +45,12 @@ impl AxesWidget {
         let mut result = Vec::with_capacity(3);
         for (dir, color, label) in &axes {
             // Transform direction by the rotational part of the view matrix (upper 3x3)
-            let tx = view_matrix[0][0] * dir[0] + view_matrix[1][0] * dir[1] + view_matrix[2][0] * dir[2];
-            let ty = view_matrix[0][1] * dir[0] + view_matrix[1][1] * dir[1] + view_matrix[2][1] * dir[2];
+            let tx = view_matrix[0][0] * dir[0]
+                + view_matrix[1][0] * dir[1]
+                + view_matrix[2][0] * dir[2];
+            let ty = view_matrix[0][1] * dir[0]
+                + view_matrix[1][1] * dir[1]
+                + view_matrix[2][1] * dir[2];
             // Project to 2D: x goes right, y goes up
             let tip_x = self.position[0] + tx as f32 * self.size;
             let tip_y = self.position[1] + ty as f32 * self.size;

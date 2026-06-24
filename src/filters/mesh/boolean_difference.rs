@@ -153,13 +153,13 @@ mod tests {
         let mut pd = PolyData::new();
         // 8 vertices of a cube
         pd.points.push([-s, -s, -s]); // 0
-        pd.points.push([s, -s, -s]);  // 1
-        pd.points.push([s, s, -s]);   // 2
-        pd.points.push([-s, s, -s]);  // 3
-        pd.points.push([-s, -s, s]);  // 4
-        pd.points.push([s, -s, s]);   // 5
-        pd.points.push([s, s, s]);    // 6
-        pd.points.push([-s, s, s]);   // 7
+        pd.points.push([s, -s, -s]); // 1
+        pd.points.push([s, s, -s]); // 2
+        pd.points.push([-s, s, -s]); // 3
+        pd.points.push([-s, -s, s]); // 4
+        pd.points.push([s, -s, s]); // 5
+        pd.points.push([s, s, s]); // 6
+        pd.points.push([-s, s, s]); // 7
 
         // 12 triangles (2 per face)
         // Front face (z = s)

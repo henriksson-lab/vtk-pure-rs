@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, KdTree};
+use crate::data::{CellArray, KdTree, Points, PolyData};
 
 /// Merge points from multiple PolyData inputs, removing duplicates within tolerance.
 ///
@@ -65,13 +65,15 @@ pub fn point_merge(inputs: &[&PolyData], tolerance: f64) -> PolyData {
 
     for (si, pd) in inputs.iter().enumerate() {
         for cell in pd.polys.iter() {
-            let mapped: Vec<i64> = cell.iter()
+            let mapped: Vec<i64> = cell
+                .iter()
                 .map(|&id| remap[offsets[si] + id as usize])
                 .collect();
             out_polys.push_cell(&mapped);
         }
         for cell in pd.lines.iter() {
-            let mapped: Vec<i64> = cell.iter()
+            let mapped: Vec<i64> = cell
+                .iter()
                 .map(|&id| remap[offsets[si] + id as usize])
                 .collect();
             out_lines.push_cell(&mapped);

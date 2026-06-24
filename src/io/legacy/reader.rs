@@ -1,7 +1,7 @@
 use std::io::BufRead;
 use std::path::Path;
 
-use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, PolyData, Points};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 use crate::types::{ScalarType, VtkError};
 
 /// Reader for VTK legacy format (.vtk) files.
@@ -43,7 +43,6 @@ impl<R: BufRead> Parser<R> {
 
         // Parse sections until EOF
         while let Ok(line) = self.read_nonempty_line() {
-
             let tokens: Vec<&str> = line.split_whitespace().collect();
             if tokens.is_empty() {
                 continue;
@@ -177,10 +176,8 @@ impl<R: BufRead> Parser<R> {
                 for i in 0..n {
                     let base = i * 3 * 4;
                     let x = f32::from_be_bytes(buf[base..base + 4].try_into().unwrap()) as f64;
-                    let y =
-                        f32::from_be_bytes(buf[base + 4..base + 8].try_into().unwrap()) as f64;
-                    let z =
-                        f32::from_be_bytes(buf[base + 8..base + 12].try_into().unwrap()) as f64;
+                    let y = f32::from_be_bytes(buf[base + 4..base + 8].try_into().unwrap()) as f64;
+                    let z = f32::from_be_bytes(buf[base + 8..base + 12].try_into().unwrap()) as f64;
                     pts.push([x, y, z]);
                 }
             }
@@ -253,13 +250,11 @@ impl<R: BufRead> Parser<R> {
         let mut cells = CellArray::new();
         let mut offset = 0;
         for _ in 0..num_cells {
-            let npts =
-                i32::from_be_bytes(buf[offset..offset + 4].try_into().unwrap()) as usize;
+            let npts = i32::from_be_bytes(buf[offset..offset + 4].try_into().unwrap()) as usize;
             offset += 4;
             let mut ids = Vec::with_capacity(npts);
             for _ in 0..npts {
-                let id =
-                    i32::from_be_bytes(buf[offset..offset + 4].try_into().unwrap()) as i64;
+                let id = i32::from_be_bytes(buf[offset..offset + 4].try_into().unwrap()) as i64;
                 offset += 4;
                 ids.push(id);
             }
@@ -277,7 +272,6 @@ impl<R: BufRead> Parser<R> {
     ) -> Result<(), VtkError> {
         // Read arrays until we hit another section or EOF
         while let Ok(line) = self.peek_nonempty_line() {
-
             let tokens: Vec<&str> = line.split_whitespace().collect();
             if tokens.is_empty() {
                 break;
@@ -498,7 +492,10 @@ impl<R: BufRead> Parser<R> {
         if bytes == 0 {
             return Err(VtkError::Parse("unexpected end of file".into()));
         }
-        Ok(line.trim_end_matches('\n').trim_end_matches('\r').to_string())
+        Ok(line
+            .trim_end_matches('\n')
+            .trim_end_matches('\r')
+            .to_string())
     }
 
     fn read_nonempty_line(&mut self) -> Result<String, VtkError> {
@@ -546,10 +543,7 @@ impl<R: BufRead> Parser<R> {
     }
 }
 
-fn parse_token<T: std::str::FromStr>(
-    token: Option<&&str>,
-    context: &str,
-) -> Result<T, VtkError> {
+fn parse_token<T: std::str::FromStr>(token: Option<&&str>, context: &str) -> Result<T, VtkError> {
     token
         .ok_or_else(|| VtkError::Parse(format!("missing {}", context)))?
         .parse()
@@ -559,8 +553,8 @@ fn parse_token<T: std::str::FromStr>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::legacy::LegacyWriter;
     use crate::data::{DataArray, PolyData};
+    use crate::io::legacy::LegacyWriter;
 
     #[test]
     fn roundtrip_ascii_triangle() {

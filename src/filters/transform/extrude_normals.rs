@@ -70,21 +70,33 @@ fn extract_normals(input: &PolyData) -> Vec<[f64; 3]> {
     // Fallback: compute face normals averaged at vertices
     let mut normals = vec![[0.0f64; 3]; n];
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let p0 = input.points.get(cell[0] as usize);
         let p1 = input.points.get(cell[1] as usize);
         let p2 = input.points.get(cell[2] as usize);
-        let e1 = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]];
-        let e2 = [p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]];
-        let fn_ = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+        let fn_ = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
         for &id in cell {
             let nm = &mut normals[id as usize];
-            nm[0] += fn_[0]; nm[1] += fn_[1]; nm[2] += fn_[2];
+            nm[0] += fn_[0];
+            nm[1] += fn_[1];
+            nm[2] += fn_[2];
         }
     }
     for nm in &mut normals {
-        let len = (nm[0]*nm[0] + nm[1]*nm[1] + nm[2]*nm[2]).sqrt();
-        if len > 1e-20 { nm[0] /= len; nm[1] /= len; nm[2] /= len; }
+        let len = (nm[0] * nm[0] + nm[1] * nm[1] + nm[2] * nm[2]).sqrt();
+        if len > 1e-20 {
+            nm[0] /= len;
+            nm[1] /= len;
+            nm[2] /= len;
+        }
     }
     normals
 }

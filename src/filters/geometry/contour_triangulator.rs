@@ -131,13 +131,7 @@ fn is_convex_2d(points: &Points<f64>, a: usize, b: usize, c: usize) -> bool {
     cross > 0.0
 }
 
-fn point_in_triangle_2d(
-    points: &Points<f64>,
-    a: usize,
-    b: usize,
-    c: usize,
-    p: usize,
-) -> bool {
+fn point_in_triangle_2d(points: &Points<f64>, a: usize, b: usize, c: usize, p: usize) -> bool {
     let pa = points.get(a);
     let pb = points.get(b);
     let pc = points.get(c);

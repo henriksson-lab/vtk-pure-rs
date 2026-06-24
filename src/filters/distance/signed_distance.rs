@@ -10,10 +10,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData, PolyData};
 /// - Voxels with no nearby points get value `-radius` (empty)
 ///
 /// If the input has no normals, they are estimated from polygon face normals.
-pub fn signed_distance(
-    surface: &PolyData,
-    dimensions: [usize; 3],
-) -> ImageData {
+pub fn signed_distance(surface: &PolyData, dimensions: [usize; 3]) -> ImageData {
     let np = surface.points.len();
     if np == 0 {
         let mut image = ImageData::with_dimensions(dimensions[0], dimensions[1], dimensions[2]);
@@ -59,7 +56,11 @@ pub fn signed_distance(
     let bres = (n_buckets_target as f64).cbrt().ceil() as usize;
     let bres = bres.max(2).min(512);
     let bd = [bres, bres, bres];
-    let bcs = [extent[0] / bd[0] as f64, extent[1] / bd[1] as f64, extent[2] / bd[2] as f64];
+    let bcs = [
+        extent[0] / bd[0] as f64,
+        extent[1] / bd[1] as f64,
+        extent[2] / bd[2] as f64,
+    ];
     let total_buckets = bd[0] * bd[1] * bd[2];
 
     // Count points per bucket
@@ -245,8 +246,10 @@ mod tests {
         // Tetrahedron
         let surface = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [2.0, 0.0, 0.0],
-                [1.0, 2.0, 0.0], [1.0, 0.5, 2.0],
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [1.0, 2.0, 0.0],
+                [1.0, 0.5, 2.0],
             ],
             vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
         );
@@ -259,8 +262,12 @@ mod tests {
         let mut buf = [0.0f64];
         for i in 0..s.num_tuples() {
             s.tuple_as_f64(i, &mut buf);
-            if buf[0] > 0.01 { has_pos = true; }
-            if buf[0] < -0.01 { has_neg = true; }
+            if buf[0] > 0.01 {
+                has_pos = true;
+            }
+            if buf[0] < -0.01 {
+                has_neg = true;
+            }
         }
         assert!(has_pos, "should have positive (outside) values");
     }

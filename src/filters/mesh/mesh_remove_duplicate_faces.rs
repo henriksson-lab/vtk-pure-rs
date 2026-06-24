@@ -23,8 +23,8 @@ mod tests {
     #[test]
     fn test_dedup() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2],[0,1,2],[1,0,2]], // three copies (two duplicates)
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2], [0, 1, 2], [1, 0, 2]], // three copies (two duplicates)
         );
         let r = remove_duplicate_faces(&mesh);
         assert_eq!(r.polys.num_cells(), 1);

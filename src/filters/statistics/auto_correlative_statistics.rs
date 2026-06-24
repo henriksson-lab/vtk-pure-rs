@@ -9,7 +9,9 @@ use crate::data::{AnyDataArray, DataArray, Table};
 pub fn autocorrelation(table: &Table, column_name: &str, max_lag: usize) -> Option<Vec<f64>> {
     let col = table.column_by_name(column_name)?;
     let n = col.num_tuples();
-    if n < 2 { return None; }
+    if n < 2 {
+        return None;
+    }
 
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -21,7 +23,9 @@ pub fn autocorrelation(table: &Table, column_name: &str, max_lag: usize) -> Opti
     let mean = values.iter().sum::<f64>() / n as f64;
     let variance: f64 = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>();
 
-    if variance < 1e-15 { return Some(vec![1.0; max_lag + 1]); }
+    if variance < 1e-15 {
+        return Some(vec![1.0; max_lag + 1]);
+    }
 
     let mut result = Vec::with_capacity(max_lag + 1);
     for lag in 0..=max_lag.min(n - 1) {
@@ -48,33 +52,45 @@ pub fn autocorrelation_table(table: &Table, column_name: &str, max_lag: usize) -
 }
 
 /// Compute partial autocorrelation using the Durbin-Levinson recursion.
-pub fn partial_autocorrelation(table: &Table, column_name: &str, max_lag: usize) -> Option<Vec<f64>> {
+pub fn partial_autocorrelation(
+    table: &Table,
+    column_name: &str,
+    max_lag: usize,
+) -> Option<Vec<f64>> {
     let acf = autocorrelation(table, column_name, max_lag)?;
     let n_lags = acf.len();
-    if n_lags <= 1 { return Some(vec![1.0]); }
+    if n_lags <= 1 {
+        return Some(vec![1.0]);
+    }
 
     let mut pacf = vec![0.0; n_lags];
     pacf[0] = 1.0;
-    if n_lags > 1 { pacf[1] = acf[1]; }
+    if n_lags > 1 {
+        pacf[1] = acf[1];
+    }
 
     let mut phi = vec![vec![0.0; n_lags]; n_lags];
-    if n_lags > 1 { phi[1][1] = acf[1]; }
+    if n_lags > 1 {
+        phi[1][1] = acf[1];
+    }
 
     for k in 2..n_lags {
         let mut num = acf[k];
         for j in 1..k {
-            num -= phi[k-1][j] * acf[k - j];
+            num -= phi[k - 1][j] * acf[k - j];
         }
         let mut den = 1.0;
         for j in 1..k {
-            den -= phi[k-1][j] * acf[j];
+            den -= phi[k - 1][j] * acf[j];
         }
-        if den.abs() < 1e-15 { break; }
+        if den.abs() < 1e-15 {
+            break;
+        }
         phi[k][k] = num / den;
         pacf[k] = phi[k][k];
 
         for j in 1..k {
-            phi[k][j] = phi[k-1][j] - phi[k][k] * phi[k-1][k - j];
+            phi[k][j] = phi[k - 1][j] - phi[k][k] * phi[k - 1][k - j];
         }
     }
     Some(pacf)
@@ -86,8 +102,11 @@ mod tests {
 
     #[test]
     fn constant_series() {
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![5.0; 10], 1)));
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![5.0; 10],
+            1,
+        )));
         let acf = autocorrelation(&table, "x", 5).unwrap();
         assert!((acf[0] - 1.0).abs() < 1e-10);
     }
@@ -96,8 +115,8 @@ mod tests {
     fn sinusoidal_series() {
         let n = 100;
         let values: Vec<f64> = (0..n).map(|i| (i as f64 * 0.1).sin()).collect();
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", values, 1)));
+        let table =
+            Table::new().with_column(AnyDataArray::F64(DataArray::from_vec("x", values, 1)));
 
         let acf = autocorrelation(&table, "x", 20).unwrap();
         assert!((acf[0] - 1.0).abs() < 1e-10);
@@ -107,8 +126,11 @@ mod tests {
 
     #[test]
     fn acf_to_table() {
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1)));
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            1,
+        )));
         let result = autocorrelation_table(&table, "x", 3);
         assert_eq!(result.num_rows(), 4);
         assert!(result.column_by_name("Lag").is_some());
@@ -118,8 +140,8 @@ mod tests {
     #[test]
     fn pacf() {
         let values: Vec<f64> = (0..50).map(|i| i as f64 + (i as f64 * 0.5).sin()).collect();
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", values, 1)));
+        let table =
+            Table::new().with_column(AnyDataArray::F64(DataArray::from_vec("x", values, 1)));
         let pacf = partial_autocorrelation(&table, "x", 10).unwrap();
         assert!((pacf[0] - 1.0).abs() < 1e-10);
         assert!(pacf.len() > 1);

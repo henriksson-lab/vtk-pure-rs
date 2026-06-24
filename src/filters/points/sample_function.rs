@@ -4,11 +4,7 @@ use crate::data::{AnyDataArray, DataArray, DataSet, ImageData};
 ///
 /// The function `f(x, y, z) -> f64` is evaluated at every point of the grid,
 /// producing a scalar array.
-pub fn sample_function<F>(
-    image: &ImageData,
-    name: &str,
-    f: F,
-) -> ImageData
+pub fn sample_function<F>(image: &ImageData, name: &str, f: F) -> ImageData
 where
     F: Fn(f64, f64, f64) -> f64,
 {

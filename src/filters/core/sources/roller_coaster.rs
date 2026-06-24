@@ -18,26 +18,33 @@ pub fn roller_coaster(loop_radius: f64, track_width: f64, n_pts: usize) -> PolyD
             // Approach ramp
             x = -2.0 * loop_radius + s;
             z = s * 0.5; // gentle slope up
-            _nx = 0.0; _nz = 1.0;
+            _nx = 0.0;
+            _nz = 1.0;
         } else if s < 2.0 * loop_radius + 2.0 * std::f64::consts::PI * loop_radius {
             // Vertical loop
             let angle = (s - 2.0 * loop_radius) / loop_radius;
             x = loop_radius * angle.sin();
             z = loop_radius + loop_radius * (1.0 - angle.cos());
-            _nx = -angle.sin(); _nz = angle.cos();
+            _nx = -angle.sin();
+            _nz = angle.cos();
         } else {
             // Exit
             let ds = s - 2.0 * loop_radius - 2.0 * std::f64::consts::PI * loop_radius;
             x = ds;
             z = 2.0 * loop_radius - ds * 0.5; // slope down
-            _nx = 0.0; _nz = 1.0;
+            _nx = 0.0;
+            _nz = 1.0;
         }
-        let l = pts.len(); pts.push([x, -hw, z]); left_rail.push(l);
-        let r = pts.len(); pts.push([x, hw, z]); right_rail.push(r);
+        let l = pts.len();
+        pts.push([x, -hw, z]);
+        left_rail.push(l);
+        let r = pts.len();
+        pts.push([x, hw, z]);
+        right_rail.push(r);
     }
     for i in 0..n {
-        lines.push_cell(&[left_rail[i] as i64, left_rail[i+1] as i64]);
-        lines.push_cell(&[right_rail[i] as i64, right_rail[i+1] as i64]);
+        lines.push_cell(&[left_rail[i] as i64, left_rail[i + 1] as i64]);
+        lines.push_cell(&[right_rail[i] as i64, right_rail[i + 1] as i64]);
     }
     // Cross ties every few segments
     let tie_step = n / 20;
@@ -45,7 +52,10 @@ pub fn roller_coaster(loop_radius: f64, track_width: f64, n_pts: usize) -> PolyD
     for i in (0..=n).step_by(tie_step) {
         lines.push_cell(&[left_rail[i] as i64, right_rail[i] as i64]);
     }
-    let mut m = PolyData::new(); m.points = pts; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

@@ -12,7 +12,9 @@ use crate::data::{CellArray, Points, PolyData};
 /// average point spacing. Points must have normals for orientation.
 pub fn ball_pivoting(points: &PolyData, radius: f64) -> PolyData {
     let n = points.points.len();
-    if n < 3 { return points.clone(); }
+    if n < 3 {
+        return points.clone();
+    }
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| points.points.get(i)).collect();
     let r2 = radius * radius;
@@ -33,16 +35,16 @@ pub fn ball_pivoting(points: &PolyData, radius: f64) -> PolyData {
         used[c] = true;
 
         // Frontier edges to expand from
-        let mut frontier: Vec<(usize, usize)> = vec![
-            (seed_a, seed_b), (seed_b, c), (c, seed_a),
-        ];
+        let mut frontier: Vec<(usize, usize)> = vec![(seed_a, seed_b), (seed_b, c), (c, seed_a)];
 
         let max_iterations = n * 4;
         let mut iter = 0;
 
         while let Some((ea, eb)) = frontier.pop() {
             iter += 1;
-            if iter > max_iterations { break; }
+            if iter > max_iterations {
+                break;
+            }
 
             // Try to pivot the ball around edge (ea, eb) to find a new point
             if let Some(new_pt) = find_pivot_point(&pts, ea, eb, radius, &triangles) {
@@ -55,7 +57,9 @@ pub fn ball_pivoting(points: &PolyData, radius: f64) -> PolyData {
                     c.sort();
                     s == c
                 });
-                if exists { continue; }
+                if exists {
+                    continue;
+                }
 
                 triangles.push(tri);
                 used[new_pt] = true;
@@ -69,7 +73,9 @@ pub fn ball_pivoting(points: &PolyData, radius: f64) -> PolyData {
 
     // Also do greedy nearest-neighbor triangulation for remaining points
     for i in 0..n {
-        if used[i] { continue; }
+        if used[i] {
+            continue;
+        }
         // Find two nearest used points
         let mut nearest: Vec<(usize, f64)> = (0..n)
             .filter(|&j| j != i && used[j])
@@ -85,7 +91,9 @@ pub fn ball_pivoting(points: &PolyData, radius: f64) -> PolyData {
 
     // Build output
     let mut new_points = Points::<f64>::new();
-    for p in &pts { new_points.push(*p); }
+    for p in &pts {
+        new_points.push(*p);
+    }
     let mut polys = CellArray::new();
     for tri in &triangles {
         polys.push_cell(&[tri[0] as i64, tri[1] as i64, tri[2] as i64]);
@@ -103,9 +111,12 @@ fn find_closest_pair(pts: &[[f64; 3]]) -> (usize, usize) {
     let mut best_d = f64::MAX;
     let check_n = n.min(100); // limit search for large clouds
     for i in 0..check_n {
-        for j in i+1..check_n {
+        for j in i + 1..check_n {
             let d = dist2(pts[i], pts[j]);
-            if d < best_d { best_d = d; best = (i, j); }
+            if d < best_d {
+                best_d = d;
+                best = (i, j);
+            }
         }
     }
     best
@@ -113,11 +124,17 @@ fn find_closest_pair(pts: &[[f64; 3]]) -> (usize, usize) {
 
 fn find_third_point(pts: &[[f64; 3]], a: usize, b: usize, radius: f64) -> Option<usize> {
     let r2 = radius * radius * 4.0;
-    let mid = [(pts[a][0]+pts[b][0])/2.0, (pts[a][1]+pts[b][1])/2.0, (pts[a][2]+pts[b][2])/2.0];
+    let mid = [
+        (pts[a][0] + pts[b][0]) / 2.0,
+        (pts[a][1] + pts[b][1]) / 2.0,
+        (pts[a][2] + pts[b][2]) / 2.0,
+    ];
     let mut best = None;
     let mut best_d = f64::MAX;
     for (i, p) in pts.iter().enumerate() {
-        if i == a || i == b { continue; }
+        if i == a || i == b {
+            continue;
+        }
         let d = dist2(*p, mid);
         if d < best_d && d < r2 {
             best_d = d;
@@ -127,13 +144,25 @@ fn find_third_point(pts: &[[f64; 3]], a: usize, b: usize, radius: f64) -> Option
     best
 }
 
-fn find_pivot_point(pts: &[[f64; 3]], a: usize, b: usize, radius: f64, existing: &[[usize; 3]]) -> Option<usize> {
+fn find_pivot_point(
+    pts: &[[f64; 3]],
+    a: usize,
+    b: usize,
+    radius: f64,
+    existing: &[[usize; 3]],
+) -> Option<usize> {
     let r2 = radius * radius * 4.0;
-    let mid = [(pts[a][0]+pts[b][0])/2.0, (pts[a][1]+pts[b][1])/2.0, (pts[a][2]+pts[b][2])/2.0];
+    let mid = [
+        (pts[a][0] + pts[b][0]) / 2.0,
+        (pts[a][1] + pts[b][1]) / 2.0,
+        (pts[a][2] + pts[b][2]) / 2.0,
+    ];
     let mut candidates: Vec<(usize, f64)> = Vec::new();
 
     for (i, p) in pts.iter().enumerate() {
-        if i == a || i == b { continue; }
+        if i == a || i == b {
+            continue;
+        }
         let d = dist2(*p, mid);
         if d < r2 {
             // Check this doesn't form a degenerate triangle
@@ -156,13 +185,15 @@ fn find_pivot_point(pts: &[[f64; 3]], a: usize, b: usize, radius: f64, existing:
             s.sort();
             s == tri
         });
-        if !exists { return Some(idx); }
+        if !exists {
+            return Some(idx);
+        }
     }
     None
 }
 
 fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
-    (a[0]-b[0]).powi(2) + (a[1]-b[1]).powi(2) + (a[2]-b[2]).powi(2)
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
 }
 
 #[cfg(test)]
@@ -181,7 +212,11 @@ mod tests {
         let cloud = PolyData::from_points(pts);
         let mesh = ball_pivoting(&cloud, 0.8);
         assert!(mesh.polys.num_cells() > 0, "should produce triangles");
-        assert!(mesh.polys.num_cells() >= 10, "should produce many triangles, got {}", mesh.polys.num_cells());
+        assert!(
+            mesh.polys.num_cells() >= 10,
+            "should produce many triangles, got {}",
+            mesh.polys.num_cells()
+        );
     }
 
     #[test]
@@ -193,9 +228,7 @@ mod tests {
 
     #[test]
     fn three_points() {
-        let cloud = PolyData::from_points(vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
-        ]);
+        let cloud = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]]);
         let mesh = ball_pivoting(&cloud, 2.0);
         assert!(mesh.polys.num_cells() >= 1);
     }

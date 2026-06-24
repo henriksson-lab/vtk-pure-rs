@@ -8,7 +8,13 @@ pub fn grid_surface(nx: usize, ny: usize, dx: f64, dy: f64) -> PolyData {
 }
 
 /// Create a grid surface with Z values from a function f(x, y).
-pub fn grid_surface_from_fn(nx: usize, ny: usize, dx: f64, dy: f64, f: impl Fn(f64, f64) -> f64) -> PolyData {
+pub fn grid_surface_from_fn(
+    nx: usize,
+    ny: usize,
+    dx: f64,
+    dy: f64,
+    f: impl Fn(f64, f64) -> f64,
+) -> PolyData {
     let nx = nx.max(2);
     let ny = ny.max(2);
     let mut pts = Points::<f64>::new();
@@ -38,7 +44,13 @@ pub fn grid_surface_from_fn(nx: usize, ny: usize, dx: f64, dy: f64, f: impl Fn(f
     let mut result = PolyData::new();
     result.points = pts;
     result.polys = polys;
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Elevation", elevations, 1)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Elevation",
+            elevations,
+            1,
+        )));
     result.point_data_mut().set_active_scalars("Elevation");
     result
 }

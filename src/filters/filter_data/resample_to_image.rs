@@ -1,14 +1,10 @@
-use crate::data::{AnyDataArray, DataArray, ImageData, PolyData, DataSet, KdTree};
+use crate::data::{AnyDataArray, DataArray, DataSet, ImageData, KdTree, PolyData};
 
 /// Resample a PolyData scalar field onto an ImageData grid.
 ///
 /// For each grid point, finds the nearest point in the PolyData and
 /// copies its scalar value. Uses a k-d tree for efficient lookups.
-pub fn resample_to_image(
-    input: &PolyData,
-    array_name: &str,
-    dimensions: [usize; 3],
-) -> ImageData {
+pub fn resample_to_image(input: &PolyData, array_name: &str, dimensions: [usize; 3]) -> ImageData {
     let arr = match input.point_data().get_array(array_name) {
         Some(a) => a,
         None => return ImageData::with_dimensions(dimensions[0], dimensions[1], dimensions[2]),
@@ -62,9 +58,10 @@ pub fn resample_to_image(
     let mut img = ImageData::with_dimensions(nx, ny, nz);
     img.set_origin(origin);
     img.set_spacing(spacing);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, values, 1,
+        )));
     img
 }
 
@@ -78,9 +75,12 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.0, 1.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![10.0, 20.0, 30.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
 
         let img = resample_to_image(&pd, "temp", [5, 5, 1]);
         assert_eq!(img.dimensions(), [5, 5, 1]);

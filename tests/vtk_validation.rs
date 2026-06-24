@@ -24,13 +24,20 @@ fn ref_f(data: &HashMap<String, serde_json::Value>, key: &str) -> f64 {
 
 fn ref_bounds(data: &HashMap<String, serde_json::Value>) -> [f64; 6] {
     let b = data["bounds"].as_array().unwrap();
-    [b[0].as_f64().unwrap(), b[1].as_f64().unwrap(),
-     b[2].as_f64().unwrap(), b[3].as_f64().unwrap(),
-     b[4].as_f64().unwrap(), b[5].as_f64().unwrap()]
+    [
+        b[0].as_f64().unwrap(),
+        b[1].as_f64().unwrap(),
+        b[2].as_f64().unwrap(),
+        b[3].as_f64().unwrap(),
+        b[4].as_f64().unwrap(),
+        b[5].as_f64().unwrap(),
+    ]
 }
 
 fn within_pct(actual: usize, expected: usize, pct: f64) -> bool {
-    if expected == 0 { return actual == 0; }
+    if expected == 0 {
+        return actual == 0;
+    }
     ((actual as f64 - expected as f64).abs() / expected as f64) < pct
 }
 
@@ -42,7 +49,11 @@ use vtk_pure_rs::data::*;
 use vtk_pure_rs::filters::core::sources::sphere::{sphere, SphereParams};
 
 fn test_sphere() -> PolyData {
-    sphere(&SphereParams { theta_resolution: 32, phi_resolution: 32, ..Default::default() })
+    sphere(&SphereParams {
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    })
 }
 
 // ==================== SOURCES ====================
@@ -51,12 +62,22 @@ fn test_sphere() -> PolyData {
 fn source_sphere() {
     let r = load_ref("source_sphere_32x32");
     let pd = test_sphere();
-    assert!(within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.05),
-        "sphere point count: got {}, expected {} (±5%)", pd.points.len(), ref_i(&r, "num_points"));
+    assert!(
+        within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.05),
+        "sphere point count: got {}, expected {} (±5%)",
+        pd.points.len(),
+        ref_i(&r, "num_points")
+    );
     let bb = vtk_pure_rs::data::DataSet::bounds(&pd);
     let rb = ref_bounds(&r);
-    assert!(bounds_close([bb.x_min,bb.x_max,bb.y_min,bb.y_max,bb.z_min,bb.z_max], rb, 0.01),
-        "sphere bounds mismatch");
+    assert!(
+        bounds_close(
+            [bb.x_min, bb.x_max, bb.y_min, bb.y_max, bb.z_min, bb.z_max],
+            rb,
+            0.01
+        ),
+        "sphere bounds mismatch"
+    );
 }
 
 #[test]
@@ -66,14 +87,20 @@ fn source_cube() {
     let pd = cube(&CubeParams::default());
     // VTK cube has 24 pts (4 per face with separate normals), ours may differ
     assert!(pd.points.len() >= 8, "cube should have at least 8 points");
-    assert!(pd.polys.num_cells() >= 6, "cube should have at least 6 faces");
+    assert!(
+        pd.polys.num_cells() >= 6,
+        "cube should have at least 6 faces"
+    );
 }
 
 #[test]
 fn source_cone() {
     let r = load_ref("source_cone_32");
     use vtk_pure_rs::filters::core::sources::cone::{cone, ConeParams};
-    let pd = cone(&ConeParams { resolution: 32, ..Default::default() });
+    let pd = cone(&ConeParams {
+        resolution: 32,
+        ..Default::default()
+    });
     assert!(pd.points.len() > 0);
     assert!(pd.polys.num_cells() > 0);
 }
@@ -82,7 +109,10 @@ fn source_cone() {
 fn source_cylinder() {
     let r = load_ref("source_cylinder_32");
     use vtk_pure_rs::filters::core::sources::cylinder::{cylinder, CylinderParams};
-    let pd = cylinder(&CylinderParams { resolution: 32, ..Default::default() });
+    let pd = cylinder(&CylinderParams {
+        resolution: 32,
+        ..Default::default()
+    });
     assert!(pd.points.len() > 0);
     assert!(pd.polys.num_cells() > 0);
 }
@@ -91,11 +121,24 @@ fn source_cylinder() {
 fn source_plane() {
     let r = load_ref("source_plane_10x10");
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let pd = plane(&PlaneParams { x_resolution: 10, y_resolution: 10, ..Default::default() });
-    assert!(within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.1),
-        "plane point count: got {}, expected {}", pd.points.len(), ref_i(&r, "num_points"));
-    assert_eq!(pd.polys.num_cells(), ref_i(&r, "num_cells"),
-        "plane cell count: got {}, expected {}", pd.polys.num_cells(), ref_i(&r, "num_cells"));
+    let pd = plane(&PlaneParams {
+        x_resolution: 10,
+        y_resolution: 10,
+        ..Default::default()
+    });
+    assert!(
+        within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.1),
+        "plane point count: got {}, expected {}",
+        pd.points.len(),
+        ref_i(&r, "num_points")
+    );
+    assert_eq!(
+        pd.polys.num_cells(),
+        ref_i(&r, "num_cells"),
+        "plane cell count: got {}, expected {}",
+        pd.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 // ==================== FILTERS ====================
@@ -105,15 +148,25 @@ fn filter_normals() {
     let r = load_ref("filter_normals");
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
-    assert!(result.point_data().get_array("Normals").is_some(), "should have Normals array");
+    assert!(
+        result.point_data().get_array("Normals").is_some(),
+        "should have Normals array"
+    );
     let normals = result.point_data().get_array("Normals").unwrap();
-    assert_eq!(normals.num_tuples(), result.points.len(), "one normal per point");
+    assert_eq!(
+        normals.num_tuples(),
+        result.points.len(),
+        "one normal per point"
+    );
     // Check normals are unit length
     let mut buf = [0.0f64; 3];
     for i in 0..normals.num_tuples().min(100) {
         normals.tuple_as_f64(i, &mut buf);
-        let len = (buf[0]*buf[0] + buf[1]*buf[1] + buf[2]*buf[2]).sqrt();
-        assert!((len - 1.0).abs() < 0.01, "normal {i} not unit length: {len}");
+        let len = (buf[0] * buf[0] + buf[1] * buf[1] + buf[2] * buf[2]).sqrt();
+        assert!(
+            (len - 1.0).abs() < 0.01,
+            "normal {i} not unit length: {len}"
+        );
     }
 }
 
@@ -124,11 +177,19 @@ fn filter_triangulate() {
     let result = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     // All cells should be triangles
     for ci in 0..result.polys.num_cells() {
-        assert_eq!(result.polys.cell(ci).len(), 3, "cell {ci} is not a triangle");
+        assert_eq!(
+            result.polys.cell(ci).len(),
+            3,
+            "cell {ci} is not a triangle"
+        );
     }
     // Cell count should match VTK (both produce triangles from the same sphere)
-    assert!(within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.05),
-        "triangulate cell count: got {}, expected {}", result.polys.num_cells(), ref_i(&r, "num_cells"));
+    assert!(
+        within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.05),
+        "triangulate cell count: got {}, expected {}",
+        result.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 #[test]
@@ -138,7 +199,9 @@ fn filter_clean() {
     // Duplicate the mesh
     let mut duped = pd.clone();
     let offset = duped.points.len() as i64;
-    for i in 0..pd.points.len() { duped.points.push(pd.points.get(i)); }
+    for i in 0..pd.points.len() {
+        duped.points.push(pd.points.get(i));
+    }
     for ci in 0..pd.polys.num_cells() {
         let cell = pd.polys.cell(ci);
         let remapped: Vec<i64> = cell.iter().map(|&v| v + offset).collect();
@@ -147,8 +210,13 @@ fn filter_clean() {
     use vtk_pure_rs::filters::geometry::clean::{clean, CleanParams};
     let result = clean(&duped, &CleanParams::default());
     // Should merge back to original point count
-    assert_eq!(result.points.len(), pd.points.len(),
-        "clean should merge duplicates: got {}, expected {}", result.points.len(), pd.points.len());
+    assert_eq!(
+        result.points.len(),
+        pd.points.len(),
+        "clean should merge duplicates: got {}, expected {}",
+        result.points.len(),
+        pd.points.len()
+    );
 }
 
 #[test]
@@ -158,31 +226,49 @@ fn filter_decimate() {
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let result = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.5);
     let expected = ref_i(&r, "num_cells");
-    assert!(within_pct(result.polys.num_cells(), expected, 0.15),
-        "decimate cell count: got {}, expected {} (±15%)", result.polys.num_cells(), expected);
+    assert!(
+        within_pct(result.polys.num_cells(), expected, 0.15),
+        "decimate cell count: got {}, expected {} (±15%)",
+        result.polys.num_cells(),
+        expected
+    );
 }
-
 
 #[test]
 fn filter_connectivity() {
     let r = load_ref("filter_connectivity");
     let expected_regions = ref_i(&r, "num_regions");
     // Create two separate small spheres
-    let s1 = sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() });
-    let mut s2 = sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8,
-        center: [3.0, 0.0, 0.0], ..Default::default() });
+    let s1 = sphere(&SphereParams {
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
+    let mut s2 = sphere(&SphereParams {
+        theta_resolution: 8,
+        phi_resolution: 8,
+        center: [3.0, 0.0, 0.0],
+        ..Default::default()
+    });
     // Append
     let offset = s1.points.len() as i64;
     let mut merged = s1.clone();
-    for i in 0..s2.points.len() { merged.points.push(s2.points.get(i)); }
+    for i in 0..s2.points.len() {
+        merged.points.push(s2.points.get(i));
+    }
     for ci in 0..s2.polys.num_cells() {
         let cell = s2.polys.cell(ci);
         let remapped: Vec<i64> = cell.iter().map(|&v| v + offset).collect();
         merged.polys.push_cell(&remapped);
     }
     let components = vtk_pure_rs::filters::geometry::connectivity::extract_components(&merged);
-    assert_eq!(components.len(), expected_regions,
-        "expected {} regions, got {}", expected_regions, components.len());
+    assert_eq!(
+        components.len(),
+        expected_regions,
+        "expected {} regions, got {}",
+        expected_regions,
+        components.len()
+    );
 }
 
 #[test]
@@ -190,13 +276,20 @@ fn filter_clip_plane() {
     let _r = load_ref("filter_clip_plane");
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
-    let result = vtk_pure_rs::filters::clip::clip::clip_by_plane(&tri, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let result =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&tri, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
     // Most points should be on the correct side (x <= 0)
     let total = result.points.len();
     // Our clip keeps dot(p, normal) >= 0, i.e. x >= 0 for normal=[1,0,0]
-    let on_kept_side = (0..total).filter(|&i| result.points.get(i)[0] >= -0.01).count();
+    let on_kept_side = (0..total)
+        .filter(|&i| result.points.get(i)[0] >= -0.01)
+        .count();
     let pct = on_kept_side as f64 / total as f64;
-    assert!(pct > 0.90, "at least 90% of points should have x >= 0, got {:.1}%", pct * 100.0);
+    assert!(
+        pct > 0.90,
+        "at least 90% of points should have x >= 0, got {:.1}%",
+        pct * 100.0
+    );
     assert!(result.polys.num_cells() > 0, "clip should produce cells");
 }
 
@@ -205,7 +298,10 @@ fn filter_elevation() {
     let r = load_ref("filter_elevation");
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    assert!(result.point_data().scalars().is_some(), "should have scalar array");
+    assert!(
+        result.point_data().scalars().is_some(),
+        "should have scalar array"
+    );
     let scalars = result.point_data().scalars().unwrap();
     let expected_range = r["scalar_range"].as_array().unwrap();
     let mut buf = [0.0f64];
@@ -217,22 +313,28 @@ fn filter_elevation() {
         max_v = max_v.max(buf[0]);
     }
     // Scalar range should roughly match
-    assert!((min_v - expected_range[0].as_f64().unwrap()).abs() < 0.1,
-        "elevation min: got {min_v}, expected {}", expected_range[0]);
-    assert!((max_v - expected_range[1].as_f64().unwrap()).abs() < 0.1,
-        "elevation max: got {max_v}, expected {}", expected_range[1]);
+    assert!(
+        (min_v - expected_range[0].as_f64().unwrap()).abs() < 0.1,
+        "elevation min: got {min_v}, expected {}",
+        expected_range[0]
+    );
+    assert!(
+        (max_v - expected_range[1].as_f64().unwrap()).abs() < 0.1,
+        "elevation max: got {max_v}, expected {}",
+        expected_range[1]
+    );
 }
 
 #[test]
 fn filter_marching_cubes() {
     let r = load_ref("filter_marching_cubes_64");
     let img = ImageData::with_dimensions(64, 64, 64);
-    let mut vals = Vec::with_capacity(64*64*64);
+    let mut vals = Vec::with_capacity(64 * 64 * 64);
     for k in 0..64i32 {
         for j in 0..64i32 {
             for i in 0..64i32 {
-                let (x, y, z) = ((i-32) as f64, (j-32) as f64, (k-32) as f64);
-                vals.push(x*x + y*y + z*z);
+                let (x, y, z) = ((i - 32) as f64, (j - 32) as f64, (k - 32) as f64);
+                vals.push(x * x + y * y + z * z);
             }
         }
     }
@@ -241,8 +343,12 @@ fn filter_marching_cubes() {
     let expected_cells = ref_i(&r, "num_cells");
     // VTK deduplicates shared vertices; we produce 3 per triangle.
     // Compare cell count (more stable) and verify points are on the isosurface.
-    assert!(within_pct(result.polys.num_cells(), expected_cells, 0.1),
-        "marching cubes cells: got {}, expected {} (±10%)", result.polys.num_cells(), expected_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), expected_cells, 0.1),
+        "marching cubes cells: got {}, expected {} (±10%)",
+        result.polys.num_cells(),
+        expected_cells
+    );
     assert!(result.points.len() > 0, "should produce points");
 }
 
@@ -254,12 +360,19 @@ fn filter_mass_properties() {
     let result = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
     let expected_area = ref_f(&r, "surface_area");
     let expected_vol = ref_f(&r, "volume");
-    assert!((result.surface_area - expected_area).abs() / expected_area < 0.02,
-        "surface area: got {}, expected {} (±2%)", result.surface_area, expected_area);
-    assert!((result.volume - expected_vol).abs() / expected_vol < 0.02,
-        "volume: got {}, expected {} (±2%)", result.volume, expected_vol);
+    assert!(
+        (result.surface_area - expected_area).abs() / expected_area < 0.02,
+        "surface area: got {}, expected {} (±2%)",
+        result.surface_area,
+        expected_area
+    );
+    assert!(
+        (result.volume - expected_vol).abs() / expected_vol < 0.02,
+        "volume: got {}, expected {} (±2%)",
+        result.volume,
+        expected_vol
+    );
 }
-
 
 #[test]
 fn filter_reverse_sense() {
@@ -283,8 +396,12 @@ fn filter_extract_edges() {
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::extract::extract_edges::extract_edges(&pd);
     let expected = ref_i(&r, "num_edges");
-    assert!(within_pct(result.lines.num_cells(), expected, 0.05),
-        "edge count: got {}, expected {} (±5%)", result.lines.num_cells(), expected);
+    assert!(
+        within_pct(result.lines.num_cells(), expected, 0.05),
+        "edge count: got {}, expected {} (±5%)",
+        result.lines.num_cells(),
+        expected
+    );
 }
 
 // ==================== I/O ====================
@@ -295,10 +412,15 @@ fn io_stl_roundtrip() {
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let path = std::env::temp_dir().join("vtk_validation_stl.stl");
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&path, &tri).unwrap();
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&path, &tri)
+        .unwrap();
     let loaded = vtk_pure_rs::io::stl::StlReader::read(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), tri.polys.num_cells(),
-        "STL roundtrip cell count mismatch");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        tri.polys.num_cells(),
+        "STL roundtrip cell count mismatch"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -308,10 +430,20 @@ fn io_vtk_legacy_roundtrip() {
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let path = std::env::temp_dir().join("vtk_validation_legacy.vtk");
-    vtk_pure_rs::io::legacy::LegacyWriter::ascii().write_poly_data(&path, &tri).unwrap();
+    vtk_pure_rs::io::legacy::LegacyWriter::ascii()
+        .write_poly_data(&path, &tri)
+        .unwrap();
     let loaded = vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(&path).unwrap();
-    assert_eq!(loaded.points.len(), tri.points.len(), "VTK roundtrip point count");
-    assert_eq!(loaded.polys.num_cells(), tri.polys.num_cells(), "VTK roundtrip cell count");
+    assert_eq!(
+        loaded.points.len(),
+        tri.points.len(),
+        "VTK roundtrip point count"
+    );
+    assert_eq!(
+        loaded.polys.num_cells(),
+        tri.polys.num_cells(),
+        "VTK roundtrip cell count"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -321,8 +453,13 @@ fn io_vtk_legacy_roundtrip() {
 fn source_disk() {
     let r = load_ref("source_disk");
     use vtk_pure_rs::filters::core::sources::disk::{disk, DiskParams};
-    let pd = disk(&DiskParams { inner_radius: 0.2, outer_radius: 0.5, radial_resolution: 8,
-        circumferential_resolution: 32, ..Default::default() });
+    let pd = disk(&DiskParams {
+        inner_radius: 0.2,
+        outer_radius: 0.5,
+        radial_resolution: 8,
+        circumferential_resolution: 32,
+        ..Default::default()
+    });
     assert!(pd.points.len() > 0);
     assert!(pd.polys.num_cells() > 0);
 }
@@ -331,9 +468,17 @@ fn source_disk() {
 fn source_line() {
     let r = load_ref("source_line");
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let pd = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 10 });
-    assert!(within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.1),
-        "line point count: got {}, expected {}", pd.points.len(), ref_i(&r, "num_points"));
+    let pd = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 10,
+    });
+    assert!(
+        within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.1),
+        "line point count: got {}, expected {}",
+        pd.points.len(),
+        ref_i(&r, "num_points")
+    );
 }
 
 // ==================== ADDITIONAL FILTERS ====================
@@ -342,48 +487,64 @@ fn source_line() {
 fn filter_append() {
     let r = load_ref("filter_append");
     let s1 = test_sphere();
-    let s2 = sphere(&SphereParams { center: [2.0, 0.0, 0.0], theta_resolution: 32,
-        phi_resolution: 32, ..Default::default() });
+    let s2 = sphere(&SphereParams {
+        center: [2.0, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     let expected = ref_i(&r, "num_points");
-    assert!(within_pct(result.points.len(), expected, 0.05),
-        "append points: got {}, expected {}", result.points.len(), expected);
+    assert!(
+        within_pct(result.points.len(), expected, 0.05),
+        "append points: got {}, expected {}",
+        result.points.len(),
+        expected
+    );
 }
 
 #[test]
 fn filter_contour() {
     let r = load_ref("filter_contour");
     let img = ImageData::with_dimensions(32, 32, 32);
-    let mut vals = Vec::with_capacity(32*32*32);
+    let mut vals = Vec::with_capacity(32 * 32 * 32);
     for k in 0..32i32 {
         for j in 0..32i32 {
             for i in 0..32i32 {
-                vals.push(((i-16)*(i-16) + (j-16)*(j-16) + (k-16)*(k-16)) as f64);
+                vals.push(((i - 16) * (i - 16) + (j - 16) * (j - 16) + (k - 16) * (k - 16)) as f64);
             }
         }
     }
     let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, 100.0);
     let expected_cells = ref_i(&r, "num_cells");
-    assert!(within_pct(result.polys.num_cells(), expected_cells, 0.15),
-        "contour cells: got {}, expected {} (±15%)", result.polys.num_cells(), expected_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), expected_cells, 0.15),
+        "contour cells: got {}, expected {} (±15%)",
+        result.polys.num_cells(),
+        expected_cells
+    );
 }
 
 #[test]
 fn filter_flying_edges() {
     let r = load_ref("filter_flying_edges");
     let img = ImageData::with_dimensions(32, 32, 32);
-    let mut vals = Vec::with_capacity(32*32*32);
+    let mut vals = Vec::with_capacity(32 * 32 * 32);
     for k in 0..32i32 {
         for j in 0..32i32 {
             for i in 0..32i32 {
-                vals.push(((i-16)*(i-16) + (j-16)*(j-16) + (k-16)*(k-16)) as f64);
+                vals.push(((i - 16) * (i - 16) + (j - 16) * (j - 16) + (k - 16) * (k - 16)) as f64);
             }
         }
     }
     let result = vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &vals, 100.0);
     let expected_cells = ref_i(&r, "num_cells");
-    assert!(within_pct(result.polys.num_cells(), expected_cells, 0.15),
-        "flying edges cells: got {}, expected {} (±15%)", result.polys.num_cells(), expected_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), expected_cells, 0.15),
+        "flying edges cells: got {}, expected {} (±15%)",
+        result.polys.num_cells(),
+        expected_cells
+    );
 }
 
 #[test]
@@ -399,10 +560,19 @@ fn filter_delaunay_2d_200pts() {
     let mut pd = PolyData::new();
     pd.points = vtk_pure_rs::data::Points::from_vec(pts);
     let result = vtk_pure_rs::filters::geometry::delaunay_2d::delaunay_2d(&pd);
-    assert!(result.polys.num_cells() > 100, "delaunay should produce many triangles, got {}", result.polys.num_cells());
+    assert!(
+        result.polys.num_cells() > 100,
+        "delaunay should produce many triangles, got {}",
+        result.polys.num_cells()
+    );
     // All output cells should be triangles
     for ci in 0..result.polys.num_cells() {
-        assert_eq!(result.polys.cell(ci).len(), 3, "cell {} is not a triangle", ci);
+        assert_eq!(
+            result.polys.cell(ci).len(),
+            3,
+            "cell {} is not a triangle",
+            ci
+        );
     }
 }
 
@@ -412,8 +582,15 @@ fn filter_cell_data_to_point_data() {
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     // Verify our sphere has the expected structure
-    assert_eq!(tri.points.len(), pd.points.len(), "triangulate preserves points");
-    assert!(tri.polys.num_cells() >= pd.polys.num_cells(), "triangulate produces >= cells");
+    assert_eq!(
+        tri.points.len(),
+        pd.points.len(),
+        "triangulate preserves points"
+    );
+    assert!(
+        tri.polys.num_cells() >= pd.polys.num_cells(),
+        "triangulate produces >= cells"
+    );
 }
 
 // ==================== ADDITIONAL I/O ====================
@@ -426,8 +603,11 @@ fn io_ply_roundtrip() {
     let path = std::env::temp_dir().join("vtk_val_ply.ply");
     vtk_pure_rs::io::ply::PlyWriter::write(&path, &tri).unwrap();
     let loaded = vtk_pure_rs::io::ply::PlyReader::read(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), tri.polys.num_cells(),
-        "PLY roundtrip cell count mismatch");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        tri.polys.num_cells(),
+        "PLY roundtrip cell count mismatch"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -439,8 +619,12 @@ fn io_obj_roundtrip() {
     let path = std::env::temp_dir().join("vtk_val_obj.obj");
     vtk_pure_rs::io::obj::ObjWriter::write(&path, &tri).unwrap();
     let loaded = vtk_pure_rs::io::obj::ObjReader::read(&path).unwrap();
-    assert!(within_pct(loaded.polys.num_cells(), tri.polys.num_cells(), 0.01),
-        "OBJ roundtrip cell count: got {}, expected {}", loaded.polys.num_cells(), tri.polys.num_cells());
+    assert!(
+        within_pct(loaded.polys.num_cells(), tri.polys.num_cells(), 0.01),
+        "OBJ roundtrip cell count: got {}, expected {}",
+        loaded.polys.num_cells(),
+        tri.polys.num_cells()
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -453,9 +637,13 @@ fn filter_cell_centers() {
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::cell::cell_centers::cell_centers(&pd);
     // One centroid point per input cell
-    assert_eq!(result.points.len(), pd.polys.num_cells(),
+    assert_eq!(
+        result.points.len(),
+        pd.polys.num_cells(),
         "cell_centers should produce one point per cell: got {}, expected {}",
-        result.points.len(), pd.polys.num_cells());
+        result.points.len(),
+        pd.polys.num_cells()
+    );
 }
 
 #[test]
@@ -465,10 +653,12 @@ fn filter_curvatures_mean() {
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let result = vtk_pure_rs::filters::geometry::curvatures::curvatures(&tri);
     // Should add curvature scalar data
-    assert!(result.point_data().get_array("MeanCurvature").is_some() ||
-            result.point_data().get_array("Curvature").is_some() ||
-            result.point_data().num_arrays() > 0,
-        "curvatures should add scalar data");
+    assert!(
+        result.point_data().get_array("MeanCurvature").is_some()
+            || result.point_data().get_array("Curvature").is_some()
+            || result.point_data().num_arrays() > 0,
+        "curvatures should add scalar data"
+    );
 }
 
 #[test]
@@ -478,9 +668,16 @@ fn filter_threshold() {
     let elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let result = vtk_pure_rs::filters::clip::threshold::threshold(&elev, 0.3, 0.7);
     // Should have fewer cells than input
-    assert!(result.polys.num_cells() < pd.polys.num_cells(),
-        "threshold should remove cells: got {}, input had {}", result.polys.num_cells(), pd.polys.num_cells());
-    assert!(result.polys.num_cells() > 0, "threshold should keep some cells");
+    assert!(
+        result.polys.num_cells() < pd.polys.num_cells(),
+        "threshold should remove cells: got {}, input had {}",
+        result.polys.num_cells(),
+        pd.polys.num_cells()
+    );
+    assert!(
+        result.polys.num_cells() > 0,
+        "threshold should keep some cells"
+    );
 }
 
 #[cfg(feature = "filters-subdivide")]
@@ -492,9 +689,12 @@ fn filter_subdivide_loop() {
     let result = vtk_pure_rs::filters::subdivide::subdivide::subdivide(&tri, 1);
     let expected = ref_i(&r, "num_cells");
     // Loop subdivision: each triangle -> 4 triangles
-    assert!(result.polys.num_cells() >= tri.polys.num_cells() * 3,
+    assert!(
+        result.polys.num_cells() >= tri.polys.num_cells() * 3,
         "subdivide should multiply cells: got {}, input had {}",
-        result.polys.num_cells(), tri.polys.num_cells());
+        result.polys.num_cells(),
+        tri.polys.num_cells()
+    );
 }
 
 #[cfg(feature = "filters-transform")]
@@ -507,8 +707,18 @@ fn filter_transform_translate() {
     // Bounds should shift by +5 in x
     let bb = vtk_pure_rs::data::DataSet::bounds(&result);
     let rb = ref_bounds(&r);
-    assert!((bb.x_min - rb[0]).abs() < 0.1, "translated x_min: got {}, expected {}", bb.x_min, rb[0]);
-    assert!((bb.x_max - rb[1]).abs() < 0.1, "translated x_max: got {}, expected {}", bb.x_max, rb[1]);
+    assert!(
+        (bb.x_min - rb[0]).abs() < 0.1,
+        "translated x_min: got {}, expected {}",
+        bb.x_min,
+        rb[0]
+    );
+    assert!(
+        (bb.x_max - rb[1]).abs() < 0.1,
+        "translated x_max: got {}, expected {}",
+        bb.x_max,
+        rb[1]
+    );
 }
 
 // ==================== ADDITIONAL GEOMETRY VALIDATION ====================
@@ -521,27 +731,39 @@ fn filter_mass_properties_cube() {
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let result = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
     // Default cube is 1x1x1 centered at origin
-    assert!((result.surface_area - 6.0).abs() < 0.1,
-        "cube surface area should be ~6, got {}", result.surface_area);
-    assert!((result.volume - 1.0).abs() < 0.1,
-        "cube volume should be ~1, got {}", result.volume);
+    assert!(
+        (result.surface_area - 6.0).abs() < 0.1,
+        "cube surface area should be ~6, got {}",
+        result.surface_area
+    );
+    assert!(
+        (result.volume - 1.0).abs() < 0.1,
+        "cube volume should be ~1, got {}",
+        result.volume
+    );
 }
 
 #[test]
 fn filter_normals_unit_length() {
     // Verify ALL normals are unit length on a complex mesh
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
     let normals = result.point_data().get_array("Normals").unwrap();
     let mut buf = [0.0f64; 3];
     let mut max_deviation = 0.0f64;
     for i in 0..normals.num_tuples() {
         normals.tuple_as_f64(i, &mut buf);
-        let len = (buf[0]*buf[0] + buf[1]*buf[1] + buf[2]*buf[2]).sqrt();
+        let len = (buf[0] * buf[0] + buf[1] * buf[1] + buf[2] * buf[2]).sqrt();
         max_deviation = max_deviation.max((len - 1.0).abs());
     }
-    assert!(max_deviation < 0.01,
-        "max normal length deviation from 1.0: {max_deviation}");
+    assert!(
+        max_deviation < 0.01,
+        "max normal length deviation from 1.0: {max_deviation}"
+    );
 }
 
 #[test]
@@ -556,11 +778,17 @@ fn filter_normals_sphere_outward() {
     for i in 0..total {
         normals.tuple_as_f64(i, &mut buf);
         let p = result.points.get(i);
-        let dot = buf[0]*p[0] + buf[1]*p[1] + buf[2]*p[2];
-        if dot > 0.0 { outward_count += 1; }
+        let dot = buf[0] * p[0] + buf[1] * p[1] + buf[2] * p[2];
+        if dot > 0.0 {
+            outward_count += 1;
+        }
     }
     let pct = outward_count as f64 / total as f64;
-    assert!(pct > 0.95, "at least 95% of normals should point outward, got {:.1}%", pct * 100.0);
+    assert!(
+        pct > 0.95,
+        "at least 95% of normals should point outward, got {:.1}%",
+        pct * 100.0
+    );
 }
 
 #[test]
@@ -569,8 +797,11 @@ fn filter_clean_preserves_topology() {
     let pd = test_sphere();
     use vtk_pure_rs::filters::geometry::clean::{clean, CleanParams};
     let result = clean(&pd, &CleanParams::default());
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells(),
-        "clean should preserve cells when no duplicates");
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells(),
+        "clean should preserve cells when no duplicates"
+    );
 }
 
 #[test]
@@ -581,16 +812,29 @@ fn filter_decimate_preserves_bounds() {
     let result = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.5);
     let bb_in = vtk_pure_rs::data::DataSet::bounds(&tri);
     let bb_out = vtk_pure_rs::data::DataSet::bounds(&result);
-    assert!((bb_in.x_min - bb_out.x_min).abs() < 0.05, "decimate should preserve x bounds");
-    assert!((bb_in.x_max - bb_out.x_max).abs() < 0.05, "decimate should preserve x bounds");
-    assert!((bb_in.z_min - bb_out.z_min).abs() < 0.05, "decimate should preserve z bounds");
+    assert!(
+        (bb_in.x_min - bb_out.x_min).abs() < 0.05,
+        "decimate should preserve x bounds"
+    );
+    assert!(
+        (bb_in.x_max - bb_out.x_max).abs() < 0.05,
+        "decimate should preserve x bounds"
+    );
+    assert!(
+        (bb_in.z_min - bb_out.z_min).abs() < 0.05,
+        "decimate should preserve z bounds"
+    );
 }
 
 #[test]
 fn filter_elevation_monotonic() {
     // Elevation on a plane should be monotonically increasing along the axis
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let pd = plane(&PlaneParams { x_resolution: 10, y_resolution: 1, ..Default::default() });
+    let pd = plane(&PlaneParams {
+        x_resolution: 10,
+        y_resolution: 1,
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let scalars = result.point_data().scalars().unwrap();
     let mut prev = f64::MIN;
@@ -611,7 +855,9 @@ fn io_stl_preserves_geometry() {
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let path = std::env::temp_dir().join("vtk_val_stl_geom.stl");
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&path, &tri).unwrap();
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&path, &tri)
+        .unwrap();
     let loaded = vtk_pure_rs::io::stl::StlReader::read(&path).unwrap();
     // Bounds should be very close
     let bb1 = vtk_pure_rs::data::DataSet::bounds(&tri);
@@ -626,22 +872,30 @@ fn io_stl_preserves_geometry() {
 fn marching_cubes_watertight() {
     // Marching cubes output for a sphere should be roughly watertight
     let img = ImageData::with_dimensions(32, 32, 32);
-    let mut vals = Vec::with_capacity(32*32*32);
+    let mut vals = Vec::with_capacity(32 * 32 * 32);
     for k in 0..32i32 {
         for j in 0..32i32 {
             for i in 0..32i32 {
-                let (x, y, z) = ((i-16) as f64, (j-16) as f64, (k-16) as f64);
-                vals.push(x*x + y*y + z*z);
+                let (x, y, z) = ((i - 16) as f64, (j - 16) as f64, (k - 16) as f64);
+                vals.push(x * x + y * y + z * z);
             }
         }
     }
     let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, 100.0);
     // All cells should be triangles
     for ci in 0..result.polys.num_cells() {
-        assert_eq!(result.polys.cell(ci).len(), 3, "MC cell {} not triangle", ci);
+        assert_eq!(
+            result.polys.cell(ci).len(),
+            3,
+            "MC cell {} not triangle",
+            ci
+        );
     }
     // Should produce a closed surface (even number of edges)
-    assert!(result.polys.num_cells() > 100, "MC should produce many triangles");
+    assert!(
+        result.polys.num_cells() > 100,
+        "MC should produce many triangles"
+    );
 }
 
 // ==================== ROUND 2: MORE FILTERS ====================
@@ -650,14 +904,26 @@ fn marching_cubes_watertight() {
 fn filter_tube() {
     let r = load_ref("filter_tube");
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let line_pd = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 20 });
+    let line_pd = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 20,
+    });
     let result = vtk_pure_rs::filters::geometry::tube::tube(&line_pd, 0.1, 12);
-    assert!(result.points.len() > line_pd.points.len(),
-        "tube should add points: got {}, line had {}", result.points.len(), line_pd.points.len());
+    assert!(
+        result.points.len() > line_pd.points.len(),
+        "tube should add points: got {}, line had {}",
+        result.points.len(),
+        line_pd.points.len()
+    );
     assert!(result.polys.num_cells() > 0, "tube should produce cells");
     let expected = ref_i(&r, "num_cells");
-    assert!(result.polys.num_cells() > 100,
-        "tube cells: got {}, expected {} (±20%)", result.polys.num_cells(), expected);
+    assert!(
+        result.polys.num_cells() > 100,
+        "tube cells: got {}, expected {} (±20%)",
+        result.polys.num_cells(),
+        expected
+    );
 }
 
 #[test]
@@ -665,15 +931,21 @@ fn filter_glyph() {
     let r = load_ref("filter_glyph");
     // Create 5 seed points
     let mut seeds = PolyData::new();
-    seeds.points = vtk_pure_rs::data::Points::from_vec(
-        (0..5).map(|i| [i as f64, 0.0, 0.0]).collect()
-    );
-    let glyph_mesh = sphere(&SphereParams { radius: 0.2, theta_resolution: 8, phi_resolution: 8,
-        ..Default::default() });
+    seeds.points =
+        vtk_pure_rs::data::Points::from_vec((0..5).map(|i| [i as f64, 0.0, 0.0]).collect());
+    let glyph_mesh = sphere(&SphereParams {
+        radius: 0.2,
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::geometry::glyph::glyph(&seeds, &glyph_mesh, 1.0, false);
     // Should have 5x the glyph point count
-    assert!(result.points.len() >= glyph_mesh.points.len() * 4,
-        "glyph should replicate mesh: got {} pts for 5 seeds", result.points.len());
+    assert!(
+        result.points.len() >= glyph_mesh.points.len() * 4,
+        "glyph should replicate mesh: got {} pts for 5 seeds",
+        result.points.len()
+    );
 }
 
 #[test]
@@ -681,12 +953,17 @@ fn filter_spline() {
     let _r = load_ref("filter_spline");
     let mut pd = PolyData::new();
     pd.points = vtk_pure_rs::data::Points::from_vec(
-        (0..5).map(|i| [i as f64, (i % 2) as f64 * 0.5, 0.0]).collect()
+        (0..5)
+            .map(|i| [i as f64, (i % 2) as f64 * 0.5, 0.0])
+            .collect(),
     );
     pd.lines.push_cell(&[0, 1, 2, 3, 4]);
     let result = vtk_pure_rs::filters::geometry::spline::spline(&pd, 10);
-    assert!(result.points.len() > pd.points.len(),
-        "spline should add interpolated points: got {}", result.points.len());
+    assert!(
+        result.points.len() > pd.points.len(),
+        "spline should add interpolated points: got {}",
+        result.points.len()
+    );
 }
 
 #[test]
@@ -695,9 +972,17 @@ fn filter_smooth_50() {
     let r = load_ref("filter_smooth_50");
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::smooth::smooth::smooth(&pd, 50, 0.3, false);
-    assert!(within_pct(result.points.len(), ref_i(&r, "num_points"), 0.05),
-        "smooth point count: got {}, expected {} (±5%)", result.points.len(), ref_i(&r, "num_points"));
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells(), "smooth preserves cells");
+    assert!(
+        within_pct(result.points.len(), ref_i(&r, "num_points"), 0.05),
+        "smooth point count: got {}, expected {} (±5%)",
+        result.points.len(),
+        ref_i(&r, "num_points")
+    );
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells(),
+        "smooth preserves cells"
+    );
 }
 
 #[test]
@@ -706,12 +991,20 @@ fn filter_extract_surface_tet() {
     // Single tetrahedron -> 4 triangle faces
     let mut ug = vtk_pure_rs::data::UnstructuredGrid::new();
     ug.points = vtk_pure_rs::data::Points::from_vec(vec![
-        [0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0], [0.0,0.0,1.0]
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
     ]);
     ug.push_cell(vtk_pure_rs::types::CellType::Tetra, &[0, 1, 2, 3]);
     let result = vtk_pure_rs::filters::extract::extract_surface::extract_surface(&ug);
-    assert_eq!(result.polys.num_cells(), ref_i(&r, "num_cells"),
-        "tet surface should have {} faces, got {}", ref_i(&r, "num_cells"), result.polys.num_cells());
+    assert_eq!(
+        result.polys.num_cells(),
+        ref_i(&r, "num_cells"),
+        "tet surface should have {} faces, got {}",
+        ref_i(&r, "num_cells"),
+        result.polys.num_cells()
+    );
 }
 
 // ==================== I/O ====================
@@ -724,8 +1017,11 @@ fn io_vtp_roundtrip() {
     let path = std::env::temp_dir().join("vtk_val_vtp.vtp");
     vtk_pure_rs::io::xml::VtpWriter::write(&path, &tri).unwrap();
     let loaded = vtk_pure_rs::io::xml::VtpReader::read(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), tri.polys.num_cells(),
-        "VTP roundtrip cell count mismatch");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        tri.polys.num_cells(),
+        "VTP roundtrip cell count mismatch"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -756,25 +1052,33 @@ fn empty_mesh_clean() {
 #[test]
 fn single_triangle_normals() {
     let pd = PolyData::from_triangles(
-        vec![[0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0]],
-        vec![[0,1,2]],
+        vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        vec![[0, 1, 2]],
     );
     let result = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
     let normals = result.point_data().get_array("Normals").unwrap();
     let mut buf = [0.0f64; 3];
     normals.tuple_as_f64(0, &mut buf);
     // Normal should be (0,0,1) for XY plane triangle
-    assert!((buf[2].abs() - 1.0) < 0.01, "XY triangle normal z should be ±1, got {}", buf[2]);
+    assert!(
+        (buf[2].abs() - 1.0) < 0.01,
+        "XY triangle normal z should be ±1, got {}",
+        buf[2]
+    );
 }
 
 #[test]
 fn single_triangle_decimate_zero() {
     let pd = PolyData::from_triangles(
-        vec![[0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0]],
-        vec![[0,1,2]],
+        vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        vec![[0, 1, 2]],
     );
     let result = vtk_pure_rs::filters::core::decimate::decimate(&pd, 0.0);
-    assert_eq!(result.polys.num_cells(), 1, "0% decimation should keep all cells");
+    assert_eq!(
+        result.polys.num_cells(),
+        1,
+        "0% decimation should keep all cells"
+    );
 }
 
 #[test]
@@ -784,12 +1088,19 @@ fn stl_binary_vs_ascii() {
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let bin_path = std::env::temp_dir().join("vtk_val_bin.stl");
     let ascii_path = std::env::temp_dir().join("vtk_val_ascii.stl");
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&bin_path, &tri).unwrap();
-    vtk_pure_rs::io::stl::StlWriter::ascii().write(&ascii_path, &tri).unwrap();
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&bin_path, &tri)
+        .unwrap();
+    vtk_pure_rs::io::stl::StlWriter::ascii()
+        .write(&ascii_path, &tri)
+        .unwrap();
     let bin = vtk_pure_rs::io::stl::StlReader::read(&bin_path).unwrap();
     let ascii = vtk_pure_rs::io::stl::StlReader::read(&ascii_path).unwrap();
-    assert_eq!(bin.polys.num_cells(), ascii.polys.num_cells(),
-        "binary and ASCII STL should have same cell count");
+    assert_eq!(
+        bin.polys.num_cells(),
+        ascii.polys.num_cells(),
+        "binary and ASCII STL should have same cell count"
+    );
     let _ = std::fs::remove_file(&bin_path);
     let _ = std::fs::remove_file(&ascii_path);
 }
@@ -797,20 +1108,24 @@ fn stl_binary_vs_ascii() {
 #[test]
 fn marching_cubes_different_isovalues() {
     let img = ImageData::with_dimensions(16, 16, 16);
-    let mut vals = Vec::with_capacity(16*16*16);
+    let mut vals = Vec::with_capacity(16 * 16 * 16);
     for k in 0..16i32 {
         for j in 0..16i32 {
             for i in 0..16i32 {
-                let (x, y, z) = ((i-8) as f64, (j-8) as f64, (k-8) as f64);
-                vals.push(x*x + y*y + z*z);
+                let (x, y, z) = ((i - 8) as f64, (j - 8) as f64, (k - 8) as f64);
+                vals.push(x * x + y * y + z * z);
             }
         }
     }
     // Smaller isovalue = smaller sphere = fewer triangles
     let small = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, 16.0);
     let large = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, 49.0);
-    assert!(small.polys.num_cells() < large.polys.num_cells(),
-        "smaller isovalue should produce fewer cells: {} vs {}", small.polys.num_cells(), large.polys.num_cells());
+    assert!(
+        small.polys.num_cells() < large.polys.num_cells(),
+        "smaller isovalue should produce fewer cells: {} vs {}",
+        small.polys.num_cells(),
+        large.polys.num_cells()
+    );
 }
 
 #[test]
@@ -823,19 +1138,31 @@ fn connectivity_single_mesh() {
 #[test]
 fn append_preserves_total_cells() {
     let s1 = test_sphere();
-    let s2 = sphere(&SphereParams { center: [5.0,0.0,0.0], ..Default::default() });
+    let s2 = sphere(&SphereParams {
+        center: [5.0, 0.0, 0.0],
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
-    assert_eq!(result.polys.num_cells(), s1.polys.num_cells() + s2.polys.num_cells(),
-        "append should sum cell counts");
+    assert_eq!(
+        result.polys.num_cells(),
+        s1.polys.num_cells() + s2.polys.num_cells(),
+        "append should sum cell counts"
+    );
 }
 
 #[test]
 fn append_preserves_total_points() {
     let s1 = test_sphere();
-    let s2 = sphere(&SphereParams { center: [5.0,0.0,0.0], ..Default::default() });
+    let s2 = sphere(&SphereParams {
+        center: [5.0, 0.0, 0.0],
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
-    assert_eq!(result.points.len(), s1.points.len() + s2.points.len(),
-        "append should sum point counts");
+    assert_eq!(
+        result.points.len(),
+        s1.points.len() + s2.points.len(),
+        "append should sum point counts"
+    );
 }
 
 // ==================== ROUND 3: NUMERICAL PRECISION ====================
@@ -843,11 +1170,15 @@ fn append_preserves_total_points() {
 #[test]
 fn sphere_radius_accuracy() {
     // All points should be at distance 0.5 from origin
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let mut max_err = 0.0f64;
     for i in 0..pd.points.len() {
         let p = pd.points.get(i);
-        let r = (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt();
+        let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
         max_err = max_err.max((r - 0.5).abs());
     }
     assert!(max_err < 1e-10, "max radius error: {max_err}");
@@ -856,13 +1187,23 @@ fn sphere_radius_accuracy() {
 #[test]
 fn sphere_symmetry() {
     // Sphere should be symmetric: bounds equal in all axes
-    let pd = sphere(&SphereParams { theta_resolution: 32, phi_resolution: 32, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     let bb = vtk_pure_rs::data::DataSet::bounds(&pd);
     let x_range = bb.x_max - bb.x_min;
     let y_range = bb.y_max - bb.y_min;
     let z_range = bb.z_max - bb.z_min;
-    assert!((x_range - y_range).abs() < 0.01, "x and y ranges should match: {x_range} vs {y_range}");
-    assert!((x_range - z_range).abs() < 0.01, "x and z ranges should match: {x_range} vs {z_range}");
+    assert!(
+        (x_range - y_range).abs() < 0.01,
+        "x and y ranges should match: {x_range} vs {y_range}"
+    );
+    assert!(
+        (x_range - z_range).abs() < 0.01,
+        "x and z ranges should match: {x_range} vs {z_range}"
+    );
 }
 
 #[test]
@@ -870,9 +1211,15 @@ fn cube_exact_bounds() {
     use vtk_pure_rs::filters::core::sources::cube::{cube, CubeParams};
     let pd = cube(&CubeParams::default());
     let bb = vtk_pure_rs::data::DataSet::bounds(&pd);
-    assert!((bb.x_min - (-0.5)).abs() < 1e-10, "cube x_min should be -0.5");
+    assert!(
+        (bb.x_min - (-0.5)).abs() < 1e-10,
+        "cube x_min should be -0.5"
+    );
     assert!((bb.x_max - 0.5).abs() < 1e-10, "cube x_max should be 0.5");
-    assert!((bb.y_min - (-0.5)).abs() < 1e-10, "cube y_min should be -0.5");
+    assert!(
+        (bb.y_min - (-0.5)).abs() < 1e-10,
+        "cube y_min should be -0.5"
+    );
     assert!((bb.z_max - 0.5).abs() < 1e-10, "cube z_max should be 0.5");
 }
 
@@ -895,12 +1242,16 @@ fn clip_preserves_volume_side() {
     use vtk_pure_rs::filters::core::sources::cube::{cube, CubeParams};
     let pd = cube(&CubeParams::default());
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&tri, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&tri, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
     let orig_mass = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
     let clip_mass = vtk_pure_rs::filters::core::mass_properties::mass_properties(&clipped);
     // Clipped volume should be roughly half
-    assert!((clip_mass.volume / orig_mass.volume - 0.5).abs() < 0.15,
-        "clipped volume ratio: {:.2}, expected ~0.5", clip_mass.volume / orig_mass.volume);
+    assert!(
+        (clip_mass.volume / orig_mass.volume - 0.5).abs() < 0.15,
+        "clipped volume ratio: {:.2}, expected ~0.5",
+        clip_mass.volume / orig_mass.volume
+    );
 }
 
 #[test]
@@ -910,8 +1261,11 @@ fn threshold_removes_correct_cells() {
     let elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let result = vtk_pure_rs::filters::clip::threshold::threshold(&elev, 0.4, 0.6);
     let ratio = result.polys.num_cells() as f64 / pd.polys.num_cells() as f64;
-    assert!(ratio > 0.05 && ratio < 0.5,
-        "threshold [0.4,0.6] should keep 5-50% of cells, got {:.1}%", ratio * 100.0);
+    assert!(
+        ratio > 0.05 && ratio < 0.5,
+        "threshold [0.4,0.6] should keep 5-50% of cells, got {:.1}%",
+        ratio * 100.0
+    );
 }
 
 #[test]
@@ -922,10 +1276,18 @@ fn decimate_progressive() {
     let d25 = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.25);
     let d50 = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.50);
     let d75 = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.75);
-    assert!(d25.polys.num_cells() > d50.polys.num_cells(),
-        "25% should keep more than 50%: {} vs {}", d25.polys.num_cells(), d50.polys.num_cells());
-    assert!(d50.polys.num_cells() > d75.polys.num_cells(),
-        "50% should keep more than 75%: {} vs {}", d50.polys.num_cells(), d75.polys.num_cells());
+    assert!(
+        d25.polys.num_cells() > d50.polys.num_cells(),
+        "25% should keep more than 50%: {} vs {}",
+        d25.polys.num_cells(),
+        d50.polys.num_cells()
+    );
+    assert!(
+        d50.polys.num_cells() > d75.polys.num_cells(),
+        "50% should keep more than 75%: {} vs {}",
+        d50.polys.num_cells(),
+        d75.polys.num_cells()
+    );
 }
 
 #[test]
@@ -942,7 +1304,7 @@ fn smooth_convergence() {
         let mut sum_r2 = 0.0;
         for i in 0..mesh.points.len() {
             let p = mesh.points.get(i);
-            let r = (p[0]*p[0]+p[1]*p[1]+p[2]*p[2]).sqrt();
+            let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
             sum_r += r;
             sum_r2 += r * r;
         }
@@ -950,8 +1312,16 @@ fn smooth_convergence() {
         (sum_r2 / n - mean * mean).max(0.0).sqrt()
     }
     // Both smoothed versions should have reasonable sphericity (not exploded)
-    assert!(sphericity(&s10) < 0.1, "s10 sphericity too high: {:.4}", sphericity(&s10));
-    assert!(sphericity(&s100) < 0.1, "s100 sphericity too high: {:.4}", sphericity(&s100));
+    assert!(
+        sphericity(&s10) < 0.1,
+        "s10 sphericity too high: {:.4}",
+        sphericity(&s10)
+    );
+    assert!(
+        sphericity(&s100) < 0.1,
+        "s100 sphericity too high: {:.4}",
+        sphericity(&s100)
+    );
 }
 
 #[test]
@@ -961,35 +1331,72 @@ fn clean_merges_at_tolerance() {
     let mut pd = PolyData::new();
     pd.points = vtk_pure_rs::data::Points::from_vec(vec![
         [0.0, 0.0, 0.0],
-        [1e-8, 0.0, 0.0],   // within default tolerance of first
-        [1.0, 0.0, 0.0],     // far away
-        [1.0 + 1e-8, 0.0, 0.0],  // within tolerance of third
+        [1e-8, 0.0, 0.0],       // within default tolerance of first
+        [1.0, 0.0, 0.0],        // far away
+        [1.0 + 1e-8, 0.0, 0.0], // within tolerance of third
     ]);
     pd.polys.push_cell(&[0, 1, 2]);
     pd.polys.push_cell(&[1, 2, 3]);
-    let result = clean(&pd, &CleanParams { tolerance: 1e-6, ..Default::default() });
-    assert_eq!(result.points.len(), 2, "should merge to 2 unique points, got {}", result.points.len());
+    let result = clean(
+        &pd,
+        &CleanParams {
+            tolerance: 1e-6,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        result.points.len(),
+        2,
+        "should merge to 2 unique points, got {}",
+        result.points.len()
+    );
 }
 
 #[test]
 fn extract_edges_closed_mesh() {
     // A closed sphere should have no boundary edges
     let pd = test_sphere();
-    let fe = vtk_pure_rs::filters::geometry::feature_edges::feature_edges(&pd, &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams { boundary_edges: true, feature_edges: false, manifold_edges: false, non_manifold_edges: false, ..Default::default() });
-    assert_eq!(fe.lines.num_cells(), 0,
-        "closed sphere should have 0 boundary edges, got {}", fe.lines.num_cells());
+    let fe = vtk_pure_rs::filters::geometry::feature_edges::feature_edges(
+        &pd,
+        &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams {
+            boundary_edges: true,
+            feature_edges: false,
+            manifold_edges: false,
+            non_manifold_edges: false,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        fe.lines.num_cells(),
+        0,
+        "closed sphere should have 0 boundary edges, got {}",
+        fe.lines.num_cells()
+    );
 }
 
 #[test]
 fn extract_edges_open_mesh() {
     // A single triangle has 3 boundary edges
     let pd = PolyData::from_triangles(
-        vec![[0.0,0.0,0.0], [1.0,0.0,0.0], [0.0,1.0,0.0]],
-        vec![[0,1,2]],
+        vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        vec![[0, 1, 2]],
     );
-    let fe = vtk_pure_rs::filters::geometry::feature_edges::feature_edges(&pd, &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams { boundary_edges: true, feature_edges: false, manifold_edges: false, non_manifold_edges: false, ..Default::default() });
-    assert_eq!(fe.lines.num_cells(), 3,
-        "single triangle should have 3 boundary edges, got {}", fe.lines.num_cells());
+    let fe = vtk_pure_rs::filters::geometry::feature_edges::feature_edges(
+        &pd,
+        &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams {
+            boundary_edges: true,
+            feature_edges: false,
+            manifold_edges: false,
+            non_manifold_edges: false,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        fe.lines.num_cells(),
+        3,
+        "single triangle should have 3 boundary edges, got {}",
+        fe.lines.num_cells()
+    );
 }
 
 // ==================== ROUND 3: I/O PRECISION ====================
@@ -999,11 +1406,15 @@ fn vtk_legacy_preserves_scalars() {
     let pd = test_sphere();
     let elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let path = std::env::temp_dir().join("vtk_val_scalar.vtk");
-    vtk_pure_rs::io::legacy::LegacyWriter::ascii().write_poly_data(&path, &elev).unwrap();
+    vtk_pure_rs::io::legacy::LegacyWriter::ascii()
+        .write_poly_data(&path, &elev)
+        .unwrap();
     let loaded = vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(&path).unwrap();
     // Should have scalar data
-    assert!(loaded.point_data().num_arrays() > 0,
-        "VTK legacy should preserve point data arrays");
+    assert!(
+        loaded.point_data().num_arrays() > 0,
+        "VTK legacy should preserve point data arrays"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1014,20 +1425,31 @@ fn vtp_preserves_scalars() {
     let path = std::env::temp_dir().join("vtk_val_scalar.vtp");
     vtk_pure_rs::io::xml::VtpWriter::write(&path, &elev).unwrap();
     let loaded = vtk_pure_rs::io::xml::VtpReader::read(&path).unwrap();
-    assert!(loaded.point_data().num_arrays() > 0,
-        "VTP should preserve point data arrays");
+    assert!(
+        loaded.point_data().num_arrays() > 0,
+        "VTP should preserve point data arrays"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn stl_large_mesh() {
     // Test STL with a large mesh
-    let pd = sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
     let path = std::env::temp_dir().join("vtk_val_large.stl");
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&path, &pd).unwrap();
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&path, &pd)
+        .unwrap();
     let loaded = vtk_pure_rs::io::stl::StlReader::read(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), pd.polys.num_cells(),
-        "large STL roundtrip cell count");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        pd.polys.num_cells(),
+        "large STL roundtrip cell count"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1037,23 +1459,28 @@ fn stl_large_mesh() {
 fn marching_cubes_sphere_area() {
     // MC sphere at isovalue r² should approximate 4πr²
     let img = ImageData::with_dimensions(64, 64, 64);
-    let mut vals = Vec::with_capacity(64*64*64);
+    let mut vals = Vec::with_capacity(64 * 64 * 64);
     for k in 0..64i32 {
         for j in 0..64i32 {
             for i in 0..64i32 {
-                let (x, y, z) = ((i-32) as f64, (j-32) as f64, (k-32) as f64);
-                vals.push(x*x + y*y + z*z);
+                let (x, y, z) = ((i - 32) as f64, (j - 32) as f64, (k - 32) as f64);
+                vals.push(x * x + y * y + z * z);
             }
         }
     }
     let r = 20.0;
-    let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, r*r);
+    let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, r * r);
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&result);
     let mass = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
     let expected_area = 4.0 * std::f64::consts::PI * r * r;
     let error = (mass.surface_area - expected_area).abs() / expected_area;
-    assert!(error < 0.05, "MC sphere area error: {:.1}% (got {:.0}, expected {:.0})",
-        error * 100.0, mass.surface_area, expected_area);
+    assert!(
+        error < 0.05,
+        "MC sphere area error: {:.1}% (got {:.0}, expected {:.0})",
+        error * 100.0,
+        mass.surface_area,
+        expected_area
+    );
 }
 
 #[test]
@@ -1061,19 +1488,42 @@ fn marching_cubes_empty_field() {
     let img = ImageData::with_dimensions(8, 8, 8);
     let vals = vec![0.0f64; 512]; // all zero
     let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &vals, 1.0);
-    assert_eq!(result.polys.num_cells(), 0, "uniform field below isovalue should produce no cells");
+    assert_eq!(
+        result.polys.num_cells(),
+        0,
+        "uniform field below isovalue should produce no cells"
+    );
 }
 
 // ==================== ROUND 3: MULTI-COMPONENT ====================
 
 #[test]
 fn connectivity_three_components() {
-    let s1 = sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() });
-    let s2 = sphere(&SphereParams { center: [3.0,0.0,0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() });
-    let s3 = sphere(&SphereParams { center: [6.0,0.0,0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() });
+    let s1 = sphere(&SphereParams {
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
+    let s2 = sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
+    let s3 = sphere(&SphereParams {
+        center: [6.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2, &s3]);
     let components = vtk_pure_rs::filters::geometry::connectivity::extract_components(&merged);
-    assert_eq!(components.len(), 3, "three separate spheres should give 3 components, got {}", components.len());
+    assert_eq!(
+        components.len(),
+        3,
+        "three separate spheres should give 3 components, got {}",
+        components.len()
+    );
 }
 
 #[test]
@@ -1083,10 +1533,22 @@ fn decimate_preserves_manifold() {
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let dec = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.3);
     // Check for boundary edges
-    let fe = vtk_pure_rs::filters::geometry::feature_edges::feature_edges(&dec, &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams { boundary_edges: true, feature_edges: false, manifold_edges: false, non_manifold_edges: false, ..Default::default() });
+    let fe = vtk_pure_rs::filters::geometry::feature_edges::feature_edges(
+        &dec,
+        &vtk_pure_rs::filters::geometry::feature_edges::FeatureEdgesParams {
+            boundary_edges: true,
+            feature_edges: false,
+            manifold_edges: false,
+            non_manifold_edges: false,
+            ..Default::default()
+        },
+    );
     // Allow a few boundary edges from the decimation algorithm
-    assert!(fe.lines.num_cells() < 20,
-        "decimated sphere should have few boundary edges, got {}", fe.lines.num_cells());
+    assert!(
+        fe.lines.num_cells() < 20,
+        "decimated sphere should have few boundary edges, got {}",
+        fe.lines.num_cells()
+    );
 }
 
 #[test]
@@ -1105,32 +1567,56 @@ fn elevation_range_matches_bounds() {
         max_s = max_s.max(buf[0]);
     }
     // Elevation normalizes to [0,1], so check that
-    assert!(min_s >= -0.01 && min_s <= 0.01, "elevation min should be ~0, got {min_s}");
-    assert!(max_s >= 0.99 && max_s <= 1.01, "elevation max should be ~1, got {max_s}");
+    assert!(
+        min_s >= -0.01 && min_s <= 0.01,
+        "elevation min should be ~0, got {min_s}"
+    );
+    assert!(
+        max_s >= 0.99 && max_s <= 1.01,
+        "elevation max should be ~1, got {max_s}"
+    );
 }
 
 #[test]
 fn mass_properties_sphere_volume() {
     // Sphere volume = 4/3 π r³
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let mass = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
     let expected = 4.0 / 3.0 * std::f64::consts::PI * 0.5f64.powi(3);
     let error = (mass.volume - expected).abs() / expected;
-    assert!(error < 0.02, "sphere volume error: {:.1}% (got {:.4}, expected {:.4})",
-        error * 100.0, mass.volume, expected);
+    assert!(
+        error < 0.02,
+        "sphere volume error: {:.1}% (got {:.4}, expected {:.4})",
+        error * 100.0,
+        mass.volume,
+        expected
+    );
 }
 
 #[test]
 fn mass_properties_sphere_area() {
     // Sphere area = 4 π r²
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let mass = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
     let expected = 4.0 * std::f64::consts::PI * 0.5f64.powi(2);
     let error = (mass.surface_area - expected).abs() / expected;
-    assert!(error < 0.02, "sphere area error: {:.1}% (got {:.4}, expected {:.4})",
-        error * 100.0, mass.surface_area, expected);
+    assert!(
+        error < 0.02,
+        "sphere area error: {:.1}% (got {:.4}, expected {:.4})",
+        error * 100.0,
+        mass.surface_area,
+        expected
+    );
 }
 
 // ==================== ROUND 4: SCALING + MULTI-RESOLUTION ====================
@@ -1138,96 +1624,173 @@ fn mass_properties_sphere_area() {
 #[test]
 fn source_sphere_128() {
     let r = load_ref("source_sphere_128x128");
-    let pd = sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() });
-    assert!(within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.05),
-        "128x128 sphere: {} pts, expected {}", pd.points.len(), ref_i(&r, "num_points"));
+    let pd = sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
+    assert!(
+        within_pct(pd.points.len(), ref_i(&r, "num_points"), 0.05),
+        "128x128 sphere: {} pts, expected {}",
+        pd.points.len(),
+        ref_i(&r, "num_points")
+    );
 }
 
 #[test]
 fn decimate_25() {
     let r = load_ref("filter_decimate_25");
-    let pd = sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let result = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.25);
     assert!(result.polys.num_cells() < tri.polys.num_cells());
-    assert!(result.polys.num_cells() > tri.polys.num_cells() / 2,
-        "25% decimate should keep >50% cells");
+    assert!(
+        result.polys.num_cells() > tri.polys.num_cells() / 2,
+        "25% decimate should keep >50% cells"
+    );
 }
 
 #[test]
 fn decimate_75() {
     let r = load_ref("filter_decimate_75");
-    let pd = sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let result = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.75);
-    assert!(result.polys.num_cells() < tri.polys.num_cells() / 2,
-        "75% decimate should keep <50% cells");
+    assert!(
+        result.polys.num_cells() < tri.polys.num_cells() / 2,
+        "75% decimate should keep <50% cells"
+    );
 }
 
 #[test]
 fn decimate_90() {
     let r = load_ref("filter_decimate_90");
-    let pd = sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let result = vtk_pure_rs::filters::core::decimate::decimate(&tri, 0.90);
-    assert!(result.polys.num_cells() < tri.polys.num_cells() / 5,
-        "90% decimate should keep <20% cells, got {}/{}", result.polys.num_cells(), tri.polys.num_cells());
+    assert!(
+        result.polys.num_cells() < tri.polys.num_cells() / 5,
+        "90% decimate should keep <20% cells, got {}/{}",
+        result.polys.num_cells(),
+        tri.polys.num_cells()
+    );
 }
 
 #[test]
 fn mc_resolution_16() {
     let r = load_ref("filter_mc_16");
-    let img = ImageData::with_dimensions(16,16,16);
-    let mut v = Vec::with_capacity(16*16*16);
-    for k in 0..16i32{for j in 0..16i32{for i in 0..16i32{v.push(((i-8)*(i-8)+(j-8)*(j-8)+(k-8)*(k-8)) as f64);}}}
+    let img = ImageData::with_dimensions(16, 16, 16);
+    let mut v = Vec::with_capacity(16 * 16 * 16);
+    for k in 0..16i32 {
+        for j in 0..16i32 {
+            for i in 0..16i32 {
+                v.push(((i - 8) * (i - 8) + (j - 8) * (j - 8) + (k - 8) * (k - 8)) as f64);
+            }
+        }
+    }
     let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 16.0);
-    assert!(within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
-        "MC 16³: {} cells, expected {}", result.polys.num_cells(), ref_i(&r, "num_cells"));
+    assert!(
+        within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
+        "MC 16³: {} cells, expected {}",
+        result.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 #[test]
 fn mc_resolution_32() {
     let r = load_ref("filter_mc_32");
-    let img = ImageData::with_dimensions(32,32,32);
-    let mut v = Vec::with_capacity(32*32*32);
-    for k in 0..32i32{for j in 0..32i32{for i in 0..32i32{v.push(((i-16)*(i-16)+(j-16)*(j-16)+(k-16)*(k-16)) as f64);}}}
+    let img = ImageData::with_dimensions(32, 32, 32);
+    let mut v = Vec::with_capacity(32 * 32 * 32);
+    for k in 0..32i32 {
+        for j in 0..32i32 {
+            for i in 0..32i32 {
+                v.push(((i - 16) * (i - 16) + (j - 16) * (j - 16) + (k - 16) * (k - 16)) as f64);
+            }
+        }
+    }
     let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 64.0);
-    assert!(within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
-        "MC 32³: {} cells, expected {}", result.polys.num_cells(), ref_i(&r, "num_cells"));
+    assert!(
+        within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
+        "MC 32³: {} cells, expected {}",
+        result.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 #[test]
 fn fe_resolution_16() {
     let r = load_ref("filter_fe_16");
-    let img = ImageData::with_dimensions(16,16,16);
-    let mut v = Vec::with_capacity(16*16*16);
-    for k in 0..16i32{for j in 0..16i32{for i in 0..16i32{v.push(((i-8)*(i-8)+(j-8)*(j-8)+(k-8)*(k-8)) as f64);}}}
+    let img = ImageData::with_dimensions(16, 16, 16);
+    let mut v = Vec::with_capacity(16 * 16 * 16);
+    for k in 0..16i32 {
+        for j in 0..16i32 {
+            for i in 0..16i32 {
+                v.push(((i - 8) * (i - 8) + (j - 8) * (j - 8) + (k - 8) * (k - 8)) as f64);
+            }
+        }
+    }
     let result = vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &v, 16.0);
-    assert!(within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
-        "FE 16³: {} cells, expected {}", result.polys.num_cells(), ref_i(&r, "num_cells"));
+    assert!(
+        within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
+        "FE 16³: {} cells, expected {}",
+        result.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 #[test]
 fn fe_resolution_32() {
     let r = load_ref("filter_fe_32");
-    let img = ImageData::with_dimensions(32,32,32);
-    let mut v = Vec::with_capacity(32*32*32);
-    for k in 0..32i32{for j in 0..32i32{for i in 0..32i32{v.push(((i-16)*(i-16)+(j-16)*(j-16)+(k-16)*(k-16)) as f64);}}}
+    let img = ImageData::with_dimensions(32, 32, 32);
+    let mut v = Vec::with_capacity(32 * 32 * 32);
+    for k in 0..32i32 {
+        for j in 0..32i32 {
+            for i in 0..32i32 {
+                v.push(((i - 16) * (i - 16) + (j - 16) * (j - 16) + (k - 16) * (k - 16)) as f64);
+            }
+        }
+    }
     let result = vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &v, 64.0);
-    assert!(within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
-        "FE 32³: {} cells, expected {}", result.polys.num_cells(), ref_i(&r, "num_cells"));
+    assert!(
+        within_pct(result.polys.num_cells(), ref_i(&r, "num_cells"), 0.15),
+        "FE 32³: {} cells, expected {}",
+        result.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 #[test]
 fn fe_matches_mc() {
     // Flying edges and marching cubes should produce the same number of triangles
-    let img = ImageData::with_dimensions(32,32,32);
-    let mut v = Vec::with_capacity(32*32*32);
-    for k in 0..32i32{for j in 0..32i32{for i in 0..32i32{v.push(((i-16)*(i-16)+(j-16)*(j-16)+(k-16)*(k-16)) as f64);}}}
+    let img = ImageData::with_dimensions(32, 32, 32);
+    let mut v = Vec::with_capacity(32 * 32 * 32);
+    for k in 0..32i32 {
+        for j in 0..32i32 {
+            for i in 0..32i32 {
+                v.push(((i - 16) * (i - 16) + (j - 16) * (j - 16) + (k - 16) * (k - 16)) as f64);
+            }
+        }
+    }
     let mc = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 100.0);
     let fe = vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &v, 100.0);
-    assert_eq!(mc.polys.num_cells(), fe.polys.num_cells(),
-        "MC and FE should produce same triangle count");
+    assert_eq!(
+        mc.polys.num_cells(),
+        fe.polys.num_cells(),
+        "MC and FE should produce same triangle count"
+    );
 }
 
 // ==================== ROUND 4: CORRECTNESS INVARIANTS ====================
@@ -1236,7 +1799,11 @@ fn fe_matches_mc() {
 fn triangulate_all_triangles() {
     // Test on a mesh with quads — all output must be triangles
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let pd = plane(&PlaneParams { x_resolution: 5, y_resolution: 5, ..Default::default() });
+    let pd = plane(&PlaneParams {
+        x_resolution: 5,
+        y_resolution: 5,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     for ci in 0..tri.polys.num_cells() {
         assert_eq!(tri.polys.cell(ci).len(), 3, "cell {} not triangle", ci);
@@ -1249,8 +1816,11 @@ fn decimate_never_increases_cells() {
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     for pct in &[0.1, 0.3, 0.5, 0.7, 0.9] {
         let result = vtk_pure_rs::filters::core::decimate::decimate(&tri, *pct);
-        assert!(result.polys.num_cells() <= tri.polys.num_cells(),
-            "decimate {:.0}% should not increase cells", pct * 100.0);
+        assert!(
+            result.polys.num_cells() <= tri.polys.num_cells(),
+            "decimate {:.0}% should not increase cells",
+            pct * 100.0
+        );
     }
 }
 
@@ -1261,14 +1831,22 @@ fn clean_idempotent() {
     let pd = test_sphere();
     let cleaned1 = clean(&pd, &CleanParams::default());
     let cleaned2 = clean(&cleaned1, &CleanParams::default());
-    assert_eq!(cleaned1.points.len(), cleaned2.points.len(), "clean should be idempotent");
+    assert_eq!(
+        cleaned1.points.len(),
+        cleaned2.points.len(),
+        "clean should be idempotent"
+    );
     assert_eq!(cleaned1.polys.num_cells(), cleaned2.polys.num_cells());
 }
 
 #[test]
 fn normals_consistent_winding() {
     // All normals on a sphere should point outward (same direction as position vector)
-    let pd = sphere(&SphereParams { theta_resolution: 32, phi_resolution: 32, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
     let normals = result.point_data().get_array("Normals").unwrap();
     let mut outward = 0;
@@ -1277,10 +1855,19 @@ fn normals_consistent_winding() {
     for i in 0..normals.num_tuples() {
         normals.tuple_as_f64(i, &mut buf);
         let p = result.points.get(i);
-        let dot = buf[0]*p[0] + buf[1]*p[1] + buf[2]*p[2];
-        if dot > 0.0 { outward += 1; } else { inward += 1; }
+        let dot = buf[0] * p[0] + buf[1] * p[1] + buf[2] * p[2];
+        if dot > 0.0 {
+            outward += 1;
+        } else {
+            inward += 1;
+        }
     }
-    assert!(outward > inward * 9, "normals should be mostly outward: {} out, {} in", outward, inward);
+    assert!(
+        outward > inward * 9,
+        "normals should be mostly outward: {} out, {} in",
+        outward,
+        inward
+    );
 }
 
 #[test]
@@ -1302,12 +1889,25 @@ fn elevation_z_range_on_sphere() {
 
 #[test]
 fn connectivity_preserves_total_cells() {
-    let s1 = sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() });
-    let s2 = sphere(&SphereParams { center: [3.0,0.0,0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() });
+    let s1 = sphere(&SphereParams {
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
+    let s2 = sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     let components = vtk_pure_rs::filters::geometry::connectivity::extract_components(&merged);
     let total: usize = components.iter().map(|c| c.polys.num_cells()).sum();
-    assert_eq!(total, merged.polys.num_cells(), "connectivity should preserve total cells");
+    assert_eq!(
+        total,
+        merged.polys.num_cells(),
+        "connectivity should preserve total cells"
+    );
 }
 
 #[test]
@@ -1320,7 +1920,11 @@ fn extract_edges_count_euler() {
     let e = edges.lines.num_cells();
     let f = tri.polys.num_cells();
     let euler = v as i64 - e as i64 + f as i64;
-    assert_eq!(euler, 2, "Euler formula V-E+F should be 2 for closed mesh, got {} ({}-{}+{})", euler, v, e, f);
+    assert_eq!(
+        euler, 2,
+        "Euler formula V-E+F should be 2 for closed mesh, got {} ({}-{}+{})",
+        euler, v, e, f
+    );
 }
 
 // ==================== ROUND 4: I/O STRESS ====================
@@ -1331,18 +1935,34 @@ fn io_vtk_legacy_binary() {
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let path = std::env::temp_dir().join("vtk_val_bin.vtk");
-    vtk_pure_rs::io::legacy::LegacyWriter::binary().write_poly_data(&path, &tri).unwrap();
+    vtk_pure_rs::io::legacy::LegacyWriter::binary()
+        .write_poly_data(&path, &tri)
+        .unwrap();
     let loaded = vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(&path).unwrap();
-    assert_eq!(loaded.points.len(), tri.points.len(), "binary VTK roundtrip point count");
-    assert_eq!(loaded.polys.num_cells(), tri.polys.num_cells(), "binary VTK roundtrip cell count");
+    assert_eq!(
+        loaded.points.len(),
+        tri.points.len(),
+        "binary VTK roundtrip point count"
+    );
+    assert_eq!(
+        loaded.polys.num_cells(),
+        tri.polys.num_cells(),
+        "binary VTK roundtrip cell count"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn io_stl_large() {
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let path = std::env::temp_dir().join("vtk_val_stl_large.stl");
-    vtk_pure_rs::io::stl::StlWriter::binary().write(&path, &pd).unwrap();
+    vtk_pure_rs::io::stl::StlWriter::binary()
+        .write(&path, &pd)
+        .unwrap();
     let loaded = vtk_pure_rs::io::stl::StlReader::read(&path).unwrap();
     assert_eq!(loaded.polys.num_cells(), pd.polys.num_cells());
     let _ = std::fs::remove_file(&path);
@@ -1350,7 +1970,11 @@ fn io_stl_large() {
 
 #[test]
 fn io_ply_large() {
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let path = std::env::temp_dir().join("vtk_val_ply_large.ply");
     vtk_pure_rs::io::ply::PlyWriter::write(&path, &tri).unwrap();
@@ -1366,7 +1990,11 @@ fn io_obj_preserves_vertices() {
     let path = std::env::temp_dir().join("vtk_val_obj_pts.obj");
     vtk_pure_rs::io::obj::ObjWriter::write(&path, &tri).unwrap();
     let loaded = vtk_pure_rs::io::obj::ObjReader::read(&path).unwrap();
-    assert_eq!(loaded.points.len(), tri.points.len(), "OBJ should preserve point count");
+    assert_eq!(
+        loaded.points.len(),
+        tri.points.len(),
+        "OBJ should preserve point count"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1375,16 +2003,34 @@ fn io_obj_preserves_vertices() {
 #[test]
 fn mass_properties_scales_with_radius() {
     // Volume scales as r³, area as r²
-    let s1 = sphere(&SphereParams { radius: 0.5, theta_resolution: 32, phi_resolution: 32, ..Default::default() });
-    let s2 = sphere(&SphereParams { radius: 1.0, theta_resolution: 32, phi_resolution: 32, ..Default::default() });
+    let s1 = sphere(&SphereParams {
+        radius: 0.5,
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
+    let s2 = sphere(&SphereParams {
+        radius: 1.0,
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     let t1 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&s1);
     let t2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&s2);
     let m1 = vtk_pure_rs::filters::core::mass_properties::mass_properties(&t1);
     let m2 = vtk_pure_rs::filters::core::mass_properties::mass_properties(&t2);
     let vol_ratio = m2.volume / m1.volume;
     let area_ratio = m2.surface_area / m1.surface_area;
-    assert!((vol_ratio - 8.0).abs() < 1.0, "volume should scale as r³: ratio {:.1}", vol_ratio);
-    assert!((area_ratio - 4.0).abs() < 0.5, "area should scale as r²: ratio {:.1}", area_ratio);
+    assert!(
+        (vol_ratio - 8.0).abs() < 1.0,
+        "volume should scale as r³: ratio {:.1}",
+        vol_ratio
+    );
+    assert!(
+        (area_ratio - 4.0).abs() < 0.5,
+        "area should scale as r²: ratio {:.1}",
+        area_ratio
+    );
 }
 
 #[test]
@@ -1392,8 +2038,12 @@ fn mass_properties_centroid_at_origin() {
     let pd = test_sphere();
     let tri = vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd);
     let m = vtk_pure_rs::filters::core::mass_properties::mass_properties(&tri);
-    assert!(m.center[0].abs() < 0.01, "centroid x should be ~0, got {}", m.center[0]);
-    assert!(m.center[1].abs() < 0.01, "centroid y should be ~0", );
+    assert!(
+        m.center[0].abs() < 0.01,
+        "centroid x should be ~0, got {}",
+        m.center[0]
+    );
+    assert!(m.center[1].abs() < 0.01, "centroid y should be ~0",);
     assert!(m.center[2].abs() < 0.01, "centroid z should be ~0");
 }
 
@@ -1409,21 +2059,35 @@ fn tri_sphere() -> PolyData {
 fn filter_boolean_union_increases_cells() {
     use vtk_pure_rs::filters::boolean::boolean::{boolean, BooleanOp};
     let a = tri_sphere();
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.3, 0.0, 0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.3, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
     let result = boolean(&a, &b, BooleanOp::Union);
-    assert!(result.polys.num_cells() > 0, "boolean union should produce cells");
+    assert!(
+        result.polys.num_cells() > 0,
+        "boolean union should produce cells"
+    );
 }
 
 #[test]
 fn filter_boolean_intersection_smaller() {
     use vtk_pure_rs::filters::boolean::boolean::{boolean, BooleanOp};
     let a = tri_sphere();
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.3, 0.0, 0.0], theta_resolution: 32, phi_resolution: 32, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.3, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    }));
     let result = boolean(&a, &b, BooleanOp::Intersection);
     assert!(result.polys.num_cells() > 0);
-    assert!(result.polys.num_cells() < a.polys.num_cells(), "intersection should have fewer cells");
+    assert!(
+        result.polys.num_cells() < a.polys.num_cells(),
+        "intersection should have fewer cells"
+    );
 }
 
 // --- Mirror ---
@@ -1432,16 +2096,22 @@ fn filter_boolean_intersection_smaller() {
 fn filter_mirror_doubles_cells() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::transform::mirror::mirror(&pd, 0, true);
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells() * 2,
-        "mirror with merge should double cell count");
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells() * 2,
+        "mirror with merge should double cell count"
+    );
 }
 
 #[test]
 fn filter_mirror_preserves_cells() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::transform::mirror::mirror(&pd, 0, false);
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells(),
-        "mirror without merge should have same cell count");
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells(),
+        "mirror without merge should have same cell count"
+    );
 }
 
 // --- Reflect ---
@@ -1450,9 +2120,18 @@ fn filter_mirror_preserves_cells() {
 fn filter_reflect_doubles_points() {
     use vtk_pure_rs::filters::transform::reflect::*;
     let pd = tri_sphere();
-    let result = reflect(&pd, &ReflectParams { plane: ReflectPlane::X, copy_input: true, ..Default::default() });
-    assert!(result.points.len() >= pd.points.len() * 2 - 10, // some shared on axis
-        "reflect+copy should roughly double points");
+    let result = reflect(
+        &pd,
+        &ReflectParams {
+            plane: ReflectPlane::X,
+            copy_input: true,
+            ..Default::default()
+        },
+    );
+    assert!(
+        result.points.len() >= pd.points.len() * 2 - 10, // some shared on axis
+        "reflect+copy should roughly double points"
+    );
 }
 
 // --- Extrude ---
@@ -1460,12 +2139,20 @@ fn filter_reflect_doubles_points() {
 #[test]
 fn filter_extrude_creates_volume() {
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let p = plane(&PlaneParams { x_resolution: 5, y_resolution: 5, ..Default::default() });
+    let p = plane(&PlaneParams {
+        x_resolution: 5,
+        y_resolution: 5,
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::transform::extrude::extrude(&p, [0.0, 0.0, 1.0], true);
-    assert!(result.polys.num_cells() > p.polys.num_cells(),
-        "extrude should create more faces than input");
-    assert!(result.points.len() > p.points.len(),
-        "extrude should create more points");
+    assert!(
+        result.polys.num_cells() > p.polys.num_cells(),
+        "extrude should create more faces than input"
+    );
+    assert!(
+        result.points.len() > p.points.len(),
+        "extrude should create more points"
+    );
 }
 
 // --- Subdivide butterfly ---
@@ -1476,8 +2163,12 @@ fn filter_subdivide_butterfly_quadruples() {
     let nc = pd.polys.num_cells();
     let result = vtk_pure_rs::filters::subdivide::subdivide_butterfly::subdivide_butterfly(&pd);
     // Each triangle becomes 4
-    assert!((result.polys.num_cells() as f64 / nc as f64 - 4.0).abs() < 0.5,
-        "butterfly should ~4x cells: got {} from {}", result.polys.num_cells(), nc);
+    assert!(
+        (result.polys.num_cells() as f64 / nc as f64 - 4.0).abs() < 0.5,
+        "butterfly should ~4x cells: got {} from {}",
+        result.polys.num_cells(),
+        nc
+    );
 }
 
 // --- Catmull-Clark ---
@@ -1486,8 +2177,10 @@ fn filter_subdivide_butterfly_quadruples() {
 fn filter_catmull_clark_increases_cells() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::subdivide::catmull_clark::catmull_clark(&pd);
-    assert!(result.polys.num_cells() > pd.polys.num_cells(),
-        "catmull-clark should increase cell count");
+    assert!(
+        result.polys.num_cells() > pd.polys.num_cells(),
+        "catmull-clark should increase cell count"
+    );
 }
 
 // --- Cell quality ---
@@ -1496,9 +2189,13 @@ fn filter_catmull_clark_increases_cells() {
 fn filter_cell_quality_adds_array() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::cell::cell_quality::cell_quality(
-        &pd, vtk_pure_rs::filters::cell::cell_quality::QualityMetric::AspectRatio);
-    assert!(result.cell_data().get_array("Quality").is_some(),
-        "cell_quality should add Quality array");
+        &pd,
+        vtk_pure_rs::filters::cell::cell_quality::QualityMetric::AspectRatio,
+    );
+    assert!(
+        result.cell_data().get_array("Quality").is_some(),
+        "cell_quality should add Quality array"
+    );
     let arr = result.cell_data().get_array("Quality").unwrap();
     assert_eq!(arr.num_tuples(), pd.polys.num_cells());
 }
@@ -1509,8 +2206,10 @@ fn filter_cell_quality_adds_array() {
 fn filter_cell_size_adds_array() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::cell::cell_size::cell_size(&pd);
-    assert!(result.cell_data().get_array("CellSize").is_some(),
-        "cell_size should add CellSize array");
+    assert!(
+        result.cell_data().get_array("CellSize").is_some(),
+        "cell_size should add CellSize array"
+    );
     // All areas should be positive
     let arr = result.cell_data().get_array("CellSize").unwrap();
     let mut buf = [0.0f64];
@@ -1526,12 +2225,19 @@ fn filter_cell_size_adds_array() {
 fn filter_fill_holes_closes_mesh() {
     // Create an open mesh by removing some triangles from a sphere
     let pd = tri_sphere();
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     let nc_before = clipped.polys.num_cells();
-    if nc_before == 0 { return; } // skip if clip produced empty mesh
+    if nc_before == 0 {
+        return;
+    } // skip if clip produced empty mesh
     let result = vtk_pure_rs::filters::cell::fill_holes::fill_holes(&clipped);
-    assert!(result.polys.num_cells() >= nc_before,
-        "fill_holes should not lose cells: {} -> {}", nc_before, result.polys.num_cells());
+    assert!(
+        result.polys.num_cells() >= nc_before,
+        "fill_holes should not lose cells: {} -> {}",
+        nc_before,
+        result.polys.num_cells()
+    );
 }
 
 // --- Collision detection ---
@@ -1539,8 +2245,12 @@ fn filter_fill_holes_closes_mesh() {
 #[test]
 fn filter_collision_detects_overlap() {
     let a = tri_sphere();
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.5, 0.0, 0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.5, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::distance::collision_detection::collision_detection(&a, &b);
     assert!(result.collides, "overlapping spheres should collide");
     assert!(result.num_contacts > 0);
@@ -1549,8 +2259,12 @@ fn filter_collision_detects_overlap() {
 #[test]
 fn filter_collision_no_overlap() {
     let a = tri_sphere();
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [5.0, 0.0, 0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [5.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::distance::collision_detection::collision_detection(&a, &b);
     assert!(!result.collides, "distant spheres should not collide");
 }
@@ -1561,15 +2275,26 @@ fn filter_collision_no_overlap() {
 fn filter_hausdorff_identical_zero() {
     let pd = test_sphere();
     let (h, _, _) = vtk_pure_rs::filters::distance::hausdorff::hausdorff_distance(&pd, &pd);
-    assert!(h < 1e-10, "hausdorff of identical sets should be 0, got {h}");
+    assert!(
+        h < 1e-10,
+        "hausdorff of identical sets should be 0, got {h}"
+    );
 }
 
 #[test]
 fn filter_hausdorff_shifted() {
     let a = test_sphere();
-    let b = sphere(&SphereParams { center: [0.1, 0.0, 0.0], theta_resolution: 32, phi_resolution: 32, ..Default::default() });
+    let b = sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     let (h, _, _) = vtk_pure_rs::filters::distance::hausdorff::hausdorff_distance(&a, &b);
-    assert!((h - 0.1).abs() < 0.02, "hausdorff of 0.1-shifted spheres should be ~0.1, got {h}");
+    assert!(
+        (h - 0.1).abs() < 0.02,
+        "hausdorff of 0.1-shifted spheres should be ~0.1, got {h}"
+    );
 }
 
 // --- Surface nets ---
@@ -1577,16 +2302,28 @@ fn filter_hausdorff_shifted() {
 #[test]
 fn filter_surface_nets_produces_mesh() {
     let img = ImageData::with_dimensions(16, 16, 16);
-    let mut v = Vec::with_capacity(16*16*16);
-    for k in 0..16i32 { for j in 0..16i32 { for i in 0..16i32 {
-        v.push(((i-8)*(i-8)+(j-8)*(j-8)+(k-8)*(k-8)) as f64);
-    }}}
+    let mut v = Vec::with_capacity(16 * 16 * 16);
+    for k in 0..16i32 {
+        for j in 0..16i32 {
+            for i in 0..16i32 {
+                v.push(((i - 8) * (i - 8) + (j - 8) * (j - 8) + (k - 8) * (k - 8)) as f64);
+            }
+        }
+    }
     let mut img2 = img.clone();
-    img2.point_data_mut().add_array(AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("values", v, 1)));
+    img2.point_data_mut()
+        .add_array(AnyDataArray::F64(vtk_pure_rs::data::DataArray::from_vec(
+            "values", v, 1,
+        )));
     let result = vtk_pure_rs::filters::geometry::surface_nets::surface_nets(&img2, "values", 25.0);
-    assert!(result.points.len() > 10, "surface nets should produce points");
-    assert!(result.polys.num_cells() > 5, "surface nets should produce cells");
+    assert!(
+        result.points.len() > 10,
+        "surface nets should produce points"
+    );
+    assert!(
+        result.polys.num_cells() > 5,
+        "surface nets should produce cells"
+    );
 }
 
 // --- Topology analysis ---
@@ -1597,17 +2334,24 @@ fn filter_topology_closed_sphere() {
     let info = vtk_pure_rs::filters::core::topology::analyze_topology(&pd);
     assert!(info.is_closed, "triangulated sphere should be closed");
     assert!(info.is_manifold, "triangulated sphere should be manifold");
-    assert_eq!(info.num_boundary_edges, 0, "closed mesh should have no boundary edges");
+    assert_eq!(
+        info.num_boundary_edges, 0,
+        "closed mesh should have no boundary edges"
+    );
     assert!(info.is_triangle_mesh, "should be triangle mesh");
 }
 
 #[test]
 fn filter_topology_open_mesh() {
     let pd = tri_sphere();
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
     let info = vtk_pure_rs::filters::core::topology::analyze_topology(&clipped);
     assert!(!info.is_closed, "clipped sphere should be open");
-    assert!(info.num_boundary_edges > 0, "open mesh should have boundary edges");
+    assert!(
+        info.num_boundary_edges > 0,
+        "open mesh should have boundary edges"
+    );
 }
 
 // --- Outline ---
@@ -1617,7 +2361,11 @@ fn filter_outline_12_edges() {
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::distance::outline::outline(&pd);
     assert_eq!(result.points.len(), 8, "bounding box should have 8 corners");
-    assert_eq!(result.lines.num_cells(), 12, "bounding box should have 12 edges");
+    assert_eq!(
+        result.lines.num_cells(),
+        12,
+        "bounding box should have 12 edges"
+    );
 }
 
 // --- Quadric clustering ---
@@ -1626,8 +2374,12 @@ fn filter_outline_12_edges() {
 fn filter_quadric_clustering_reduces() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::geometry::quadric_clustering::quadric_clustering(&pd, 5);
-    assert!(result.polys.num_cells() < pd.polys.num_cells(),
-        "quadric clustering should reduce cells: {} -> {}", pd.polys.num_cells(), result.polys.num_cells());
+    assert!(
+        result.polys.num_cells() < pd.polys.num_cells(),
+        "quadric clustering should reduce cells: {} -> {}",
+        pd.polys.num_cells(),
+        result.polys.num_cells()
+    );
     assert!(result.points.len() > 0);
 }
 
@@ -1636,10 +2388,16 @@ fn filter_quadric_clustering_reduces() {
 #[test]
 fn filter_quadric_decimate_reduces() {
     let pd = tri_sphere();
-    let result = vtk_pure_rs::filters::geometry::edge_collapse_quadric::edge_collapse_quadric(&pd, 0.5);
+    let result =
+        vtk_pure_rs::filters::geometry::edge_collapse_quadric::edge_collapse_quadric(&pd, 0.5);
     let expected = (pd.polys.num_cells() as f64 * 0.5) as usize;
-    assert!(result.polys.num_cells() <= expected + expected / 5,
-        "quadric decimate 50% should halve cells: {} -> {} (target {})", pd.polys.num_cells(), result.polys.num_cells(), expected);
+    assert!(
+        result.polys.num_cells() <= expected + expected / 5,
+        "quadric decimate 50% should halve cells: {} -> {} (target {})",
+        pd.polys.num_cells(),
+        result.polys.num_cells(),
+        expected
+    );
 }
 
 // --- Slice ---
@@ -1647,9 +2405,16 @@ fn filter_quadric_decimate_reduces() {
 #[test]
 fn filter_slice_produces_lines() {
     let pd = tri_sphere();
-    let result = vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0]);
-    assert!(result.lines.num_cells() > 5, "slicing sphere should produce line segments");
-    assert!(result.points.len() > 5, "slicing sphere should produce points");
+    let result =
+        vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
+    assert!(
+        result.lines.num_cells() > 5,
+        "slicing sphere should produce line segments"
+    );
+    assert!(
+        result.points.len() > 5,
+        "slicing sphere should produce points"
+    );
 }
 
 // --- Clip closed surface ---
@@ -1657,8 +2422,15 @@ fn filter_slice_produces_lines() {
 #[test]
 fn filter_clip_closed_caps() {
     let pd = tri_sphere();
-    let result = vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0]);
-    assert!(result.polys.num_cells() > 0, "clip_closed should produce cells");
+    let result = vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(
+        &pd,
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+    );
+    assert!(
+        result.polys.num_cells() > 0,
+        "clip_closed should produce cells"
+    );
     // Should be roughly half + cap
     assert!(result.polys.num_cells() < pd.polys.num_cells());
 }
@@ -1670,9 +2442,11 @@ fn filter_gradient_adds_array() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let result = vtk_pure_rs::filters::geometry::gradient::gradient(&with_elev, "Elevation");
-    assert!(result.point_data().get_array("Gradient").is_some()
-        || result.cell_data().get_array("Gradient").is_some(),
-        "gradient should add Gradient array");
+    assert!(
+        result.point_data().get_array("Gradient").is_some()
+            || result.cell_data().get_array("Gradient").is_some(),
+        "gradient should add Gradient array"
+    );
 }
 
 // --- Depth sort ---
@@ -1680,9 +2454,13 @@ fn filter_gradient_adds_array() {
 #[test]
 fn filter_depth_sort_preserves_cells() {
     let pd = tri_sphere();
-    let result = vtk_pure_rs::filters::geometry::depth_peeling::depth_sort_mesh(&pd, [0.0, 0.0, 1.0]);
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells(),
-        "depth sort should preserve cell count");
+    let result =
+        vtk_pure_rs::filters::geometry::depth_peeling::depth_sort_mesh(&pd, [0.0, 0.0, 1.0]);
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells(),
+        "depth sort should preserve cell count"
+    );
     assert!(result.cell_data().get_array("Depth").is_some());
 }
 
@@ -1693,7 +2471,11 @@ fn filter_triangle_strips_conversion() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::cell::strip::to_triangle_strips(&pd);
     assert!(result.strips.num_cells() > 0, "should produce strip cells");
-    assert_eq!(result.polys.num_cells(), 0, "should convert all polys to strips");
+    assert_eq!(
+        result.polys.num_cells(),
+        0,
+        "should convert all polys to strips"
+    );
 }
 
 // --- Dihedral angles ---
@@ -1712,13 +2494,19 @@ fn filter_dihedral_angles_adds_array() {
 #[test]
 fn filter_extract_largest_one_component() {
     let s1 = tri_sphere();
-    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [3.0, 0.0, 0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() }));
+    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    }));
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     let result = vtk_pure_rs::filters::core::extract_largest::extract_largest(&merged);
     // Largest should be the big sphere
-    assert!(result.polys.num_cells() > s2.polys.num_cells(),
-        "extract_largest should return the bigger component");
+    assert!(
+        result.polys.num_cells() > s2.polys.num_cells(),
+        "extract_largest should return the bigger component"
+    );
     assert!(result.polys.num_cells() <= s1.polys.num_cells() + 10);
 }
 
@@ -1728,8 +2516,10 @@ fn filter_extract_largest_one_component() {
 fn filter_densify_increases_cells() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::subdivide::densify::densify(&pd, 0.05);
-    assert!(result.polys.num_cells() >= pd.polys.num_cells(),
-        "densify should not reduce cells");
+    assert!(
+        result.polys.num_cells() >= pd.polys.num_cells(),
+        "densify should not reduce cells"
+    );
 }
 
 // --- Separate cells ---
@@ -1739,8 +2529,10 @@ fn filter_separate_cells_increases_points() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::cell::separate_cells::separate_cells(&pd);
     // Every cell gets its own copy of vertices
-    assert!(result.points.len() >= pd.polys.num_cells() * 3,
-        "separate_cells should give each cell unique vertices");
+    assert!(
+        result.points.len() >= pd.polys.num_cells() * 3,
+        "separate_cells should give each cell unique vertices"
+    );
 }
 
 // --- Calculator ---
@@ -1748,16 +2540,21 @@ fn filter_separate_cells_increases_points() {
 #[test]
 fn filter_calculator_adds_scalar() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::geometry::calculator::calculator(&pd, "Radius", |_i, p, _| {
-        (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt()
-    });
+    let result =
+        vtk_pure_rs::filters::geometry::calculator::calculator(&pd, "Radius", |_i, p, _| {
+            (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt()
+        });
     let arr = result.point_data().get_array("Radius");
     assert!(arr.is_some(), "calculator should add Radius array");
     // For a sphere of radius 0.5, all values should be ~0.5
     let arr = arr.unwrap();
     let mut buf = [0.0f64];
     arr.tuple_as_f64(0, &mut buf);
-    assert!((buf[0] - 0.5).abs() < 0.05, "radius at point 0 should be ~0.5, got {}", buf[0]);
+    assert!(
+        (buf[0] - 0.5).abs() < 0.05,
+        "radius at point 0 should be ~0.5, got {}",
+        buf[0]
+    );
 }
 
 // --- BYU I/O ---
@@ -1765,10 +2562,15 @@ fn filter_calculator_adds_scalar() {
 #[test]
 fn io_byu_roundtrip() {
     let pd = tri_sphere();
-    let path = std::env::temp_dir().join(format!("vtk_val_byu_{:?}.byu", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_val_byu_{:?}.byu", std::thread::current().id()));
     vtk_pure_rs::io::byu::write_byu_file(&pd, &path).unwrap();
     let loaded = vtk_pure_rs::io::byu::read_byu_file(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), pd.polys.num_cells(), "BYU roundtrip should preserve cells");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        pd.polys.num_cells(),
+        "BYU roundtrip should preserve cells"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1778,7 +2580,11 @@ fn io_byu_roundtrip() {
 fn filter_center_of_mass_at_origin() {
     let pd = test_sphere();
     let com = vtk_pure_rs::filters::geometry::center_of_mass::center_of_mass(&pd);
-    assert!(com[0].abs() < 0.01, "center of mass x should be ~0, got {}", com[0]);
+    assert!(
+        com[0].abs() < 0.01,
+        "center of mass x should be ~0, got {}",
+        com[0]
+    );
     assert!(com[1].abs() < 0.01, "center of mass y should be ~0");
     assert!(com[2].abs() < 0.01, "center of mass z should be ~0");
 }
@@ -1799,21 +2605,32 @@ fn filter_probe_interpolates() {
 fn filter_validate_closed_sphere() {
     let pd = tri_sphere();
     let report = vtk_pure_rs::filters::geometry::validate::validate(&pd);
-    assert_eq!(report.degenerate_cells, 0, "sphere should have no degenerate cells");
+    assert_eq!(
+        report.degenerate_cells, 0,
+        "sphere should have no degenerate cells"
+    );
 }
 
 #[test]
 fn filter_windowed_sinc_smooth() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::smooth::windowed_sinc_smooth::windowed_sinc_smooth(&pd, 20, 0.1);
-    assert_eq!(result.points.len(), pd.points.len(), "windowed sinc should preserve point count");
+    let result =
+        vtk_pure_rs::filters::smooth::windowed_sinc_smooth::windowed_sinc_smooth(&pd, 20, 0.1);
+    assert_eq!(
+        result.points.len(),
+        pd.points.len(),
+        "windowed sinc should preserve point count"
+    );
 }
 
 #[test]
 fn filter_mask_points_reduces() {
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::extract::mask_points::mask_points(&pd, 3);
-    assert!(result.points.len() < pd.points.len(), "mask_points should reduce points");
+    assert!(
+        result.points.len() < pd.points.len(),
+        "mask_points should reduce points"
+    );
     let expected = (pd.points.len() + 2) / 3;
     assert!((result.points.len() as i64 - expected as i64).abs() <= 2);
 }
@@ -1821,8 +2638,14 @@ fn filter_mask_points_reduces() {
 #[test]
 fn filter_silhouette_produces_edges() {
     let pd = tri_sphere();
-    let result = vtk_pure_rs::filters::geometry::poly_data_silhouette::silhouette_edges(&pd, [0.0, 0.0, 1.0]);
-    assert!(result.lines.num_cells() > 0, "silhouette should produce edges");
+    let result = vtk_pure_rs::filters::geometry::poly_data_silhouette::silhouette_edges(
+        &pd,
+        [0.0, 0.0, 1.0],
+    );
+    assert!(
+        result.lines.num_cells() > 0,
+        "silhouette should produce edges"
+    );
 }
 
 #[test]
@@ -1830,8 +2653,15 @@ fn filter_hedgehog_produces_lines() {
     let pd = test_sphere();
     let with_normals = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
     let result = vtk_pure_rs::filters::geometry::hedgehog::hedgehog(&with_normals, "Normals", 0.1);
-    assert!(result.lines.num_cells() > 0, "hedgehog should produce line glyphs");
-    assert_eq!(result.lines.num_cells(), pd.points.len(), "one line per point");
+    assert!(
+        result.lines.num_cells() > 0,
+        "hedgehog should produce line glyphs"
+    );
+    assert_eq!(
+        result.lines.num_cells(),
+        pd.points.len(),
+        "one line per point"
+    );
 }
 
 #[test]
@@ -1841,7 +2671,7 @@ fn filter_voronoi_2d_produces_cells() {
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((rng >> 33) as f64) / (u32::MAX as f64) * 2.0 - 1.0
     };
-    let pts: Vec<[f64;3]> = (0..50).map(|_| [rf(), rf(), 0.0]).collect();
+    let pts: Vec<[f64; 3]> = (0..50).map(|_| [rf(), rf(), 0.0]).collect();
     let mut pd = PolyData::new();
     pd.points = Points::from_vec(pts);
     let result = vtk_pure_rs::filters::geometry::voronoi_2d::voronoi_2d(&pd, 0.5);
@@ -1852,49 +2682,78 @@ fn filter_voronoi_2d_produces_cells() {
 fn filter_point_cloud_density_adds_scalar() {
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::points::point_cloud_density::point_cloud_density(&pd, 0.1);
-    assert!(result.point_data().get_array("Density").is_some()
-        || result.point_data().get_array("PointDensity").is_some()
-        || result.point_data().num_arrays() > pd.point_data().num_arrays(),
-        "density should add an array");
+    assert!(
+        result.point_data().get_array("Density").is_some()
+            || result.point_data().get_array("PointDensity").is_some()
+            || result.point_data().num_arrays() > pd.point_data().num_arrays(),
+        "density should add an array"
+    );
 }
 
 #[test]
 fn filter_euclidean_cluster_separates() {
     let s1 = tri_sphere();
-    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [5.0, 0.0, 0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() }));
+    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [5.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    }));
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
-    let result = vtk_pure_rs::filters::points::euclidean_cluster::euclidean_cluster(&merged, 0.5, 3);
-    assert!(result.point_data().get_array("ClusterId").is_some()
-        || result.point_data().scalars().is_some(),
-        "euclidean_cluster should add cluster labels");
+    let result =
+        vtk_pure_rs::filters::points::euclidean_cluster::euclidean_cluster(&merged, 0.5, 3);
+    assert!(
+        result.point_data().get_array("ClusterId").is_some()
+            || result.point_data().scalars().is_some(),
+        "euclidean_cluster should add cluster labels"
+    );
 }
 
 #[test]
 fn filter_ruled_surface_from_lines() {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l1 = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 5 });
-    let l2 = line(&LineParams { point1: [0.0,1.0,0.0], point2: [1.0,1.0,0.5], resolution: 5 });
+    let l1 = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 5,
+    });
+    let l2 = line(&LineParams {
+        point1: [0.0, 1.0, 0.0],
+        point2: [1.0, 1.0, 0.5],
+        resolution: 5,
+    });
     let mut pd = PolyData::new();
     pd.points = l1.points.clone();
-    for i in 0..l2.points.len() { pd.points.push(l2.points.get(i)); }
+    for i in 0..l2.points.len() {
+        pd.points.push(l2.points.get(i));
+    }
     let off = l1.points.len() as i64;
-    for cell in l1.lines.iter() { pd.lines.push_cell(cell); }
+    for cell in l1.lines.iter() {
+        pd.lines.push_cell(cell);
+    }
     for cell in l2.lines.iter() {
         let shifted: Vec<i64> = cell.iter().map(|&v| v + off).collect();
         pd.lines.push_cell(&shifted);
     }
     let result = vtk_pure_rs::filters::geometry::ruled_surface::ruled_surface(&pd);
-    assert!(result.polys.num_cells() > 0, "ruled surface should produce quads/tris");
+    assert!(
+        result.polys.num_cells() > 0,
+        "ruled surface should produce quads/tris"
+    );
 }
 
 #[test]
 fn io_off_roundtrip() {
     let pd = tri_sphere();
-    let path = std::env::temp_dir().join(format!("vtk_val_off_{:?}.off", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_val_off_{:?}.off", std::thread::current().id()));
     vtk_pure_rs::io::off::write_off_file(&pd, &path).unwrap();
     let loaded = vtk_pure_rs::io::off::read_off_file(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), pd.polys.num_cells(), "OFF roundtrip cells");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        pd.polys.num_cells(),
+        "OFF roundtrip cells"
+    );
     assert_eq!(loaded.points.len(), pd.points.len(), "OFF roundtrip points");
     let _ = std::fs::remove_file(&path);
 }
@@ -1902,20 +2761,31 @@ fn io_off_roundtrip() {
 #[test]
 fn io_dxf_roundtrip() {
     let pd = tri_sphere();
-    let path = std::env::temp_dir().join(format!("vtk_val_dxf_{:?}.dxf", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_val_dxf_{:?}.dxf", std::thread::current().id()));
     vtk_pure_rs::io::dxf::write_dxf_file(&pd, &path).unwrap();
     let loaded = vtk_pure_rs::io::dxf::read_dxf_file(&path).unwrap();
-    assert!(loaded.polys.num_cells() > 0, "DXF roundtrip should produce cells");
+    assert!(
+        loaded.polys.num_cells() > 0,
+        "DXF roundtrip should produce cells"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
 #[test]
 fn io_facet_roundtrip() {
     let pd = tri_sphere();
-    let path = std::env::temp_dir().join(format!("vtk_val_facet_{:?}.facet", std::thread::current().id()));
+    let path = std::env::temp_dir().join(format!(
+        "vtk_val_facet_{:?}.facet",
+        std::thread::current().id()
+    ));
     vtk_pure_rs::io::facet::write_facet_file(&pd, &path).unwrap();
     let loaded = vtk_pure_rs::io::facet::read_facet_file(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), pd.polys.num_cells(), "FACET roundtrip cells");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        pd.polys.num_cells(),
+        "FACET roundtrip cells"
+    );
     let _ = std::fs::remove_file(&path);
 }
 
@@ -1925,7 +2795,8 @@ fn filter_interpolate_idw() {
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let mut target = PolyData::new();
     target.points = Points::from_vec(vec![[0.0, 0.0, 0.0], [0.25, 0.0, 0.0]]);
-    let result = vtk_pure_rs::filters::geometry::interpolate::interpolate_idw(&with_elev, &target, 2.0, 0.5);
+    let result =
+        vtk_pure_rs::filters::geometry::interpolate::interpolate_idw(&with_elev, &target, 2.0, 0.5);
     assert_eq!(result.points.len(), 2);
 }
 
@@ -1933,17 +2804,28 @@ fn filter_interpolate_idw() {
 fn filter_poisson_disk_subsamples() {
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::points::poisson_disk::poisson_disk_sample(&pd, 0.1, 42);
-    assert!(result.points.len() > 0, "poisson disk should produce points");
-    assert!(result.points.len() < pd.points.len(), "poisson disk should subsample");
+    assert!(
+        result.points.len() > 0,
+        "poisson disk should produce points"
+    );
+    assert!(
+        result.points.len() < pd.points.len(),
+        "poisson disk should subsample"
+    );
 }
 
 #[test]
 fn io_vtp_roundtrip_cells() {
     let pd = tri_sphere();
-    let path = std::env::temp_dir().join(format!("vtk_val_vtp_{:?}.vtp", std::thread::current().id()));
+    let path =
+        std::env::temp_dir().join(format!("vtk_val_vtp_{:?}.vtp", std::thread::current().id()));
     vtk_pure_rs::io::xml::VtpWriter::write(&path, &pd).unwrap();
     let loaded = vtk_pure_rs::io::xml::VtpReader::read(&path).unwrap();
-    assert_eq!(loaded.polys.num_cells(), pd.polys.num_cells(), "VTP roundtrip cells");
+    assert_eq!(
+        loaded.polys.num_cells(),
+        pd.polys.num_cells(),
+        "VTP roundtrip cells"
+    );
     assert_eq!(loaded.points.len(), pd.points.len(), "VTP roundtrip points");
     let _ = std::fs::remove_file(&path);
 }
@@ -1953,8 +2835,13 @@ fn filter_decimate_90_reduces_heavily() {
     let pd = tri_sphere();
     let result = vtk_pure_rs::filters::core::decimate::decimate(&pd, 0.9);
     let target = (pd.polys.num_cells() as f64 * 0.1) as usize;
-    assert!(result.polys.num_cells() < pd.polys.num_cells() / 3,
-        "decimate 90% should heavily reduce: {} -> {} (target ~{})", pd.polys.num_cells(), result.polys.num_cells(), target);
+    assert!(
+        result.polys.num_cells() < pd.polys.num_cells() / 3,
+        "decimate 90% should heavily reduce: {} -> {} (target ~{})",
+        pd.polys.num_cells(),
+        result.polys.num_cells(),
+        target
+    );
 }
 
 #[test]
@@ -1969,11 +2856,21 @@ fn filter_smooth_constrained_preserves_count() {
 fn filter_glyph_100_correct_count() {
     let mut seeds = PolyData::new();
     seeds.points = Points::from_vec((0..100).map(|i| [i as f64 * 0.05, 0.0, 0.0]).collect());
-    let g = sphere(&SphereParams { radius: 0.02, theta_resolution: 6, phi_resolution: 6, ..Default::default() });
+    let g = sphere(&SphereParams {
+        radius: 0.02,
+        theta_resolution: 6,
+        phi_resolution: 6,
+        ..Default::default()
+    });
     let nc_per_glyph = g.polys.num_cells();
     let result = vtk_pure_rs::filters::geometry::glyph::glyph(&seeds, &g, 1.0, false);
-    assert_eq!(result.polys.num_cells(), 100 * nc_per_glyph,
-        "100 glyphs should produce 100 * {} = {} cells", nc_per_glyph, 100 * nc_per_glyph);
+    assert_eq!(
+        result.polys.num_cells(),
+        100 * nc_per_glyph,
+        "100 glyphs should produce 100 * {} = {} cells",
+        nc_per_glyph,
+        100 * nc_per_glyph
+    );
 }
 
 #[test]
@@ -1981,38 +2878,67 @@ fn filter_subdivide_midpoint_quadruples() {
     let pd = tri_sphere();
     let nc = pd.polys.num_cells();
     let result = vtk_pure_rs::filters::subdivide::subdivide_midpoint::subdivide_midpoint(&pd);
-    assert!((result.polys.num_cells() as f64 / nc as f64 - 4.0).abs() < 0.5,
-        "midpoint subdivide should ~4x cells: {} -> {}", nc, result.polys.num_cells());
+    assert!(
+        (result.polys.num_cells() as f64 / nc as f64 - 4.0).abs() < 0.5,
+        "midpoint subdivide should ~4x cells: {} -> {}",
+        nc,
+        result.polys.num_cells()
+    );
 }
 
 #[test]
 fn filter_cell_data_to_point_data_roundtrip() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let with_cell = vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
-    let back = vtk_pure_rs::filters::filter_data::attribute_convert::cell_data_to_point_data(&with_cell);
+    let with_cell =
+        vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
+    let back =
+        vtk_pure_rs::filters::filter_data::attribute_convert::cell_data_to_point_data(&with_cell);
     assert_eq!(back.points.len(), pd.points.len());
 }
 
 #[test]
 fn filter_append_10_correct_total() {
-    let spheres: Vec<_> = (0..10).map(|_|
-        sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() })
-    ).collect();
+    let spheres: Vec<_> = (0..10)
+        .map(|_| {
+            sphere(&SphereParams {
+                theta_resolution: 8,
+                phi_resolution: 8,
+                ..Default::default()
+            })
+        })
+        .collect();
     let refs: Vec<&PolyData> = spheres.iter().collect();
     let result = vtk_pure_rs::filters::core::append::append(&refs);
     let total_pts: usize = spheres.iter().map(|s| s.points.len()).sum();
-    assert_eq!(result.points.len(), total_pts, "append should sum all points");
+    assert_eq!(
+        result.points.len(),
+        total_pts,
+        "append should sum all points"
+    );
 }
 
 #[test]
 fn filter_sphere_64_symmetry() {
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let bb = vtk_pure_rs::data::DataSet::bounds(&pd);
     // Sphere should be symmetric
-    assert!((bb.x_max + bb.x_min).abs() < 0.01, "sphere should be centered in x");
-    assert!((bb.y_max + bb.y_min).abs() < 0.01, "sphere should be centered in y");
-    assert!((bb.z_max + bb.z_min).abs() < 0.01, "sphere should be centered in z");
+    assert!(
+        (bb.x_max + bb.x_min).abs() < 0.01,
+        "sphere should be centered in x"
+    );
+    assert!(
+        (bb.y_max + bb.y_min).abs() < 0.01,
+        "sphere should be centered in y"
+    );
+    assert!(
+        (bb.z_max + bb.z_min).abs() < 0.01,
+        "sphere should be centered in z"
+    );
 }
 
 #[test]
@@ -2024,13 +2950,17 @@ fn filter_warp_scalar_displaces() {
     // Points should have moved
     let p_orig = with_elev.points.get(0);
     let p_warp = result.points.get(0);
-    let moved = (p_orig[0]-p_warp[0]).abs() + (p_orig[1]-p_warp[1]).abs() + (p_orig[2]-p_warp[2]).abs();
+    let moved = (p_orig[0] - p_warp[0]).abs()
+        + (p_orig[1] - p_warp[1]).abs()
+        + (p_orig[2] - p_warp[2]).abs();
     // Some points may not move if scalar is 0, so just check total
-    let total_moved: f64 = (0..result.points.len()).map(|i| {
-        let a = with_elev.points.get(i);
-        let b = result.points.get(i);
-        (a[0]-b[0]).abs() + (a[1]-b[1]).abs() + (a[2]-b[2]).abs()
-    }).sum();
+    let total_moved: f64 = (0..result.points.len())
+        .map(|i| {
+            let a = with_elev.points.get(i);
+            let b = result.points.get(i);
+            (a[0] - b[0]).abs() + (a[1] - b[1]).abs() + (a[2] - b[2]).abs()
+        })
+        .sum();
     assert!(total_moved > 0.1, "warp should displace some points");
 }
 
@@ -2044,8 +2974,12 @@ fn signed_distance_has_positive_negative() {
     let mut buf = [0.0f64];
     for i in 0..s.num_tuples() {
         s.tuple_as_f64(i, &mut buf);
-        if buf[0] > 0.01 { has_pos = true; }
-        if buf[0] < -0.01 { has_neg = true; }
+        if buf[0] > 0.01 {
+            has_pos = true;
+        }
+        if buf[0] < -0.01 {
+            has_neg = true;
+        }
     }
     assert!(has_pos, "SDF should have positive (outside) values");
     assert!(has_neg, "SDF should have negative (inside) values");
@@ -2057,31 +2991,46 @@ fn signed_distance_has_positive_negative() {
 fn filter_slice_vs_cpp() {
     let r = load_ref("filter_slice");
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let result =
+        vtk_pure_rs::filters::core::slice::slice_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
     let cpp_lines = ref_i(&r, "num_lines");
-    assert!(within_pct(result.lines.num_cells(), cpp_lines, 0.2),
-        "slice lines: got {}, expected {} (±20%)", result.lines.num_cells(), cpp_lines);
+    assert!(
+        within_pct(result.lines.num_cells(), cpp_lines, 0.2),
+        "slice lines: got {}, expected {} (±20%)",
+        result.lines.num_cells(),
+        cpp_lines
+    );
 }
 
 #[test]
 fn filter_fill_holes_vs_cpp() {
     let r = load_ref("filter_fill_holes");
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     let result = vtk_pure_rs::filters::cell::fill_holes::fill_holes(&clipped);
     let cpp_cells = ref_i(&r, "num_cells");
     // Fill holes should add cells compared to clipped input
-    assert!(result.polys.num_cells() > clipped.polys.num_cells(),
-        "fill_holes should add cells: got {} vs clipped {}", result.polys.num_cells(), clipped.polys.num_cells());
+    assert!(
+        result.polys.num_cells() > clipped.polys.num_cells(),
+        "fill_holes should add cells: got {} vs clipped {}",
+        result.polys.num_cells(),
+        clipped.polys.num_cells()
+    );
 }
 
 #[test]
 fn filter_cell_quality_vs_cpp() {
     let r = load_ref("filter_cell_quality");
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::cell::cell_quality::cell_quality(&pd,
-        vtk_pure_rs::filters::cell::cell_quality::QualityMetric::AspectRatio);
-    let arr = result.cell_data().get_array("Quality").expect("missing Quality array");
+    let result = vtk_pure_rs::filters::cell::cell_quality::cell_quality(
+        &pd,
+        vtk_pure_rs::filters::cell::cell_quality::QualityMetric::AspectRatio,
+    );
+    let arr = result
+        .cell_data()
+        .get_array("Quality")
+        .expect("missing Quality array");
     // Our sphere may have different cell count — just check array was produced
     assert_eq!(arr.num_tuples(), pd.polys.num_cells());
     // Check mean quality is in right ballpark (sphere topologies differ slightly)
@@ -2093,8 +3042,12 @@ fn filter_cell_quality_vs_cpp() {
         sum += buf[0];
     }
     let our_mean = sum / arr.num_tuples() as f64;
-    assert!((our_mean - cpp_mean).abs() / cpp_mean < 0.3,
-        "quality mean: got {:.3}, expected {:.3} (±30%)", our_mean, cpp_mean);
+    assert!(
+        (our_mean - cpp_mean).abs() / cpp_mean < 0.3,
+        "quality mean: got {:.3}, expected {:.3} (±30%)",
+        our_mean,
+        cpp_mean
+    );
 }
 
 #[test]
@@ -2105,10 +3058,18 @@ fn filter_quadric_clustering_vs_cpp() {
     let cpp_pts = ref_i(&r, "num_points");
     let cpp_cells = ref_i(&r, "num_cells");
     // Allow generous tolerance — different clustering algorithms produce different results
-    assert!(within_pct(result.points.len(), cpp_pts, 0.5),
-        "quadric pts: got {}, expected {} (±50%)", result.points.len(), cpp_pts);
-    assert!(within_pct(result.polys.num_cells(), cpp_cells, 0.5),
-        "quadric cells: got {}, expected {} (±50%)", result.polys.num_cells(), cpp_cells);
+    assert!(
+        within_pct(result.points.len(), cpp_pts, 0.5),
+        "quadric pts: got {}, expected {} (±50%)",
+        result.points.len(),
+        cpp_pts
+    );
+    assert!(
+        within_pct(result.polys.num_cells(), cpp_cells, 0.5),
+        "quadric cells: got {}, expected {} (±50%)",
+        result.polys.num_cells(),
+        cpp_cells
+    );
 }
 
 #[test]
@@ -2131,8 +3092,15 @@ fn filter_triangle_strips_vs_cpp() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let result = vtk_pure_rs::filters::cell::strip::to_triangle_strips(&pd);
     // Our greedy algorithm may produce different strip count than VTK's optimized stripper
-    assert!(result.strips.num_cells() > 0, "should produce at least some strips");
-    assert_eq!(result.polys.num_cells(), 0, "all polys should be converted to strips");
+    assert!(
+        result.strips.num_cells() > 0,
+        "should produce at least some strips"
+    );
+    assert_eq!(
+        result.polys.num_cells(),
+        0,
+        "all polys should be converted to strips"
+    );
     // Point count should match our input (strips reuse same points)
     assert_eq!(result.points.len(), pd.points.len());
 }
@@ -2141,13 +3109,17 @@ fn filter_triangle_strips_vs_cpp() {
 fn filter_windowed_sinc_vs_cpp() {
     let _r = load_ref("filter_windowed_sinc");
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::smooth::windowed_sinc_smooth::windowed_sinc_smooth(&pd, 20, 0.1);
+    let result =
+        vtk_pure_rs::filters::smooth::windowed_sinc_smooth::windowed_sinc_smooth(&pd, 20, 0.1);
     // Point/cell count must be preserved
     assert_eq!(result.points.len(), pd.points.len());
     assert_eq!(result.polys.num_cells(), pd.polys.num_cells());
     // Smoothing should shrink bounds slightly (sphere becomes rounder)
     let bb = vtk_pure_rs::data::DataSet::bounds(&result);
-    assert!(bb.x_max < 0.51, "smoothed sphere should stay within original bounds");
+    assert!(
+        bb.x_max < 0.51,
+        "smoothed sphere should stay within original bounds"
+    );
     assert!(bb.x_max > 0.3, "smoothed sphere should not collapse");
 }
 
@@ -2155,7 +3127,12 @@ fn filter_windowed_sinc_vs_cpp() {
 fn filter_texture_map_sphere_vs_cpp() {
     let r = load_ref("filter_texture_map_sphere");
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(&pd, [0.0,0.0,0.0], false);
+    let result =
+        vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(
+            &pd,
+            [0.0, 0.0, 0.0],
+            false,
+        );
     // Point count matches our sphere (may differ from VTK)
     assert_eq!(result.points.len(), pd.points.len());
     let tc = result.point_data().get_array("TCoords");
@@ -2166,8 +3143,16 @@ fn filter_texture_map_sphere_vs_cpp() {
     let mut buf = [0.0f64; 2];
     for i in 0..tc.num_tuples() {
         tc.tuple_as_f64(i, &mut buf);
-        assert!(buf[0] >= -0.01 && buf[0] <= 1.01, "u coord out of range: {}", buf[0]);
-        assert!(buf[1] >= -0.01 && buf[1] <= 1.01, "v coord out of range: {}", buf[1]);
+        assert!(
+            buf[0] >= -0.01 && buf[0] <= 1.01,
+            "u coord out of range: {}",
+            buf[0]
+        );
+        assert!(
+            buf[1] >= -0.01 && buf[1] <= 1.01,
+            "v coord out of range: {}",
+            buf[1]
+        );
     }
 }
 
@@ -2176,20 +3161,37 @@ fn filter_outline_vs_cpp() {
     let r = load_ref("filter_outline");
     let pd = test_sphere();
     let result = vtk_pure_rs::filters::distance::outline::outline(&pd);
-    assert_eq!(result.points.len(), ref_i(&r, "num_points"), "outline should have 8 corner points");
-    assert_eq!(result.lines.num_cells(), ref_i(&r, "num_lines"), "outline should have 12 edges");
+    assert_eq!(
+        result.points.len(),
+        ref_i(&r, "num_points"),
+        "outline should have 8 corner points"
+    );
+    assert_eq!(
+        result.lines.num_cells(),
+        ref_i(&r, "num_lines"),
+        "outline should have 12 edges"
+    );
 }
 
 #[test]
 fn filter_hausdorff_vs_cpp() {
     let r = load_ref("filter_hausdorff");
     let a = test_sphere();
-    let b = sphere(&SphereParams { center: [0.05, 0.0, 0.0], theta_resolution: 32, phi_resolution: 32, ..Default::default() });
+    let b = sphere(&SphereParams {
+        center: [0.05, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    });
     let (_fwd, _rev, max_d) = vtk_pure_rs::filters::distance::hausdorff::hausdorff_distance(&a, &b);
     let cpp_d = ref_f(&r, "hausdorff_distance");
     // Allow 20% tolerance since sphere point distributions differ
-    assert!((max_d - cpp_d).abs() < 0.02,
-        "hausdorff distance: got {:.6}, expected {:.6}", max_d, cpp_d);
+    assert!(
+        (max_d - cpp_d).abs() < 0.02,
+        "hausdorff distance: got {:.6}, expected {:.6}",
+        max_d,
+        cpp_d
+    );
 }
 
 #[test]
@@ -2205,12 +3207,26 @@ fn filter_mirror_vs_cpp() {
 #[test]
 fn filter_connectivity_large_vs_cpp() {
     let r = load_ref("filter_connectivity_large");
-    let s1 = sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() });
-    let s2 = sphere(&SphereParams { center: [3.0,0.0,0.0], theta_resolution: 128, phi_resolution: 128, ..Default::default() });
+    let s1 = sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
+    let s2 = sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    });
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     let components = vtk_pure_rs::filters::geometry::connectivity::extract_components(&merged);
-    assert_eq!(components.len(), ref_i(&r, "num_regions"),
-        "should find {} components, got {}", ref_i(&r, "num_regions"), components.len());
+    assert_eq!(
+        components.len(),
+        ref_i(&r, "num_regions"),
+        "should find {} components, got {}",
+        ref_i(&r, "num_regions"),
+        components.len()
+    );
 }
 
 // ==================== BATCH 2: MORE C++ REFERENCE VALIDATION ====================
@@ -2222,8 +3238,12 @@ fn filter_butterfly_vs_cpp() {
     let result = vtk_pure_rs::filters::subdivide::subdivide_butterfly::subdivide_butterfly(&pd);
     let cpp_cells = ref_i(&r, "num_cells");
     // Butterfly subdivision should ~4x cell count; allow tolerance for different input spheres
-    assert!(result.polys.num_cells() > pd.polys.num_cells() * 3,
-        "butterfly should at least triple cells: got {}, input had {}", result.polys.num_cells(), pd.polys.num_cells());
+    assert!(
+        result.polys.num_cells() > pd.polys.num_cells() * 3,
+        "butterfly should at least triple cells: got {}, input had {}",
+        result.polys.num_cells(),
+        pd.polys.num_cells()
+    );
 }
 
 #[test]
@@ -2241,7 +3261,12 @@ fn filter_center_of_mass_vs_cpp() {
     let r = load_ref("filter_center_of_mass");
     let pd = test_sphere();
     let c = vtk_pure_rs::filters::geometry::center_of_mass::center_of_mass(&pd);
-    let cpp_c: Vec<f64> = r["center"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    let cpp_c: Vec<f64> = r["center"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap())
+        .collect();
     // Centered sphere should have COM near origin
     assert!(c[0].abs() < 0.01, "COM x should be ~0, got {}", c[0]);
     assert!(c[1].abs() < 0.01, "COM y should be ~0, got {}", c[1]);
@@ -2252,24 +3277,42 @@ fn filter_center_of_mass_vs_cpp() {
 fn filter_clip_closed_vs_cpp() {
     let r = load_ref("filter_clip_closed");
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let result = vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(
+        &pd,
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+    );
     let cpp_cells = ref_i(&r, "num_cells");
     // Clipped result should have roughly half the cells plus cap
-    assert!(within_pct(result.polys.num_cells(), cpp_cells, 0.3),
-        "clip_closed cells: got {}, expected {} (±30%)", result.polys.num_cells(), cpp_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), cpp_cells, 0.3),
+        "clip_closed cells: got {}, expected {} (±30%)",
+        result.polys.num_cells(),
+        cpp_cells
+    );
 }
 
 #[test]
 fn filter_collision_vs_cpp() {
     let r = load_ref("filter_collision");
-    let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.8, 0.0, 0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
+    let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.8, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
     let contacts = vtk_pure_rs::filters::distance::collision_detection::collision_detection(&a, &b);
     // Should detect contacts (overlapping spheres)
-    assert!(contacts.num_contacts > 0,
-        "collision should detect overlapping spheres, got {} contacts", contacts.num_contacts);
+    assert!(
+        contacts.num_contacts > 0,
+        "collision should detect overlapping spheres, got {} contacts",
+        contacts.num_contacts
+    );
 }
 
 #[test]
@@ -2280,68 +3323,99 @@ fn filter_delaunay_500_vs_cpp() {
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
         ((rng >> 33) as f64) / (u32::MAX as f64) * 2.0 - 1.0
     };
-    let pts: Vec<[f64;3]> = (0..500).map(|_| [rf(), rf(), 0.0]).collect();
+    let pts: Vec<[f64; 3]> = (0..500).map(|_| [rf(), rf(), 0.0]).collect();
     let mut pd = PolyData::new();
     pd.points = Points::from_vec(pts);
     let result = vtk_pure_rs::filters::geometry::delaunay_2d::delaunay_2d(&pd);
     let cpp_cells = ref_i(&r, "num_cells");
-    assert!(within_pct(result.polys.num_cells(), cpp_cells, 0.15),
-        "delaunay cells: got {}, expected {} (±15%)", result.polys.num_cells(), cpp_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), cpp_cells, 0.15),
+        "delaunay cells: got {}, expected {} (±15%)",
+        result.polys.num_cells(),
+        cpp_cells
+    );
 }
 
 #[test]
 fn filter_depth_sort_vs_cpp() {
     let _r = load_ref("filter_depth_sort");
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::geometry::depth_peeling::depth_sort_mesh(&pd, [0.0, 0.0, 1.0]);
+    let result =
+        vtk_pure_rs::filters::geometry::depth_peeling::depth_sort_mesh(&pd, [0.0, 0.0, 1.0]);
     // Depth sort should preserve cell count
     assert_eq!(result.polys.num_cells(), pd.polys.num_cells());
     // Should have a Depth array
-    assert!(result.cell_data().get_array("Depth").is_some(), "should have Depth cell data");
+    assert!(
+        result.cell_data().get_array("Depth").is_some(),
+        "should have Depth cell data"
+    );
 }
 
 #[test]
 fn filter_extract_largest_vs_cpp() {
     let _r = load_ref("filter_extract_largest");
     let s1 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [3.0, 0.0, 0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() }));
+    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    }));
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     let result = vtk_pure_rs::filters::core::extract_largest::extract_largest(&merged);
     // Largest component should be the 32x32 sphere (more cells than 8x8)
-    assert!(result.polys.num_cells() > s2.polys.num_cells(),
-        "largest should be bigger than small sphere: got {}", result.polys.num_cells());
+    assert!(
+        result.polys.num_cells() > s2.polys.num_cells(),
+        "largest should be bigger than small sphere: got {}",
+        result.polys.num_cells()
+    );
 }
 
 #[test]
 fn filter_mc_64_vs_cpp() {
     let r = load_ref("filter_mc_64");
-    let img = ImageData::with_dimensions(64,64,64);
-    let mut v = Vec::with_capacity(64*64*64);
-    for k in 0..64i32 { for j in 0..64i32 { for i in 0..64i32 {
-        v.push(((i-32)*(i-32)+(j-32)*(j-32)+(k-32)*(k-32)) as f64);
-    }}}
+    let img = ImageData::with_dimensions(64, 64, 64);
+    let mut v = Vec::with_capacity(64 * 64 * 64);
+    for k in 0..64i32 {
+        for j in 0..64i32 {
+            for i in 0..64i32 {
+                v.push(((i - 32) * (i - 32) + (j - 32) * (j - 32) + (k - 32) * (k - 32)) as f64);
+            }
+        }
+    }
     let result = vtk_pure_rs::filters::core::marching_cubes::marching_cubes(&img, &v, 400.0);
     let cpp_pts = ref_i(&r, "num_points");
     let cpp_cells = ref_i(&r, "num_cells");
     // MC produces per-edge points (no dedup), so count may differ from VTK
     // But cell count should be very close
-    assert!(within_pct(result.polys.num_cells(), cpp_cells, 0.05),
-        "MC cells: got {}, expected {} (±5%)", result.polys.num_cells(), cpp_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), cpp_cells, 0.05),
+        "MC cells: got {}, expected {} (±5%)",
+        result.polys.num_cells(),
+        cpp_cells
+    );
 }
 
 #[test]
 fn filter_fe_64_vs_cpp() {
     let r = load_ref("filter_fe_64");
-    let img = ImageData::with_dimensions(64,64,64);
-    let mut v = Vec::with_capacity(64*64*64);
-    for k in 0..64i32 { for j in 0..64i32 { for i in 0..64i32 {
-        v.push(((i-32)*(i-32)+(j-32)*(j-32)+(k-32)*(k-32)) as f64);
-    }}}
+    let img = ImageData::with_dimensions(64, 64, 64);
+    let mut v = Vec::with_capacity(64 * 64 * 64);
+    for k in 0..64i32 {
+        for j in 0..64i32 {
+            for i in 0..64i32 {
+                v.push(((i - 32) * (i - 32) + (j - 32) * (j - 32) + (k - 32) * (k - 32)) as f64);
+            }
+        }
+    }
     let result = vtk_pure_rs::filters::core::flying_edges::flying_edges_3d(&img, &v, 400.0);
     let cpp_cells = ref_i(&r, "num_cells");
-    assert!(within_pct(result.polys.num_cells(), cpp_cells, 0.05),
-        "FE cells: got {}, expected {} (±5%)", result.polys.num_cells(), cpp_cells);
+    assert!(
+        within_pct(result.polys.num_cells(), cpp_cells, 0.05),
+        "FE cells: got {}, expected {} (±5%)",
+        result.polys.num_cells(),
+        cpp_cells
+    );
 }
 
 #[test]
@@ -2351,8 +3425,12 @@ fn filter_mask_points_vs_cpp() {
     let result = vtk_pure_rs::filters::extract::mask_points::mask_points(&pd, 3);
     let cpp_pts = ref_i(&r, "num_points");
     // Mask every 3rd point — result should be ~1/3 of input
-    assert!(within_pct(result.points.len(), cpp_pts, 0.2),
-        "mask points: got {}, expected {} (±20%)", result.points.len(), cpp_pts);
+    assert!(
+        within_pct(result.points.len(), cpp_pts, 0.2),
+        "mask points: got {}, expected {} (±20%)",
+        result.points.len(),
+        cpp_pts
+    );
 }
 
 #[test]
@@ -2362,8 +3440,16 @@ fn io_byu_vs_cpp() {
     let path = std::env::temp_dir().join("vtk_test_byu.byu");
     vtk_pure_rs::io::byu::write_byu_file(&pd, &path).unwrap();
     let result = vtk_pure_rs::io::byu::read_byu_file(&path).unwrap();
-    assert_eq!(result.points.len(), pd.points.len(), "BYU roundtrip lost points");
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells(), "BYU roundtrip lost cells");
+    assert_eq!(
+        result.points.len(),
+        pd.points.len(),
+        "BYU roundtrip lost points"
+    );
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells(),
+        "BYU roundtrip lost cells"
+    );
 }
 
 // ==================== BATCH 3: MORE C++ REFERENCE VALIDATION ====================
@@ -2383,27 +3469,51 @@ fn filter_reflect_vs_cpp() {
     let _r = load_ref("filter_reflect");
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     use vtk_pure_rs::filters::transform::reflect::*;
-    let result = reflect(&pd, &ReflectParams { plane: ReflectPlane::X, copy_input: true, ..Default::default() });
+    let result = reflect(
+        &pd,
+        &ReflectParams {
+            plane: ReflectPlane::X,
+            copy_input: true,
+            ..Default::default()
+        },
+    );
     // Reflect with copy_input=true should double points and cells
-    assert!(result.points.len() >= pd.points.len() * 2 - 100,
-        "reflect+copy should ~double points: got {}, input {}", result.points.len(), pd.points.len());
-    assert_eq!(result.polys.num_cells(), pd.polys.num_cells() * 2,
-        "reflect+copy should double cells");
+    assert!(
+        result.points.len() >= pd.points.len() * 2 - 100,
+        "reflect+copy should ~double points: got {}, input {}",
+        result.points.len(),
+        pd.points.len()
+    );
+    assert_eq!(
+        result.polys.num_cells(),
+        pd.polys.num_cells() * 2,
+        "reflect+copy should double cells"
+    );
 }
 
 #[test]
 fn filter_silhouette_vs_cpp() {
     let _r = load_ref("filter_silhouette");
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::geometry::poly_data_silhouette::silhouette_edges(&pd, [0.0, 0.0, 1.0]);
-    assert!(result.lines.num_cells() > 0, "silhouette should produce edges for a sphere");
+    let result = vtk_pure_rs::filters::geometry::poly_data_silhouette::silhouette_edges(
+        &pd,
+        [0.0, 0.0, 1.0],
+    );
+    assert!(
+        result.lines.num_cells() > 0,
+        "silhouette should produce edges for a sphere"
+    );
 }
 
 #[test]
 fn filter_ribbon_vs_cpp() {
     let _r = load_ref("filter_ribbon");
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 20 });
+    let l = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 20,
+    });
     let result = vtk_pure_rs::filters::geometry::ribbon::ribbon(&l, 0.1, [0.0, 0.0, 1.0]);
     assert!(result.points.len() > 0, "ribbon should produce geometry");
     assert!(result.polys.num_cells() > 0, "ribbon should produce quads");
@@ -2412,33 +3522,62 @@ fn filter_ribbon_vs_cpp() {
 #[test]
 fn source_sphere_64_vs_cpp() {
     let r = load_ref("source_sphere_64x64");
-    let pd = sphere(&SphereParams { theta_resolution: 64, phi_resolution: 64, ..Default::default() });
+    let pd = sphere(&SphereParams {
+        theta_resolution: 64,
+        phi_resolution: 64,
+        ..Default::default()
+    });
     let cpp_pts = ref_i(&r, "num_points");
-    assert!(within_pct(pd.points.len(), cpp_pts, 0.1),
-        "sphere64 points: got {}, expected {} (±10%)", pd.points.len(), cpp_pts);
+    assert!(
+        within_pct(pd.points.len(), cpp_pts, 0.1),
+        "sphere64 points: got {}, expected {} (±10%)",
+        pd.points.len(),
+        cpp_pts
+    );
 }
 
 #[test]
 fn source_plane_32_vs_cpp() {
     let r = load_ref("source_plane_32x32");
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let pd = plane(&PlaneParams { x_resolution: 32, y_resolution: 32, ..Default::default() });
-    assert_eq!(pd.points.len(), ref_i(&r, "num_points"),
-        "plane32 points: got {}, expected {}", pd.points.len(), ref_i(&r, "num_points"));
-    assert_eq!(pd.polys.num_cells(), ref_i(&r, "num_cells"),
-        "plane32 cells: got {}, expected {}", pd.polys.num_cells(), ref_i(&r, "num_cells"));
+    let pd = plane(&PlaneParams {
+        x_resolution: 32,
+        y_resolution: 32,
+        ..Default::default()
+    });
+    assert_eq!(
+        pd.points.len(),
+        ref_i(&r, "num_points"),
+        "plane32 points: got {}, expected {}",
+        pd.points.len(),
+        ref_i(&r, "num_points")
+    );
+    assert_eq!(
+        pd.polys.num_cells(),
+        ref_i(&r, "num_cells"),
+        "plane32 cells: got {}, expected {}",
+        pd.polys.num_cells(),
+        ref_i(&r, "num_cells")
+    );
 }
 
 #[test]
 fn filter_poly_data_distance_vs_cpp() {
     let _r = load_ref("filter_poly_data_distance");
     let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.1, 0.0, 0.0], theta_resolution: 32, phi_resolution: 32, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        theta_resolution: 32,
+        phi_resolution: 32,
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::distance::poly_data_distance::poly_data_distance(&a, &b);
     // Should add a distance array
     let dist_arr = result.point_data().get_array("Distance");
-    assert!(dist_arr.is_some(), "poly_data_distance should add Distance array");
+    assert!(
+        dist_arr.is_some(),
+        "poly_data_distance should add Distance array"
+    );
 }
 
 #[test]
@@ -2447,15 +3586,21 @@ fn filter_dihedral_angles_vs_cpp() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let result = vtk_pure_rs::filters::geometry::angle_between::dihedral_angles(&pd);
     let arr = result.cell_data().get_array("DihedralAngle");
-    assert!(arr.is_some(), "dihedral_angles should add DihedralAngle array");
+    assert!(
+        arr.is_some(),
+        "dihedral_angles should add DihedralAngle array"
+    );
     assert_eq!(arr.unwrap().num_tuples(), pd.polys.num_cells());
 }
 
 #[test]
 fn filter_curvatures_large_vs_cpp() {
     let _r = load_ref("filter_curvatures_large");
-    let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { theta_resolution: 128, phi_resolution: 128, ..Default::default() }));
+    let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        theta_resolution: 128,
+        phi_resolution: 128,
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::geometry::curvatures::curvatures(&pd);
     assert!(result.point_data().get_array("GaussCurvature").is_some());
     assert!(result.point_data().get_array("MeanCurvature").is_some());
@@ -2487,7 +3632,10 @@ macro_rules! source_test {
         fn $name() {
             let pd: PolyData = $body;
             assert!(pd.points.len() > 0, "{}: no points", stringify!($name));
-            let total_cells = pd.polys.num_cells() + pd.lines.num_cells() + pd.verts.num_cells() + pd.strips.num_cells();
+            let total_cells = pd.polys.num_cells()
+                + pd.lines.num_cells()
+                + pd.verts.num_cells()
+                + pd.strips.num_cells();
             assert!(total_cells > 0, "{}: no cells", stringify!($name));
         }
     };
@@ -2630,7 +3778,8 @@ source_test!(source_wavelet, {
     let img = wavelet(&WaveletParams::default());
     assert!(img.num_points() > 0);
     let mut pd = PolyData::new();
-    pd.points.push([0.0,0.0,0.0]); pd.verts.push_cell(&[0]);
+    pd.points.push([0.0, 0.0, 0.0]);
+    pd.verts.push_cell(&[0]);
     pd
 });
 
@@ -2641,7 +3790,7 @@ source_test!(source_arrow_2d, {
 });
 source_test!(source_arrow_3d, {
     use vtk_pure_rs::filters::core::sources::arrow_3d::*;
-    arrow_3d([0.0,0.0,0.0], [1.0,0.0,0.0], 0.05, 0.1, 0.2, 16)
+    arrow_3d([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 0.05, 0.1, 0.2, 16)
 });
 source_test!(source_arrow_curved, {
     use vtk_pure_rs::filters::core::sources::arrow_curved::*;
@@ -2677,7 +3826,7 @@ source_test!(source_lens, {
 });
 source_test!(source_polygon_extrude, {
     use vtk_pure_rs::filters::core::sources::polygon_extrude::*;
-    extrude_polygon(&[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0]], 1.0)
+    extrude_polygon(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], 1.0)
 });
 source_test!(source_prism, {
     use vtk_pure_rs::filters::core::sources::prism::*;
@@ -2728,14 +3877,23 @@ fn filter_orient_consistent() {
 fn filter_clip_by_scalar_test() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::clip::clip_by_scalar::clip_by_scalar(&with_elev, "Elevation", 0.5, true);
+    let result = vtk_pure_rs::filters::clip::clip_by_scalar::clip_by_scalar(
+        &with_elev,
+        "Elevation",
+        0.5,
+        true,
+    );
     assert!(result.polys.num_cells() > 0);
 }
 
 #[test]
 fn filter_clip_closed_surface_test() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(&pd, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let result = vtk_pure_rs::filters::clip::clip_closed_surface::clip_closed_surface(
+        &pd,
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+    );
     assert!(result.polys.num_cells() > 0);
 }
 
@@ -2743,7 +3901,8 @@ fn filter_clip_closed_surface_test() {
 fn filter_attribute_convert_roundtrip() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let p2c = vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
+    let p2c =
+        vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
     let c2p = vtk_pure_rs::filters::filter_data::attribute_convert::cell_data_to_point_data(&p2c);
     assert_eq!(c2p.points.len(), pd.points.len());
 }
@@ -2751,32 +3910,44 @@ fn filter_attribute_convert_roundtrip() {
 #[test]
 fn filter_constrained_smooth_test() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::smooth::constrained_smooth::smooth_constrained_boundary(&pd, 10, 0.5);
+    let result =
+        vtk_pure_rs::filters::smooth::constrained_smooth::smooth_constrained_boundary(&pd, 10, 0.5);
     assert_eq!(result.points.len(), pd.points.len());
 }
 
 #[test]
 fn filter_cookie_cutter_test() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::boolean::cookie_cutter::cookie_cut_circle(&pd, [0.0, 0.0], 0.3);
+    let result =
+        vtk_pure_rs::filters::boolean::cookie_cutter::cookie_cut_circle(&pd, [0.0, 0.0], 0.3);
     assert!(result.points.len() > 0);
 }
 
 #[test]
 fn filter_intersection_poly_data_test() {
     let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.3,0.0,0.0], ..Default::default() }));
-    let result = vtk_pure_rs::filters::boolean::intersection_poly_data::intersection_poly_data(&a, &b);
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.3, 0.0, 0.0],
+        ..Default::default()
+    }));
+    let result =
+        vtk_pure_rs::filters::boolean::intersection_poly_data::intersection_poly_data(&a, &b);
     assert!(result.points.len() > 0 || result.lines.num_cells() > 0);
 }
 
 #[test]
 fn filter_collision_detection_test() {
-    let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.8,0.0,0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
+    let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.8, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::distance::collision_detection::collision_detection(&a, &b);
     assert!(result.num_contacts > 0);
 }
@@ -2801,7 +3972,11 @@ fn filter_extract_cells_test() {
 #[test]
 fn filter_rotation_extrude_test() {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.5, 0.0, 0.0], point2: [0.5, 1.0, 0.0], resolution: 10 });
+    let l = line(&LineParams {
+        point1: [0.5, 0.0, 0.0],
+        point2: [0.5, 1.0, 0.0],
+        resolution: 10,
+    });
     let result = vtk_pure_rs::filters::transform::rotation_extrude::rotation_extrude(&l, 360.0, 32);
     assert!(result.points.len() > 0);
     assert!(result.polys.num_cells() > 0);
@@ -2810,14 +3985,18 @@ fn filter_rotation_extrude_test() {
 #[test]
 fn filter_spherical_coordinates_test() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::transform::spherical_coordinates::spherical_coordinates(&pd, [0.0, 0.0, 0.0]);
+    let result = vtk_pure_rs::filters::transform::spherical_coordinates::spherical_coordinates(
+        &pd,
+        [0.0, 0.0, 0.0],
+    );
     assert!(result.point_data().num_arrays() > pd.point_data().num_arrays());
 }
 
 #[test]
 fn filter_texture_map_cylinder_test() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::texture::texture_map_cylinder::texture_map_to_cylinder_auto(&pd);
+    let result =
+        vtk_pure_rs::filters::texture::texture_map_cylinder::texture_map_to_cylinder_auto(&pd);
     let tc = result.point_data().get_array("TCoords");
     assert!(tc.is_some());
 }
@@ -2908,15 +4087,19 @@ fn filter_deep_copy() {
 #[test]
 fn filter_random_attributes() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::filter_data::random_attributes::random_point_scalars(&pd, "Random", 0.0, 1.0, 42);
+    let result = vtk_pure_rs::filters::filter_data::random_attributes::random_point_scalars(
+        &pd, "Random", 0.0, 1.0, 42,
+    );
     assert!(result.point_data().get_array("Random").is_some());
 }
 
 #[test]
 fn filter_distance_poly_data() {
     let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.1,0.0,0.0], ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::distance::distance_poly_data::distance_poly_data(&a, &b);
     assert!(result.points.len() > 0);
 }
@@ -2948,7 +4131,8 @@ fn filter_curvature_flow() {
 fn filter_median_smooth() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::smooth::median_smooth::median_smooth(&with_elev, "Elevation", 3);
+    let result =
+        vtk_pure_rs::filters::smooth::median_smooth::median_smooth(&with_elev, "Elevation", 3);
     assert_eq!(result.points.len(), pd.points.len());
 }
 
@@ -2977,7 +4161,8 @@ fn filter_auto_orient_normals() {
 #[test]
 fn filter_close_holes() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     let result = vtk_pure_rs::filters::cell::close_holes::close_holes(&clipped);
     assert!(result.polys.num_cells() >= clipped.polys.num_cells());
 }
@@ -2993,21 +4178,31 @@ fn filter_coplanar_faces() {
 fn filter_extrude_normals() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let with_normals = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
-    let result = vtk_pure_rs::filters::transform::extrude_normals::extrude_along_normals(&with_normals, 0.1, true);
+    let result = vtk_pure_rs::filters::transform::extrude_normals::extrude_along_normals(
+        &with_normals,
+        0.1,
+        true,
+    );
     assert!(result.points.len() > pd.points.len());
 }
 
 #[test]
 fn filter_texture_map_sphere_full() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(&pd, [0.0,0.0,0.0], true);
+    let result =
+        vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(
+            &pd,
+            [0.0, 0.0, 0.0],
+            true,
+        );
     assert!(result.point_data().get_array("TCoords").is_some());
 }
 
 #[test]
 fn filter_adaptive_subdivide() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::subdivide::adaptive_subdivide::adaptive_subdivide(&pd, 0.1, 3);
+    let result =
+        vtk_pure_rs::filters::subdivide::adaptive_subdivide::adaptive_subdivide(&pd, 0.1, 3);
     assert!(result.polys.num_cells() >= pd.polys.num_cells());
 }
 
@@ -3022,7 +4217,12 @@ fn filter_remesh_test() {
 // --- More sources ---
 source_test!(source_heightfield, {
     vtk_pure_rs::filters::core::sources::heightfield::heightfield_from_function(
-        (-1.0, 1.0), (-1.0, 1.0), 20, 20, |x, y| x * x + y * y)
+        (-1.0, 1.0),
+        (-1.0, 1.0),
+        20,
+        20,
+        |x, y| x * x + y * y,
+    )
 });
 source_test!(source_seashell, {
     vtk_pure_rs::filters::core::sources::seashell::seashell(3.0, 0.2, 1.0, 0.1, 0.05, 64, 16)
@@ -3049,7 +4249,8 @@ fn filter_bounding_box_filter() {
 #[test]
 fn filter_linear_to_quadratic() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::subdivide::linear_to_quadratic::linear_to_quadratic_triangles(&pd);
+    let result =
+        vtk_pure_rs::filters::subdivide::linear_to_quadratic::linear_to_quadratic_triangles(&pd);
     assert!(result.points.len() > pd.points.len());
 }
 
@@ -3057,7 +4258,11 @@ fn filter_linear_to_quadratic() {
 fn filter_attribute_smooth() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::smooth::attribute_smooth::attribute_smooth(&with_elev, "Elevation", 5);
+    let result = vtk_pure_rs::filters::smooth::attribute_smooth::attribute_smooth(
+        &with_elev,
+        "Elevation",
+        5,
+    );
     assert_eq!(result.points.len(), pd.points.len());
 }
 
@@ -3065,21 +4270,28 @@ fn filter_attribute_smooth() {
 fn filter_heat_diffusion() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::smooth::heat_diffusion::heat_diffusion(&with_elev, "Elevation", 0.01, 5);
+    let result = vtk_pure_rs::filters::smooth::heat_diffusion::heat_diffusion(
+        &with_elev,
+        "Elevation",
+        0.01,
+        5,
+    );
     assert_eq!(result.points.len(), pd.points.len());
 }
 
 #[test]
 fn filter_point_smoothing() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::smooth::point_smoothing::smooth_point_positions(&pd, 6, 0.5, 5);
+    let result =
+        vtk_pure_rs::filters::smooth::point_smoothing::smooth_point_positions(&pd, 6, 0.5, 5);
     assert_eq!(result.points.len(), pd.points.len());
 }
 
 #[test]
 fn filter_boundary_quality() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     let result = vtk_pure_rs::filters::cell::boundary_quality::boundary_mesh_quality(&clipped);
     assert!(result.cell_data().num_arrays() > 0 || result.polys.num_cells() > 0);
 }
@@ -3102,7 +4314,11 @@ fn filter_triangulate_strips() {
 #[test]
 fn filter_poly_line_to_strip_test() {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 20 });
+    let l = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 20,
+    });
     let result = vtk_pure_rs::filters::cell::poly_line_to_strip::poly_line_to_strip(&l);
     assert!(result.points.len() > 0);
 }
@@ -3110,7 +4326,10 @@ fn filter_poly_line_to_strip_test() {
 #[test]
 fn filter_translate_transform() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::transform::poly_data_transform_filter::translate(&pd, [1.0, 2.0, 3.0]);
+    let result = vtk_pure_rs::filters::transform::poly_data_transform_filter::translate(
+        &pd,
+        [1.0, 2.0, 3.0],
+    );
     let p = result.points.get(0);
     let o = pd.points.get(0);
     assert!((p[0] - o[0] - 1.0).abs() < 1e-10);
@@ -3119,7 +4338,11 @@ fn filter_translate_transform() {
 #[test]
 fn filter_volume_revolution() {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.5, 0.0, 0.0], point2: [0.5, 1.0, 0.0], resolution: 10 });
+    let l = line(&LineParams {
+        point1: [0.5, 0.0, 0.0],
+        point2: [0.5, 1.0, 0.0],
+        resolution: 10,
+    });
     let result = vtk_pure_rs::filters::transform::volume_revolution::volume_of_revolution(&l, 16);
     assert!(result.points.len() > 0);
 }
@@ -3135,15 +4358,26 @@ fn filter_warp_lens() {
 fn filter_threshold_texture_coords() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::texture::threshold_texture_coords::texture_coords_from_scalar(&with_elev, "Elevation");
+    let result =
+        vtk_pure_rs::filters::texture::threshold_texture_coords::texture_coords_from_scalar(
+            &with_elev,
+            "Elevation",
+        );
     assert!(result.point_data().get_array("TCoords").is_some());
 }
 
 #[test]
 fn filter_transform_texture_coords() {
     let pd = test_sphere();
-    let with_tc = vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(&pd, [0.0,0.0,0.0], false);
-    let result = vtk_pure_rs::filters::texture::transform_texture_coords::translate_tcoords(&with_tc, 0.1, 0.2);
+    let with_tc =
+        vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(
+            &pd,
+            [0.0, 0.0, 0.0],
+            false,
+        );
+    let result = vtk_pure_rs::filters::texture::transform_texture_coords::translate_tcoords(
+        &with_tc, 0.1, 0.2,
+    );
     assert!(result.point_data().get_array("TCoords").is_some());
 }
 
@@ -3166,7 +4400,11 @@ fn filter_poly_data_summary() {
 fn filter_array_rename() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::filter_data::array_rename::array_rename(&with_elev, "Elevation", "Height");
+    let result = vtk_pure_rs::filters::filter_data::array_rename::array_rename(
+        &with_elev,
+        "Elevation",
+        "Height",
+    );
     assert!(result.point_data().get_array("Height").is_some());
 }
 
@@ -3174,7 +4412,8 @@ fn filter_array_rename() {
 fn filter_scalar_range() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let range = vtk_pure_rs::filters::filter_data::scalar_range::scalar_range(&with_elev, "Elevation");
+    let range =
+        vtk_pure_rs::filters::filter_data::scalar_range::scalar_range(&with_elev, "Elevation");
     assert!(range.is_some());
     let [min, max] = range.unwrap();
     assert!(min < max);
@@ -3228,7 +4467,8 @@ fn filter_snap_to_grid() {
 #[test]
 fn filter_edge_collapse_quadric_test() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::geometry::edge_collapse_quadric::edge_collapse_quadric(&pd, 0.5);
+    let result =
+        vtk_pure_rs::filters::geometry::edge_collapse_quadric::edge_collapse_quadric(&pd, 0.5);
     assert!(result.polys.num_cells() > 0);
     assert!(result.polys.num_cells() < pd.polys.num_cells());
 }
@@ -3251,7 +4491,12 @@ fn filter_vertex_glue_test() {
 fn filter_extract_surface_by_normal_test() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let with_normals = vtk_pure_rs::filters::normals::normals::compute_normals(&pd);
-    let result = vtk_pure_rs::filters::extract::extract_surface_by_normal::extract_surface_by_normal(&with_normals, [0.0, 0.0, 1.0], 0.5);
+    let result =
+        vtk_pure_rs::filters::extract::extract_surface_by_normal::extract_surface_by_normal(
+            &with_normals,
+            [0.0, 0.0, 1.0],
+            0.5,
+        );
     assert!(result.polys.num_cells() > 0);
     assert!(result.polys.num_cells() < pd.polys.num_cells());
 }
@@ -3260,7 +4505,12 @@ fn filter_extract_surface_by_normal_test() {
 fn filter_select_by_scalar_test() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::extract::select_by_scalar::select_by_scalar(&with_elev, "Elevation", 0.3, 0.7);
+    let result = vtk_pure_rs::filters::extract::select_by_scalar::select_by_scalar(
+        &with_elev,
+        "Elevation",
+        0.3,
+        0.7,
+    );
     assert!(result.points.len() > 0);
 }
 
@@ -3270,21 +4520,29 @@ fn filter_multi_threshold() {
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     use vtk_pure_rs::filters::clip::multi_threshold::ThresholdInterval;
     let result = vtk_pure_rs::filters::clip::multi_threshold::multi_threshold(
-        &with_elev, "Elevation", &[ThresholdInterval { min: 0.2, max: 0.4 }, ThresholdInterval { min: 0.6, max: 0.8 }]);
+        &with_elev,
+        "Elevation",
+        &[
+            ThresholdInterval { min: 0.2, max: 0.4 },
+            ThresholdInterval { min: 0.6, max: 0.8 },
+        ],
+    );
     assert!(result.polys.num_cells() > 0);
 }
 
 #[test]
 fn filter_densify_point_cloud() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::points::densify_point_cloud::densify_point_cloud(&pd, 0.2, 0.05);
+    let result =
+        vtk_pure_rs::filters::points::densify_point_cloud::densify_point_cloud(&pd, 0.2, 0.05);
     assert!(result.points.len() >= pd.points.len());
 }
 
 #[test]
 fn filter_surface_sampling() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::points::surface_sampling::sample_surface_uniform_random(&pd, 500, 42);
+    let result =
+        vtk_pure_rs::filters::points::surface_sampling::sample_surface_uniform_random(&pd, 500, 42);
     assert!(result.points.len() > 0);
     assert!(within_pct(result.points.len(), 500, 0.1));
 }
@@ -3294,7 +4552,12 @@ fn filter_array_math_add() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     // Add Elevation to itself
-    let result = vtk_pure_rs::filters::filter_data::array_math::array_add(&with_elev, "Elevation", "Elevation", "Double");
+    let result = vtk_pure_rs::filters::filter_data::array_math::array_add(
+        &with_elev,
+        "Elevation",
+        "Elevation",
+        "Double",
+    );
     assert!(result.point_data().get_array("Double").is_some());
 }
 
@@ -3302,15 +4565,18 @@ fn filter_array_math_add() {
 fn filter_face_varying() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let p2c = vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
-    let result = vtk_pure_rs::filters::cell::face_varying::cell_data_to_face_varying(&p2c, "Elevation");
+    let p2c =
+        vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
+    let result =
+        vtk_pure_rs::filters::cell::face_varying::cell_data_to_face_varying(&p2c, "Elevation");
     assert!(result.points.len() >= pd.points.len());
 }
 
 #[test]
 fn filter_depth_peeling() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let layers = vtk_pure_rs::filters::geometry::depth_peeling::depth_peel_layers(&pd, [0.0,0.0,1.0], 4);
+    let layers =
+        vtk_pure_rs::filters::geometry::depth_peeling::depth_peel_layers(&pd, [0.0, 0.0, 1.0], 4);
     assert!(layers.len() > 0);
 }
 
@@ -3339,7 +4605,13 @@ fn filter_contour_triangulator() {
 fn filter_quadric_decimation() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     use vtk_pure_rs::filters::geometry::quadric_decimation::*;
-    let result = quadric_decimate(&pd, &QuadricDecimateParams { target_reduction: 0.5, ..Default::default() });
+    let result = quadric_decimate(
+        &pd,
+        &QuadricDecimateParams {
+            target_reduction: 0.5,
+            ..Default::default()
+        },
+    );
     assert!(result.polys.num_cells() > 0);
     assert!(result.polys.num_cells() < pd.polys.num_cells());
 }
@@ -3347,7 +4619,8 @@ fn filter_quadric_decimation() {
 #[test]
 fn filter_decimate_boundary() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let clipped = vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+    let clipped =
+        vtk_pure_rs::filters::clip::clip::clip_by_plane(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     let result = vtk_pure_rs::filters::geometry::decimate_boundary::mark_boundary(&clipped);
     assert!(result.point_data().num_arrays() > 0);
 }
@@ -3356,7 +4629,13 @@ fn filter_decimate_boundary() {
 fn filter_extract_surface_by_scalar_test() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::extract::extract_surface_by_scalar::extract_surface_by_scalar(&with_elev, "Elevation", 0.3, 0.7);
+    let result =
+        vtk_pure_rs::filters::extract::extract_surface_by_scalar::extract_surface_by_scalar(
+            &with_elev,
+            "Elevation",
+            0.3,
+            0.7,
+        );
     assert!(result.polys.num_cells() > 0);
 }
 
@@ -3366,7 +4645,9 @@ fn filter_extract_enclosed_points() {
     let mut probe = PolyData::new();
     probe.points.push([0.0, 0.0, 0.0]); // inside sphere
     probe.points.push([10.0, 0.0, 0.0]); // outside sphere
-    let result = vtk_pure_rs::filters::extract::extract_enclosed_points::extract_enclosed_points(&probe, &surface);
+    let result = vtk_pure_rs::filters::extract::extract_enclosed_points::extract_enclosed_points(
+        &probe, &surface,
+    );
     // Should extract some points (the ones inside the surface)
     assert!(result.points.len() <= probe.points.len());
 }
@@ -3374,7 +4655,11 @@ fn filter_extract_enclosed_points() {
 #[test]
 fn filter_radii_to_scalars() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::filter_data::radii_to_scalars::radii_to_scalars(&pd, [0.0, 0.0, 0.0], "Radius");
+    let result = vtk_pure_rs::filters::filter_data::radii_to_scalars::radii_to_scalars(
+        &pd,
+        [0.0, 0.0, 0.0],
+        "Radius",
+    );
     assert!(result.point_data().get_array("Radius").is_some());
 }
 
@@ -3382,7 +4667,8 @@ fn filter_radii_to_scalars() {
 fn filter_box_clip() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     // Box clip with larger bounds to ensure intersection
-    let result = vtk_pure_rs::filters::clip::box_clip::box_clip(&pd, [-1.0, 1.0, -1.0, 1.0, -0.2, 0.2]);
+    let result =
+        vtk_pure_rs::filters::clip::box_clip::box_clip(&pd, [-1.0, 1.0, -1.0, 1.0, -0.2, 0.2]);
     // Should keep cells that intersect the z-band
     assert!(result.points.len() >= 0); // just verify no panic
 }
@@ -3391,18 +4677,26 @@ fn filter_box_clip() {
 fn filter_banded_contour() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::clip::banded_contour::banded_contour(&with_elev, "Elevation", &[0.0, 0.25, 0.5, 0.75, 1.0]);
+    let result = vtk_pure_rs::filters::clip::banded_contour::banded_contour(
+        &with_elev,
+        "Elevation",
+        &[0.0, 0.25, 0.5, 0.75, 1.0],
+    );
     assert!(result.polys.num_cells() > 0);
 }
 
 #[test]
 fn filter_project_to_sphere() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::transform::project_sphere::project_to_sphere(&pd, [0.0,0.0,0.0], 1.0);
+    let result = vtk_pure_rs::filters::transform::project_sphere::project_to_sphere(
+        &pd,
+        [0.0, 0.0, 0.0],
+        1.0,
+    );
     assert_eq!(result.points.len(), pd.points.len());
     // All points should be at radius 1.0
     let p = result.points.get(0);
-    let r = (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt();
+    let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
     assert!((r - 1.0).abs() < 0.01);
 }
 
@@ -3410,7 +4704,13 @@ fn filter_project_to_sphere() {
 fn filter_sample_along_line() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::points::sample_along_line::sample_along_line(&with_elev, "Elevation", [-1.0,0.0,0.0], [1.0,0.0,0.0], 20);
+    let result = vtk_pure_rs::filters::points::sample_along_line::sample_along_line(
+        &with_elev,
+        "Elevation",
+        [-1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        20,
+    );
     assert!(result.points.len() > 0);
 }
 
@@ -3424,14 +4724,18 @@ fn filter_point_occupancy() {
 #[test]
 fn filter_implicit_modeller() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let img = vtk_pure_rs::filters::geometry::implicit_modeller::implicit_modeller(&pd, [16, 16, 16]);
+    let img =
+        vtk_pure_rs::filters::geometry::implicit_modeller::implicit_modeller(&pd, [16, 16, 16]);
     assert!(img.num_points() > 0);
 }
 
 #[test]
 fn filter_poly_data_to_image_data() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let img = vtk_pure_rs::filters::filter_data::poly_data_to_image_data::poly_data_to_image_data(&pd, [16, 16, 16]);
+    let img = vtk_pure_rs::filters::filter_data::poly_data_to_image_data::poly_data_to_image_data(
+        &pd,
+        [16, 16, 16],
+    );
     assert!(img.num_points() > 0);
 }
 
@@ -3483,8 +4787,12 @@ fn filter_fit_quadric() {
 #[test]
 fn filter_imprint() {
     let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.3,0.0,0.0], theta_resolution: 16, phi_resolution: 16, ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.3, 0.0, 0.0],
+        theta_resolution: 16,
+        phi_resolution: 16,
+        ..Default::default()
+    }));
     let result = vtk_pure_rs::filters::geometry::imprint_filter::imprint(&a, &b);
     assert!(result.polys.num_cells() >= a.polys.num_cells());
 }
@@ -3492,7 +4800,11 @@ fn filter_imprint() {
 #[test]
 fn filter_uncertainty_tube() {
     use vtk_pure_rs::filters::core::sources::line::{line, LineParams};
-    let l = line(&LineParams { point1: [0.0,0.0,0.0], point2: [1.0,0.0,0.0], resolution: 20 });
+    let l = line(&LineParams {
+        point1: [0.0, 0.0, 0.0],
+        point2: [1.0, 0.0, 0.0],
+        resolution: 20,
+    });
     let result = vtk_pure_rs::filters::geometry::uncertainty_tube::uncertainty_tube(&l, 0.1, 12);
     assert!(result.points.len() > 0);
 }
@@ -3500,8 +4812,12 @@ fn filter_uncertainty_tube() {
 #[test]
 fn filter_extract_component() {
     let s1 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [3.0,0.0,0.0], theta_resolution: 8, phi_resolution: 8, ..Default::default() }));
+    let s2 = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [3.0, 0.0, 0.0],
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    }));
     let merged = vtk_pure_rs::filters::core::append::append(&[&s1, &s2]);
     let components = vtk_pure_rs::filters::geometry::connectivity::extract_components(&merged);
     // extract_component extracts a specific connected component
@@ -3520,7 +4836,10 @@ fn filter_aggregate() {
 fn filter_data_array_operations() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::filter_data::data_array_operations::standardize_array(&with_elev, "Elevation");
+    let result = vtk_pure_rs::filters::filter_data::data_array_operations::standardize_array(
+        &with_elev,
+        "Elevation",
+    );
     assert!(result.point_data().num_arrays() > 0);
 }
 
@@ -3528,7 +4847,8 @@ fn filter_data_array_operations() {
 fn filter_pass_arrays() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::filter_data::pass_arrays::pass_arrays(&with_elev, &["Elevation"]);
+    let result =
+        vtk_pure_rs::filters::filter_data::pass_arrays::pass_arrays(&with_elev, &["Elevation"]);
     assert!(result.point_data().get_array("Elevation").is_some());
 }
 
@@ -3536,7 +4856,8 @@ fn filter_pass_arrays() {
 fn filter_split_by_array() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::filter_data::split_by_array::split_by_array(&with_elev, "Elevation");
+    let result =
+        vtk_pure_rs::filters::filter_data::split_by_array::split_by_array(&with_elev, "Elevation");
     // May produce 0 splits if values are continuous — just no panic
     assert!(result.len() >= 0);
 }
@@ -3551,14 +4872,16 @@ fn filter_pca_curvature() {
 #[test]
 fn filter_point_cloud_analysis_test() {
     let pd = test_sphere();
-    let (_center, radius) = vtk_pure_rs::filters::points::point_cloud_analysis::bounding_sphere(&pd);
+    let (_center, radius) =
+        vtk_pure_rs::filters::points::point_cloud_analysis::bounding_sphere(&pd);
     assert!(radius > 0.0);
 }
 
 #[test]
 fn filter_procedural_displacement() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::core::procedural_displacement::fbm_displace(&pd, 0.05, 2.0, 4, 42);
+    let result =
+        vtk_pure_rs::filters::core::procedural_displacement::fbm_displace(&pd, 0.05, 2.0, 4, 42);
     assert_eq!(result.points.len(), pd.points.len());
 }
 
@@ -3589,8 +4912,12 @@ fn filter_piece_request() {
 fn filter_cell_data_to_point_avg() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let p2c = vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
-    let result = vtk_pure_rs::filters::cell::cell_data_to_point_data_avg::cell_data_to_point_data(&p2c, "Elevation");
+    let p2c =
+        vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
+    let result = vtk_pure_rs::filters::cell::cell_data_to_point_data_avg::cell_data_to_point_data(
+        &p2c,
+        "Elevation",
+    );
     assert!(result.point_data().num_arrays() > 0);
 }
 
@@ -3598,17 +4925,23 @@ fn filter_cell_data_to_point_avg() {
 fn filter_iso_volume() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::clip::iso_volume::iso_volume(&with_elev, "Elevation", 0.3, 0.7);
+    let result =
+        vtk_pure_rs::filters::clip::iso_volume::iso_volume(&with_elev, "Elevation", 0.3, 0.7);
     assert!(result.polys.num_cells() > 0);
 }
 
 #[test]
 fn filter_poly_data_boolean_2d() {
     let a = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(
-        &sphere(&SphereParams { center: [0.3,0.0,0.0], ..Default::default() }));
+    let b = vtk_pure_rs::filters::geometry::triangulate::triangulate(&sphere(&SphereParams {
+        center: [0.3, 0.0, 0.0],
+        ..Default::default()
+    }));
     let overlap = vtk_pure_rs::filters::boolean::poly_data_boolean_2d::bounding_box_overlap(&a, &b);
-    assert!(overlap.is_some(), "overlapping spheres should have bounding box overlap");
+    assert!(
+        overlap.is_some(),
+        "overlapping spheres should have bounding box overlap"
+    );
 }
 
 // ==================== BATCH 10: MORE COVERAGE ====================
@@ -3619,7 +4952,9 @@ fn filter_select_enclosed_points() {
     let mut probe = PolyData::new();
     probe.points.push([0.0, 0.0, 0.0]); // inside
     probe.points.push([10.0, 0.0, 0.0]); // outside
-    let result = vtk_pure_rs::filters::extract::select_enclosed_points::select_enclosed_points(&surface, &probe);
+    let result = vtk_pure_rs::filters::extract::select_enclosed_points::select_enclosed_points(
+        &surface, &probe,
+    );
     assert!(result.point_data().num_arrays() > 0 || result.points.len() > 0);
 }
 
@@ -3628,20 +4963,32 @@ fn filter_project_to_surface() {
     let surface = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let mut pts = PolyData::new();
     pts.points.push([0.6, 0.0, 0.0]); // outside sphere r=0.5
-    let result = vtk_pure_rs::filters::transform::project_points::project_to_surface(&pts, &surface);
+    let result =
+        vtk_pure_rs::filters::transform::project_points::project_to_surface(&pts, &surface);
     // Projected point should be closer to sphere surface
     let p = result.points.get(0);
-    let r = (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt();
-    assert!((r - 0.5).abs() < 0.15, "projected point radius should be ~0.5, got {}", r);
+    let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+    assert!(
+        (r - 0.5).abs() < 0.15,
+        "projected point radius should be ~0.5, got {}",
+        r
+    );
 }
 
 #[test]
 fn filter_iso_volume_test() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::clip::iso_volume::iso_volume(&with_elev, "Elevation", 0.3, 0.7);
-    assert!(result.polys.num_cells() > 0, "iso_volume should extract cells in range");
-    assert!(result.polys.num_cells() < pd.polys.num_cells(), "should be a subset");
+    let result =
+        vtk_pure_rs::filters::clip::iso_volume::iso_volume(&with_elev, "Elevation", 0.3, 0.7);
+    assert!(
+        result.polys.num_cells() > 0,
+        "iso_volume should extract cells in range"
+    );
+    assert!(
+        result.polys.num_cells() < pd.polys.num_cells(),
+        "should be a subset"
+    );
 }
 
 #[test]
@@ -3661,7 +5008,8 @@ fn io_csv_roundtrip() {
     drop(f);
     // Read back
     let reader = std::io::BufReader::new(std::fs::File::open(&path).unwrap());
-    let result = vtk_pure_rs::io::csv::read_csv_as_points(reader, vtk_pure_rs::io::csv::Delimiter::Comma);
+    let result =
+        vtk_pure_rs::io::csv::read_csv_as_points(reader, vtk_pure_rs::io::csv::Delimiter::Comma);
     assert!(result.is_ok());
     let rpd = result.unwrap();
     assert_eq!(rpd.points.len(), 2);
@@ -3718,11 +5066,16 @@ fn filter_laplacian_deform() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     // Move vertex 0 slightly
     let handles = vec![(0, [0.0, 0.0, 0.6])];
-    let result = vtk_pure_rs::filters::smooth::laplacian_deform::laplacian_deform(&pd, &handles, 10);
+    let result =
+        vtk_pure_rs::filters::smooth::laplacian_deform::laplacian_deform(&pd, &handles, 10);
     assert_eq!(result.points.len(), pd.points.len());
     // Deformed vertex should be near target
     let p = result.points.get(0);
-    assert!((p[2] - 0.6).abs() < 0.15, "deformed vertex z should be ~0.6, got {}", p[2]);
+    assert!(
+        (p[2] - 0.6).abs() < 0.15,
+        "deformed vertex z should be ~0.6, got {}",
+        p[2]
+    );
 }
 
 #[test]
@@ -3746,8 +5099,12 @@ fn filter_color_transfer() {
 #[test]
 fn filter_texture_map_to_sphere_full_test() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(
-        &pd, [0.0, 0.0, 0.0], true);
+    let result =
+        vtk_pure_rs::filters::texture::texture_map_to_sphere_full::texture_map_to_sphere_full(
+            &pd,
+            [0.0, 0.0, 0.0],
+            true,
+        );
     assert!(result.point_data().get_array("TCoords").is_some());
 }
 
@@ -3757,16 +5114,26 @@ fn filter_texture_map_to_sphere_full_test() {
 fn filter_cell_data_to_point_avg_b12() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let p2c = vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
-    let result = vtk_pure_rs::filters::cell::cell_data_to_point_data_avg::cell_data_to_point_data(&p2c, "Elevation");
+    let p2c =
+        vtk_pure_rs::filters::filter_data::attribute_convert::point_data_to_cell_data(&with_elev);
+    let result = vtk_pure_rs::filters::cell::cell_data_to_point_data_avg::cell_data_to_point_data(
+        &p2c,
+        "Elevation",
+    );
     assert!(result.point_data().num_arrays() > 0);
 }
 
 #[test]
 fn filter_poly_data_silhouette() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let result = vtk_pure_rs::filters::geometry::poly_data_silhouette::silhouette_edges(&pd, [0.0, 0.0, 1.0]);
-    assert!(result.lines.num_cells() > 0, "sphere should have silhouette edges");
+    let result = vtk_pure_rs::filters::geometry::poly_data_silhouette::silhouette_edges(
+        &pd,
+        [0.0, 0.0, 1.0],
+    );
+    assert!(
+        result.lines.num_cells() > 0,
+        "sphere should have silhouette edges"
+    );
 }
 
 #[test]
@@ -3774,7 +5141,8 @@ fn filter_barycentric() {
     let surface = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let mut probe = PolyData::new();
     probe.points.push([0.0, 0.0, 0.49]); // near surface
-    let result = vtk_pure_rs::filters::geometry::barycentric::barycentric_coordinates(&surface, &probe);
+    let result =
+        vtk_pure_rs::filters::geometry::barycentric::barycentric_coordinates(&surface, &probe);
     assert_eq!(result.points.len(), 1);
 }
 
@@ -3803,17 +5171,41 @@ fn filter_poly_data_to_table() {
 fn filter_resample_with_dataset() {
     let source = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&source);
-    let target = sphere(&SphereParams { theta_resolution: 8, phi_resolution: 8, ..Default::default() });
-    let result = vtk_pure_rs::filters::filter_data::resample_with_dataset::resample_with_dataset(&with_elev, &target, "Elevation");
+    let target = sphere(&SphereParams {
+        theta_resolution: 8,
+        phi_resolution: 8,
+        ..Default::default()
+    });
+    let result = vtk_pure_rs::filters::filter_data::resample_with_dataset::resample_with_dataset(
+        &with_elev,
+        &target,
+        "Elevation",
+    );
     assert!(result.point_data().num_arrays() > 0);
 }
 
 #[test]
 fn filter_trimmed_extrusion() {
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let p = plane(&PlaneParams { x_resolution: 4, y_resolution: 4, ..Default::default() });
+    let p = plane(&PlaneParams {
+        x_resolution: 4,
+        y_resolution: 4,
+        ..Default::default()
+    });
     let bb = vtk_pure_rs::data::DataSet::bounds(&p);
-    let result = vtk_pure_rs::filters::transform::trimmed_extrusion::trimmed_extrusion(&p, [0.0, 0.0, 1.0], 0.5, [bb.x_min, bb.x_max, bb.y_min, bb.y_max, bb.z_min, bb.z_max + 0.5]);
+    let result = vtk_pure_rs::filters::transform::trimmed_extrusion::trimmed_extrusion(
+        &p,
+        [0.0, 0.0, 1.0],
+        0.5,
+        [
+            bb.x_min,
+            bb.x_max,
+            bb.y_min,
+            bb.y_max,
+            bb.z_min,
+            bb.z_max + 0.5,
+        ],
+    );
     assert!(result.points.len() > p.points.len());
 }
 
@@ -3821,7 +5213,13 @@ fn filter_trimmed_extrusion() {
 fn filter_sample_on_sphere() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::points::sample_on_sphere::sample_on_sphere(&with_elev, "Elevation", [0.0,0.0,0.0], 0.5, 16);
+    let result = vtk_pure_rs::filters::points::sample_on_sphere::sample_on_sphere(
+        &with_elev,
+        "Elevation",
+        [0.0, 0.0, 0.0],
+        0.5,
+        16,
+    );
     assert!(result.points.len() > 0);
 }
 
@@ -3839,16 +5237,25 @@ fn make_rectilinear() -> RectilinearGrid {
 
 fn make_structured() -> StructuredGrid {
     let mut pts = Vec::new();
-    for k in 0..2usize { for j in 0..3usize { for i in 0..4usize {
-        pts.push([i as f64, j as f64, k as f64]);
-    }}}
+    for k in 0..2usize {
+        for j in 0..3usize {
+            for i in 0..4usize {
+                pts.push([i as f64, j as f64, k as f64]);
+            }
+        }
+    }
     StructuredGrid::from_dimensions_and_points([4, 3, 2], Points::from_vec(pts))
 }
 
 fn make_unstructured() -> UnstructuredGrid {
     UnstructuredGrid::from_tetrahedra(
-        vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],
-        vec![[0,1,2,3]],
+        vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        vec![[0, 1, 2, 3]],
     )
 }
 
@@ -3903,7 +5310,8 @@ fn stats_descriptive() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
     let arr = with_elev.point_data().get_array("Elevation").unwrap();
-    let stats = vtk_pure_rs::filters::statistics::descriptive_statistics::descriptive_statistics(arr);
+    let stats =
+        vtk_pure_rs::filters::statistics::descriptive_statistics::descriptive_statistics(arr);
     assert!(stats.is_some());
     let s = stats.unwrap();
     assert!(s.mean >= 0.0 && s.mean <= 1.0);
@@ -3931,8 +5339,10 @@ fn stats_quartiles() {
 fn stats_correlative() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let table = vtk_pure_rs::filters::filter_data::poly_data_to_table::poly_data_to_table(&with_elev);
-    let (names, cov) = vtk_pure_rs::filters::statistics::correlative_statistics::covariance_matrix(&table);
+    let table =
+        vtk_pure_rs::filters::filter_data::poly_data_to_table::poly_data_to_table(&with_elev);
+    let (names, cov) =
+        vtk_pure_rs::filters::statistics::correlative_statistics::covariance_matrix(&table);
     assert!(names.len() > 0);
     assert!(cov.len() > 0);
 }
@@ -3958,12 +5368,14 @@ fn flow_vector_field_topology() {
     for i in 0..n {
         let x = (i % 8) as f64 - 3.5;
         let y = (i / 8) as f64 - 3.5;
-        vecs[i * 3] = -y;      // rotation field
+        vecs[i * 3] = -y; // rotation field
         vecs[i * 3 + 1] = x;
         vecs[i * 3 + 2] = 0.0;
     }
-    img.point_data_mut().add_array(vtk_pure_rs::data::AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3)));
+    img.point_data_mut()
+        .add_array(vtk_pure_rs::data::AnyDataArray::F64(
+            vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3),
+        ));
     img.point_data_mut().set_active_vectors("Vectors");
     let cps = vtk_pure_rs::filters::flow::vector_field_topology::find_critical_points_2d(&img);
     // Rotation field has a critical point at center
@@ -3976,7 +5388,10 @@ fn flow_vector_field_topology() {
 fn filter_data_field_to_attribute() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::filter_data::field_data_to_attribute::field_to_point_data(&with_elev, "Elevation");
+    let result = vtk_pure_rs::filters::filter_data::field_data_to_attribute::field_to_point_data(
+        &with_elev,
+        "Elevation",
+    );
     assert_eq!(result.points.len(), pd.points.len());
 }
 
@@ -3984,7 +5399,8 @@ fn filter_data_field_to_attribute() {
 fn extract_select_polygon() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let polygon = vec![[0.0, 0.0], [0.3, 0.0], [0.3, 0.3], [0.0, 0.3]];
-    let result = vtk_pure_rs::filters::extract::select_polygon::select_cells_in_polygon(&pd, &polygon);
+    let result =
+        vtk_pure_rs::filters::extract::select_polygon::select_cells_in_polygon(&pd, &polygon);
     assert!(result.points.len() >= 0);
 }
 
@@ -4009,29 +5425,36 @@ fn core_aggregate_dataset() {
 #[test]
 fn geom_programmable_filter() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::geometry::programmable_filter::programmable_filter(&pd, "R", |p| {
-        (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt()
-    });
+    let result =
+        vtk_pure_rs::filters::geometry::programmable_filter::programmable_filter(&pd, "R", |p| {
+            (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt()
+        });
     assert!(result.point_data().get_array("R").is_some());
 }
 
 #[test]
 fn geom_parallel_map_points() {
     let pd = test_sphere();
-    let result = vtk_pure_rs::filters::geometry::parallel_for::parallel_map_points(&pd, "Height", |p| p[2]);
+    let result =
+        vtk_pure_rs::filters::geometry::parallel_for::parallel_map_points(&pd, "Height", |p| p[2]);
     assert!(result.point_data().get_array("Height").is_some());
 }
 
 #[test]
 fn geom_seed_line() {
-    let seeds = vtk_pure_rs::filters::geometry::seed_strategy::seed_line([0.0,0.0,0.0], [1.0,0.0,0.0], 10);
+    let seeds = vtk_pure_rs::filters::geometry::seed_strategy::seed_line(
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        10,
+    );
     assert_eq!(seeds.len(), 10);
 }
 
 #[test]
 fn geom_voxel_modeller() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
-    let img = vtk_pure_rs::filters::geometry::voxel_modeller::voxel_modeller(&pd, [16, 16, 16], 0.1);
+    let img =
+        vtk_pure_rs::filters::geometry::voxel_modeller::voxel_modeller(&pd, [16, 16, 16], 0.1);
     assert!(img.num_points() > 0);
 }
 
@@ -4039,7 +5462,8 @@ fn geom_voxel_modeller() {
 fn extract_by_type() {
     let ug = make_unstructured();
     use vtk_pure_rs::types::CellType;
-    let result = vtk_pure_rs::filters::extract::extract_by_type::extract_cells_by_type(&ug, CellType::Tetra);
+    let result =
+        vtk_pure_rs::filters::extract::extract_by_type::extract_cells_by_type(&ug, CellType::Tetra);
     assert!(result.cells().num_cells() > 0);
 }
 
@@ -4047,7 +5471,10 @@ fn extract_by_type() {
 fn extract_unstructured_grid() {
     let ug = make_unstructured();
     use vtk_pure_rs::types::CellType;
-    let result = vtk_pure_rs::filters::extract::extract_unstructured_grid::extract_cells_by_type(&ug, CellType::Tetra);
+    let result = vtk_pure_rs::filters::extract::extract_unstructured_grid::extract_cells_by_type(
+        &ug,
+        CellType::Tetra,
+    );
     assert!(result.cells().num_cells() > 0);
 }
 
@@ -4059,7 +5486,11 @@ fn filter_data_table_to_poly_data() {
     let names = table.column_names();
     if names.len() >= 3 {
         let result = vtk_pure_rs::filters::filter_data::table_to_poly_data::table_to_poly_data(
-            &table, &names[0], &names[1], Some(&names[2]));
+            &table,
+            &names[0],
+            &names[1],
+            Some(&names[2]),
+        );
         assert!(result.points.len() > 0);
     }
 }
@@ -4068,28 +5499,42 @@ fn filter_data_table_to_poly_data() {
 fn filter_data_resample_to_image() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let img = vtk_pure_rs::filters::filter_data::resample_to_image::resample_to_image(&with_elev, "Elevation", [8, 8, 8]);
+    let img = vtk_pure_rs::filters::filter_data::resample_to_image::resample_to_image(
+        &with_elev,
+        "Elevation",
+        [8, 8, 8],
+    );
     assert!(img.num_points() > 0);
 }
 
 #[test]
 fn points_icp() {
     let source = test_sphere();
-    let target = sphere(&SphereParams { center: [0.1, 0.0, 0.0], ..Default::default() });
+    let target = sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        ..Default::default()
+    });
     let result = vtk_pure_rs::filters::points::icp::icp(&source, &target, 10, 1e-6);
-    assert!(result.rms_error < 0.2, "ICP should converge, rms={}", result.rms_error);
+    assert!(
+        result.rms_error < 0.2,
+        "ICP should converge, rms={}",
+        result.rms_error
+    );
 }
 
 #[test]
 // sample_implicit needs ImplicitFunction trait object — skip for now
-
 #[test]
 fn stats_order() {
     let pd = test_sphere();
     let table = vtk_pure_rs::filters::filter_data::poly_data_to_table::poly_data_to_table(&pd);
     let names = table.column_names();
     if !names.is_empty() {
-        let q = vtk_pure_rs::filters::statistics::order_statistics::compute_quantiles(&table, &names[0], &[0.25, 0.5, 0.75]);
+        let q = vtk_pure_rs::filters::statistics::order_statistics::compute_quantiles(
+            &table,
+            &names[0],
+            &[0.25, 0.5, 0.75],
+        );
         assert!(q.is_some());
         assert_eq!(q.unwrap().len(), 3);
     }
@@ -4115,9 +5560,14 @@ fn flow_stream_tracer() {
     // stream_tracer takes PolyData with vector point data
     let mut source = test_sphere();
     let n = source.points.len();
-    let vecs: Vec<f64> = (0..n*3).map(|i| if i % 3 == 0 { 0.1 } else { 0.0 }).collect();
-    source.point_data_mut().add_array(vtk_pure_rs::data::AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3)));
+    let vecs: Vec<f64> = (0..n * 3)
+        .map(|i| if i % 3 == 0 { 0.1 } else { 0.0 })
+        .collect();
+    source
+        .point_data_mut()
+        .add_array(vtk_pure_rs::data::AnyDataArray::F64(
+            vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3),
+        ));
     source.point_data_mut().set_active_vectors("Vectors");
 
     let mut seeds = PolyData::new();
@@ -4133,9 +5583,13 @@ fn flow_particle_tracer() {
     let mut img = ImageData::with_dimensions(8, 8, 8);
     img.set_spacing([1.0, 1.0, 1.0]);
     let n = img.num_points();
-    let vecs: Vec<f64> = (0..n*3).map(|i| if i % 3 == 0 { 1.0 } else { 0.0 }).collect();
-    img.point_data_mut().add_array(vtk_pure_rs::data::AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3)));
+    let vecs: Vec<f64> = (0..n * 3)
+        .map(|i| if i % 3 == 0 { 1.0 } else { 0.0 })
+        .collect();
+    img.point_data_mut()
+        .add_array(vtk_pure_rs::data::AnyDataArray::F64(
+            vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3),
+        ));
     img.point_data_mut().set_active_vectors("Vectors");
 
     use vtk_pure_rs::filters::flow::particle_tracer::*;
@@ -4156,20 +5610,26 @@ fn geom_bsp_tree() {
 fn geom_heat_simulation() {
     let pd = vtk_pure_rs::filters::geometry::triangulate::triangulate(&test_sphere());
     let fixed = vec![(0, 1.0), (1, 0.0)];
-    let result = vtk_pure_rs::filters::geometry::heat_simulation::heat_with_sources(&pd, &fixed, None, 1.0, 0.01, 10);
+    let result = vtk_pure_rs::filters::geometry::heat_simulation::heat_with_sources(
+        &pd, &fixed, None, 1.0, 0.01, 10,
+    );
     assert!(result.point_data().num_arrays() > 0);
 }
 
 #[test]
 fn geom_incremental_octree() {
     let tree = vtk_pure_rs::filters::geometry::incremental_octree::IncrementalOctree::new(
-        [-1.0, -1.0, -1.0], [1.0, 1.0, 1.0], 10);
+        [-1.0, -1.0, -1.0],
+        [1.0, 1.0, 1.0],
+        10,
+    );
     assert!(true); // construction succeeded
 }
 
 #[test]
 fn geom_render_tiles() {
-    let tiles = vtk_pure_rs::filters::geometry::render_large_image::compute_render_tiles(1024, 768, 256);
+    let tiles =
+        vtk_pure_rs::filters::geometry::render_large_image::compute_render_tiles(1024, 768, 256);
     assert!(tiles.len() > 0);
 }
 
@@ -4178,14 +5638,23 @@ fn geom_tensor_glyph() {
     let pd = test_sphere();
     // Add a symmetric tensor field (6 components: xx,yy,zz,xy,xz,yz)
     let n = pd.points.len();
-    let tensors: Vec<f64> = (0..n).flat_map(|_| vec![1.0, 1.0, 1.0, 0.0, 0.0, 0.0]).collect();
+    let tensors: Vec<f64> = (0..n)
+        .flat_map(|_| vec![1.0, 1.0, 1.0, 0.0, 0.0, 0.0])
+        .collect();
     let mut pd2 = pd.clone();
-    pd2.point_data_mut().add_array(vtk_pure_rs::data::AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("Tensors", tensors, 6)));
+    pd2.point_data_mut()
+        .add_array(vtk_pure_rs::data::AnyDataArray::F64(
+            vtk_pure_rs::data::DataArray::from_vec("Tensors", tensors, 6),
+        ));
 
     use vtk_pure_rs::filters::core::sources::sphere::*;
-    let glyph = sphere(&SphereParams { theta_resolution: 4, phi_resolution: 4, ..Default::default() });
-    let result = vtk_pure_rs::filters::geometry::tensor_glyph::tensor_glyph(&pd2, "Tensors", &glyph);
+    let glyph = sphere(&SphereParams {
+        theta_resolution: 4,
+        phi_resolution: 4,
+        ..Default::default()
+    });
+    let result =
+        vtk_pure_rs::filters::geometry::tensor_glyph::tensor_glyph(&pd2, "Tensors", &glyph);
     // May produce empty if tensor field doesn't match expected format
     assert!(result.points.len() >= 0);
 }
@@ -4194,7 +5663,12 @@ fn geom_tensor_glyph() {
 fn filter_data_array_math() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let result = vtk_pure_rs::filters::filter_data::data_array_math::array_add(&with_elev, "Elevation", "Elevation", "Double");
+    let result = vtk_pure_rs::filters::filter_data::data_array_math::array_add(
+        &with_elev,
+        "Elevation",
+        "Elevation",
+        "Double",
+    );
     assert!(result.point_data().get_array("Double").is_some());
 }
 
@@ -4213,22 +5687,32 @@ fn filter_data_table_fft() {
 fn filter_data_table_operations() {
     let pd = test_sphere();
     let table = vtk_pure_rs::filters::filter_data::poly_data_to_table::poly_data_to_table(&pd);
-    let result = vtk_pure_rs::filters::filter_data::table_operations::table_inner_join(&table, &table, &table.column_names()[0]);
+    let result = vtk_pure_rs::filters::filter_data::table_operations::table_inner_join(
+        &table,
+        &table,
+        &table.column_names()[0],
+    );
     assert!(result.num_rows() >= 0);
 }
 
 #[test]
 fn filter_data_tensor_invariants() {
     let t = vtk_pure_rs::data::DataArray::from_vec("T", vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0], 6);
-    let result = vtk_pure_rs::filters::filter_data::tensor_invariants::tensor_principal_invariants(&t);
+    let result =
+        vtk_pure_rs::filters::filter_data::tensor_invariants::tensor_principal_invariants(&t);
     assert_eq!(result.num_tuples(), 1);
 }
 
 #[test]
 fn points_point_set_registration() {
     let source = test_sphere();
-    let target = sphere(&SphereParams { center: [0.1, 0.0, 0.0], ..Default::default() });
-    let result = vtk_pure_rs::filters::points::point_set_registration::translate_to_match(&source, &target, 5);
+    let target = sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        ..Default::default()
+    });
+    let result = vtk_pure_rs::filters::points::point_set_registration::translate_to_match(
+        &source, &target, 5,
+    );
     assert_eq!(result.points.len(), source.points.len());
 }
 
@@ -4239,7 +5723,13 @@ fn points_sph_interpolator() {
     let mut target = PolyData::new();
     target.points.push([0.0, 0.0, 0.0]);
     use vtk_pure_rs::filters::points::sph_interpolator::*;
-    let result = sph_interpolate(&with_elev, &target, "Elevation", 0.3, SphKernel::CubicSpline);
+    let result = sph_interpolate(
+        &with_elev,
+        &target,
+        "Elevation",
+        0.3,
+        SphKernel::CubicSpline,
+    );
     assert!(result.point_data().num_arrays() > 0);
 }
 
@@ -4253,23 +5743,35 @@ fn grid_redistribute() {
 #[test]
 fn clip_data_set() {
     let ug = make_unstructured();
-    let result = vtk_pure_rs::filters::clip::clip_data_set::clip_data_set(&ug, [0.0,0.0,0.0], [1.0,0.0,0.0]);
+    let result = vtk_pure_rs::filters::clip::clip_data_set::clip_data_set(
+        &ug,
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+    );
     assert!(result.cells().num_cells() >= 0); // no panic
 }
 
 #[test]
 fn flow_temporal_interpolator() {
     let a = test_sphere();
-    let b = sphere(&SphereParams { radius: 0.6, ..Default::default() });
-    let result = vtk_pure_rs::filters::flow::temporal_interpolator::temporal_interpolator(&a, &b, 0.5);
+    let b = sphere(&SphereParams {
+        radius: 0.6,
+        ..Default::default()
+    });
+    let result =
+        vtk_pure_rs::filters::flow::temporal_interpolator::temporal_interpolator(&a, &b, 0.5);
     assert_eq!(result.points.len(), a.points.len());
 }
 
 #[test]
 fn flow_temporal_pathline() {
     let a = test_sphere();
-    let b = sphere(&SphereParams { center: [0.1, 0.0, 0.0], ..Default::default() });
-    let result = vtk_pure_rs::filters::flow::temporal_pathline::temporal_pathlines(&[a, b], &[0.0, 1.0]);
+    let b = sphere(&SphereParams {
+        center: [0.1, 0.0, 0.0],
+        ..Default::default()
+    });
+    let result =
+        vtk_pure_rs::filters::flow::temporal_pathline::temporal_pathlines(&[a, b], &[0.0, 1.0]);
     assert!(result.points.len() >= 0); // no panic
 }
 
@@ -4277,10 +5779,13 @@ fn flow_temporal_pathline() {
 fn stats_contingency() {
     let pd = test_sphere();
     let with_elev = vtk_pure_rs::filters::geometry::elevation::elevation_z(&pd);
-    let table = vtk_pure_rs::filters::filter_data::poly_data_to_table::poly_data_to_table(&with_elev);
+    let table =
+        vtk_pure_rs::filters::filter_data::poly_data_to_table::poly_data_to_table(&with_elev);
     let names = table.column_names();
     if names.len() >= 2 {
-        let ct = vtk_pure_rs::filters::statistics::contingency_statistics::contingency_table(&table, &names[0], &names[1]);
+        let ct = vtk_pure_rs::filters::statistics::contingency_statistics::contingency_table(
+            &table, &names[0], &names[1],
+        );
         if let Some(ct) = ct {
             let chi2 = ct.chi_squared();
             assert!(chi2 >= 0.0);
@@ -4308,7 +5813,8 @@ fn source_parametric() {
         },
         [0.0, std::f64::consts::TAU],
         [0.0, std::f64::consts::TAU],
-        32, 16,
+        32,
+        16,
     );
     assert!(pd.points.len() > 0);
     assert!(pd.polys.num_cells() > 0);
@@ -4317,29 +5823,45 @@ fn source_parametric() {
 #[test]
 fn filter_matrix_math() {
     // 3x3 identity matrix stored as 9-component tuple
-    let arr = vtk_pure_rs::data::DataArray::from_vec("M", vec![1.0,0.0,0.0, 0.0,1.0,0.0, 0.0,0.0,1.0], 9);
+    let arr = vtk_pure_rs::data::DataArray::from_vec(
+        "M",
+        vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        9,
+    );
     let det = vtk_pure_rs::filters::filter_data::matrix_math::matrix_determinant(&arr);
     assert_eq!(det.num_tuples(), 1);
     let mut buf = [0.0f64];
     let t = det.tuple(0);
     buf[0] = t[0];
-    assert!((buf[0] - 1.0).abs() < 1e-10, "det of identity should be 1, got {}", buf[0]);
+    assert!(
+        (buf[0] - 1.0).abs() < 1e-10,
+        "det of identity should be 1, got {}",
+        buf[0]
+    );
 }
 
 #[test]
 fn filter_fit_heightmap() {
     use vtk_pure_rs::filters::core::sources::plane::{plane, PlaneParams};
-    let mesh = plane(&PlaneParams { x_resolution: 8, y_resolution: 8, ..Default::default() });
+    let mesh = plane(&PlaneParams {
+        x_resolution: 8,
+        y_resolution: 8,
+        ..Default::default()
+    });
     let mut heightmap = ImageData::with_dimensions(10, 10, 1);
     heightmap.set_spacing([0.1, 0.1, 1.0]);
     heightmap.set_origin([-0.5, -0.5, 0.0]);
     // Add height scalars
     let n = heightmap.num_points();
     let heights: Vec<f64> = (0..n).map(|_| 0.1).collect();
-    heightmap.point_data_mut().add_array(vtk_pure_rs::data::AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("Elevation", heights, 1)));
+    heightmap
+        .point_data_mut()
+        .add_array(vtk_pure_rs::data::AnyDataArray::F64(
+            vtk_pure_rs::data::DataArray::from_vec("Elevation", heights, 1),
+        ));
     heightmap.point_data_mut().set_active_scalars("Elevation");
-    let result = vtk_pure_rs::filters::transform::fit_heightmap::fit_to_heightmap(&mesh, &heightmap);
+    let result =
+        vtk_pure_rs::filters::transform::fit_heightmap::fit_to_heightmap(&mesh, &heightmap);
     assert_eq!(result.points.len(), mesh.points.len());
 }
 
@@ -4349,9 +5871,13 @@ fn flow_even_spaced_streamlines() {
     img.set_spacing([1.0, 1.0, 1.0]);
     let n = img.num_points();
     // Constant horizontal flow
-    let vecs: Vec<f64> = (0..n*3).map(|i| if i % 3 == 0 { 1.0 } else { 0.0 }).collect();
-    img.point_data_mut().add_array(vtk_pure_rs::data::AnyDataArray::F64(
-        vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3)));
+    let vecs: Vec<f64> = (0..n * 3)
+        .map(|i| if i % 3 == 0 { 1.0 } else { 0.0 })
+        .collect();
+    img.point_data_mut()
+        .add_array(vtk_pure_rs::data::AnyDataArray::F64(
+            vtk_pure_rs::data::DataArray::from_vec("Vectors", vecs, 3),
+        ));
     img.point_data_mut().set_active_vectors("Vectors");
 
     use vtk_pure_rs::filters::flow::even_spaced_streamlines::*;

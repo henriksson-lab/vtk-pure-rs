@@ -25,11 +25,9 @@ pub fn warp_lens(input: &PolyData, center: [f64; 2], k1: f64) -> PolyData {
         let r_prime = r * (1.0 + k1 * r2);
         let scale = r_prime / r;
 
-        output.points.set(i, [
-            center[0] + dx * scale,
-            center[1] + dy * scale,
-            p[2],
-        ]);
+        output
+            .points
+            .set(i, [center[0] + dx * scale, center[1] + dy * scale, p[2]]);
     }
 
     output

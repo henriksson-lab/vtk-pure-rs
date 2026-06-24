@@ -37,9 +37,11 @@ pub fn mask_by_scalar_range(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, result.clone(), nc),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                nc,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -56,9 +58,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         // Values 1..9
         let values: Vec<f64> = (1..=9).map(|x| x as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("scalars", values, 1)));
         img
     }
 

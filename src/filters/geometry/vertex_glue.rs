@@ -39,7 +39,8 @@ pub fn vertex_glue(input: &PolyData, tolerance: f64) -> PolyData {
     // Remap polys
     let mut out_polys = CellArray::new();
     for cell in input.polys.iter() {
-        let mapped: Vec<i64> = cell.iter()
+        let mapped: Vec<i64> = cell
+            .iter()
             .map(|&id| point_remap[id as usize] as i64)
             .collect();
         // Remove degenerate cells
@@ -54,7 +55,8 @@ pub fn vertex_glue(input: &PolyData, tolerance: f64) -> PolyData {
     // Remap lines
     let mut out_lines = CellArray::new();
     for cell in input.lines.iter() {
-        let mapped: Vec<i64> = cell.iter()
+        let mapped: Vec<i64> = cell
+            .iter()
             .map(|&id| point_remap[id as usize] as i64)
             .collect();
         let mut unique = mapped.clone();

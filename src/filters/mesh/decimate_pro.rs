@@ -7,7 +7,9 @@ use crate::data::{CellArray, Points, PolyData};
 /// `feature_angle` in degrees — edges with dihedral angle above this are preserved.
 pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) -> PolyData {
     let num_cells = mesh.polys.num_cells();
-    if num_cells == 0 { return mesh.clone(); }
+    if num_cells == 0 {
+        return mesh.clone();
+    }
 
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let npts = mesh.points.len();
@@ -15,9 +17,12 @@ pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) 
     let cos_feature = (feature_angle.to_radians()).cos();
 
     // Build edge-face adjacency
-    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> = std::collections::HashMap::new();
+    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
+        std::collections::HashMap::new();
     for (ci, cell) in cells.iter().enumerate() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
@@ -46,7 +51,9 @@ pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) 
     // Vertex-to-face adjacency
     let mut vert_faces: Vec<Vec<usize>> = vec![Vec::new(); npts];
     for (ci, cell) in cells.iter().enumerate() {
-        for &v in cell { vert_faces[v as usize].push(ci); }
+        for &v in cell {
+            vert_faces[v as usize].push(ci);
+        }
     }
 
     // Greedy vertex removal
@@ -59,14 +66,22 @@ pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) 
     verts_by_valence.sort_by_key(|&v| vert_faces[v].len());
 
     for &v in &verts_by_valence {
-        if removals >= target_remove { break; }
-        if protected[v] { continue; }
-        if vert_faces[v].is_empty() { continue; }
+        if removals >= target_remove {
+            break;
+        }
+        if protected[v] {
+            continue;
+        }
+        if vert_faces[v].is_empty() {
+            continue;
+        }
 
         // Find best neighbor to collapse to
         let mut neighbors: Vec<usize> = Vec::new();
         for &fi in &vert_faces[v] {
-            if removed_cells[fi] { continue; }
+            if removed_cells[fi] {
+                continue;
+            }
             for &vid in &cells[fi] {
                 let vid = resolve(vid as usize, &collapsed_to);
                 if vid != v && !neighbors.contains(&vid) {
@@ -74,25 +89,38 @@ pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) 
                 }
             }
         }
-        if neighbors.is_empty() { continue; }
+        if neighbors.is_empty() {
+            continue;
+        }
 
         // Pick closest neighbor
         let vp = mesh.points.get(v);
-        let target = *neighbors.iter().min_by(|&&a, &&b| {
-            let pa = mesh.points.get(a);
-            let pb = mesh.points.get(b);
-            let da = dist_sq(vp, pa);
-            let db = dist_sq(vp, pb);
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        }).unwrap();
+        let target = *neighbors
+            .iter()
+            .min_by(|&&a, &&b| {
+                let pa = mesh.points.get(a);
+                let pb = mesh.points.get(b);
+                let da = dist_sq(vp, pa);
+                let db = dist_sq(vp, pb);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .unwrap();
 
         // Remove degenerate faces
         let mut faces_removed = 0;
         for &fi in &vert_faces[v] {
-            if removed_cells[fi] { continue; }
-            let resolved: Vec<usize> = cells[fi].iter().map(|&vid| resolve(vid as usize, &collapsed_to)).collect();
+            if removed_cells[fi] {
+                continue;
+            }
+            let resolved: Vec<usize> = cells[fi]
+                .iter()
+                .map(|&vid| resolve(vid as usize, &collapsed_to))
+                .collect();
             // If collapsing v->target makes this face degenerate
-            let new_face: Vec<usize> = resolved.iter().map(|&vid| if vid == v { target } else { vid }).collect();
+            let new_face: Vec<usize> = resolved
+                .iter()
+                .map(|&vid| if vid == v { target } else { vid })
+                .collect();
             let unique: std::collections::HashSet<usize> = new_face.iter().copied().collect();
             if unique.len() < 3 {
                 removed_cells[fi] = true;
@@ -124,7 +152,9 @@ pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) 
 
     let mut new_polys = CellArray::new();
     for (ci, cell) in cells.iter().enumerate() {
-        if removed_cells[ci] { continue; }
+        if removed_cells[ci] {
+            continue;
+        }
         let mapped: Vec<i64> = cell.iter().map(|&v| pt_map[v as usize] as i64).collect();
         let unique: std::collections::HashSet<i64> = mapped.iter().copied().collect();
         if unique.len() >= 3 {
@@ -139,7 +169,9 @@ pub fn decimate_pro(mesh: &PolyData, target_reduction: f64, feature_angle: f64) 
 }
 
 fn resolve(mut v: usize, collapsed_to: &[Option<usize>]) -> usize {
-    while let Some(next) = collapsed_to[v] { v = next; }
+    while let Some(next) = collapsed_to[v] {
+        v = next;
+    }
     v
 }
 
@@ -148,15 +180,25 @@ fn dist_sq(a: [f64; 3], b: [f64; 3]) -> f64 {
 }
 
 fn face_normal(cell: &[i64], points: &crate::data::Points<f64>) -> [f64; 3] {
-    if cell.len() < 3 { return [0.0, 0.0, 1.0]; }
+    if cell.len() < 3 {
+        return [0.0, 0.0, 1.0];
+    }
     let a = points.get(cell[0] as usize);
     let b = points.get(cell[1] as usize);
     let c = points.get(cell[2] as usize);
     let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    let n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-    if len < 1e-15 { [0.0, 0.0, 1.0] } else { [n[0] / len, n[1] / len, n[2] / len] }
+    if len < 1e-15 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [n[0] / len, n[1] / len, n[2] / len]
+    }
 }
 
 #[cfg(test)]
@@ -166,7 +208,13 @@ mod tests {
     fn test_decimate_pro() {
         // 4 triangles in a fan
         let mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+            ],
             vec![[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1]],
         );
         let result = decimate_pro(&mesh, 0.5, 30.0);

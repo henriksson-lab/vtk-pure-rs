@@ -21,8 +21,13 @@ pub fn torii_gate(width: f64, height: f64, pillar_radius: f64, na: usize) -> Pol
     for pillar in 0..2 {
         let b = pillar * na * 2;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b+j) as i64, (b+na+j) as i64, (b+na+j1) as i64, (b+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[
+                (b + j) as i64,
+                (b + na + j) as i64,
+                (b + na + j1) as i64,
+                (b + j1) as i64,
+            ]);
         }
     }
     // Kasagi (top beam, wider than pillars) - extends beyond
@@ -38,10 +43,20 @@ pub fn torii_gate(width: f64, height: f64, pillar_radius: f64, na: usize) -> Pol
     pts.push([hw + overhang, pillar_radius * 2.0, height + beam_h]);
     pts.push([-hw - overhang, pillar_radius * 2.0, height + beam_h]);
     // Top and front faces
-    polys.push_cell(&[(bb+4) as i64, (bb+5) as i64, (bb+6) as i64, (bb+7) as i64]); // top
-    polys.push_cell(&[bb as i64, (bb+1) as i64, (bb+5) as i64, (bb+4) as i64]); // front
-    polys.push_cell(&[(bb+2) as i64, (bb+3) as i64, (bb+7) as i64, (bb+6) as i64]); // back
-    // Nuki (cross beam, lower)
+    polys.push_cell(&[
+        (bb + 4) as i64,
+        (bb + 5) as i64,
+        (bb + 6) as i64,
+        (bb + 7) as i64,
+    ]); // top
+    polys.push_cell(&[bb as i64, (bb + 1) as i64, (bb + 5) as i64, (bb + 4) as i64]); // front
+    polys.push_cell(&[
+        (bb + 2) as i64,
+        (bb + 3) as i64,
+        (bb + 7) as i64,
+        (bb + 6) as i64,
+    ]); // back
+        // Nuki (cross beam, lower)
     let nuki_z = height * 0.75;
     let nb = pts.len();
     pts.push([-hw, -pillar_radius, nuki_z]);
@@ -52,9 +67,17 @@ pub fn torii_gate(width: f64, height: f64, pillar_radius: f64, na: usize) -> Pol
     pts.push([hw, -pillar_radius, nuki_z + beam_h * 0.7]);
     pts.push([hw, pillar_radius, nuki_z + beam_h * 0.7]);
     pts.push([-hw, pillar_radius, nuki_z + beam_h * 0.7]);
-    polys.push_cell(&[(nb+4) as i64, (nb+5) as i64, (nb+6) as i64, (nb+7) as i64]);
-    polys.push_cell(&[nb as i64, (nb+1) as i64, (nb+5) as i64, (nb+4) as i64]);
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    polys.push_cell(&[
+        (nb + 4) as i64,
+        (nb + 5) as i64,
+        (nb + 6) as i64,
+        (nb + 7) as i64,
+    ]);
+    polys.push_cell(&[nb as i64, (nb + 1) as i64, (nb + 5) as i64, (nb + 4) as i64]);
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

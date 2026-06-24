@@ -30,7 +30,11 @@ pub fn join_split_trees(graph: &ReebGraph) -> (ReebGraph, ReebGraph) {
     // Sort node indices by scalar ascending for join tree
     let mut sorted_asc: Vec<usize> = (0..n).collect();
     sorted_asc.sort_by(|&a, &b| {
-        graph.node(a).scalar_value.partial_cmp(&graph.node(b).scalar_value).unwrap()
+        graph
+            .node(a)
+            .scalar_value
+            .partial_cmp(&graph.node(b).scalar_value)
+            .unwrap()
     });
 
     // Build join tree
@@ -93,10 +97,10 @@ mod tests {
         // Build a simple Y-shaped Reeb graph:
         // Two minima (0.0, 0.1) merge at a saddle (0.5) -> maximum (1.0)
         let mut rg = ReebGraph::new();
-        let n0 = rg.add_node(0, 0.0, NodeType::Minimum);   // 0
-        let n1 = rg.add_node(1, 0.1, NodeType::Minimum);   // 1
-        let n2 = rg.add_node(2, 0.5, NodeType::Saddle);    // 2
-        let n3 = rg.add_node(3, 1.0, NodeType::Maximum);   // 3
+        let n0 = rg.add_node(0, 0.0, NodeType::Minimum); // 0
+        let n1 = rg.add_node(1, 0.1, NodeType::Minimum); // 1
+        let n2 = rg.add_node(2, 0.5, NodeType::Saddle); // 2
+        let n3 = rg.add_node(3, 1.0, NodeType::Maximum); // 3
         rg.add_arc(n0, n2, vec![]);
         rg.add_arc(n1, n2, vec![]);
         rg.add_arc(n2, n3, vec![]);

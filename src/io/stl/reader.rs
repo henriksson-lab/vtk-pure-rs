@@ -90,8 +90,7 @@ impl StlReader {
         }
 
         // Skip 80-byte header
-        let num_triangles =
-            u32::from_le_bytes(data[80..84].try_into().unwrap()) as usize;
+        let num_triangles = u32::from_le_bytes(data[80..84].try_into().unwrap()) as usize;
 
         let expected = 84 + num_triangles * 50;
         if data.len() < expected {
@@ -119,7 +118,8 @@ impl StlReader {
             for _ in 0..3 {
                 let x = f32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as f64;
                 let y = f32::from_le_bytes(data[offset + 4..offset + 8].try_into().unwrap()) as f64;
-                let z = f32::from_le_bytes(data[offset + 8..offset + 12].try_into().unwrap()) as f64;
+                let z =
+                    f32::from_le_bytes(data[offset + 8..offset + 12].try_into().unwrap()) as f64;
                 offset += 12;
                 points.push([x, y, z]);
                 normals_arr.push_tuple(&[nx, ny, nz]);

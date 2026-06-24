@@ -8,12 +8,14 @@ pub fn triangulate_strips(input: &PolyData) -> PolyData {
     let mut pd = input.clone();
 
     for cell in input.strips.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         for i in 0..cell.len() - 2 {
             if i % 2 == 0 {
-                pd.polys.push_cell(&[cell[i], cell[i+1], cell[i+2]]);
+                pd.polys.push_cell(&[cell[i], cell[i + 1], cell[i + 2]]);
             } else {
-                pd.polys.push_cell(&[cell[i+1], cell[i], cell[i+2]]);
+                pd.polys.push_cell(&[cell[i + 1], cell[i], cell[i + 2]]);
             }
         }
     }

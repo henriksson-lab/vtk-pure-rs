@@ -1,13 +1,45 @@
 //! Error function approximation
 use crate::data::{AnyDataArray, DataArray, ImageData};
 pub fn image_erf(input: &ImageData, scalars: &str) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) { Some(a) if a.num_components()==1=>a, _=>return input.clone() };
-    let n = arr.num_tuples(); let mut buf = [0.0f64];
-    let data: Vec<f64> = (0..n).map(|i|{arr.tuple_as_f64(i,&mut buf);{ let x=buf[0]*0.7071067811865476; let t=1.0/(1.0+0.3275911*x.abs()); let p=t*(0.254829592+t*(-0.284496736+t*(1.421413741+t*(-1.453152027+t*1.061405429)))); (1.0-p*(-x*x).exp())*x.signum() }}).collect();
+    let arr = match input.point_data().get_array(scalars) {
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
+    };
+    let n = arr.num_tuples();
+    let mut buf = [0.0f64];
+    let data: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            {
+                let x = buf[0] * 0.7071067811865476;
+                let t = 1.0 / (1.0 + 0.3275911 * x.abs());
+                let p = t
+                    * (0.254829592
+                        + t * (-0.284496736
+                            + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+                (1.0 - p * (-x * x).exp()) * x.signum()
+            }
+        })
+        .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0],dims[1],dims[2]).with_spacing(input.spacing()).with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars,data,1)))
+    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+        .with_spacing(input.spacing())
+        .with_origin(input.origin())
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
 }
-#[cfg(test)] mod tests { use super::*;
-    #[test] fn test() { let img=ImageData::from_function([5,5,1],[1.0,1.0,1.0],[0.0,0.0,0.0],"v",|x,_,_|x+1.0);
-        let r=image_erf(&img,"v"); assert_eq!(r.dimensions(),[5,5,1]); } }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test() {
+        let img = ImageData::from_function(
+            [5, 5, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| x + 1.0,
+        );
+        let r = image_erf(&img, "v");
+        assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+}

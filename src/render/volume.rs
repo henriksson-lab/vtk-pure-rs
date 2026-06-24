@@ -244,7 +244,12 @@ impl VolumeActor {
             }
         }
 
-        [color[0] as f32, color[1] as f32, color[2] as f32, alpha as f32]
+        [
+            color[0] as f32,
+            color[1] as f32,
+            color[2] as f32,
+            alpha as f32,
+        ]
     }
 }
 
@@ -298,7 +303,13 @@ mod tests {
             }
         }
         let tf = TransferFunction::linear(ColorMap::jet());
-        VolumeActor::new(scalars, dims, [0.0, 0.0, 0.0], [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0], tf)
+        VolumeActor::new(
+            scalars,
+            dims,
+            [0.0, 0.0, 0.0],
+            [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0],
+            tf,
+        )
     }
 
     #[test]

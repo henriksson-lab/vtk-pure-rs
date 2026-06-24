@@ -21,9 +21,10 @@ pub fn vertex_valence(input: &PolyData) -> PolyData {
     let valences: Vec<f64> = neighbors.iter().map(|s| s.len() as f64).collect();
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Valence", valences, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Valence", valences, 1,
+        )));
     pd
 }
 
@@ -81,7 +82,8 @@ mod tests {
             pd.points.push([a.cos(), a.sin(), 0.0]);
         }
         for i in 0..6 {
-            pd.polys.push_cell(&[0, (i+1) as i64, ((i+1)%6+1) as i64]);
+            pd.polys
+                .push_cell(&[0, (i + 1) as i64, ((i + 1) % 6 + 1) as i64]);
         }
 
         let result = vertex_valence(&pd);

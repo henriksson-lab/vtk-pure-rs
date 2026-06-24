@@ -6,9 +6,8 @@ use crate::types::VtkError;
 
 use crate::io::xml::binary;
 use crate::io::xml::vtp_reader::{
-    extract_section, extract_attr, parse_attribute_arrays,
-    extract_appended_raw, extract_appended_base64,
-    detect_format, DataFormat, parse_from_appended,
+    detect_format, extract_appended_base64, extract_appended_raw, extract_attr, extract_section,
+    parse_attribute_arrays, parse_from_appended, DataFormat,
 };
 
 /// Reader for VTK XML RectilinearGrid format (.vtr).
@@ -43,25 +42,37 @@ impl VtrReader {
             let mut search_pos = 0;
             while let Some(da_start) = coords_section[search_pos..].find("<DataArray") {
                 let abs_start = search_pos + da_start;
-                let tag_end = coords_section[abs_start..].find('>').ok_or_else(|| VtkError::Parse("unclosed tag".into()))?;
+                let tag_end = coords_section[abs_start..]
+                    .find('>')
+                    .ok_or_else(|| VtkError::Parse("unclosed tag".into()))?;
                 let tag = &coords_section[abs_start..abs_start + tag_end + 1];
                 let content_start = abs_start + tag_end + 1;
-                let content_end = coords_section[content_start..].find("</DataArray>").ok_or_else(|| VtkError::Parse("missing close".into()))?;
+                let content_end = coords_section[content_start..]
+                    .find("</DataArray>")
+                    .ok_or_else(|| VtkError::Parse("missing close".into()))?;
                 let da_content = coords_section[content_start..content_start + content_end].trim();
 
                 let name = extract_attr(tag, "Name").unwrap_or_default();
                 let type_str = extract_attr(tag, "type").unwrap_or_else(|| "Float64".to_string());
 
                 let values: Vec<f64> = match detect_format(tag) {
-                    DataFormat::Ascii => {
-                        da_content.split_whitespace().filter_map(|s| s.parse().ok()).collect()
-                    }
+                    DataFormat::Ascii => da_content
+                        .split_whitespace()
+                        .filter_map(|s| s.parse().ok())
+                        .collect(),
                     DataFormat::Binary => {
                         let arr = binary::parse_binary_data_array(da_content, &name, &type_str, 1)?;
                         any_data_array_to_f64(&arr)
                     }
                     DataFormat::Appended(offset) => {
-                        let arr = parse_from_appended(appended_raw.as_deref(), appended_b64.as_deref(), offset, &name, &type_str, 1)?;
+                        let arr = parse_from_appended(
+                            appended_raw.as_deref(),
+                            appended_b64.as_deref(),
+                            offset,
+                            &name,
+                            &type_str,
+                            1,
+                        )?;
                         any_data_array_to_f64(&arr)
                     }
                 };
@@ -77,20 +88,36 @@ impl VtrReader {
             }
         }
 
-        if x_coords.is_empty() { x_coords = vec![0.0]; }
-        if y_coords.is_empty() { y_coords = vec![0.0]; }
-        if z_coords.is_empty() { z_coords = vec![0.0]; }
+        if x_coords.is_empty() {
+            x_coords = vec![0.0];
+        }
+        if y_coords.is_empty() {
+            y_coords = vec![0.0];
+        }
+        if z_coords.is_empty() {
+            z_coords = vec![0.0];
+        }
 
         let mut grid = RectilinearGrid::from_coords(x_coords, y_coords, z_coords);
 
         // Parse PointData
         if let Some(pd_section) = extract_section(&content, "PointData") {
-            parse_attribute_arrays(&pd_section, grid.point_data_mut(), appended_raw.as_deref(), appended_b64.as_deref())?;
+            parse_attribute_arrays(
+                &pd_section,
+                grid.point_data_mut(),
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         // Parse CellData
         if let Some(cd_section) = extract_section(&content, "CellData") {
-            parse_attribute_arrays(&cd_section, grid.cell_data_mut(), appended_raw.as_deref(), appended_b64.as_deref())?;
+            parse_attribute_arrays(
+                &cd_section,
+                grid.cell_data_mut(),
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         Ok(grid)
@@ -113,16 +140,13 @@ fn any_data_array_to_f64(arr: &crate::data::AnyDataArray) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::xml::VtrWriter;
     use crate::data::{DataArray as DA, DataSet};
+    use crate::io::xml::VtrWriter;
 
     #[test]
     fn roundtrip_vtr() {
-        let mut grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 3.0],
-            vec![0.0, 2.0],
-            vec![0.0, 5.0],
-        );
+        let mut grid =
+            RectilinearGrid::from_coords(vec![0.0, 1.0, 3.0], vec![0.0, 2.0], vec![0.0, 5.0]);
         let n = grid.num_points();
         let scalars: Vec<f64> = (0..n).map(|i| i as f64).collect();
         let arr = DA::from_vec("idx", scalars, 1);

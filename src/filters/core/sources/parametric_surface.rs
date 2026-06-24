@@ -4,8 +4,10 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Create a parametric surface from a function f(u, v) -> [x, y, z].
 pub fn parametric_surface(
-    u_range: [f64; 2], v_range: [f64; 2],
-    u_res: usize, v_res: usize,
+    u_range: [f64; 2],
+    v_range: [f64; 2],
+    u_res: usize,
+    v_res: usize,
     f: impl Fn(f64, f64) -> [f64; 3],
 ) -> PolyData {
     let ures = u_res.max(2);
@@ -40,7 +42,8 @@ pub fn parametric_surface(
 
 /// Create a closed parametric surface (wraps in both u and v).
 pub fn parametric_surface_closed(
-    u_res: usize, v_res: usize,
+    u_res: usize,
+    v_res: usize,
     f: impl Fn(f64, f64) -> [f64; 3],
 ) -> PolyData {
     let ures = u_res.max(3);
@@ -62,8 +65,10 @@ pub fn parametric_surface_closed(
         for iu in 0..ures {
             let iu1 = (iu + 1) % ures;
             polys.push_cell(&[
-                (iv * ures + iu) as i64, (iv * ures + iu1) as i64,
-                (iv1 * ures + iu1) as i64, (iv1 * ures + iu) as i64,
+                (iv * ures + iu) as i64,
+                (iv * ures + iu1) as i64,
+                (iv1 * ures + iu1) as i64,
+                (iv1 * ures + iu) as i64,
             ]);
         }
     }
@@ -77,8 +82,10 @@ pub fn parametric_surface_closed(
 /// Example: Klein bottle.
 pub fn klein_bottle(r: f64, res: usize) -> PolyData {
     parametric_surface_closed(res, res, |u, v| {
-        let cu = u.cos(); let su = u.sin();
-        let cv = v.cos(); let sv = v.sin();
+        let cu = u.cos();
+        let su = u.sin();
+        let cv = v.cos();
+        let sv = v.sin();
         let x = (r + cu * sv.cos() - (u / 2.0).sin() * (2.0 * v).sin()) * cv;
         let y = (r + cu * sv.cos() - (u / 2.0).sin() * (2.0 * v).sin()) * sv;
         let z = su * sv.cos() + (u / 2.0).cos() * (2.0 * v).sin();
@@ -91,7 +98,9 @@ mod tests {
     use super::*;
     #[test]
     fn test_paraboloid() {
-        let s = parametric_surface([-1.0, 1.0], [-1.0, 1.0], 10, 10, |u, v| [u, v, u*u+v*v]);
+        let s = parametric_surface([-1.0, 1.0], [-1.0, 1.0], 10, 10, |u, v| {
+            [u, v, u * u + v * v]
+        });
         assert_eq!(s.points.len(), 121);
         assert_eq!(s.polys.num_cells(), 100);
     }

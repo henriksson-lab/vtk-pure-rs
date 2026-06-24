@@ -57,7 +57,12 @@ impl SelectionNode {
     }
 
     /// Create a threshold selection on a named array.
-    pub fn from_threshold(array_name: &str, min: f64, max: f64, field_type: SelectionFieldType) -> Self {
+    pub fn from_threshold(
+        array_name: &str,
+        min: f64,
+        max: f64,
+        field_type: SelectionFieldType,
+    ) -> Self {
         Self {
             content_type: SelectionContentType::Thresholds,
             field_type,
@@ -112,7 +117,8 @@ mod tests {
 
     #[test]
     fn threshold_selection() {
-        let node = SelectionNode::from_threshold("temperature", 100.0, 200.0, SelectionFieldType::Cell);
+        let node =
+            SelectionNode::from_threshold("temperature", 100.0, 200.0, SelectionFieldType::Cell);
         assert_eq!(node.content_type, SelectionContentType::Thresholds);
         assert_eq!(node.array_name.as_deref(), Some("temperature"));
         assert_eq!(node.selection_list, vec![100.0, 200.0]);

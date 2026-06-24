@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Perform one iteration of Loop subdivision on a triangle mesh.
 ///
@@ -123,9 +123,15 @@ pub fn subdivide_loop(input: &PolyData) -> PolyData {
         let v1: usize = cell[1] as usize;
         let v2: usize = cell[2] as usize;
 
-        let e01: usize = *edge_point_map.get(&if v0 < v1 { (v0, v1) } else { (v1, v0) }).unwrap();
-        let e12: usize = *edge_point_map.get(&if v1 < v2 { (v1, v2) } else { (v2, v1) }).unwrap();
-        let e20: usize = *edge_point_map.get(&if v2 < v0 { (v2, v0) } else { (v0, v2) }).unwrap();
+        let e01: usize = *edge_point_map
+            .get(&if v0 < v1 { (v0, v1) } else { (v1, v0) })
+            .unwrap();
+        let e12: usize = *edge_point_map
+            .get(&if v1 < v2 { (v1, v2) } else { (v2, v1) })
+            .unwrap();
+        let e20: usize = *edge_point_map
+            .get(&if v2 < v0 { (v2, v0) } else { (v0, v2) })
+            .unwrap();
 
         // 4 sub-triangles
         new_polys.push_cell(&[v0 as i64, e01 as i64, e20 as i64]);
@@ -185,7 +191,10 @@ mod tests {
         for cell in result.polys.iter() {
             assert_eq!(cell.len(), 3, "All cells should be triangles");
             for &idx in cell {
-                assert!((idx as usize) < result.points.len(), "Point index out of bounds");
+                assert!(
+                    (idx as usize) < result.points.len(),
+                    "Point index out of bounds"
+                );
             }
         }
     }

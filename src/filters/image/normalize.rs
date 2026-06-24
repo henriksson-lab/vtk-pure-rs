@@ -29,7 +29,11 @@ pub fn image_normalize(input: &ImageData, scalars: &str) -> ImageData {
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -64,7 +68,11 @@ pub fn image_invert(input: &ImageData, scalars: &str) -> ImageData {
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -80,30 +88,41 @@ mod tests {
     #[test]
     fn normalize_range() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![10.0, 20.0, 30.0, 40.0, 50.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![10.0, 20.0, 30.0, 40.0, 50.0],
+                1,
+            )));
 
         let result = image_normalize(&img, "v");
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert!((buf[0] - 0.0).abs() < 1e-10);
-        arr.tuple_as_f64(4, &mut buf); assert!((buf[0] - 1.0).abs() < 1e-10);
-        arr.tuple_as_f64(2, &mut buf); assert!((buf[0] - 0.5).abs() < 1e-10);
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.0).abs() < 1e-10);
+        arr.tuple_as_f64(4, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
+        arr.tuple_as_f64(2, &mut buf);
+        assert!((buf[0] - 0.5).abs() < 1e-10);
     }
 
     #[test]
     fn invert_values() {
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 5.0, 10.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 5.0, 10.0],
+                1,
+            )));
 
         let result = image_invert(&img, "v");
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 10.0);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 10.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 
     #[test]

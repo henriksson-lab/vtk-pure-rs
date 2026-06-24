@@ -45,7 +45,9 @@ pub fn extract_geometry_block(block: &Block) -> Option<PolyData> {
                     }
                 }
             }
-            if meshes.is_empty() { return None; }
+            if meshes.is_empty() {
+                return None;
+            }
             let refs: Vec<&PolyData> = meshes.iter().collect();
             Some(crate::filters::core::append::append(&refs))
         }
@@ -71,11 +73,8 @@ mod tests {
 
     #[test]
     fn rectilinear_to_surface() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 2.0],
-            vec![0.0, 1.0],
-            vec![0.0, 1.0],
-        );
+        let grid =
+            RectilinearGrid::from_coords(vec![0.0, 1.0, 2.0], vec![0.0, 1.0], vec![0.0, 1.0]);
         let surface = extract_geometry_rectilinear(&grid);
         assert!(surface.points.len() > 0);
     }
@@ -83,14 +82,20 @@ mod tests {
     #[test]
     fn multi_block_merge() {
         let mut mb = MultiBlockDataSet::new();
-        mb.add_block("a", Block::PolyData(PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        )));
-        mb.add_block("b", Block::PolyData(PolyData::from_triangles(
-            vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        )));
+        mb.add_block(
+            "a",
+            Block::PolyData(PolyData::from_triangles(
+                vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                vec![[0, 1, 2]],
+            )),
+        );
+        mb.add_block(
+            "b",
+            Block::PolyData(PolyData::from_triangles(
+                vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
+                vec![[0, 1, 2]],
+            )),
+        );
 
         let merged = extract_geometry_multi_block(&mb);
         assert_eq!(merged.points.len(), 6);

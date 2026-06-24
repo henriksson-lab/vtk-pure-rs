@@ -5,10 +5,7 @@ use crate::types::ImplicitFunction;
 ///
 /// Removes cells where all vertices have `f(point) > 0` (outside).
 /// Keeps cells where at least one vertex has `f(point) <= 0` (inside).
-pub fn clip_with_implicit(
-    input: &PolyData,
-    func: &dyn ImplicitFunction,
-) -> PolyData {
+pub fn clip_with_implicit(input: &PolyData, func: &dyn ImplicitFunction) -> PolyData {
     let n = input.points.len();
     let values: Vec<f64> = (0..n)
         .map(|i| {
@@ -44,7 +41,8 @@ pub fn clip_with_implicit(
     let mut new_polys = CellArray::new();
     for &ci in &kept_cells {
         let cell = input.polys.cell(ci);
-        let remapped: Vec<i64> = cell.iter()
+        let remapped: Vec<i64> = cell
+            .iter()
             .map(|&pid| old_to_new[pid as usize] as i64)
             .collect();
         new_polys.push_cell(&remapped);
@@ -65,8 +63,13 @@ mod tests {
     fn clip_with_plane() {
         // Clip a quad at x=0.5 with a plane at x=0
         let pd = PolyData::from_triangles(
-            vec![[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-                 [2.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
+            vec![
+                [-1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [2.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 4]],
         );
         // Plane at x=1.5, normal pointing +X → keeps x < 1.5
@@ -80,8 +83,14 @@ mod tests {
     #[test]
     fn clip_with_sphere() {
         let pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.1, 0.0],  // inside
-                 [5.0, 5.0, 5.0], [6.0, 5.0, 5.0], [5.0, 6.0, 5.0]], // outside
+            vec![
+                [0.0, 0.0, 0.0],
+                [0.1, 0.0, 0.0],
+                [0.0, 0.1, 0.0], // inside
+                [5.0, 5.0, 5.0],
+                [6.0, 5.0, 5.0],
+                [5.0, 6.0, 5.0],
+            ], // outside
             vec![[0, 1, 2], [3, 4, 5]],
         );
         let sphere = ImplicitSphere::new([0.0, 0.0, 0.0], 1.0);

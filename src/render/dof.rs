@@ -33,7 +33,10 @@ impl Default for DofConfig {
 impl DofConfig {
     /// Create enabled DoF with default settings.
     pub fn new() -> Self {
-        Self { enabled: true, ..Default::default() }
+        Self {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     /// Set focal distance.
@@ -82,6 +85,10 @@ mod tests {
     fn coc_at_focal_distance_is_zero() {
         let c = DofConfig::new().with_focal_distance(5.0).with_aperture(0.1);
         let coc = c.circle_of_confusion(5.0);
-        assert!(coc.abs() < 1e-6, "CoC at focal distance should be zero, got {}", coc);
+        assert!(
+            coc.abs() < 1e-6,
+            "CoC at focal distance should be zero, got {}",
+            coc
+        );
     }
 }

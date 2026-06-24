@@ -1,12 +1,12 @@
 #![allow(unexpected_cfgs)]
-#[cfg(feature = "exodus")]
-pub mod exodus;
-#[cfg(feature = "cgns")]
-pub mod cgns;
 #[cfg(feature = "amr")]
 pub mod amr;
-#[cfg(feature = "netcdf")]
-pub mod netcdf_io;
+#[cfg(feature = "cgns")]
+pub mod cgns;
+#[cfg(feature = "exodus")]
+pub mod exodus;
 #[cfg(feature = "minc")]
 pub mod minc;
+#[cfg(feature = "netcdf")]
+pub mod netcdf_io;
 pub mod types;

@@ -1,6 +1,10 @@
 use crate::data::PolyData;
 
-use crate::render::{Annotations, AxesWidget, BloomConfig, Camera, ClipPlane, ColorMap, DofConfig, Fog, Light, LodSet, Material, ScalarBar, ShadowConfig, SilhouetteConfig, Skybox, StereoConfig, Texture, Viewport, VolumeActor};
+use crate::render::{
+    Annotations, AxesWidget, BloomConfig, Camera, ClipPlane, ColorMap, DofConfig, Fog, Light,
+    LodSet, Material, ScalarBar, ShadowConfig, SilhouetteConfig, Skybox, StereoConfig, Texture,
+    Viewport, VolumeActor,
+};
 
 /// How to render the surface.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -23,9 +27,7 @@ pub enum Coloring {
         range: Option<[f64; 2]>,
     },
     /// Apply a 2D texture using texture coordinates from point data.
-    TextureMap {
-        texture: Texture,
-    },
+    TextureMap { texture: Texture },
 }
 
 impl Default for Coloring {
@@ -269,7 +271,9 @@ impl Scene {
     /// Reset the camera to view all actors.
     pub fn reset_camera(&mut self) {
         use crate::types::BoundingBox;
-        if self.actors.is_empty() { return; }
+        if self.actors.is_empty() {
+            return;
+        }
         let mut bb = BoundingBox::empty();
         for actor in &self.actors {
             let ab = actor.data.points.bounds();
@@ -361,8 +365,11 @@ impl Scene {
     pub fn summary(&self) -> String {
         format!(
             "Scene: {} actors ({} points, {} cells), {} lights, {} clip planes",
-            self.actors.len(), self.total_points(), self.total_cells(),
-            self.lights.len(), self.clip_planes.len()
+            self.actors.len(),
+            self.total_points(),
+            self.total_cells(),
+            self.lights.len(),
+            self.clip_planes.len()
         )
     }
 
@@ -378,7 +385,10 @@ impl Scene {
             println!("  Light {i}: {light}");
         }
         if self.fog.enabled {
-            println!("  Fog: {:?} near={:.1} far={:.1}", self.fog.mode, self.fog.near, self.fog.far);
+            println!(
+                "  Fog: {:?} near={:.1} far={:.1}",
+                self.fog.mode, self.fog.near, self.fog.far
+            );
         }
         if !self.clip_planes.is_empty() {
             println!("  Clip planes: {}", self.clip_planes.len());
@@ -392,7 +402,13 @@ impl Scene {
     ///
     /// Convenience wrapper around `crate::render::pick()`. Returns the actor index
     /// and world position, or None if nothing was hit.
-    pub fn find_actor_at(&self, screen_x: f64, screen_y: f64, width: u32, height: u32) -> Option<(usize, [f64; 3])> {
+    pub fn find_actor_at(
+        &self,
+        screen_x: f64,
+        screen_y: f64,
+        width: u32,
+        height: u32,
+    ) -> Option<(usize, [f64; 3])> {
         let result = crate::render::pick(self, screen_x, screen_y, width, height)?;
         Some((result.actor_index, result.position))
     }
@@ -400,15 +416,25 @@ impl Scene {
 
 impl std::fmt::Display for Scene {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Scene: {} actors, {} lights, {} clip planes",
-            self.actors.len(), self.lights.len(), self.clip_planes.len())
+        write!(
+            f,
+            "Scene: {} actors, {} lights, {} clip planes",
+            self.actors.len(),
+            self.lights.len(),
+            self.clip_planes.len()
+        )
     }
 }
 
 impl std::fmt::Display for Actor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Actor: {} points, {:?}, opacity={:.1}",
-            self.data.points.len(), self.representation, self.opacity)
+        write!(
+            f,
+            "Actor: {} points, {:?}, opacity={:.1}",
+            self.data.points.len(),
+            self.representation,
+            self.opacity
+        )
     }
 }
 
@@ -444,8 +470,7 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let actor = Actor::new(pd)
-            .with_color(1.0, 0.0, 0.0);
+        let actor = Actor::new(pd).with_color(1.0, 0.0, 0.0);
         match actor.coloring {
             Coloring::Solid(c) => assert_eq!(c, [1.0, 0.0, 0.0]),
             _ => panic!("expected Solid"),
@@ -510,8 +535,7 @@ mod tests {
 
     #[test]
     fn display_scene() {
-        let scene = Scene::new()
-            .with_actor(Actor::new(PolyData::new()));
+        let scene = Scene::new().with_actor(Actor::new(PolyData::new()));
         let s = format!("{scene}");
         assert!(s.contains("1 actors"));
     }
@@ -549,10 +573,7 @@ mod tests {
             vec![[5.0, 0.0, 0.0], [6.0, 0.0, 0.0], [5.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let scene = Scene::from_meshes(vec![
-            (pd1, [1.0, 0.0, 0.0]),
-            (pd2, [0.0, 0.0, 1.0]),
-        ]);
+        let scene = Scene::from_meshes(vec![(pd1, [1.0, 0.0, 0.0]), (pd2, [0.0, 0.0, 1.0])]);
         assert_eq!(scene.num_actors(), 2);
     }
 
@@ -610,6 +631,9 @@ mod tests {
         assert!(scene.fog.enabled);
         assert!(scene.bloom.enabled);
         assert!(scene.shadows.enabled);
-        assert!(matches!(scene.skybox, crate::render::Skybox::ThreeStop { .. }));
+        assert!(matches!(
+            scene.skybox,
+            crate::render::Skybox::ThreeStop { .. }
+        ));
     }
 }

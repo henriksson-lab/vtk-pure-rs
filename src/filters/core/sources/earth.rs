@@ -80,15 +80,20 @@ pub fn earth(params: &EarthParams) -> PolyData {
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Latitude", lat_data, 1),
-    ));
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Longitude", lon_data, 1),
-    ));
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("TCoords", tcoords, 2),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Latitude", lat_data, 1,
+        )));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Longitude",
+            lon_data,
+            1,
+        )));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", tcoords, 2,
+        )));
     mesh.point_data_mut().set_active_tcoords("TCoords");
     mesh
 }
@@ -125,7 +130,11 @@ mod tests {
 
     #[test]
     fn latitude_range() {
-        let globe = earth(&EarthParams { theta_resolution: 10, phi_resolution: 10, ..Default::default() });
+        let globe = earth(&EarthParams {
+            theta_resolution: 10,
+            phi_resolution: 10,
+            ..Default::default()
+        });
         let arr = globe.point_data().get_array("Latitude").unwrap();
         let mut min_lat = f64::MAX;
         let mut max_lat = f64::MIN;

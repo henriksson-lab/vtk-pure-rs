@@ -34,12 +34,8 @@ pub fn aggregate(input: &PolyData, array_name: &str) -> Table {
     let variance = sum_sq / n as f64 - mean * mean;
     let std_dev = variance.max(0.0).sqrt();
 
-    let values = vec![
-        n as f64, min_v, max_v, mean, sum, variance, std_dev,
-    ];
-    let _names = vec![
-        "count", "min", "max", "mean", "sum", "variance", "std_dev",
-    ];
+    let values = vec![n as f64, min_v, max_v, mean, sum, variance, std_dev];
+    let _names = vec!["count", "min", "max", "mean", "sum", "variance", "std_dev"];
 
     // Store as parallel columns
     let mut table = Table::new();
@@ -51,7 +47,9 @@ pub fn aggregate(input: &PolyData, array_name: &str) -> Table {
 pub fn quick_stats(input: &PolyData, array_name: &str) -> Option<(f64, f64, f64)> {
     let arr = input.point_data().get_array(array_name)?;
     let n = arr.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
@@ -77,9 +75,12 @@ mod tests {
         for i in 0..5 {
             pd.points.push([i as f64, 0.0, 0.0]);
         }
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                1,
+            )));
         pd
     }
 

@@ -17,42 +17,92 @@ pub struct Viewport {
 impl Viewport {
     /// Full window viewport.
     pub fn full() -> Self {
-        Self { x: 0.0, y: 0.0, width: 1.0, height: 1.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 1.0,
+        }
     }
 
     /// Left half of the window.
     pub fn left_half() -> Self {
-        Self { x: 0.0, y: 0.0, width: 0.5, height: 1.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            width: 0.5,
+            height: 1.0,
+        }
     }
 
     /// Right half of the window.
     pub fn right_half() -> Self {
-        Self { x: 0.5, y: 0.0, width: 0.5, height: 1.0 }
+        Self {
+            x: 0.5,
+            y: 0.0,
+            width: 0.5,
+            height: 1.0,
+        }
     }
 
     /// Top half of the window.
     pub fn top_half() -> Self {
-        Self { x: 0.0, y: 0.5, width: 1.0, height: 0.5 }
+        Self {
+            x: 0.0,
+            y: 0.5,
+            width: 1.0,
+            height: 0.5,
+        }
     }
 
     /// Bottom half of the window.
     pub fn bottom_half() -> Self {
-        Self { x: 0.0, y: 0.0, width: 1.0, height: 0.5 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            width: 1.0,
+            height: 0.5,
+        }
     }
 
     /// Create a 2x2 grid of viewports.
     pub fn quad_grid() -> [Viewport; 4] {
         [
-            Viewport { x: 0.0, y: 0.5, width: 0.5, height: 0.5 }, // top-left
-            Viewport { x: 0.5, y: 0.5, width: 0.5, height: 0.5 }, // top-right
-            Viewport { x: 0.0, y: 0.0, width: 0.5, height: 0.5 }, // bottom-left
-            Viewport { x: 0.5, y: 0.0, width: 0.5, height: 0.5 }, // bottom-right
+            Viewport {
+                x: 0.0,
+                y: 0.5,
+                width: 0.5,
+                height: 0.5,
+            }, // top-left
+            Viewport {
+                x: 0.5,
+                y: 0.5,
+                width: 0.5,
+                height: 0.5,
+            }, // top-right
+            Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: 0.5,
+                height: 0.5,
+            }, // bottom-left
+            Viewport {
+                x: 0.5,
+                y: 0.0,
+                width: 0.5,
+                height: 0.5,
+            }, // bottom-right
         ]
     }
 
     /// Custom viewport from normalized coordinates.
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Convert to pixel coordinates given window size.
@@ -71,13 +121,14 @@ impl Viewport {
 
     /// Check if a normalized screen point is inside this viewport.
     pub fn contains(&self, nx: f32, ny: f32) -> bool {
-        nx >= self.x && nx <= self.x + self.width
-            && ny >= self.y && ny <= self.y + self.height
+        nx >= self.x && nx <= self.x + self.width && ny >= self.y && ny <= self.y + self.height
     }
 }
 
 impl Default for Viewport {
-    fn default() -> Self { Self::full() }
+    fn default() -> Self {
+        Self::full()
+    }
 }
 
 #[cfg(test)]
@@ -110,8 +161,10 @@ mod tests {
             let center_y = vps[i].y + vps[i].height / 2.0;
             for j in 0..4 {
                 if i != j {
-                    assert!(!vps[j].contains(center_x, center_y),
-                        "viewport {i} center should not be in viewport {j}");
+                    assert!(
+                        !vps[j].contains(center_x, center_y),
+                        "viewport {i} center should not be in viewport {j}"
+                    );
                 }
             }
         }

@@ -55,12 +55,17 @@ impl Graph {
     /// Add N vertices and return the index of the first new vertex.
     pub fn add_vertices(&mut self, count: usize) -> usize {
         let first = self.num_vertices;
-        self.num_vertices += count;
+        self.num_vertices = self
+            .num_vertices
+            .checked_add(count)
+            .expect("vertex count overflow");
         first
     }
 
     /// Add an edge between two vertices and return the edge index.
     pub fn add_edge(&mut self, source: usize, target: usize) -> usize {
+        assert!(source < self.num_vertices, "source vertex out of range");
+        assert!(target < self.num_vertices, "target vertex out of range");
         let id = self.edges.len();
         self.edges.push((source, target));
         id
@@ -88,13 +93,35 @@ impl Graph {
 
     /// Get the degree (number of incident edges) of a vertex.
     pub fn degree(&self, vertex: usize) -> usize {
-        self.edges.iter().filter(|(s, t)| {
-            *s == vertex || (!self.directed && *t == vertex)
-        }).count()
+        if self.directed {
+            self.out_degree(vertex) + self.in_degree(vertex)
+        } else {
+            self.out_degree(vertex)
+        }
+    }
+
+    /// Get the out-degree of a vertex.
+    pub fn out_degree(&self, vertex: usize) -> usize {
+        assert!(vertex < self.num_vertices, "vertex out of range");
+        self.edges
+            .iter()
+            .filter(|(s, t)| *s == vertex || (!self.directed && *t == vertex))
+            .count()
+    }
+
+    /// Get the in-degree of a vertex.
+    pub fn in_degree(&self, vertex: usize) -> usize {
+        assert!(vertex < self.num_vertices, "vertex out of range");
+        if self.directed {
+            self.edges.iter().filter(|(_, t)| *t == vertex).count()
+        } else {
+            self.out_degree(vertex)
+        }
     }
 
     /// Get all neighbors of a vertex.
     pub fn neighbors(&self, vertex: usize) -> Vec<usize> {
+        assert!(vertex < self.num_vertices, "vertex out of range");
         let mut result = Vec::new();
         for &(s, t) in &self.edges {
             if s == vertex {
@@ -108,6 +135,7 @@ impl Graph {
 
     /// Get outgoing edges from a vertex (for directed graphs; all edges for undirected).
     pub fn out_edges(&self, vertex: usize) -> Vec<usize> {
+        assert!(vertex < self.num_vertices, "vertex out of range");
         self.edges
             .iter()
             .enumerate()
@@ -183,6 +211,7 @@ impl Tree {
 
     /// Add a child node to the given parent. Returns the new node index.
     pub fn add_child(&mut self, parent: usize) -> usize {
+        assert!(parent < self.parents.len(), "parent node out of range");
         let id = self.parents.len();
         self.parents.push(parent);
         self.children.push(Vec::new());
@@ -202,22 +231,30 @@ impl Tree {
 
     /// Parent of a node. Returns `None` for the root.
     pub fn parent(&self, node: usize) -> Option<usize> {
+        assert!(node < self.parents.len(), "node out of range");
         let p = self.parents[node];
-        if p == usize::MAX { None } else { Some(p) }
+        if p == usize::MAX {
+            None
+        } else {
+            Some(p)
+        }
     }
 
     /// Children of a node.
     pub fn children(&self, node: usize) -> &[usize] {
+        assert!(node < self.children.len(), "node out of range");
         &self.children[node]
     }
 
     /// Whether a node is a leaf (no children).
     pub fn is_leaf(&self, node: usize) -> bool {
+        assert!(node < self.children.len(), "node out of range");
         self.children[node].is_empty()
     }
 
     /// Depth of a node (root = 0).
     pub fn depth(&self, node: usize) -> usize {
+        assert!(node < self.parents.len(), "node out of range");
         let mut d = 0;
         let mut cur = node;
         while self.parents[cur] != usize::MAX {
@@ -229,7 +266,11 @@ impl Tree {
 
     /// Number of edges (always num_nodes - 1 for a tree).
     pub fn num_edges(&self) -> usize {
-        if self.parents.is_empty() { 0 } else { self.parents.len() - 1 }
+        if self.parents.is_empty() {
+            0
+        } else {
+            self.parents.len() - 1
+        }
     }
 
     /// Get all leaf nodes.
@@ -289,8 +330,23 @@ mod tests {
 
         assert!(g.directed);
         assert_eq!(g.degree(0), 2);
-        assert_eq!(g.degree(1), 0); // in-edges don't count for directed degree
+        assert_eq!(g.out_degree(0), 2);
+        assert_eq!(g.in_degree(0), 0);
+        assert_eq!(g.degree(1), 1);
+        assert_eq!(g.out_degree(1), 0);
+        assert_eq!(g.in_degree(1), 1);
         assert_eq!(g.neighbors(0), vec![1, 2]);
+    }
+
+    #[test]
+    fn directed_self_loop_counts_as_in_and_out_degree() {
+        let mut g = Graph::new_directed();
+        g.add_vertex();
+        g.add_edge(0, 0);
+
+        assert_eq!(g.out_degree(0), 1);
+        assert_eq!(g.in_degree(0), 1);
+        assert_eq!(g.degree(0), 2);
     }
 
     #[test]
@@ -323,5 +379,20 @@ mod tests {
         assert!(!t.is_leaf(c1));
         assert_eq!(t.depth(c1_1), 2);
         assert_eq!(t.leaves(), vec![c2, c1_1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "target vertex out of range")]
+    fn add_edge_rejects_invalid_target() {
+        let mut g = Graph::new_undirected();
+        g.add_vertex();
+        g.add_edge(0, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "parent node out of range")]
+    fn add_child_rejects_invalid_parent() {
+        let mut t = Tree::new();
+        t.add_child(99);
     }
 }

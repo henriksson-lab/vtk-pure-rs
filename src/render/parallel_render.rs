@@ -50,12 +50,7 @@ pub fn composite_tiles(
 ///
 /// `num_tiles` controls the number of horizontal bands.  The actual number
 /// of threads equals `num_tiles`.
-pub fn tile_render(
-    scene: &Scene,
-    width: u32,
-    height: u32,
-    num_tiles: u32,
-) -> Vec<u8> {
+pub fn tile_render(scene: &Scene, width: u32, height: u32, num_tiles: u32) -> Vec<u8> {
     let num_tiles = num_tiles.max(1);
     let tile_height = (height + num_tiles - 1) / num_tiles;
 
@@ -113,10 +108,7 @@ mod tests {
         // 2x2 image split into two 2x1 tiles
         let top = vec![255u8, 0, 0, 255, 0, 255, 0, 255]; // red, green
         let bottom = vec![0u8, 0, 255, 255, 255, 255, 255, 255]; // blue, white
-        let tiles = vec![
-            (top, 0, 0, 2, 1),
-            (bottom, 0, 1, 2, 1),
-        ];
+        let tiles = vec![(top, 0, 0, 2, 1), (bottom, 0, 1, 2, 1)];
         let img = composite_tiles(&tiles, 2, 2);
         assert_eq!(img.len(), 16);
         // Top-left pixel = red

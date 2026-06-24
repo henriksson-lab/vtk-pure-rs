@@ -3,8 +3,8 @@
 //! Simple ASCII format: header line with counts, then vertex coordinates
 //! and triangle connectivity (0-based indices).
 
-use std::io::{BufRead, Write};
 use crate::data::{CellArray, Points, PolyData};
+use std::io::{BufRead, Write};
 
 /// Write PolyData as Facet format.
 pub fn write_facet<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
@@ -29,23 +29,31 @@ pub fn read_facet<R: BufRead>(reader: R) -> Result<PolyData, String> {
     for line in reader.lines() {
         let line = line.map_err(|e| e.to_string())?;
         for tok in line.split_whitespace() {
-            if let Ok(v) = tok.parse::<f64>() { nums.push(v); }
+            if let Ok(v) = tok.parse::<f64>() {
+                nums.push(v);
+            }
         }
     }
-    if nums.len() < 2 { return Err("too short".into()); }
+    if nums.len() < 2 {
+        return Err("too short".into());
+    }
     let n_pts = nums[0] as usize;
     let n_tris = nums[1] as usize;
     let mut idx = 2;
     let mut points = Points::<f64>::new();
     for _ in 0..n_pts {
-        if idx + 2 >= nums.len() { break; }
-        points.push([nums[idx], nums[idx+1], nums[idx+2]]);
+        if idx + 2 >= nums.len() {
+            break;
+        }
+        points.push([nums[idx], nums[idx + 1], nums[idx + 2]]);
         idx += 3;
     }
     let mut polys = CellArray::new();
     for _ in 0..n_tris {
-        if idx + 2 >= nums.len() { break; }
-        polys.push_cell(&[nums[idx] as i64, nums[idx+1] as i64, nums[idx+2] as i64]);
+        if idx + 2 >= nums.len() {
+            break;
+        }
+        polys.push_cell(&[nums[idx] as i64, nums[idx + 1] as i64, nums[idx + 2] as i64]);
         idx += 3;
     }
     let mut mesh = PolyData::new();
@@ -70,7 +78,9 @@ mod tests {
     #[test]
     fn roundtrip() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let mut buf = Vec::new();
         write_facet(&mut buf, &mesh).unwrap();
         let loaded = read_facet(&buf[..]).unwrap();

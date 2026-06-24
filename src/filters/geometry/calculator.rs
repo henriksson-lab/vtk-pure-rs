@@ -5,11 +5,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 ///
 /// The function receives the point index, coordinates, and access to
 /// existing arrays, and returns a scalar value for each point.
-pub fn calculator<F>(
-    input: &PolyData,
-    result_name: &str,
-    f: F,
-) -> PolyData
+pub fn calculator<F>(input: &PolyData, result_name: &str, f: F) -> PolyData
 where
     F: Fn(usize, [f64; 3], &crate::data::DataSetAttributes) -> f64,
 {
@@ -22,18 +18,17 @@ where
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(result_name, values, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            values,
+            1,
+        )));
     pd
 }
 
 /// Apply a vector-valued function to compute a new 3-component array.
-pub fn calculator_vector<F>(
-    input: &PolyData,
-    result_name: &str,
-    f: F,
-) -> PolyData
+pub fn calculator_vector<F>(input: &PolyData, result_name: &str, f: F) -> PolyData
 where
     F: Fn(usize, [f64; 3], &crate::data::DataSetAttributes) -> [f64; 3],
 {
@@ -47,9 +42,12 @@ where
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(result_name, values, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            values,
+            3,
+        )));
     pd
 }
 

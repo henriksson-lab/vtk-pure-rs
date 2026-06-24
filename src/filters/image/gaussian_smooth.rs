@@ -95,9 +95,11 @@ pub fn image_gaussian_smooth(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, result.clone(), 1),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -116,9 +118,8 @@ mod tests {
         let mut values = vec![0.0f64; n];
         // Spike at center
         values[62] = 100.0; // (2,2,2)
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 
@@ -148,9 +149,12 @@ mod tests {
     #[test]
     fn preserves_uniform() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![5.0; 27], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![5.0; 27],
+                1,
+            )));
         let result = image_gaussian_smooth(&img, "val", 1.0, 1);
         let arr = result.point_data().get_array("val").unwrap();
         let mut buf = [0.0f64];

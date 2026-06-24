@@ -52,17 +52,22 @@ pub fn generate_ghost_cells(mesh: &PolyData) -> PolyData {
                     break;
                 }
             }
-            if is_boundary_cell[ci] { break; }
+            if is_boundary_cell[ci] {
+                break;
+            }
         }
     }
 
     // For each region, collect ghost cells (cells from other regions that share
     // a boundary point with this region)
-    let mut seen_ghost_pairs: std::collections::HashSet<(usize, i64)> = std::collections::HashSet::new();
+    let mut seen_ghost_pairs: std::collections::HashSet<(usize, i64)> =
+        std::collections::HashSet::new();
     let mut extra_cells: Vec<(usize, i64)> = Vec::new(); // (cell_index, dest_region)
 
     for ci in 0..n_cells {
-        if !is_boundary_cell[ci] { continue; }
+        if !is_boundary_cell[ci] {
+            continue;
+        }
         let my_region = regions[ci];
 
         // Find neighbors in other regions
@@ -82,17 +87,25 @@ pub fn generate_ghost_cells(mesh: &PolyData) -> PolyData {
     let mut result = mesh.clone();
 
     // Mark original cells
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GhostLevel", ghost_level, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GhostLevel",
+            ghost_level,
+            1,
+        )));
 
     // For now, mark boundary cells in the output
     let boundary_data: Vec<f64> = (0..n_cells)
         .map(|ci| if is_boundary_cell[ci] { 1.0 } else { 0.0 })
         .collect();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryCell", boundary_data, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryCell",
+            boundary_data,
+            1,
+        )));
 
     result
 }
@@ -135,23 +148,33 @@ pub fn partition_mesh(mesh: &PolyData, n_partitions: usize) -> PolyData {
         }
     }
     let extents = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
-    let axis = if extents[0] >= extents[1] && extents[0] >= extents[2] { 0 }
-        else if extents[1] >= extents[2] { 1 }
-        else { 2 };
+    let axis = if extents[0] >= extents[1] && extents[0] >= extents[2] {
+        0
+    } else if extents[1] >= extents[2] {
+        1
+    } else {
+        2
+    };
 
     // Assign partitions along longest axis
     let range = extents[axis];
     let mut region_ids = Vec::with_capacity(n_cells);
     for c in &centroids {
-        let t = if range > 1e-15 { (c[axis] - min[axis]) / range } else { 0.0 };
+        let t = if range > 1e-15 {
+            (c[axis] - min[axis]) / range
+        } else {
+            0.0
+        };
         let region = ((t * n_partitions as f64) as usize).min(n_partitions - 1);
         region_ids.push(region as f64);
     }
 
     let mut result = mesh.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("RegionId", region_ids, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "RegionId", region_ids, 1,
+        )));
     result
 }
 
@@ -218,9 +241,15 @@ mod tests {
         let mut buf = [0.0f64];
         for i in 0..boundary.num_tuples() {
             boundary.tuple_as_f64(i, &mut buf);
-            if buf[0] > 0.5 { has_boundary = true; break; }
+            if buf[0] > 0.5 {
+                has_boundary = true;
+                break;
+            }
         }
-        assert!(has_boundary, "should have boundary cells between partitions");
+        assert!(
+            has_boundary,
+            "should have boundary cells between partitions"
+        );
     }
 
     #[test]

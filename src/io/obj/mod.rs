@@ -1,4 +1,4 @@
-mod writer;
 mod reader;
-pub use writer::ObjWriter;
+mod writer;
 pub use reader::ObjReader;
+pub use writer::ObjWriter;

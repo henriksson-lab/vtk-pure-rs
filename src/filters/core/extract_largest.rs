@@ -11,7 +11,9 @@ pub fn extract_largest(input: &PolyData) -> PolyData {
 pub fn extract_n_largest(input: &PolyData, n: usize) -> Vec<PolyData> {
     let num = crate::filters::core::extract_component::num_components(input);
     let take = n.min(num);
-    (0..take).map(|i| crate::filters::core::extract_component::extract_component(input, i)).collect()
+    (0..take)
+        .map(|i| crate::filters::core::extract_component::extract_component(input, i))
+        .collect()
 }
 
 #[cfg(test)]

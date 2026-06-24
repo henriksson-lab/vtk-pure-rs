@@ -47,9 +47,10 @@ pub fn remap_range(input: &ImageData, scalars: &str, new_min: f64, new_max: f64)
         .collect();
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Remapped", values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Remapped", values, 1,
+        )));
     img
 }
 
@@ -60,9 +61,12 @@ mod tests {
     #[test]
     fn remap_0_100_to_0_1() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 25.0, 50.0, 75.0, 100.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 25.0, 50.0, 75.0, 100.0],
+                1,
+            )));
 
         let result = remap_range(&img, "val", 0.0, 1.0);
         let arr = result.point_data().get_array("Remapped").unwrap();
@@ -78,9 +82,12 @@ mod tests {
     #[test]
     fn remap_inverted_range() {
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 5.0, 10.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 5.0, 10.0],
+                1,
+            )));
 
         let result = remap_range(&img, "val", 10.0, 0.0);
         let arr = result.point_data().get_array("Remapped").unwrap();

@@ -19,9 +19,13 @@ pub fn hyper_tree_grid_threshold(
         None => {
             // No array — mark everything as passing
             let mask = vec![1.0f64; n_cells.max(htg.num_coarse_cells())];
-            result.cell_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec("ThresholdMask", mask, 1),
-            ));
+            result
+                .cell_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    "ThresholdMask",
+                    mask,
+                    1,
+                )));
             return result;
         }
     };
@@ -31,12 +35,20 @@ pub fn hyper_tree_grid_threshold(
     let mut buf = [0.0f64];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        mask.push(if buf[0] >= min_val && buf[0] <= max_val { 1.0 } else { 0.0 });
+        mask.push(if buf[0] >= min_val && buf[0] <= max_val {
+            1.0
+        } else {
+            0.0
+        });
     }
 
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ThresholdMask", mask, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ThresholdMask",
+            mask,
+            1,
+        )));
     result
 }
 
@@ -48,7 +60,9 @@ pub fn count_threshold_cells(htg: &HyperTreeGrid) -> usize {
             let mut buf = [0.0f64];
             for i in 0..arr.num_tuples() {
                 arr.tuple_as_f64(i, &mut buf);
-                if buf[0] > 0.5 { count += 1; }
+                if buf[0] > 0.5 {
+                    count += 1;
+                }
             }
             count
         }
@@ -65,9 +79,8 @@ mod tests {
         let mut htg = HyperTreeGrid::new([4, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         // Add cell data
         let vals: Vec<f64> = (0..16).map(|i| i as f64).collect();
-        htg.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("density", vals, 1),
-        ));
+        htg.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("density", vals, 1)));
 
         let result = hyper_tree_grid_threshold(&htg, "density", 5.0, 10.0);
         let count = count_threshold_cells(&result);

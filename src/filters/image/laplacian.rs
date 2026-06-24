@@ -75,9 +75,12 @@ pub fn image_laplacian(input: &ImageData, scalars: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Laplacian", laplacian, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Laplacian",
+            laplacian,
+            1,
+        )));
     img
 }
 
@@ -91,16 +94,19 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         img.set_spacing([1.0, 1.0, 1.0]);
         let values: Vec<f64> = (0..5).map(|i| (i as f64) * (i as f64)).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
 
         let result = image_laplacian(&img, "val");
         let arr = result.point_data().get_array("Laplacian").unwrap();
         // Interior point at index 2: d²/dx² of x² = 2
         let mut val = [0.0f64];
         arr.tuple_as_f64(2, &mut val);
-        assert!((val[0] - 2.0).abs() < 1e-10, "Laplacian of x^2 should be 2, got {}", val[0]);
+        assert!(
+            (val[0] - 2.0).abs() < 1e-10,
+            "Laplacian of x^2 should be 2, got {}",
+            val[0]
+        );
     }
 
     #[test]
@@ -114,9 +120,8 @@ mod tests {
                 values.push(i as f64);
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
 
         let result = image_laplacian(&img, "val");
         let arr = result.point_data().get_array("Laplacian").unwrap();
@@ -124,7 +129,11 @@ mod tests {
         let mut val = [0.0f64];
         let idx: usize = 2 * 5 + 2;
         arr.tuple_as_f64(idx, &mut val);
-        assert!(val[0].abs() < 1e-10, "Laplacian of linear field should be 0, got {}", val[0]);
+        assert!(
+            val[0].abs() < 1e-10,
+            "Laplacian of linear field should be 0, got {}",
+            val[0]
+        );
     }
 
     #[test]

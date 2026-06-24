@@ -1,9 +1,9 @@
 //! vtk-rs — a pure Rust visualization toolkit.
 
 // Always available
-pub mod types;
 pub mod data;
 pub mod filters;
+pub mod types;
 
 // I/O (feature-gated)
 #[cfg(feature = "io-common")]
@@ -20,12 +20,14 @@ pub mod render_wgpu;
 pub mod parallel;
 
 // Convenience re-exports (always available)
-pub use types::{Scalar, ScalarType, VtkError, BoundingBox, CellType};
-pub use data::{DataArray, AnyDataArray, CellArray, Points, FieldData, DataSetAttributes,
-    DataObject, DataSet, PolyData, ImageData, UnstructuredGrid, RectilinearGrid,
-    StructuredGrid, MultiBlockDataSet, Table, KdTree, Selection};
+pub use data::{
+    AnyDataArray, CellArray, DataArray, DataObject, DataSet, DataSetAttributes, FieldData,
+    ImageData, KdTree, MultiBlockDataSet, Points, PolyData, RectilinearGrid, Selection,
+    StructuredGrid, Table, UnstructuredGrid,
+};
+pub use types::{BoundingBox, CellType, Scalar, ScalarType, VtkError};
 
 pub mod prelude {
     pub use crate::data::prelude::*;
-    pub use crate::{VtkError, BoundingBox, CellType};
+    pub use crate::{BoundingBox, CellType, VtkError};
 }

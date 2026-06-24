@@ -75,9 +75,7 @@ pub fn morphological_skeleton(input: &ImageData, scalars: &str) -> ImageData {
     }
     // Add skeleton array
     new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-        "Skeleton",
-        skeleton,
-        1,
+        "Skeleton", skeleton, 1,
     )));
     *output.point_data_mut() = new_attrs;
     output
@@ -110,8 +108,7 @@ fn erode_3d(data: &[f64], nx: usize, ny: usize, nz: usize) -> Vec<f64> {
                                 all_set = false;
                                 break;
                             }
-                            let idx: usize =
-                                kk as usize * ny * nx + jj as usize * nx + ii as usize;
+                            let idx: usize = kk as usize * ny * nx + jj as usize * nx + ii as usize;
                             if data[idx] < 0.5 {
                                 all_set = false;
                                 break;
@@ -159,8 +156,7 @@ fn dilate_3d(data: &[f64], nx: usize, ny: usize, nz: usize) -> Vec<f64> {
                             if ii < 0 || ii >= nx as i64 {
                                 continue;
                             }
-                            let idx: usize =
-                                kk as usize * ny * nx + jj as usize * nx + ii as usize;
+                            let idx: usize = kk as usize * ny * nx + jj as usize * nx + ii as usize;
                             if data[idx] > 0.5 {
                                 any_set = true;
                                 break;
@@ -200,9 +196,8 @@ mod tests {
         for j in 1..6 {
             values[j * 7 + 3] = 1.0;
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Binary", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Binary", values, 1)));
         img
     }
 
@@ -232,9 +227,8 @@ mod tests {
         // A 5x5x1 filled block should have a skeleton at the center
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let values: Vec<f64> = vec![1.0; 25];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
         let result = morphological_skeleton(&img, "mask");
         let skel = result.point_data().get_array("Skeleton").unwrap();
         // The center pixel (2,2) should be in the skeleton
@@ -247,9 +241,8 @@ mod tests {
     fn empty_image_produces_empty_skeleton() {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let values: Vec<f64> = vec![0.0; 25];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
         let result = morphological_skeleton(&img, "mask");
         let skel = result.point_data().get_array("Skeleton").unwrap();
         let mut buf: [f64; 1] = [0.0];

@@ -4,11 +4,7 @@ use crate::data::{CellArray, Points, PolyData};
 ///
 /// Returns a PolyData containing line cells where the mesh intersects the plane.
 /// The plane is defined by a point on the plane and the plane normal.
-pub fn slice_by_plane(
-    input: &PolyData,
-    origin: [f64; 3],
-    normal: [f64; 3],
-) -> PolyData {
+pub fn slice_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
     let nc = input.polys.num_cells();
     if nc == 0 {
         return PolyData::new();
@@ -23,9 +19,7 @@ pub fn slice_by_plane(
     let mut dists = Vec::with_capacity(np);
     for i in 0..np {
         let b = i * 3;
-        dists.push(
-            (pts[b] - ox) * nx + (pts[b + 1] - oy) * ny + (pts[b + 2] - oz) * nz,
-        );
+        dists.push((pts[b] - ox) * nx + (pts[b + 1] - oy) * ny + (pts[b + 2] - oz) * nz);
     }
 
     // Pre-sized flat buffers for output
@@ -42,11 +36,17 @@ pub fn slice_by_plane(
         let end = offsets[ci + 1] as usize;
         let cell = &conn[start..end];
         let n = cell.len();
-        if n < 3 { continue; }
+        if n < 3 {
+            continue;
+        }
 
         // Find edge crossings using flat point access
-        let mut c0x = 0.0f64; let mut c0y = 0.0f64; let mut c0z = 0.0f64;
-        let mut c1x = 0.0f64; let mut c1y = 0.0f64; let mut c1z = 0.0f64;
+        let mut c0x = 0.0f64;
+        let mut c0y = 0.0f64;
+        let mut c0z = 0.0f64;
+        let mut c1x = 0.0f64;
+        let mut c1y = 0.0f64;
+        let mut c1z = 0.0f64;
         let mut num_crossings = 0u32;
 
         for i in 0..n {
@@ -60,23 +60,31 @@ pub fn slice_by_plane(
                 let t = di / (di - dj);
                 let bi = ai * 3;
                 let bj = aj * 3;
-                let px = pts[bi]     + t * (pts[bj]     - pts[bi]);
+                let px = pts[bi] + t * (pts[bj] - pts[bi]);
                 let py = pts[bi + 1] + t * (pts[bj + 1] - pts[bi + 1]);
                 let pz = pts[bi + 2] + t * (pts[bj + 2] - pts[bi + 2]);
                 if num_crossings == 0 {
-                    c0x = px; c0y = py; c0z = pz;
+                    c0x = px;
+                    c0y = py;
+                    c0z = pz;
                     num_crossings = 1;
                 } else if num_crossings == 1 {
-                    c1x = px; c1y = py; c1z = pz;
+                    c1x = px;
+                    c1y = py;
+                    c1z = pz;
                     num_crossings = 2;
                 }
             } else if di.abs() < 1e-10 && dj.abs() >= 1e-10 {
                 let bi = ai * 3;
                 if num_crossings == 0 {
-                    c0x = pts[bi]; c0y = pts[bi+1]; c0z = pts[bi+2];
+                    c0x = pts[bi];
+                    c0y = pts[bi + 1];
+                    c0z = pts[bi + 2];
                     num_crossings = 1;
                 } else if num_crossings == 1 {
-                    c1x = pts[bi]; c1y = pts[bi+1]; c1z = pts[bi+2];
+                    c1x = pts[bi];
+                    c1y = pts[bi + 1];
+                    c1z = pts[bi + 2];
                     num_crossings = 2;
                 }
             }
@@ -84,8 +92,12 @@ pub fn slice_by_plane(
 
         if num_crossings == 2 {
             let idx = (pts_flat.len() / 3) as i64;
-            pts_flat.push(c0x); pts_flat.push(c0y); pts_flat.push(c0z);
-            pts_flat.push(c1x); pts_flat.push(c1y); pts_flat.push(c1z);
+            pts_flat.push(c0x);
+            pts_flat.push(c0y);
+            pts_flat.push(c0z);
+            pts_flat.push(c1x);
+            pts_flat.push(c1y);
+            pts_flat.push(c1z);
             line_conn.push(idx);
             line_conn.push(idx + 1);
             line_off.push(line_conn.len() as i64);
@@ -131,8 +143,12 @@ mod tests {
     fn slice_multiple_triangles() {
         let pd = PolyData::from_triangles(
             vec![
-                [-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, -1.0, 1.0],
-                [-1.0, 1.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 1.0],
+                [-1.0, -1.0, 0.0],
+                [1.0, -1.0, 0.0],
+                [0.0, -1.0, 1.0],
+                [-1.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );

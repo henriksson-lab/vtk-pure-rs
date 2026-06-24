@@ -37,10 +37,16 @@ impl GlbReader {
 
         while offset + 8 <= data.len() {
             let chunk_len = u32::from_le_bytes([
-                data[offset], data[offset + 1], data[offset + 2], data[offset + 3],
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
             ]) as usize;
             let chunk_type = u32::from_le_bytes([
-                data[offset + 4], data[offset + 5], data[offset + 6], data[offset + 7],
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
             ]);
             let chunk_start = offset + 8;
             let chunk_end = (chunk_start + chunk_len).min(data.len());
@@ -121,17 +127,23 @@ fn parse_gltf_json(json: &str, bin: &[u8]) -> Result<PolyData, VtkError> {
     let indices: Vec<u32> = match idx_comp_type {
         5123 => {
             // UInt16
-            idx_bytes.chunks_exact(2)
+            idx_bytes
+                .chunks_exact(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]]) as u32)
                 .collect()
         }
         5125 => {
             // UInt32
-            idx_bytes.chunks_exact(4)
+            idx_bytes
+                .chunks_exact(4)
                 .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect()
         }
-        _ => return Err(VtkError::Parse(format!("unsupported index type: {idx_comp_type}"))),
+        _ => {
+            return Err(VtkError::Parse(format!(
+                "unsupported index type: {idx_comp_type}"
+            )))
+        }
     };
 
     // Build polys (triangles)
@@ -150,10 +162,12 @@ fn parse_gltf_json(json: &str, bin: &[u8]) -> Result<PolyData, VtkError> {
 
 fn extract_json_array(json: &str, key: &str) -> Result<String, VtkError> {
     let pattern = format!("\"{}\"", key);
-    let pos = json.find(&pattern)
+    let pos = json
+        .find(&pattern)
         .ok_or_else(|| VtkError::Parse(format!("key '{key}' not found")))?;
     let after = &json[pos + pattern.len()..];
-    let colon = after.find(':')
+    let colon = after
+        .find(':')
         .ok_or_else(|| VtkError::Parse("expected colon".into()))?;
     let after_colon = after[colon + 1..].trim_start();
     if !after_colon.starts_with('[') {
@@ -164,10 +178,12 @@ fn extract_json_array(json: &str, key: &str) -> Result<String, VtkError> {
 
 fn extract_json_object(json: &str, key: &str) -> Result<String, VtkError> {
     let pattern = format!("\"{}\"", key);
-    let pos = json.find(&pattern)
+    let pos = json
+        .find(&pattern)
         .ok_or_else(|| VtkError::Parse(format!("key '{key}' not found")))?;
     let after = &json[pos + pattern.len()..];
-    let colon = after.find(':')
+    let colon = after
+        .find(':')
         .ok_or_else(|| VtkError::Parse("expected colon".into()))?;
     let after_colon = after[colon + 1..].trim_start();
     if after_colon.starts_with('{') {
@@ -192,7 +208,9 @@ fn extract_balanced(s: &str, open: char, close: char) -> Result<String, VtkError
     let mut start = None;
     for (i, c) in s.char_indices() {
         if c == open {
-            if depth == 0 { start = Some(i); }
+            if depth == 0 {
+                start = Some(i);
+            }
             depth += 1;
         } else if c == close {
             depth -= 1;
@@ -217,7 +235,9 @@ fn nth_json_object(array: &str, n: usize) -> Result<String, VtkError> {
     for (i, c) in inner.char_indices() {
         match c {
             '{' | '[' => {
-                if depth == 0 { start = Some(i); }
+                if depth == 0 {
+                    start = Some(i);
+                }
                 depth += 1;
             }
             '}' | ']' => {
@@ -232,7 +252,9 @@ fn nth_json_object(array: &str, n: usize) -> Result<String, VtkError> {
             _ => {}
         }
     }
-    Err(VtkError::Parse(format!("object index {n} not found in array")))
+    Err(VtkError::Parse(format!(
+        "object index {n} not found in array"
+    )))
 }
 
 #[cfg(test)]
@@ -262,8 +284,10 @@ mod tests {
     fn roundtrip_quad_mesh() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [0, 2, 3]],
         );

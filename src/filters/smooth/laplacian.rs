@@ -36,24 +36,35 @@ pub fn image_laplacian(input: &ImageData, scalars: &str) -> ImageData {
         for j in 0..ny {
             for i in 0..nx {
                 let c = values[idx(i, j, k)];
-                let im = if i > 0 { values[idx(i-1,j,k)] } else { c };
-                let ip = if i+1 < nx { values[idx(i+1,j,k)] } else { c };
-                let jm = if j > 0 { values[idx(i,j-1,k)] } else { c };
-                let jp = if j+1 < ny { values[idx(i,j+1,k)] } else { c };
-                let km = if k > 0 { values[idx(i,j,k-1)] } else { c };
-                let kp = if k+1 < nz { values[idx(i,j,k+1)] } else { c };
+                let im = if i > 0 { values[idx(i - 1, j, k)] } else { c };
+                let ip = if i + 1 < nx {
+                    values[idx(i + 1, j, k)]
+                } else {
+                    c
+                };
+                let jm = if j > 0 { values[idx(i, j - 1, k)] } else { c };
+                let jp = if j + 1 < ny {
+                    values[idx(i, j + 1, k)]
+                } else {
+                    c
+                };
+                let km = if k > 0 { values[idx(i, j, k - 1)] } else { c };
+                let kp = if k + 1 < nz {
+                    values[idx(i, j, k + 1)]
+                } else {
+                    c
+                };
 
-                lapl[idx(i,j,k)] = (ip - 2.0*c + im)/hx2
-                    + (jp - 2.0*c + jm)/hy2
-                    + (kp - 2.0*c + km)/hz2;
+                lapl[idx(i, j, k)] = (ip - 2.0 * c + im) / hx2
+                    + (jp - 2.0 * c + jm) / hy2
+                    + (kp - 2.0 * c + km) / hz2;
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Laplacian", lapl, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Laplacian", lapl, 1)));
     img
 }
 
@@ -67,9 +78,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         img.set_spacing([1.0, 1.0, 1.0]);
         let values: Vec<f64> = (0..5).map(|i| (i as f64) * (i as f64)).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("f", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("f", values, 1)));
 
         let result = image_laplacian(&img, "f");
         let arr = result.point_data().get_array("Laplacian").unwrap();
@@ -82,9 +92,12 @@ mod tests {
     #[test]
     fn constant_field_zero() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("f", vec![5.0; 27], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "f",
+                vec![5.0; 27],
+                1,
+            )));
 
         let result = image_laplacian(&img, "f");
         let arr = result.point_data().get_array("Laplacian").unwrap();

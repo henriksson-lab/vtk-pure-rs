@@ -1,5 +1,5 @@
-use std::collections::BinaryHeap;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
@@ -38,7 +38,10 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
 
     let mut heap: BinaryHeap<DijkstraNode> = BinaryHeap::new();
     if source_vertex < n {
-        heap.push(DijkstraNode { cost: 0.0, vertex: source_vertex });
+        heap.push(DijkstraNode {
+            cost: 0.0,
+            vertex: source_vertex,
+        });
     }
 
     while let Some(DijkstraNode { cost, vertex }) = heap.pop() {
@@ -49,15 +52,22 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
             let new_cost: f64 = cost + weight;
             if new_cost < distances[neighbor] {
                 distances[neighbor] = new_cost;
-                heap.push(DijkstraNode { cost: new_cost, vertex: neighbor });
+                heap.push(DijkstraNode {
+                    cost: new_cost,
+                    vertex: neighbor,
+                });
             }
         }
     }
 
     let mut output = input.clone();
-    output.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GeodesicDistance", distances, 1),
-    ));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GeodesicDistance",
+            distances,
+            1,
+        )));
     output
 }
 
@@ -84,7 +94,10 @@ impl PartialOrd for DijkstraNode {
 impl Ord for DijkstraNode {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reverse ordering for min-heap behavior
-        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 

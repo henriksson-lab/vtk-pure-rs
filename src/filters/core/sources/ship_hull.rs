@@ -1,8 +1,15 @@
 //! Simplified ship hull shape.
 use crate::data::{CellArray, Points, PolyData};
 
-pub fn ship_hull(length: f64, beam: f64, draft: f64, n_sections: usize, n_waterline: usize) -> PolyData {
-    let ns = n_sections.max(6); let nw = n_waterline.max(4);
+pub fn ship_hull(
+    length: f64,
+    beam: f64,
+    draft: f64,
+    n_sections: usize,
+    n_waterline: usize,
+) -> PolyData {
+    let ns = n_sections.max(6);
+    let nw = n_waterline.max(4);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     for s in 0..=ns {
@@ -23,9 +30,9 @@ pub fn ship_hull(length: f64, beam: f64, draft: f64, n_sections: usize, n_waterl
     for s in 0..ns {
         for w in 0..nw {
             let i0 = s * stride + w;
-            let i1 = (s+1) * stride + w;
-            polys.push_cell(&[i0 as i64, i1 as i64, (i1+1) as i64]);
-            polys.push_cell(&[i0 as i64, (i1+1) as i64, (i0+1) as i64]);
+            let i1 = (s + 1) * stride + w;
+            polys.push_cell(&[i0 as i64, i1 as i64, (i1 + 1) as i64]);
+            polys.push_cell(&[i0 as i64, (i1 + 1) as i64, (i0 + 1) as i64]);
         }
     }
     // Mirror for port side
@@ -36,7 +43,10 @@ pub fn ship_hull(length: f64, beam: f64, draft: f64, n_sections: usize, n_waterl
             pts.push([p[0], -p[1], p[2]]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

@@ -84,9 +84,12 @@ impl ImplicitBox {
     pub fn from_center_size(center: [f64; 3], size: [f64; 3]) -> Self {
         Self {
             bounds: [
-                center[0] - size[0] / 2.0, center[0] + size[0] / 2.0,
-                center[1] - size[1] / 2.0, center[1] + size[1] / 2.0,
-                center[2] - size[2] / 2.0, center[2] + size[2] / 2.0,
+                center[0] - size[0] / 2.0,
+                center[0] + size[0] / 2.0,
+                center[1] - size[1] / 2.0,
+                center[1] + size[1] / 2.0,
+                center[2] - size[2] / 2.0,
+                center[2] + size[2] / 2.0,
             ],
         }
     }

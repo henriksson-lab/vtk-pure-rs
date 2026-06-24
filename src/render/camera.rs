@@ -77,7 +77,10 @@ impl Camera {
         // Current spherical angles
         let theta = offset.z.atan2(offset.x) + azimuth_deg.to_radians();
         let phi = (offset.y / distance).asin() + elevation_deg.to_radians();
-        let phi = phi.clamp(-std::f64::consts::FRAC_PI_2 + 0.01, std::f64::consts::FRAC_PI_2 - 0.01);
+        let phi = phi.clamp(
+            -std::f64::consts::FRAC_PI_2 + 0.01,
+            std::f64::consts::FRAC_PI_2 - 0.01,
+        );
 
         self.position = self.focal_point
             + DVec3::new(
@@ -91,7 +94,13 @@ impl Camera {
     ///
     /// `screen_x` and `screen_y` are pixel coordinates (origin top-left).
     /// Returns `(ray_origin, ray_direction)` in world space.
-    pub fn unproject(&self, screen_x: f64, screen_y: f64, width: u32, height: u32) -> (DVec3, DVec3) {
+    pub fn unproject(
+        &self,
+        screen_x: f64,
+        screen_y: f64,
+        width: u32,
+        height: u32,
+    ) -> (DVec3, DVec3) {
         let aspect = width as f64 / height as f64;
         let view = self.view_matrix();
         let proj = self.projection_matrix(aspect);
@@ -201,10 +210,17 @@ impl Camera {
 
 impl std::fmt::Display for Camera {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Camera: pos=[{:.1},{:.1},{:.1}], focal=[{:.1},{:.1},{:.1}], fov={:.0}°",
-            self.position.x, self.position.y, self.position.z,
-            self.focal_point.x, self.focal_point.y, self.focal_point.z,
-            self.fov)
+        write!(
+            f,
+            "Camera: pos=[{:.1},{:.1},{:.1}], focal=[{:.1},{:.1},{:.1}], fov={:.0}°",
+            self.position.x,
+            self.position.y,
+            self.position.z,
+            self.focal_point.x,
+            self.focal_point.y,
+            self.focal_point.z,
+            self.fov
+        )
     }
 }
 
@@ -308,7 +324,10 @@ mod tests {
         let u = c.up();
         let d = c.direction();
         assert!(r.dot(u).abs() < 1e-10, "right and up should be orthogonal");
-        assert!(r.dot(d).abs() < 1e-10, "right and direction should be orthogonal");
+        assert!(
+            r.dot(d).abs() < 1e-10,
+            "right and direction should be orthogonal"
+        );
     }
 
     #[test]
@@ -316,7 +335,10 @@ mod tests {
         let c = Camera::default();
         let (_, dir) = c.unproject(400.0, 300.0, 800, 600);
         let cam_dir = c.direction();
-        assert!(dir.dot(cam_dir) > 0.99, "center ray should align with camera");
+        assert!(
+            dir.dot(cam_dir) > 0.99,
+            "center ray should align with camera"
+        );
     }
 
     #[test]

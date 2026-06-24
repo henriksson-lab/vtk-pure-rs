@@ -43,7 +43,11 @@ pub fn clip_by_cylinder(
     for cell in input.polys.iter() {
         let all_match = cell.iter().all(|&id| {
             let flag = inside[id as usize];
-            if keep_inside { flag } else { !flag }
+            if keep_inside {
+                flag
+            } else {
+                !flag
+            }
         });
         if !all_match {
             continue;

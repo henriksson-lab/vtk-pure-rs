@@ -108,11 +108,14 @@ mod tests {
             vec![[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let result = reflect(&pd, &ReflectParams {
-            plane: ReflectPlane::X,
-            center: 0.0,
-            copy_input: true,
-        });
+        let result = reflect(
+            &pd,
+            &ReflectParams {
+                plane: ReflectPlane::X,
+                center: 0.0,
+                copy_input: true,
+            },
+        );
         // 3 original + 3 reflected points
         assert_eq!(result.points.len(), 6);
         assert_eq!(result.polys.num_cells(), 2);
@@ -127,11 +130,14 @@ mod tests {
             vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
             vec![[0, 1, 2]],
         );
-        let result = reflect(&pd, &ReflectParams {
-            plane: ReflectPlane::Y,
-            center: 5.0,
-            copy_input: false,
-        });
+        let result = reflect(
+            &pd,
+            &ReflectParams {
+                plane: ReflectPlane::Y,
+                center: 5.0,
+                copy_input: false,
+            },
+        );
         assert_eq!(result.points.len(), 3);
         assert_eq!(result.polys.num_cells(), 1);
         // Y of point 0: 2*5.0 - 2.0 = 8.0
@@ -145,11 +151,14 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let result = reflect(&pd, &ReflectParams {
-            plane: ReflectPlane::Z,
-            center: 0.0,
-            copy_input: false,
-        });
+        let result = reflect(
+            &pd,
+            &ReflectParams {
+                plane: ReflectPlane::Z,
+                center: 0.0,
+                copy_input: false,
+            },
+        );
         // Reversed winding: [2, 1, 0]
         let cell = result.polys.cell(0);
         assert_eq!(cell, &[2, 1, 0]);

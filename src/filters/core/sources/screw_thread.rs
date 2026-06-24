@@ -3,7 +3,13 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create a screw thread (helical groove on a cylinder).
-pub fn screw_thread(shaft_radius: f64, thread_height: f64, pitch: f64, length: f64, resolution: usize) -> PolyData {
+pub fn screw_thread(
+    shaft_radius: f64,
+    thread_height: f64,
+    pitch: f64,
+    length: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(8);
     let turns = length / pitch;
     let total_steps = (res as f64 * turns).ceil() as usize;
@@ -35,7 +41,9 @@ pub fn screw_thread(shaft_radius: f64, thread_height: f64, pitch: f64, length: f
     }
 
     let mut result = PolyData::new();
-    result.points = pts; result.polys = polys; result
+    result.points = pts;
+    result.polys = polys;
+    result
 }
 
 #[cfg(test)]

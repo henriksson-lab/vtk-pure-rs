@@ -40,9 +40,8 @@ pub fn compute_face_areas(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("FaceArea", areas, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("FaceArea", areas, 1)));
     pd
 }
 

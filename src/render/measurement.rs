@@ -28,7 +28,9 @@ pub fn measure(pd: &PolyData) -> MeshMeasurements {
     let mut max_edge = 0.0f64;
 
     for cell in pd.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
 
         // Triangle fan area
         let p0 = pd.points.get(cell[0] as usize);
@@ -64,7 +66,11 @@ pub fn measure(pd: &PolyData) -> MeshMeasurements {
     }
 
     let num_edges = edges.len();
-    let avg = if num_edges > 0 { total_edge_len / num_edges as f64 } else { 0.0 };
+    let avg = if num_edges > 0 {
+        total_edge_len / num_edges as f64
+    } else {
+        0.0
+    };
     let bb = pd.points.bounds();
 
     MeshMeasurements {
@@ -93,7 +99,9 @@ pub fn angle_at_vertex(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     let dot = ba[0] * bc[0] + ba[1] * bc[1] + ba[2] * bc[2];
     let mag_ba = (ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]).sqrt();
     let mag_bc = (bc[0] * bc[0] + bc[1] * bc[1] + bc[2] * bc[2]).sqrt();
-    if mag_ba < 1e-15 || mag_bc < 1e-15 { return 0.0; }
+    if mag_ba < 1e-15 || mag_bc < 1e-15 {
+        return 0.0;
+    }
     let cos_angle = (dot / (mag_ba * mag_bc)).clamp(-1.0, 1.0);
     cos_angle.acos().to_degrees()
 }
@@ -110,10 +118,16 @@ pub fn triangle_area(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
 
 impl std::fmt::Display for MeshMeasurements {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "area={:.4}, edges={} (len: {:.4}..{:.4}, avg={:.4}), diag={:.4}",
-            self.surface_area, self.num_edges,
-            self.min_edge_length, self.max_edge_length, self.avg_edge_length,
-            self.diagonal)
+        write!(
+            f,
+            "area={:.4}, edges={} (len: {:.4}..{:.4}, avg={:.4}), diag={:.4}",
+            self.surface_area,
+            self.num_edges,
+            self.min_edge_length,
+            self.max_edge_length,
+            self.avg_edge_length,
+            self.diagonal
+        )
     }
 }
 

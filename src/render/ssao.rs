@@ -28,7 +28,10 @@ impl Default for SsaoConfig {
 impl SsaoConfig {
     /// Create enabled SSAO with default settings.
     pub fn new() -> Self {
-        Self { enabled: true, ..Default::default() }
+        Self {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     pub fn with_radius(mut self, radius: f32) -> Self {
@@ -59,7 +62,10 @@ mod tests {
 
     #[test]
     fn enabled_builder() {
-        let c = SsaoConfig::new().with_radius(1.0).with_intensity(0.5).with_samples(32);
+        let c = SsaoConfig::new()
+            .with_radius(1.0)
+            .with_intensity(0.5)
+            .with_samples(32);
         assert!(c.enabled);
         assert_eq!(c.radius, 1.0);
         assert_eq!(c.num_samples, 32);

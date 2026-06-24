@@ -40,13 +40,21 @@ pub fn obb_dicer(input: &PolyData, max_cells: usize) -> PolyData {
     let mut region_ids = vec![0i32; num_cells];
     let indices: Vec<usize> = (0..num_cells).collect();
     let mut next_region = 0i32;
-    recursive_split(&centroids, &indices, max_cells, &mut region_ids, &mut next_region);
+    recursive_split(
+        &centroids,
+        &indices,
+        max_cells,
+        &mut region_ids,
+        &mut next_region,
+    );
 
     let region_f64: Vec<f64> = region_ids.iter().map(|&r| r as f64).collect();
     let mut output = input.clone();
-    output.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("RegionId", region_f64, 1),
-    ));
+    output
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "RegionId", region_f64, 1,
+        )));
     output
 }
 

@@ -38,11 +38,7 @@ pub fn generic_cutter(block: &Block, origin: [f64; 3], normal: [f64; 3]) -> Poly
 }
 
 /// Place glyphs at points of any dataset, returning PolyData.
-pub fn generic_glyph(
-    block: &Block,
-    glyph: &PolyData,
-    scale_factor: f64,
-) -> PolyData {
+pub fn generic_glyph(block: &Block, glyph: &PolyData, scale_factor: f64) -> PolyData {
     let pd = block_to_poly_data(block);
     crate::filters::core::glyph::glyph(&pd, glyph, scale_factor, false)
 }
@@ -51,10 +47,18 @@ fn block_to_poly_data(block: &Block) -> PolyData {
     match block {
         Block::PolyData(pd) => pd.clone(),
         Block::ImageData(id) => crate::filters::core::convert::image_data_surface_to_poly_data(id),
-        Block::UnstructuredGrid(ug) => crate::filters::core::convert::unstructured_grid_to_poly_data(ug),
-        Block::RectilinearGrid(rg) => crate::filters::core::convert::rectilinear_grid_to_poly_data(rg),
-        Block::StructuredGrid(sg) => crate::filters::core::convert::structured_grid_to_poly_data(sg),
-        Block::MultiBlock(mb) => crate::filters::core::extract_geometry::extract_geometry_multi_block(mb),
+        Block::UnstructuredGrid(ug) => {
+            crate::filters::core::convert::unstructured_grid_to_poly_data(ug)
+        }
+        Block::RectilinearGrid(rg) => {
+            crate::filters::core::convert::rectilinear_grid_to_poly_data(rg)
+        }
+        Block::StructuredGrid(sg) => {
+            crate::filters::core::convert::structured_grid_to_poly_data(sg)
+        }
+        Block::MultiBlock(mb) => {
+            crate::filters::core::extract_geometry::extract_geometry_multi_block(mb)
+        }
     }
 }
 
@@ -70,7 +74,11 @@ pub fn clip_image_data(id: &ImageData, origin: [f64; 3], normal: [f64; 3]) -> Po
 }
 
 /// Convenience: slice an UnstructuredGrid
-pub fn slice_unstructured_grid(ug: &UnstructuredGrid, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
+pub fn slice_unstructured_grid(
+    ug: &UnstructuredGrid,
+    origin: [f64; 3],
+    normal: [f64; 3],
+) -> PolyData {
     let pd = crate::filters::core::convert::unstructured_grid_to_poly_data(ug);
     crate::filters::core::slice::slice_by_plane(&pd, origin, normal)
 }
@@ -82,46 +90,37 @@ mod tests {
     #[test]
     fn generic_clip_poly_data() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[2.0,0.0,0.0],[1.0,2.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 2.0, 0.0]],
+            vec![[0, 1, 2]],
         );
-        let result = generic_clip(
-            &Block::PolyData(pd),
-            [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        );
+        let result = generic_clip(&Block::PolyData(pd), [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         assert!(result.points.len() > 0);
     }
 
     #[test]
     fn generic_clip_image() {
         let img = ImageData::with_dimensions(5, 5, 5);
-        let result = generic_clip(
-            &Block::ImageData(img),
-            [2.0, 2.0, 2.0], [1.0, 0.0, 0.0],
-        );
+        let result = generic_clip(&Block::ImageData(img), [2.0, 2.0, 2.0], [1.0, 0.0, 0.0]);
         assert!(result.points.len() > 0);
     }
 
     #[test]
     fn generic_cutter_test() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[2.0,0.0,0.0],[1.0,2.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 2.0, 0.0]],
+            vec![[0, 1, 2]],
         );
-        let result = generic_cutter(
-            &Block::PolyData(pd),
-            [1.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-        );
+        let result = generic_cutter(&Block::PolyData(pd), [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         // Slice may or may not produce lines depending on plane intersection
         assert!(result.points.len() >= 0);
     }
 
     #[test]
     fn generic_glyph_test() {
-        let pd = PolyData::from_points(vec![[0.0,0.0,0.0],[2.0,0.0,0.0]]);
+        let pd = PolyData::from_points(vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
         let glyph = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[0.1,0.0,0.0],[0.0,0.1,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.0, 0.1, 0.0]],
+            vec![[0, 1, 2]],
         );
         let result = generic_glyph(&Block::PolyData(pd), &glyph, 1.0);
         assert!(result.points.len() >= 6); // 2 copies of 3-vertex glyph

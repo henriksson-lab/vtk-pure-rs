@@ -35,7 +35,11 @@ pub fn image_scale(input: &ImageData, scalars: &str, factor: f64) -> ImageData {
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -45,9 +49,14 @@ pub fn image_scale(input: &ImageData, scalars: &str, factor: f64) -> ImageData {
 }
 
 fn image_binary_op<F>(
-    a: &ImageData, b: &ImageData, scalars: &str, output_name: &str, op: F,
+    a: &ImageData,
+    b: &ImageData,
+    scalars: &str,
+    output_name: &str,
+    op: F,
 ) -> ImageData
-where F: Fn(f64, f64) -> f64
+where
+    F: Fn(f64, f64) -> f64,
 {
     let arr_a = match a.point_data().get_array(scalars) {
         Some(x) => x,
@@ -69,9 +78,12 @@ where F: Fn(f64, f64) -> f64
     }
 
     let mut img = a.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(output_name, values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            output_name,
+            values,
+            1,
+        )));
     img
 }
 
@@ -82,9 +94,8 @@ mod tests {
     fn make_img(vals: Vec<f64>) -> ImageData {
         let n = vals.len();
         let mut img = ImageData::with_dimensions(n, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vals, 1)));
         img
     }
 
@@ -95,8 +106,10 @@ mod tests {
         let result = image_add(&a, &b, "v", "sum");
         let arr = result.point_data().get_array("sum").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 11.0);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 33.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 11.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 33.0);
     }
 
     #[test]
@@ -106,7 +119,8 @@ mod tests {
         let result = image_subtract(&a, &b, "v", "diff");
         let arr = result.point_data().get_array("diff").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 7.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 7.0);
     }
 
     #[test]
@@ -115,7 +129,8 @@ mod tests {
         let result = image_scale(&img, "v", 0.5);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 2.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 2.0);
     }
 
     #[test]
@@ -125,7 +140,9 @@ mod tests {
         let result = image_multiply(&a, &b, "v", "prod");
         let arr = result.point_data().get_array("prod").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 10.0);
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 21.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 10.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 21.0);
     }
 }

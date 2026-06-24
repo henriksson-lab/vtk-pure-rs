@@ -1,5 +1,5 @@
-use std::collections::{BinaryHeap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashSet};
 
 use crate::data::{CellArray, Points, PolyData};
 
@@ -59,8 +59,11 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
             if edges_seen.insert(edge) {
                 let cost = edge_cost(&quadrics[a], &quadrics[b], points[a], points[b]);
                 heap.push(EdgeCollapse {
-                    cost: -cost, v0: edge.0, v1: edge.1,
-                    ver0: version[edge.0], ver1: version[edge.1],
+                    cost: -cost,
+                    v0: edge.0,
+                    v1: edge.1,
+                    ver0: version[edge.0],
+                    ver1: version[edge.1],
                 });
             }
         }
@@ -90,12 +93,16 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
         let b_tris: Vec<usize> = vert_tris[b].iter().copied().collect();
 
         for &ti in &b_tris {
-            if !tri_alive[ti] { continue; }
+            if !tri_alive[ti] {
+                continue;
+            }
             let tri = &mut triangles[ti];
 
             // Replace b with a in this triangle
             for v in tri.iter_mut() {
-                if *v == b { *v = a; }
+                if *v == b {
+                    *v = a;
+                }
             }
 
             // Check degenerate (two vertices the same)
@@ -116,7 +123,9 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
         // Re-insert edges touching a with fresh costs
         let mut new_edges = HashSet::new();
         for &ti in &vert_tris[a] {
-            if !tri_alive[ti] { continue; }
+            if !tri_alive[ti] {
+                continue;
+            }
             let tri = triangles[ti];
             for &v in &tri {
                 if v != a {
@@ -124,15 +133,20 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
                     if new_edges.insert(edge) {
                         let cost = edge_cost(&quadrics[a], &quadrics[v], points[a], points[v]);
                         heap.push(EdgeCollapse {
-                            cost: -cost, v0: edge.0, v1: edge.1,
-                            ver0: version[edge.0], ver1: version[edge.1],
+                            cost: -cost,
+                            v0: edge.0,
+                            v1: edge.1,
+                            ver0: version[edge.0],
+                            ver1: version[edge.1],
                         });
                     }
                 }
             }
         }
 
-        if live_count <= target_cells { break; }
+        if live_count <= target_cells {
+            break;
+        }
     }
 
     // Build output: compact points and triangles
@@ -141,7 +155,9 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
     let mut out_polys = CellArray::new();
 
     for (ti, tri) in triangles.iter().enumerate() {
-        if !tri_alive[ti] { continue; }
+        if !tri_alive[ti] {
+            continue;
+        }
         for &v in tri {
             if point_map[v] == usize::MAX {
                 point_map[v] = out_points.len();
@@ -171,45 +187,83 @@ struct EdgeCollapse {
 }
 
 impl PartialEq for EdgeCollapse {
-    fn eq(&self, other: &Self) -> bool { self.cost == other.cost }
+    fn eq(&self, other: &Self) -> bool {
+        self.cost == other.cost
+    }
 }
 impl Eq for EdgeCollapse {}
 impl PartialOrd for EdgeCollapse {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 impl Ord for EdgeCollapse {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.cost.partial_cmp(&other.cost).unwrap_or(Ordering::Equal)
+        self.cost
+            .partial_cmp(&other.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 
 fn triangle_quadric(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3]) -> [f64; 10] {
-    let e1 = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]];
-    let e2 = [p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]];
-    let n = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-    let len = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
-    if len < 1e-10 { return [0.0; 10]; }
-    let (a, b, c) = (n[0]/len, n[1]/len, n[2]/len);
-    let d = -(a*p0[0] + b*p0[1] + c*p0[2]);
-    [a*a, a*b, a*c, a*d, b*b, b*c, b*d, c*c, c*d, d*d]
+    let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    let n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len < 1e-10 {
+        return [0.0; 10];
+    }
+    let (a, b, c) = (n[0] / len, n[1] / len, n[2] / len);
+    let d = -(a * p0[0] + b * p0[1] + c * p0[2]);
+    [
+        a * a,
+        a * b,
+        a * c,
+        a * d,
+        b * b,
+        b * c,
+        b * d,
+        c * c,
+        c * d,
+        d * d,
+    ]
 }
 
 fn add_quadric(a: &mut [f64; 10], b: &[f64; 10]) {
-    for i in 0..10 { a[i] += b[i]; }
+    for i in 0..10 {
+        a[i] += b[i];
+    }
 }
 
 fn edge_cost(q0: &[f64; 10], q1: &[f64; 10], p0: [f64; 3], p1: [f64; 3]) -> f64 {
     let mut q = [0.0; 10];
-    for i in 0..10 { q[i] = q0[i] + q1[i]; }
+    for i in 0..10 {
+        q[i] = q0[i] + q1[i];
+    }
     let mp = midpoint(p0, p1);
     let (x, y, z) = (mp[0], mp[1], mp[2]);
-    q[0]*x*x + 2.0*q[1]*x*y + 2.0*q[2]*x*z + 2.0*q[3]*x
-    + q[4]*y*y + 2.0*q[5]*y*z + 2.0*q[6]*y
-    + q[7]*z*z + 2.0*q[8]*z + q[9]
+    q[0] * x * x
+        + 2.0 * q[1] * x * y
+        + 2.0 * q[2] * x * z
+        + 2.0 * q[3] * x
+        + q[4] * y * y
+        + 2.0 * q[5] * y * z
+        + 2.0 * q[6] * y
+        + q[7] * z * z
+        + 2.0 * q[8] * z
+        + q[9]
 }
 
 fn midpoint(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [(a[0]+b[0])*0.5, (a[1]+b[1])*0.5, (a[2]+b[2])*0.5]
+    [
+        (a[0] + b[0]) * 0.5,
+        (a[1] + b[1]) * 0.5,
+        (a[2] + b[2]) * 0.5,
+    ]
 }
 
 #[cfg(test)]
@@ -220,7 +274,9 @@ mod tests {
     #[test]
     fn decimate_sphere() {
         let sphere = sources::sphere::sphere(&sources::sphere::SphereParams {
-            theta_resolution: 16, phi_resolution: 16, ..Default::default()
+            theta_resolution: 16,
+            phi_resolution: 16,
+            ..Default::default()
         });
         let tri = crate::filters::geometry::triangulate::triangulate(&sphere);
         let original = tri.polys.num_cells();
@@ -232,7 +288,7 @@ mod tests {
     #[test]
     fn decimate_zero() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
         assert_eq!(decimate(&pd, 0.0).polys.num_cells(), 1);

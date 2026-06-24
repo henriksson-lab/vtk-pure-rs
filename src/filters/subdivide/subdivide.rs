@@ -162,7 +162,11 @@ fn subdivide_once(input: &PolyData) -> PolyData {
 }
 
 fn edge_key(a: usize, b: usize) -> (usize, usize) {
-    if a < b { (a, b) } else { (b, a) }
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 fn opposite_vertex(tri: &[usize; 3], a: usize, b: usize) -> usize {

@@ -51,11 +51,7 @@ impl LegacyWriter {
         self.write_poly_data_to(&mut w, data)
     }
 
-    pub fn write_poly_data_to<W: Write>(
-        &self,
-        w: &mut W,
-        data: &PolyData,
-    ) -> Result<(), VtkError> {
+    pub fn write_poly_data_to<W: Write>(&self, w: &mut W, data: &PolyData) -> Result<(), VtkError> {
         // Header
         writeln!(w, "# vtk DataFile Version 4.2")?;
         writeln!(w, "{}", self.header)?;

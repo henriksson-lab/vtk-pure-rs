@@ -1,5 +1,5 @@
-use crate::data::{CellArray, Points, PolyData, ImageData, UnstructuredGrid};
 use crate::data::DataSet;
+use crate::data::{CellArray, ImageData, Points, PolyData, UnstructuredGrid};
 use crate::types::CellType;
 use std::collections::HashMap;
 
@@ -38,7 +38,8 @@ pub fn geometry_filter_unstructured(input: &UnstructuredGrid) -> PolyData {
     }
 
     // Collect boundary faces (count == 1)
-    let boundary_faces: Vec<Vec<i64>> = face_shared.iter()
+    let boundary_faces: Vec<Vec<i64>> = face_shared
+        .iter()
         .filter(|(_, &count)| count == 1)
         .map(|(key, _)| face_count[key].clone())
         .collect();
@@ -49,13 +50,16 @@ pub fn geometry_filter_unstructured(input: &UnstructuredGrid) -> PolyData {
     let mut out_polys = CellArray::new();
 
     for face in &boundary_faces {
-        let mapped: Vec<i64> = face.iter().map(|&pid| {
-            *point_map.entry(pid).or_insert_with(|| {
-                let idx = out_points.len() as i64;
-                out_points.push(input.point(pid as usize));
-                idx
+        let mapped: Vec<i64> = face
+            .iter()
+            .map(|&pid| {
+                *point_map.entry(pid).or_insert_with(|| {
+                    let idx = out_points.len() as i64;
+                    out_points.push(input.point(pid as usize));
+                    idx
+                })
             })
-        }).collect();
+            .collect();
 
         // Fan-triangulate if more than 3 vertices
         if mapped.len() == 3 {
@@ -86,9 +90,7 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
 
-    let point_idx = |i: usize, j: usize, k: usize| -> i64 {
-        (k * ny * nx + j * nx + i) as i64
-    };
+    let point_idx = |i: usize, j: usize, k: usize| -> i64 { (k * ny * nx + j * nx + i) as i64 };
 
     for k in 0..nz {
         for j in 0..ny {
@@ -107,8 +109,10 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     for k in 0..nz - 1 {
         for j in 0..ny - 1 {
             polys.push_cell(&[
-                point_idx(0, j, k), point_idx(0, j, k + 1),
-                point_idx(0, j + 1, k + 1), point_idx(0, j + 1, k),
+                point_idx(0, j, k),
+                point_idx(0, j, k + 1),
+                point_idx(0, j + 1, k + 1),
+                point_idx(0, j + 1, k),
             ]);
         }
     }
@@ -116,8 +120,10 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     for k in 0..nz - 1 {
         for j in 0..ny - 1 {
             polys.push_cell(&[
-                point_idx(nx - 1, j, k), point_idx(nx - 1, j + 1, k),
-                point_idx(nx - 1, j + 1, k + 1), point_idx(nx - 1, j, k + 1),
+                point_idx(nx - 1, j, k),
+                point_idx(nx - 1, j + 1, k),
+                point_idx(nx - 1, j + 1, k + 1),
+                point_idx(nx - 1, j, k + 1),
             ]);
         }
     }
@@ -125,8 +131,10 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     for k in 0..nz - 1 {
         for i in 0..nx - 1 {
             polys.push_cell(&[
-                point_idx(i, 0, k), point_idx(i + 1, 0, k),
-                point_idx(i + 1, 0, k + 1), point_idx(i, 0, k + 1),
+                point_idx(i, 0, k),
+                point_idx(i + 1, 0, k),
+                point_idx(i + 1, 0, k + 1),
+                point_idx(i, 0, k + 1),
             ]);
         }
     }
@@ -134,8 +142,10 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     for k in 0..nz - 1 {
         for i in 0..nx - 1 {
             polys.push_cell(&[
-                point_idx(i, ny - 1, k), point_idx(i, ny - 1, k + 1),
-                point_idx(i + 1, ny - 1, k + 1), point_idx(i + 1, ny - 1, k),
+                point_idx(i, ny - 1, k),
+                point_idx(i, ny - 1, k + 1),
+                point_idx(i + 1, ny - 1, k + 1),
+                point_idx(i + 1, ny - 1, k),
             ]);
         }
     }
@@ -143,8 +153,10 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     for j in 0..ny - 1 {
         for i in 0..nx - 1 {
             polys.push_cell(&[
-                point_idx(i, j, 0), point_idx(i, j + 1, 0),
-                point_idx(i + 1, j + 1, 0), point_idx(i + 1, j, 0),
+                point_idx(i, j, 0),
+                point_idx(i, j + 1, 0),
+                point_idx(i + 1, j + 1, 0),
+                point_idx(i + 1, j, 0),
             ]);
         }
     }
@@ -152,8 +164,10 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
     for j in 0..ny - 1 {
         for i in 0..nx - 1 {
             polys.push_cell(&[
-                point_idx(i, j, nz - 1), point_idx(i + 1, j, nz - 1),
-                point_idx(i + 1, j + 1, nz - 1), point_idx(i, j + 1, nz - 1),
+                point_idx(i, j, nz - 1),
+                point_idx(i + 1, j, nz - 1),
+                point_idx(i + 1, j + 1, nz - 1),
+                point_idx(i, j + 1, nz - 1),
             ]);
         }
     }
@@ -168,7 +182,9 @@ pub fn geometry_filter_image(input: &ImageData) -> PolyData {
 fn cell_faces(ct: CellType, pts: &[i64]) -> Vec<Vec<i64>> {
     match ct {
         CellType::Tetra => {
-            if pts.len() < 4 { return vec![]; }
+            if pts.len() < 4 {
+                return vec![];
+            }
             vec![
                 vec![pts[0], pts[1], pts[2]],
                 vec![pts[0], pts[3], pts[1]],
@@ -177,7 +193,9 @@ fn cell_faces(ct: CellType, pts: &[i64]) -> Vec<Vec<i64>> {
             ]
         }
         CellType::Hexahedron => {
-            if pts.len() < 8 { return vec![]; }
+            if pts.len() < 8 {
+                return vec![];
+            }
             vec![
                 vec![pts[0], pts[3], pts[2], pts[1]], // bottom
                 vec![pts[4], pts[5], pts[6], pts[7]], // top
@@ -188,7 +206,9 @@ fn cell_faces(ct: CellType, pts: &[i64]) -> Vec<Vec<i64>> {
             ]
         }
         CellType::Wedge => {
-            if pts.len() < 6 { return vec![]; }
+            if pts.len() < 6 {
+                return vec![];
+            }
             vec![
                 vec![pts[0], pts[2], pts[1]],         // bottom tri
                 vec![pts[3], pts[4], pts[5]],         // top tri
@@ -198,7 +218,9 @@ fn cell_faces(ct: CellType, pts: &[i64]) -> Vec<Vec<i64>> {
             ]
         }
         CellType::Pyramid => {
-            if pts.len() < 5 { return vec![]; }
+            if pts.len() < 5 {
+                return vec![];
+            }
             vec![
                 vec![pts[0], pts[3], pts[2], pts[1]], // base quad
                 vec![pts[0], pts[1], pts[4]],         // tri
@@ -208,11 +230,15 @@ fn cell_faces(ct: CellType, pts: &[i64]) -> Vec<Vec<i64>> {
             ]
         }
         CellType::Triangle => {
-            if pts.len() < 3 { return vec![]; }
+            if pts.len() < 3 {
+                return vec![];
+            }
             vec![vec![pts[0], pts[1], pts[2]]]
         }
         CellType::Quad => {
-            if pts.len() < 4 { return vec![]; }
+            if pts.len() < 4 {
+                return vec![];
+            }
             vec![vec![pts[0], pts[1], pts[2], pts[3]]]
         }
         CellType::Polygon => {

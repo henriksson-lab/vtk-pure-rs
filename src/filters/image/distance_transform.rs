@@ -40,9 +40,15 @@ pub fn image_distance_transform(input: &ImageData, scalars: &str, threshold: f64
                 let d = dist[cur];
 
                 // 6-connected neighbors that have already been visited
-                if i > 0 { dist[cur] = dist[cur].min(dist[idx(i-1,j,k)] + spacing[0]); }
-                if j > 0 { dist[cur] = dist[cur].min(dist[idx(i,j-1,k)] + spacing[1]); }
-                if k > 0 { dist[cur] = dist[cur].min(dist[idx(i,j,k-1)] + spacing[2]); }
+                if i > 0 {
+                    dist[cur] = dist[cur].min(dist[idx(i - 1, j, k)] + spacing[0]);
+                }
+                if j > 0 {
+                    dist[cur] = dist[cur].min(dist[idx(i, j - 1, k)] + spacing[1]);
+                }
+                if k > 0 {
+                    dist[cur] = dist[cur].min(dist[idx(i, j, k - 1)] + spacing[2]);
+                }
             }
         }
     }
@@ -52,17 +58,26 @@ pub fn image_distance_transform(input: &ImageData, scalars: &str, threshold: f64
         for j in (0..ny).rev() {
             for i in (0..nx).rev() {
                 let cur = idx(i, j, k);
-                if i + 1 < nx { dist[cur] = dist[cur].min(dist[idx(i+1,j,k)] + spacing[0]); }
-                if j + 1 < ny { dist[cur] = dist[cur].min(dist[idx(i,j+1,k)] + spacing[1]); }
-                if k + 1 < nz { dist[cur] = dist[cur].min(dist[idx(i,j,k+1)] + spacing[2]); }
+                if i + 1 < nx {
+                    dist[cur] = dist[cur].min(dist[idx(i + 1, j, k)] + spacing[0]);
+                }
+                if j + 1 < ny {
+                    dist[cur] = dist[cur].min(dist[idx(i, j + 1, k)] + spacing[1]);
+                }
+                if k + 1 < nz {
+                    dist[cur] = dist[cur].min(dist[idx(i, j, k + 1)] + spacing[2]);
+                }
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("DistanceTransform", dist, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DistanceTransform",
+            dist,
+            1,
+        )));
     img
 }
 
@@ -76,9 +91,8 @@ mod tests {
         img.set_spacing([1.0, 1.0, 1.0]);
         let mut values = vec![0.0f64; 5];
         values[2] = 1.0; // seed at center
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
 
         let result = image_distance_transform(&img, "mask", 0.5);
         let arr = result.point_data().get_array("DistanceTransform").unwrap();
@@ -94,9 +108,12 @@ mod tests {
     #[test]
     fn all_foreground() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", vec![1.0; 9], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                vec![1.0; 9],
+                1,
+            )));
 
         let result = image_distance_transform(&img, "mask", 0.5);
         let arr = result.point_data().get_array("DistanceTransform").unwrap();

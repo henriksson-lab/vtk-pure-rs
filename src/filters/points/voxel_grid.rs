@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Voxel-based point cloud downsampling.
 ///
@@ -56,8 +56,7 @@ mod tests {
         let mut pd = PolyData::new();
         // 100 points clustered in 10 voxels
         for i in 0..100 {
-            pd.points
-                .push([(i % 10) as f64 * 0.01, 0.0, 0.0]);
+            pd.points.push([(i % 10) as f64 * 0.01, 0.0, 0.0]);
         }
         let result = voxel_grid(&pd, 0.05);
         assert!(result.points.len() < 100);

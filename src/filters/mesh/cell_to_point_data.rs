@@ -43,9 +43,12 @@ pub fn cell_to_point_average(input: &PolyData, array_name: &str) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, result, num_components),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name,
+            result,
+            num_components,
+        )));
     pd
 }
 
@@ -60,9 +63,8 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let mut pd = pd;
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![6.0], 1),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("temp", vec![6.0], 1)));
 
         let result = cell_to_point_average(&pd, "temp");
         let arr = result.point_data().get_array("temp").unwrap();
@@ -88,9 +90,12 @@ mod tests {
             vec![[0, 1, 2], [1, 3, 2]],
         );
         let mut pd = pd;
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![10.0, 20.0], 1),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![10.0, 20.0],
+                1,
+            )));
 
         let result = cell_to_point_average(&pd, "val");
         let arr = result.point_data().get_array("val").unwrap();

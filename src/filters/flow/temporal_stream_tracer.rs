@@ -36,8 +36,12 @@ pub fn temporal_stream_trace(
         let mut line_ids: Vec<i64> = Vec::new();
 
         for _ in 0..max_steps {
-            if t >= total_time { break; }
-            if !in_bounds(pos, origin, spacing, dims) { break; }
+            if t >= total_time {
+                break;
+            }
+            if !in_bounds(pos, origin, spacing, dims) {
+                break;
+            }
 
             let idx = out_points.len() as i64;
             out_points.push(pos);
@@ -66,8 +70,10 @@ pub fn temporal_stream_trace(
                 vel0[2] * (1.0 - frac) + vel1[2] * frac,
             ];
 
-            let speed = (vel[0]*vel[0] + vel[1]*vel[1] + vel[2]*vel[2]).sqrt();
-            if speed < 1e-10 { break; }
+            let speed = (vel[0] * vel[0] + vel[1] * vel[1] + vel[2] * vel[2]).sqrt();
+            if speed < 1e-10 {
+                break;
+            }
 
             pos = [
                 pos[0] + step_size * vel[0],
@@ -86,9 +92,13 @@ pub fn temporal_stream_trace(
     let mut result = PolyData::new();
     result.points = out_points;
     result.lines = out_lines;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("IntegrationTime", time_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "IntegrationTime",
+            time_data,
+            1,
+        )));
     result
 }
 
@@ -96,10 +106,16 @@ fn in_bounds(pos: [f64; 3], origin: [f64; 3], spacing: [f64; 3], dims: [usize; 3
     (0..3).all(|i| pos[i] >= origin[i] && pos[i] <= origin[i] + (dims[i] as f64 - 1.0) * spacing[i])
 }
 
-fn interp_spatial(arr: &AnyDataArray, pos: [f64; 3], origin: [f64; 3], spacing: [f64; 3], dims: [usize; 3]) -> [f64; 3] {
-    let fx = (pos[0]-origin[0])/spacing[0];
-    let fy = (pos[1]-origin[1])/spacing[1];
-    let fz = (pos[2]-origin[2])/spacing[2];
+fn interp_spatial(
+    arr: &AnyDataArray,
+    pos: [f64; 3],
+    origin: [f64; 3],
+    spacing: [f64; 3],
+    dims: [usize; 3],
+) -> [f64; 3] {
+    let fx = (pos[0] - origin[0]) / spacing[0];
+    let fy = (pos[1] - origin[1]) / spacing[1];
+    let fz = (pos[2] - origin[2]) / spacing[2];
     let ix = (fx.floor() as usize).min(dims[0].saturating_sub(2));
     let iy = (fy.floor() as usize).min(dims[1].saturating_sub(2));
     let iz = (fz.floor() as usize).min(dims[2].saturating_sub(2));
@@ -108,14 +124,22 @@ fn interp_spatial(arr: &AnyDataArray, pos: [f64; 3], origin: [f64; 3], spacing: 
     let tz = (fz - iz as f64).clamp(0.0, 1.0);
     let mut r = [0.0; 3];
     let mut buf = [0.0f64; 3];
-    for dz in 0..2usize { for dy in 0..2usize { for dx in 0..2usize {
-        let idx = (ix+dx)+(iy+dy)*dims[0]+(iz+dz)*dims[0]*dims[1];
-        if idx < arr.num_tuples() {
-            arr.tuple_as_f64(idx, &mut buf);
-            let w = (if dx==0{1.0-tx}else{tx})*(if dy==0{1.0-ty}else{ty})*(if dz==0{1.0-tz}else{tz});
-            for c in 0..3 { r[c] += w*buf[c]; }
+    for dz in 0..2usize {
+        for dy in 0..2usize {
+            for dx in 0..2usize {
+                let idx = (ix + dx) + (iy + dy) * dims[0] + (iz + dz) * dims[0] * dims[1];
+                if idx < arr.num_tuples() {
+                    arr.tuple_as_f64(idx, &mut buf);
+                    let w = (if dx == 0 { 1.0 - tx } else { tx })
+                        * (if dy == 0 { 1.0 - ty } else { ty })
+                        * (if dz == 0 { 1.0 - tz } else { tz });
+                    for c in 0..3 {
+                        r[c] += w * buf[c];
+                    }
+                }
+            }
         }
-    }}}
+    }
     r
 }
 
@@ -124,13 +148,18 @@ mod tests {
     use super::*;
 
     fn make_field(vx: f64) -> ImageData {
-        let dims = [10,10,10];
-        let n = dims[0]*dims[1]*dims[2];
-        let mut v = Vec::with_capacity(n*3);
-        for _ in 0..n { v.push(vx); v.push(0.0); v.push(0.0); }
-        let mut f = ImageData::with_dimensions(dims[0],dims[1],dims[2]);
-        f.set_spacing([1.0,1.0,1.0]);
-        f.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("vel",v,3)));
+        let dims = [10, 10, 10];
+        let n = dims[0] * dims[1] * dims[2];
+        let mut v = Vec::with_capacity(n * 3);
+        for _ in 0..n {
+            v.push(vx);
+            v.push(0.0);
+            v.push(0.0);
+        }
+        let mut f = ImageData::with_dimensions(dims[0], dims[1], dims[2]);
+        f.set_spacing([1.0, 1.0, 1.0]);
+        f.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("vel", v, 3)));
         f.point_data_mut().set_active_vectors("vel");
         f
     }
@@ -139,7 +168,7 @@ mod tests {
     fn temporal_trace() {
         let f1 = make_field(1.0);
         let f2 = make_field(2.0);
-        let result = temporal_stream_trace(&[&f1, &f2], &[[2.0,5.0,5.0]], 0.1, 50);
+        let result = temporal_stream_trace(&[&f1, &f2], &[[2.0, 5.0, 5.0]], 0.1, 50);
         assert!(result.points.len() > 2);
         assert!(result.lines.num_cells() >= 1);
         assert!(result.point_data().get_array("IntegrationTime").is_some());
@@ -147,6 +176,11 @@ mod tests {
 
     #[test]
     fn empty() {
-        assert_eq!(temporal_stream_trace(&[], &[[0.0;3]], 0.1, 10).points.len(), 0);
+        assert_eq!(
+            temporal_stream_trace(&[], &[[0.0; 3]], 0.1, 10)
+                .points
+                .len(),
+            0
+        );
     }
 }

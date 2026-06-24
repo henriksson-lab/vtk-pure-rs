@@ -24,53 +24,83 @@ pub fn cloth_mesh(width: f64, depth: f64, nx: usize, ny: usize) -> PolyData {
     for j in 0..ny {
         for i in 0..nx {
             let p0 = (j * row + i) as i64;
-            polys.push_cell(&[p0, p0+1, p0+row as i64+1]);
-            polys.push_cell(&[p0, p0+row as i64+1, p0+row as i64]);
+            polys.push_cell(&[p0, p0 + 1, p0 + row as i64 + 1]);
+            polys.push_cell(&[p0, p0 + row as i64 + 1, p0 + row as i64]);
         }
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Mass", mass, 1)));
-    mesh.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Fixed", fixed, 1)));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Mass", mass, 1)));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Fixed", fixed, 1)));
     mesh
 }
 
 /// Simple cloth simulation step: apply gravity and spring forces.
-pub fn cloth_simulate_step(mesh: &PolyData, gravity: [f64; 3], stiffness: f64, damping: f64) -> PolyData {
+pub fn cloth_simulate_step(
+    mesh: &PolyData,
+    gravity: [f64; 3],
+    stiffness: f64,
+    damping: f64,
+) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     let fixed_arr = mesh.point_data().get_array("Fixed");
     let adj = build_adj(mesh, n);
 
     let mut positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
-    let rest_lengths: Vec<Vec<f64>> = (0..n).map(|i| {
-        adj[i].iter().map(|&j| {
-            ((positions[i][0]-positions[j][0]).powi(2)+
-             (positions[i][1]-positions[j][1]).powi(2)+
-             (positions[i][2]-positions[j][2]).powi(2)).sqrt()
-        }).collect()
-    }).collect();
+    let rest_lengths: Vec<Vec<f64>> = (0..n)
+        .map(|i| {
+            adj[i]
+                .iter()
+                .map(|&j| {
+                    ((positions[i][0] - positions[j][0]).powi(2)
+                        + (positions[i][1] - positions[j][1]).powi(2)
+                        + (positions[i][2] - positions[j][2]).powi(2))
+                    .sqrt()
+                })
+                .collect()
+        })
+        .collect();
 
     let mut velocities = vec![[0.0f64; 3]; n];
     let dt = 0.01;
 
-    for _ in 0..10 { // sub-steps
+    for _ in 0..10 {
+        // sub-steps
         let mut forces = vec![[0.0; 3]; n];
         // Gravity
-        for i in 0..n { for c in 0..3 { forces[i][c] += gravity[c]; } }
+        for i in 0..n {
+            for c in 0..3 {
+                forces[i][c] += gravity[c];
+            }
+        }
 
         // Springs
         for i in 0..n {
             for (ni, &j) in adj[i].iter().enumerate() {
-                let dx = [positions[j][0]-positions[i][0], positions[j][1]-positions[i][1], positions[j][2]-positions[i][2]];
-                let dist = (dx[0]*dx[0]+dx[1]*dx[1]+dx[2]*dx[2]).sqrt();
-                let rest = if ni < rest_lengths[i].len() { rest_lengths[i][ni] } else { 1.0 };
+                let dx = [
+                    positions[j][0] - positions[i][0],
+                    positions[j][1] - positions[i][1],
+                    positions[j][2] - positions[i][2],
+                ];
+                let dist = (dx[0] * dx[0] + dx[1] * dx[1] + dx[2] * dx[2]).sqrt();
+                let rest = if ni < rest_lengths[i].len() {
+                    rest_lengths[i][ni]
+                } else {
+                    1.0
+                };
                 if dist > 1e-15 {
                     let f = stiffness * (dist - rest) / dist;
-                    for c in 0..3 { forces[i][c] += f * dx[c]; }
+                    for c in 0..3 {
+                        forces[i][c] += f * dx[c];
+                    }
                 }
             }
         }
@@ -78,8 +108,15 @@ pub fn cloth_simulate_step(mesh: &PolyData, gravity: [f64; 3], stiffness: f64, d
         // Integrate
         let mut buf = [0.0f64];
         for i in 0..n {
-            let is_fixed = if let Some(fa) = fixed_arr { fa.tuple_as_f64(i, &mut buf); buf[0] > 0.5 } else { false };
-            if is_fixed { continue; }
+            let is_fixed = if let Some(fa) = fixed_arr {
+                fa.tuple_as_f64(i, &mut buf);
+                buf[0] > 0.5
+            } else {
+                false
+            };
+            if is_fixed {
+                continue;
+            }
             for c in 0..3 {
                 velocities[i][c] = (velocities[i][c] + forces[i][c] * dt) * (1.0 - damping);
                 positions[i][c] += velocities[i][c] * dt;
@@ -97,8 +134,12 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize; let b = cell[(i+1)%nc] as usize;
-            if a < n && b < n { adj[a].insert(b); adj[b].insert(a); }
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % nc] as usize;
+            if a < n && b < n {
+                adj[a].insert(b);
+                adj[b].insert(a);
+            }
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()

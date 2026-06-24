@@ -12,7 +12,11 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 1.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            1.0
+        },
     ];
     let origin = [bounds.x_min, bounds.y_min, bounds.z_min];
 
@@ -20,7 +24,8 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
 
     if htg.dimension() == 2 {
         // 2D: generate quads
-        let mut pt_map: std::collections::HashMap<[i64; 2], usize> = std::collections::HashMap::new();
+        let mut pt_map: std::collections::HashMap<[i64; 2], usize> =
+            std::collections::HashMap::new();
         for j in 0..gs[1] {
             for i in 0..gs[0] {
                 let x0 = origin[0] + i as f64 * spacing[0];
@@ -28,10 +33,10 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
                 let x1 = x0 + spacing[0];
                 let y1 = y0 + spacing[1];
 
-                let corners = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+                let corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
                 let mut ids = Vec::new();
                 for c in &corners {
-                    let key = [(c[0]*1e6) as i64, (c[1]*1e6) as i64];
+                    let key = [(c[0] * 1e6) as i64, (c[1] * 1e6) as i64];
                     let idx = *pt_map.entry(key).or_insert_with(|| {
                         let idx = grid.points.len();
                         grid.points.push([c[0], c[1], 0.0]);
@@ -44,7 +49,8 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
         }
     } else {
         // 3D: generate hexahedra
-        let mut pt_map: std::collections::HashMap<[i64; 3], usize> = std::collections::HashMap::new();
+        let mut pt_map: std::collections::HashMap<[i64; 3], usize> =
+            std::collections::HashMap::new();
         for k in 0..gs[2] {
             for j in 0..gs[1] {
                 for i in 0..gs[0] {
@@ -56,12 +62,22 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
                     let z1 = z0 + spacing[2];
 
                     let corners = [
-                        [x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],
-                        [x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1],
+                        [x0, y0, z0],
+                        [x1, y0, z0],
+                        [x1, y1, z0],
+                        [x0, y1, z0],
+                        [x0, y0, z1],
+                        [x1, y0, z1],
+                        [x1, y1, z1],
+                        [x0, y1, z1],
                     ];
                     let mut ids = Vec::new();
                     for c in &corners {
-                        let key = [(c[0]*1e6) as i64, (c[1]*1e6) as i64, (c[2]*1e6) as i64];
+                        let key = [
+                            (c[0] * 1e6) as i64,
+                            (c[1] * 1e6) as i64,
+                            (c[2] * 1e6) as i64,
+                        ];
                         let idx = *pt_map.entry(key).or_insert_with(|| {
                             let idx = grid.points.len();
                             grid.points.push(*c);

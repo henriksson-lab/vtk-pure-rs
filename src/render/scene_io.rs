@@ -13,21 +13,39 @@ pub fn save_scene_config<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<
 
     // Camera
     let c = &scene.camera;
-    writeln!(w, "camera.position {} {} {}", c.position.x, c.position.y, c.position.z)?;
-    writeln!(w, "camera.focal_point {} {} {}", c.focal_point.x, c.focal_point.y, c.focal_point.z)?;
-    writeln!(w, "camera.view_up {} {} {}", c.view_up.x, c.view_up.y, c.view_up.z)?;
+    writeln!(
+        w,
+        "camera.position {} {} {}",
+        c.position.x, c.position.y, c.position.z
+    )?;
+    writeln!(
+        w,
+        "camera.focal_point {} {} {}",
+        c.focal_point.x, c.focal_point.y, c.focal_point.z
+    )?;
+    writeln!(
+        w,
+        "camera.view_up {} {} {}",
+        c.view_up.x, c.view_up.y, c.view_up.z
+    )?;
     writeln!(w, "camera.fov {}", c.fov)?;
     writeln!(w, "camera.near_clip {}", c.near_clip)?;
     writeln!(w, "camera.far_clip {}", c.far_clip)?;
     writeln!(w)?;
 
     // Background
-    writeln!(w, "background {} {} {} {}", scene.background[0], scene.background[1], scene.background[2], scene.background[3])?;
+    writeln!(
+        w,
+        "background {} {} {} {}",
+        scene.background[0], scene.background[1], scene.background[2], scene.background[3]
+    )?;
     writeln!(w)?;
 
     // Lights
     for (i, light) in scene.lights.iter().enumerate() {
-        if !light.enabled { continue; }
+        if !light.enabled {
+            continue;
+        }
         let lt = match light.light_type {
             LightType::Directional => "directional",
             LightType::Point => "point",
@@ -35,17 +53,35 @@ pub fn save_scene_config<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<
             LightType::Ambient => "ambient",
         };
         writeln!(w, "light.{i}.type {lt}")?;
-        writeln!(w, "light.{i}.position {} {} {}", light.position[0], light.position[1], light.position[2])?;
-        writeln!(w, "light.{i}.direction {} {} {}", light.direction[0], light.direction[1], light.direction[2])?;
-        writeln!(w, "light.{i}.color {} {} {}", light.color[0], light.color[1], light.color[2])?;
+        writeln!(
+            w,
+            "light.{i}.position {} {} {}",
+            light.position[0], light.position[1], light.position[2]
+        )?;
+        writeln!(
+            w,
+            "light.{i}.direction {} {} {}",
+            light.direction[0], light.direction[1], light.direction[2]
+        )?;
+        writeln!(
+            w,
+            "light.{i}.color {} {} {}",
+            light.color[0], light.color[1], light.color[2]
+        )?;
         writeln!(w, "light.{i}.intensity {}", light.intensity)?;
     }
     writeln!(w)?;
 
     // Clip planes
     for (i, cp) in scene.clip_planes.iter().enumerate() {
-        if !cp.enabled { continue; }
-        writeln!(w, "clip_plane.{i} {} {} {} {}", cp.normal[0], cp.normal[1], cp.normal[2], cp.distance)?;
+        if !cp.enabled {
+            continue;
+        }
+        writeln!(
+            w,
+            "clip_plane.{i} {} {} {} {}",
+            cp.normal[0], cp.normal[1], cp.normal[2], cp.distance
+        )?;
     }
 
     Ok(())
@@ -61,10 +97,14 @@ pub fn load_scene_config<R: BufRead>(r: R, scene: &mut Scene) -> std::io::Result
     for line in r.lines() {
         let line = line?;
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
 
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        if parts.len() < 2 { continue; }
+        if parts.len() < 2 {
+            continue;
+        }
 
         match parts[0] {
             "camera.position" if parts.len() >= 4 => {

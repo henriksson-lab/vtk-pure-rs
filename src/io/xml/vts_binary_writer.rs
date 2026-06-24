@@ -21,7 +21,10 @@ impl VtsBinaryWriter {
         let ext = format!("0 {} 0 {} 0 {}", dims[0] - 1, dims[1] - 1, dims[2] - 1);
 
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"StructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"StructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <StructuredGrid WholeExtent=\"{ext}\">")?;
         writeln!(w, "    <Piece Extent=\"{ext}\">")?;
 
@@ -52,7 +55,11 @@ impl VtsBinaryWriter {
     }
 }
 
-fn write_binary_attrs<W: Write>(w: &mut W, section: &str, attrs: &DataSetAttributes) -> Result<(), VtkError> {
+fn write_binary_attrs<W: Write>(
+    w: &mut W,
+    section: &str,
+    attrs: &DataSetAttributes,
+) -> Result<(), VtkError> {
     writeln!(w, "      <{section}>")?;
     for i in 0..attrs.num_arrays() {
         if let Some(arr) = attrs.get_array_by_index(i) {

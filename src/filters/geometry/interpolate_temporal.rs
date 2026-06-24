@@ -23,12 +23,8 @@ pub fn interpolate_at_time(
     mode: TemporalInterpolation,
 ) -> Option<PolyData> {
     match mode {
-        TemporalInterpolation::Nearest => {
-            temporal.at_time(time).cloned()
-        }
-        TemporalInterpolation::Linear => {
-            temporal.interpolate_positions(time)
-        }
+        TemporalInterpolation::Nearest => temporal.at_time(time).cloned(),
+        TemporalInterpolation::Linear => temporal.interpolate_positions(time),
         TemporalInterpolation::Cubic => {
             // Fall back to linear if not enough steps
             let times = temporal.times();
@@ -51,11 +47,17 @@ pub fn generate_interpolated_frames(
     mode: TemporalInterpolation,
 ) -> Vec<PolyData> {
     let times = temporal.times();
-    if times.is_empty() || n_frames == 0 { return Vec::new(); }
+    if times.is_empty() || n_frames == 0 {
+        return Vec::new();
+    }
 
     let t_min = times[0];
     let t_max = *times.last().unwrap();
-    let dt = if n_frames > 1 { (t_max - t_min) / (n_frames - 1) as f64 } else { 0.0 };
+    let dt = if n_frames > 1 {
+        (t_max - t_min) / (n_frames - 1) as f64
+    } else {
+        0.0
+    };
 
     let mut frames = Vec::with_capacity(n_frames);
     for i in 0..n_frames {
@@ -90,9 +92,11 @@ pub fn compute_temporal_velocity(
     }
 
     let mut result = mesh_t0;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Velocity", vel_data, 3),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Velocity", vel_data, 3,
+        )));
     result.point_data_mut().set_active_vectors("Velocity");
     Some(result)
 }
@@ -104,9 +108,8 @@ mod tests {
     fn make_temporal() -> TemporalDataSet {
         let mut ts = TemporalDataSet::new();
         for i in 0..5 {
-            let mesh = PolyData::from_points(vec![
-                [i as f64, 0.0, 0.0], [i as f64 + 1.0, 0.0, 0.0],
-            ]);
+            let mesh =
+                PolyData::from_points(vec![[i as f64, 0.0, 0.0], [i as f64 + 1.0, 0.0, 0.0]]);
             ts.add_step(i as f64, mesh);
         }
         ts

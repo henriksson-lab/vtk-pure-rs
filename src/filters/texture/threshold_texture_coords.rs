@@ -29,15 +29,21 @@ pub fn texture_coords_from_scalar(mesh: &PolyData, array_name: &str) -> PolyData
     let mut tcoords = Vec::with_capacity(n * 2);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let u = if range > 1e-15 { (buf[0] - min_val) / range } else { 0.5 };
+        let u = if range > 1e-15 {
+            (buf[0] - min_val) / range
+        } else {
+            0.5
+        };
         tcoords.push(u);
         tcoords.push(0.5);
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("TCoords", tcoords, 2),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", tcoords, 2,
+        )));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
@@ -60,15 +66,21 @@ pub fn texture_coords_from_scalar_range(
     let mut buf = [0.0f64];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let u = if range.abs() > 1e-15 { ((buf[0] - scalar_min) / range).clamp(0.0, 1.0) } else { 0.5 };
+        let u = if range.abs() > 1e-15 {
+            ((buf[0] - scalar_min) / range).clamp(0.0, 1.0)
+        } else {
+            0.5
+        };
         tcoords.push(u);
         tcoords.push(0.5);
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("TCoords", tcoords, 2),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", tcoords, 2,
+        )));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
@@ -95,9 +107,11 @@ pub fn texture_coords_binary_threshold(
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("TCoords", tcoords, 2),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", tcoords, 2,
+        )));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
@@ -107,12 +121,14 @@ mod tests {
     use super::*;
 
     fn make_mesh() -> PolyData {
-        let mut mesh = PolyData::from_points(vec![
-            [0.0,0.0,0.0],[1.0,0.0,0.0],[2.0,0.0,0.0],
-        ]);
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 50.0, 100.0], 1),
-        ));
+        let mut mesh =
+            PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 50.0, 100.0],
+                1,
+            )));
         mesh
     }
 
@@ -149,7 +165,7 @@ mod tests {
 
     #[test]
     fn missing_array() {
-        let mesh = PolyData::from_points(vec![[0.0,0.0,0.0]]);
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
         let result = texture_coords_from_scalar(&mesh, "nonexistent");
         assert!(result.point_data().tcoords().is_none());
     }

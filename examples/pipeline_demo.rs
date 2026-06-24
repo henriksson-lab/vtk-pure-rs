@@ -2,14 +2,16 @@
 //!
 //! This example:
 //! 1. Generates a sphere source
-//! 2. Builds a processing pipeline (smooth → normals → elevation)
+//! 2. Builds a processing chain (normals -> elevation -> decimate)
 //! 3. Writes the result to multiple formats
 //! 4. Prints mesh statistics
 
-use vtk_data::{AnyDataArray, DataArray, DataSet, PolyData};
-use vtk_filters::pipeline::Pipeline;
-use vtk_filters::sources::sphere::{sphere, SphereParams};
-use vtk_filters::topology::analyze_topology;
+use std::path::Path;
+
+use vtk_pure_rs::data::PolyData;
+use vtk_pure_rs::filters::core::sources::{sphere, SphereParams};
+use vtk_pure_rs::filters::core::{decimate, elevation, topology};
+use vtk_pure_rs::filters::normals::normals;
 
 fn main() {
     println!("vtk-rs Pipeline Demo");
@@ -23,20 +25,21 @@ fn main() {
     });
     println!("Source: {src}");
 
-    // 2. Build a processing pipeline
-    let mut pipe = Pipeline::new(src)
-        .with_normals()
-        .with_elevation_z()
-        .with_decimate(0.5);
+    // 2. Apply a VTK-style source -> filter -> filter -> filter chain.
+    let with_normals = normals::compute_normals(&src);
+    let with_elevation = elevation::elevation_z(&with_normals);
+    let result = decimate::decimate(&with_elevation, 0.5);
 
-    println!("Pipeline stages: {:?}", pipe.stage_names());
+    println!(
+        "Pipeline stages: {:?}",
+        ["normals", "elevation", "decimate"]
+    );
 
-    // 3. Get the output (lazy evaluation)
-    let result = pipe.output();
+    // 3. Get the output
     println!("Output: {result}");
 
     // 4. Topology analysis
-    let topo = analyze_topology(result);
+    let topo = topology::analyze_topology(&result);
     println!("\nTopology:");
     println!("  Points:        {}", topo.num_points);
     println!("  Edges:         {}", topo.num_edges);
@@ -68,7 +71,7 @@ fn main() {
     println!("\nWriting to:");
     for ext in &formats {
         let path = dir.join(format!("sphere.{ext}"));
-        match vtk::io::write_poly_data(&path, result) {
+        match write_poly_data(&path, &result) {
             Ok(()) => println!("  {} ✓", path.display()),
             Err(e) => println!("  {} ✗ {e}", path.display()),
         }
@@ -76,7 +79,7 @@ fn main() {
 
     // 7. Verify roundtrip
     let vtk_path = dir.join("sphere.vtk");
-    match vtk::io::read_poly_data(&vtk_path) {
+    match read_poly_data(&vtk_path) {
         Ok(loaded) => {
             println!("\nRoundtrip verification:");
             println!("  Original: {} points", result.points.len());
@@ -88,4 +91,43 @@ fn main() {
 
     let _ = std::fs::remove_dir_all(&dir);
     println!("\nDone.");
+}
+
+fn read_poly_data(path: &Path) -> Result<PolyData, String> {
+    match extension(path).as_str() {
+        "vtk" => {
+            vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(path).map_err(|e| e.to_string())
+        }
+        "vtp" => vtk_pure_rs::io::xml::VtpReader::read(path).map_err(|e| e.to_string()),
+        "stl" => vtk_pure_rs::io::stl::StlReader::read(path).map_err(|e| e.to_string()),
+        "obj" => vtk_pure_rs::io::obj::ObjReader::read(path).map_err(|e| e.to_string()),
+        "ply" => vtk_pure_rs::io::ply::PlyReader::read(path).map_err(|e| e.to_string()),
+        "glb" => vtk_pure_rs::io::gltf::GlbReader::read(path).map_err(|e| e.to_string()),
+        "off" => vtk_pure_rs::io::off::read_off_file(path),
+        ext => Err(format!("unknown file extension: .{ext}")),
+    }
+}
+
+fn write_poly_data(path: &Path, data: &PolyData) -> Result<(), String> {
+    match extension(path).as_str() {
+        "vtk" => vtk_pure_rs::io::legacy::LegacyWriter::ascii()
+            .write_poly_data(path, data)
+            .map_err(|e| e.to_string()),
+        "vtp" => vtk_pure_rs::io::xml::VtpWriter::write(path, data).map_err(|e| e.to_string()),
+        "stl" => vtk_pure_rs::io::stl::StlWriter::binary()
+            .write(path, data)
+            .map_err(|e| e.to_string()),
+        "obj" => vtk_pure_rs::io::obj::ObjWriter::write(path, data).map_err(|e| e.to_string()),
+        "ply" => vtk_pure_rs::io::ply::PlyWriter::write(path, data).map_err(|e| e.to_string()),
+        "glb" => vtk_pure_rs::io::gltf::GlbWriter::write(path, data).map_err(|e| e.to_string()),
+        "off" => vtk_pure_rs::io::off::write_off_file(data, path),
+        ext => Err(format!("unknown file extension: .{ext}")),
+    }
+}
+
+fn extension(path: &Path) -> String {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default()
 }

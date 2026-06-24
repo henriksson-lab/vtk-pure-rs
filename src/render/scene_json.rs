@@ -11,17 +11,32 @@ pub fn scene_to_json<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<()> 
     // Camera
     let c = &scene.camera;
     writeln!(w, "  \"camera\": {{")?;
-    writeln!(w, "    \"position\": [{}, {}, {}],", c.position.x, c.position.y, c.position.z)?;
-    writeln!(w, "    \"focal_point\": [{}, {}, {}],", c.focal_point.x, c.focal_point.y, c.focal_point.z)?;
-    writeln!(w, "    \"view_up\": [{}, {}, {}],", c.view_up.x, c.view_up.y, c.view_up.z)?;
+    writeln!(
+        w,
+        "    \"position\": [{}, {}, {}],",
+        c.position.x, c.position.y, c.position.z
+    )?;
+    writeln!(
+        w,
+        "    \"focal_point\": [{}, {}, {}],",
+        c.focal_point.x, c.focal_point.y, c.focal_point.z
+    )?;
+    writeln!(
+        w,
+        "    \"view_up\": [{}, {}, {}],",
+        c.view_up.x, c.view_up.y, c.view_up.z
+    )?;
     writeln!(w, "    \"fov\": {},", c.fov)?;
     writeln!(w, "    \"near_clip\": {},", c.near_clip)?;
     writeln!(w, "    \"far_clip\": {}", c.far_clip)?;
     writeln!(w, "  }},")?;
 
     // Background
-    writeln!(w, "  \"background\": [{}, {}, {}, {}],",
-        scene.background[0], scene.background[1], scene.background[2], scene.background[3])?;
+    writeln!(
+        w,
+        "  \"background\": [{}, {}, {}, {}],",
+        scene.background[0], scene.background[1], scene.background[2], scene.background[3]
+    )?;
 
     // Actors summary
     writeln!(w, "  \"num_actors\": {},", scene.actors.len())?;
@@ -35,9 +50,14 @@ pub fn scene_to_json<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<()> 
             crate::render::LightType::Spot { .. } => "spot",
             crate::render::LightType::Ambient => "ambient",
         };
-        write!(w, "    {{\"type\": \"{lt}\", \"intensity\": {}, \"color\": [{}, {}, {}]}}",
-            light.intensity, light.color[0], light.color[1], light.color[2])?;
-        if i < scene.lights.len() - 1 { write!(w, ",")?; }
+        write!(
+            w,
+            "    {{\"type\": \"{lt}\", \"intensity\": {}, \"color\": [{}, {}, {}]}}",
+            light.intensity, light.color[0], light.color[1], light.color[2]
+        )?;
+        if i < scene.lights.len() - 1 {
+            write!(w, ",")?;
+        }
         writeln!(w)?;
     }
     writeln!(w, "  ],")?;
@@ -53,9 +73,14 @@ pub fn scene_to_json<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<()> 
     // Clip planes
     writeln!(w, "  \"clip_planes\": [")?;
     for (i, cp) in scene.clip_planes.iter().enumerate() {
-        write!(w, "    {{\"normal\": [{}, {}, {}], \"distance\": {}, \"enabled\": {}}}",
-            cp.normal[0], cp.normal[1], cp.normal[2], cp.distance, cp.enabled)?;
-        if i < scene.clip_planes.len() - 1 { write!(w, ",")?; }
+        write!(
+            w,
+            "    {{\"normal\": [{}, {}, {}], \"distance\": {}, \"enabled\": {}}}",
+            cp.normal[0], cp.normal[1], cp.normal[2], cp.distance, cp.enabled
+        )?;
+        if i < scene.clip_planes.len() - 1 {
+            write!(w, ",")?;
+        }
         writeln!(w)?;
     }
     writeln!(w, "  ]")?;
@@ -74,8 +99,8 @@ pub fn scene_to_json_string(scene: &Scene) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::{Actor, ClipPlane, Fog, Scene};
     use crate::data::PolyData;
+    use crate::render::{Actor, ClipPlane, Fog, Scene};
 
     #[test]
     fn json_export() {

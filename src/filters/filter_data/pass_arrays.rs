@@ -53,15 +53,24 @@ mod tests {
     fn make_test_pd() -> PolyData {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalars", vec![1.0], 1),
-        ));
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("normals", vec![0.0, 0.0, 1.0], 3),
-        ));
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![37.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "scalars",
+                vec![1.0],
+                1,
+            )));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "normals",
+                vec![0.0, 0.0, 1.0],
+                3,
+            )));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![37.0],
+                1,
+            )));
         pd
     }
 

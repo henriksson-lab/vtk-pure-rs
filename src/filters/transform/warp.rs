@@ -26,7 +26,7 @@ pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
         scalars.tuple_as_f64(i, &mut sbuf);
         let d = sbuf[0] * scale_factor;
         let b = i * 3;
-        pts[b]     += nbuf[0] * d;
+        pts[b] += nbuf[0] * d;
         pts[b + 1] += nbuf[1] * d;
         pts[b + 2] += nbuf[2] * d;
     }
@@ -52,11 +52,14 @@ pub fn warp_by_vector(input: &PolyData, array_name: &str, scale_factor: f64) -> 
     for i in 0..n {
         let p = output.points.get(i);
         vectors.tuple_as_f64(i, &mut vbuf);
-        output.points.set(i, [
-            p[0] + vbuf[0] * scale_factor,
-            p[1] + vbuf[1] * scale_factor,
-            p[2] + vbuf[2] * scale_factor,
-        ]);
+        output.points.set(
+            i,
+            [
+                p[0] + vbuf[0] * scale_factor,
+                p[1] + vbuf[1] * scale_factor,
+                p[2] + vbuf[2] * scale_factor,
+            ],
+        );
     }
 
     output
@@ -75,7 +78,11 @@ mod tests {
         );
 
         // Add normals pointing in +Z
-        let normals = DataArray::from_vec("Normals", vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0], 3);
+        let normals = DataArray::from_vec(
+            "Normals",
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+            3,
+        );
         pd.point_data_mut().add_array(normals.into());
         pd.point_data_mut().set_active_normals("Normals");
 

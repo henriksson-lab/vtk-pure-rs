@@ -19,13 +19,19 @@ impl VtsWriter {
         let ext = format!("0 {} 0 {} 0 {}", dims[0] - 1, dims[1] - 1, dims[2] - 1);
 
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"StructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"StructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <StructuredGrid WholeExtent=\"{}\">", ext)?;
         writeln!(w, "    <Piece Extent=\"{}\">", ext)?;
 
         // Points
         writeln!(w, "      <Points>")?;
-        writeln!(w, "        <DataArray type=\"Float64\" NumberOfComponents=\"3\" format=\"ascii\">")?;
+        writeln!(
+            w,
+            "        <DataArray type=\"Float64\" NumberOfComponents=\"3\" format=\"ascii\">"
+        )?;
         write!(w, "          ")?;
         for i in 0..grid.points.len() {
             let p = grid.points.get(i);
@@ -49,7 +55,11 @@ impl VtsWriter {
     }
 }
 
-fn write_data_section<W: Write>(w: &mut W, section: &str, attrs: &DataSetAttributes) -> Result<(), VtkError> {
+fn write_data_section<W: Write>(
+    w: &mut W,
+    section: &str,
+    attrs: &DataSetAttributes,
+) -> Result<(), VtkError> {
     let scalars_name = attrs.scalars().map(|a| a.name().to_string());
     let mut attrs_str = String::new();
     if let Some(ref name) = scalars_name {
@@ -71,15 +81,22 @@ fn write_any_data_array<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), V
         crate::types::ScalarType::F64 => "Float64",
         _ => "Float64",
     };
-    writeln!(w, "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"ascii\">",
-        type_name, arr.name(), arr.num_components())?;
+    writeln!(
+        w,
+        "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"ascii\">",
+        type_name,
+        arr.name(),
+        arr.num_components()
+    )?;
     write!(w, "          ")?;
     let nt = arr.num_tuples();
     let nc = arr.num_components();
     let mut buf = vec![0.0f64; nc];
     for i in 0..nt {
         arr.tuple_as_f64(i, &mut buf);
-        for v in &buf { write!(w, "{} ", v)?; }
+        for v in &buf {
+            write!(w, "{} ", v)?;
+        }
     }
     writeln!(w)?;
     writeln!(w, "        </DataArray>")?;

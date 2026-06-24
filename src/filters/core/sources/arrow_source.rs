@@ -3,7 +3,13 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create an arrow along Z axis with given parameters.
-pub fn arrow_z(shaft_radius: f64, shaft_length: f64, tip_radius: f64, tip_length: f64, resolution: usize) -> PolyData {
+pub fn arrow_z(
+    shaft_radius: f64,
+    shaft_length: f64,
+    tip_radius: f64,
+    tip_length: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(3);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -16,12 +22,20 @@ pub fn arrow_z(shaft_radius: f64, shaft_length: f64, tip_radius: f64, tip_length
     // Shaft top ring
     for i in 0..res {
         let angle = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
-        pts.push([shaft_radius * angle.cos(), shaft_radius * angle.sin(), shaft_length]);
+        pts.push([
+            shaft_radius * angle.cos(),
+            shaft_radius * angle.sin(),
+            shaft_length,
+        ]);
     }
     // Tip base ring
     for i in 0..res {
         let angle = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
-        pts.push([tip_radius * angle.cos(), tip_radius * angle.sin(), shaft_length]);
+        pts.push([
+            tip_radius * angle.cos(),
+            tip_radius * angle.sin(),
+            shaft_length,
+        ]);
     }
     // Tip apex
     let apex = pts.len();
@@ -53,7 +67,13 @@ pub fn arrow_z(shaft_radius: f64, shaft_length: f64, tip_radius: f64, tip_length
 }
 
 /// Create a double-headed arrow along Z.
-pub fn double_arrow_z(shaft_radius: f64, shaft_length: f64, tip_radius: f64, tip_length: f64, resolution: usize) -> PolyData {
+pub fn double_arrow_z(
+    shaft_radius: f64,
+    shaft_length: f64,
+    tip_radius: f64,
+    tip_length: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(3);
     let half = shaft_length * 0.5;
     let mut pts = Points::<f64>::new();
@@ -77,8 +97,10 @@ pub fn double_arrow_z(shaft_radius: f64, shaft_length: f64, tip_radius: f64, tip
         let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
         pts.push([tip_radius * a.cos(), tip_radius * a.sin(), -half]);
     }
-    let top_apex = pts.len(); pts.push([0.0, 0.0, half + tip_length]);
-    let bot_apex = pts.len(); pts.push([0.0, 0.0, -half - tip_length]);
+    let top_apex = pts.len();
+    pts.push([0.0, 0.0, half + tip_length]);
+    let bot_apex = pts.len();
+    pts.push([0.0, 0.0, -half - tip_length]);
 
     // Shaft
     for i in 0..res {

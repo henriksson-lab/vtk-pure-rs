@@ -31,8 +31,8 @@ pub fn catamaran(length: f64, beam: f64, hull_width: f64, ns: usize) -> PolyData
         for s in 0..ns {
             for w in 0..3 {
                 let i0 = base + s * stride + w;
-                let i1 = base + (s+1) * stride + w;
-                polys.push_cell(&[i0 as i64, i1 as i64, (i1+1) as i64, (i0+1) as i64]);
+                let i1 = base + (s + 1) * stride + w;
+                polys.push_cell(&[i0 as i64, i1 as i64, (i1 + 1) as i64, (i0 + 1) as i64]);
             }
         }
     }
@@ -41,15 +41,23 @@ pub fn catamaran(length: f64, beam: f64, hull_width: f64, ns: usize) -> PolyData
     for b in 0..n_beams {
         let t = (b + 1) as f64 / (n_beams + 1) as f64;
         let x = length * (t - 0.5);
-        let l = pts.len(); pts.push([x, -hull_separation, 0.02]);
-        let r = pts.len(); pts.push([x, hull_separation, 0.02]);
+        let l = pts.len();
+        pts.push([x, -hull_separation, 0.02]);
+        let r = pts.len();
+        pts.push([x, hull_separation, 0.02]);
         lines.push_cell(&[l as i64, r as i64]);
     }
     // Mast
-    let mast_b = pts.len(); pts.push([0.0, 0.0, 0.02]);
-    let mast_t = pts.len(); pts.push([0.0, 0.0, length * 0.6]);
+    let mast_b = pts.len();
+    pts.push([0.0, 0.0, 0.02]);
+    let mast_t = pts.len();
+    pts.push([0.0, 0.0, length * 0.6]);
     lines.push_cell(&[mast_b as i64, mast_t as i64]);
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

@@ -13,35 +13,46 @@ pub fn laplacian_deform(
     iterations: usize,
 ) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     // Build adjacency
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
-            let b = cell[(i+1)%cell.len()] as usize;
-            if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-            if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+            let b = cell[(i + 1) % cell.len()] as usize;
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
         }
     }
 
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
     // Set handles
-    let handle_set: std::collections::HashMap<usize, [f64; 3]> =
-        handles.iter().cloned().collect();
+    let handle_set: std::collections::HashMap<usize, [f64; 3]> = handles.iter().cloned().collect();
 
     for h in handles {
-        if h.0 < n { pts[h.0] = h.1; }
+        if h.0 < n {
+            pts[h.0] = h.1;
+        }
     }
 
     // Iterative smoothing with handle constraints
     for _ in 0..iterations {
         let mut new_pts = pts.clone();
         for i in 0..n {
-            if handle_set.contains_key(&i) { continue; }
-            if neighbors[i].is_empty() { continue; }
+            if handle_set.contains_key(&i) {
+                continue;
+            }
+            if neighbors[i].is_empty() {
+                continue;
+            }
 
             let cnt = neighbors[i].len() as f64;
             let mut avg = [0.0; 3];
@@ -61,7 +72,9 @@ pub fn laplacian_deform(
     }
 
     let mut points = Points::<f64>::new();
-    for p in &pts { points.push(*p); }
+    for p in &pts {
+        points.push(*p);
+    }
     let mut pd = input.clone();
     pd.points = points;
     pd
@@ -88,7 +101,9 @@ mod tests {
     fn deformation_propagates() {
         let mut pd = PolyData::new();
         // Line of 5 points
-        for i in 0..5 { pd.points.push([i as f64, 0.0, 0.0]); }
+        for i in 0..5 {
+            pd.points.push([i as f64, 0.0, 0.0]);
+        }
         pd.polys.push_cell(&[0, 1, 2]);
         pd.polys.push_cell(&[2, 3, 4]);
 

@@ -5,12 +5,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// For each target point, computes a weighted average of source values where
 /// the weight is `1 / distance^power`. Points within `radius` of the target
 /// are considered; if `radius` is 0 or negative, all source points are used.
-pub fn interpolate_idw(
-    source: &PolyData,
-    target: &PolyData,
-    power: f64,
-    radius: f64,
-) -> PolyData {
+pub fn interpolate_idw(source: &PolyData, target: &PolyData, power: f64, radius: f64) -> PolyData {
     let mut pd = target.clone();
     let n_source = source.points.len();
     let n_target = target.points.len();

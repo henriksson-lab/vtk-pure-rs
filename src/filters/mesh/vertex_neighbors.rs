@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::{HashMap, HashSet};
 
 /// For each vertex, count the number of neighboring vertices (connected by an edge).
 ///
@@ -13,9 +13,12 @@ pub fn compute_vertex_neighbor_counts(input: &PolyData) -> PolyData {
         .collect();
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("VertexNeighborCount", counts, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "VertexNeighborCount",
+            counts,
+            1,
+        )));
     pd
 }
 
@@ -78,12 +81,19 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = compute_vertex_neighbor_counts(&pd);
-        let arr = result.point_data().get_array("VertexNeighborCount").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("VertexNeighborCount")
+            .unwrap();
         assert_eq!(arr.num_tuples(), 3);
         let mut val = [0.0f64];
         for i in 0..3 {
             arr.tuple_as_f64(i, &mut val);
-            assert!((val[0] - 2.0).abs() < 1e-10, "vertex {} should have 2 neighbors", i);
+            assert!(
+                (val[0] - 2.0).abs() < 1e-10,
+                "vertex {} should have 2 neighbors",
+                i
+            );
         }
     }
 
@@ -101,10 +111,16 @@ mod tests {
             vec![[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1]],
         );
         let result = compute_vertex_neighbor_counts(&pd);
-        let arr = result.point_data().get_array("VertexNeighborCount").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("VertexNeighborCount")
+            .unwrap();
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
-        assert!((val[0] - 4.0).abs() < 1e-10, "center vertex should have 4 neighbors");
+        assert!(
+            (val[0] - 4.0).abs() < 1e-10,
+            "center vertex should have 4 neighbors"
+        );
     }
 
     #[test]

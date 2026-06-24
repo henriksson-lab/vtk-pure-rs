@@ -32,9 +32,11 @@ pub fn poly_data_to_table(input: &PolyData) -> Table {
                 arr.tuple_as_f64(j, &mut buf);
                 values.push(buf[0]);
             }
-            table.add_column(AnyDataArray::F64(
-                DataArray::from_vec(arr.name(), values, 1),
-            ));
+            table.add_column(AnyDataArray::F64(DataArray::from_vec(
+                arr.name(),
+                values,
+                1,
+            )));
         }
     }
 
@@ -50,9 +52,12 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([1.0, 2.0, 3.0]);
         pd.points.push([4.0, 5.0, 6.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![100.0, 200.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![100.0, 200.0],
+                1,
+            )));
 
         let table = poly_data_to_table(&pd);
         assert!(table.column_by_name("X").is_some());
@@ -73,12 +78,18 @@ mod tests {
     fn skips_vector_arrays() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("normals", vec![0.0, 0.0, 1.0], 3),
-        ));
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalar", vec![42.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "normals",
+                vec![0.0, 0.0, 1.0],
+                3,
+            )));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "scalar",
+                vec![42.0],
+                1,
+            )));
 
         let table = poly_data_to_table(&pd);
         assert!(table.column_by_name("scalar").is_some());

@@ -15,10 +15,12 @@ pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
         return PolyData::new();
     }
 
-    let pts: Vec<[f64; 2]> = (0..n).map(|i| {
-        let p = input.points.get(i);
-        [p[0], p[1]]
-    }).collect();
+    let pts: Vec<[f64; 2]> = (0..n)
+        .map(|i| {
+            let p = input.points.get(i);
+            [p[0], p[1]]
+        })
+        .collect();
 
     // First compute Delaunay triangulation
     let tris = delaunay(&pts);
@@ -32,9 +34,10 @@ pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
     }
 
     // Compute circumcenters
-    let circumcenters: Vec<[f64; 2]> = tris.iter().map(|tri| {
-        circumcenter(pts[tri[0]], pts[tri[1]], pts[tri[2]])
-    }).collect();
+    let circumcenters: Vec<[f64; 2]> = tris
+        .iter()
+        .map(|tri| circumcenter(pts[tri[0]], pts[tri[1]], pts[tri[2]]))
+        .collect();
 
     // Build Voronoi cells
     let mut out_points = Points::<f64>::new();
@@ -48,12 +51,15 @@ pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
         }
 
         // Order circumcenters around the point by angle
-        let mut angles: Vec<(usize, f64)> = adj.iter().map(|&ti| {
-            let cc = circumcenters[ti];
-            let dx = cc[0] - pts[pi][0];
-            let dy = cc[1] - pts[pi][1];
-            (ti, dy.atan2(dx))
-        }).collect();
+        let mut angles: Vec<(usize, f64)> = adj
+            .iter()
+            .map(|&ti| {
+                let cc = circumcenters[ti];
+                let dx = cc[0] - pts[pi][0];
+                let dy = cc[1] - pts[pi][1];
+                (ti, dy.atan2(dx))
+            })
+            .collect();
         angles.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
         let base = out_points.len() as i64;
@@ -73,37 +79,53 @@ pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("SiteId", site_ids, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SiteId", site_ids, 1,
+        )));
     pd
 }
 
 fn circumcenter(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> [f64; 2] {
-    let ax = a[0]; let ay = a[1];
-    let bx = b[0]; let by = b[1];
-    let cx = c[0]; let cy = c[1];
+    let ax = a[0];
+    let ay = a[1];
+    let bx = b[0];
+    let by = b[1];
+    let cx = c[0];
+    let cy = c[1];
 
     let d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
     if d.abs() < 1e-15 {
         return [(ax + bx + cx) / 3.0, (ay + by + cy) / 3.0];
     }
 
-    let ux = ((ax*ax + ay*ay) * (by - cy) + (bx*bx + by*by) * (cy - ay) + (cx*cx + cy*cy) * (ay - by)) / d;
-    let uy = ((ax*ax + ay*ay) * (cx - bx) + (bx*bx + by*by) * (ax - cx) + (cx*cx + cy*cy) * (bx - ax)) / d;
+    let ux = ((ax * ax + ay * ay) * (by - cy)
+        + (bx * bx + by * by) * (cy - ay)
+        + (cx * cx + cy * cy) * (ay - by))
+        / d;
+    let uy = ((ax * ax + ay * ay) * (cx - bx)
+        + (bx * bx + by * by) * (ax - cx)
+        + (cx * cx + cy * cy) * (bx - ax))
+        / d;
     [ux, uy]
 }
 
 /// Simple Bowyer-Watson Delaunay. Returns triangle vertex indices.
 fn delaunay(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
     let n = pts.len();
-    if n < 3 { return vec![]; }
+    if n < 3 {
+        return vec![];
+    }
 
-    let mut min_x = f64::MAX; let mut max_x = f64::MIN;
-    let mut min_y = f64::MAX; let mut max_y = f64::MIN;
+    let mut min_x = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut min_y = f64::MAX;
+    let mut max_y = f64::MIN;
     for p in pts {
-        min_x = min_x.min(p[0]); max_x = max_x.max(p[0]);
-        min_y = min_y.min(p[1]); max_y = max_y.max(p[1]);
+        min_x = min_x.min(p[0]);
+        max_x = max_x.max(p[0]);
+        min_y = min_y.min(p[1]);
+        max_y = max_y.max(p[1]);
     }
     let dx = (max_x - min_x).max(1e-10);
     let dy = (max_y - min_y).max(1e-10);
@@ -118,7 +140,7 @@ fn delaunay(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
     let mut all_pts: Vec<[f64; 2]> = pts.to_vec();
     all_pts.extend_from_slice(&super_pts);
 
-    let mut triangles: Vec<[usize; 3]> = vec![[n, n+1, n+2]];
+    let mut triangles: Vec<[usize; 3]> = vec![[n, n + 1, n + 2]];
 
     for pi in 0..n {
         let p = all_pts[pi];
@@ -131,21 +153,37 @@ fn delaunay(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
 
         let mut polygon: Vec<(usize, usize)> = Vec::new();
         for (ti, tri) in triangles.iter().enumerate() {
-            if !bad[ti] { continue; }
-            let edges = [(tri[0],tri[1]),(tri[1],tri[2]),(tri[2],tri[0])];
-            for &(a,b) in &edges {
+            if !bad[ti] {
+                continue;
+            }
+            let edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
+            for &(a, b) in &edges {
                 let shared = triangles.iter().enumerate().any(|(tj, other)| {
-                    if tj == ti || !bad[tj] { return false; }
-                    let oedges = [(other[0],other[1]),(other[1],other[2]),(other[2],other[0])];
-                    oedges.contains(&(b,a))
+                    if tj == ti || !bad[tj] {
+                        return false;
+                    }
+                    let oedges = [
+                        (other[0], other[1]),
+                        (other[1], other[2]),
+                        (other[2], other[0]),
+                    ];
+                    oedges.contains(&(b, a))
                 });
-                if !shared { polygon.push((a,b)); }
+                if !shared {
+                    polygon.push((a, b));
+                }
             }
         }
 
-        let mut new_tris: Vec<[usize; 3]> = triangles.iter().enumerate()
-            .filter(|(ti,_)| !bad[*ti]).map(|(_,t)| *t).collect();
-        for &(a,b) in &polygon { new_tris.push([a,b,pi]); }
+        let mut new_tris: Vec<[usize; 3]> = triangles
+            .iter()
+            .enumerate()
+            .filter(|(ti, _)| !bad[*ti])
+            .map(|(_, t)| *t)
+            .collect();
+        for &(a, b) in &polygon {
+            new_tris.push([a, b, pi]);
+        }
         triangles = new_tris;
     }
 
@@ -154,12 +192,15 @@ fn delaunay(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
 }
 
 fn in_circumcircle(a: [f64; 2], b: [f64; 2], c: [f64; 2], p: [f64; 2]) -> bool {
-    let ax = a[0]-p[0]; let ay = a[1]-p[1];
-    let bx = b[0]-p[0]; let by = b[1]-p[1];
-    let cx = c[0]-p[0]; let cy = c[1]-p[1];
-    let det = ax*(by*(cx*cx+cy*cy)-cy*(bx*bx+by*by))
-        - ay*(bx*(cx*cx+cy*cy)-cx*(bx*bx+by*by))
-        + (ax*ax+ay*ay)*(bx*cy-by*cx);
+    let ax = a[0] - p[0];
+    let ay = a[1] - p[1];
+    let bx = b[0] - p[0];
+    let by = b[1] - p[1];
+    let cx = c[0] - p[0];
+    let cy = c[1] - p[1];
+    let det = ax * (by * (cx * cx + cy * cy) - cy * (bx * bx + by * by))
+        - ay * (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by))
+        + (ax * ax + ay * ay) * (bx * cy - by * cx);
     det > 0.0
 }
 

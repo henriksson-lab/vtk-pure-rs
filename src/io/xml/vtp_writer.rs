@@ -83,11 +83,7 @@ impl VtpWriter {
     }
 }
 
-fn write_cell_section<W: Write>(
-    w: &mut W,
-    tag: &str,
-    cells: &CellArray,
-) -> Result<(), VtkError> {
+fn write_cell_section<W: Write>(w: &mut W, tag: &str, cells: &CellArray) -> Result<(), VtkError> {
     writeln!(w, "      <{}>", tag)?;
 
     // Connectivity

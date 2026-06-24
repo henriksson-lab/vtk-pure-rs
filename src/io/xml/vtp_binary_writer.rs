@@ -20,7 +20,10 @@ impl VtpBinaryWriter {
 
     pub fn write_to<W: Write>(w: &mut W, data: &PolyData) -> Result<(), VtkError> {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"PolyData\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"PolyData\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <PolyData>")?;
 
         let n_points = data.points.len();

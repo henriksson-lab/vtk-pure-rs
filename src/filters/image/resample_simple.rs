@@ -41,9 +41,21 @@ pub fn resample_nearest(input: &ImageData, scalars: &str, new_dims: [u32; 3]) ->
     let extent_z: f64 = (onz as f64 - 1.0).max(0.0) * old_spacing[2];
 
     let new_spacing: [f64; 3] = [
-        if nnx > 1 { extent_x / (nnx as f64 - 1.0) } else { extent_x },
-        if nny > 1 { extent_y / (nny as f64 - 1.0) } else { extent_y },
-        if nnz > 1 { extent_z / (nnz as f64 - 1.0) } else { extent_z },
+        if nnx > 1 {
+            extent_x / (nnx as f64 - 1.0)
+        } else {
+            extent_x
+        },
+        if nny > 1 {
+            extent_y / (nny as f64 - 1.0)
+        } else {
+            extent_y
+        },
+        if nnz > 1 {
+            extent_z / (nnz as f64 - 1.0)
+        } else {
+            extent_z
+        },
     ];
 
     let new_n: usize = nnx * nny * nnz;
@@ -83,9 +95,10 @@ pub fn resample_nearest(input: &ImageData, scalars: &str, new_dims: [u32; 3]) ->
     let mut out = ImageData::with_dimensions(nnx, nny, nnz);
     out.set_spacing(new_spacing);
     out.set_origin(origin);
-    out.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, new_values, num_comp),
-    ));
+    out.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, new_values, num_comp,
+        )));
     out
 }
 
@@ -101,9 +114,12 @@ mod tests {
         img.set_spacing([1.0, 1.0, 1.0]);
         img.set_origin([0.0, 0.0, 0.0]);
         // values: (0,0)=1  (1,0)=2  (0,1)=3  (1,1)=4
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("s", vec![1.0, 2.0, 3.0, 4.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
 
         let out = resample_nearest(&img, "s", [4, 4, 1]);
         assert_eq!(out.dimensions(), [4, 4, 1]);
@@ -127,9 +143,8 @@ mod tests {
         for i in 0..16 {
             vals[i] = i as f64;
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("s", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", vals, 1)));
 
         let out = resample_nearest(&img, "s", [2, 2, 1]);
         assert_eq!(out.dimensions(), [2, 2, 1]);

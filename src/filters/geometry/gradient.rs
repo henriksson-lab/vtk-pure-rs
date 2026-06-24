@@ -36,7 +36,9 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
         }
     }
     let mut adj_off = vec![0u32; n + 1];
-    for i in 0..n { adj_off[i + 1] = adj_off[i] + adj_count[i]; }
+    for i in 0..n {
+        adj_off[i + 1] = adj_off[i] + adj_count[i];
+    }
     let mut adj_data = vec![0u32; adj_off[n] as usize];
     let mut adj_pos = adj_off[..n].to_vec();
     for ci in 0..nc {
@@ -46,8 +48,10 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
         for i in 0..cn {
             let a = conn[s + i] as usize;
             let b = conn[s + if i + 1 < cn { i + 1 } else { 0 }] as usize;
-            adj_data[adj_pos[a] as usize] = b as u32; adj_pos[a] += 1;
-            adj_data[adj_pos[b] as usize] = a as u32; adj_pos[b] += 1;
+            adj_data[adj_pos[a] as usize] = b as u32;
+            adj_pos[a] += 1;
+            adj_data[adj_pos[b] as usize] = a as u32;
+            adj_pos[b] += 1;
         }
     }
     // Deduplicate each adjacency list
@@ -60,7 +64,10 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
         nbr_off[v] = nbr_data.len() as u32;
         let mut prev = u32::MAX;
         for &nb in &adj_data[s..e] {
-            if nb != prev { nbr_data.push(nb); prev = nb; }
+            if nb != prev {
+                nbr_data.push(nb);
+                prev = nb;
+            }
         }
     }
     nbr_off[n] = nbr_data.len() as u32;
@@ -70,12 +77,16 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
 
     for i in 0..n {
         let bi = i * 3;
-        let pix = pts[bi]; let piy = pts[bi + 1]; let piz = pts[bi + 2];
+        let pix = pts[bi];
+        let piy = pts[bi + 1];
+        let piz = pts[bi + 2];
         let si = scalars[i];
 
         let ns = nbr_off[i] as usize;
         let ne = nbr_off[i + 1] as usize;
-        if ns == ne { continue; }
+        if ns == ne {
+            continue;
+        }
 
         let mut ata = [[0.0f64; 3]; 3];
         let mut atb = [0.0f64; 3];
@@ -86,12 +97,19 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
             let dx = [pts[bj] - pix, pts[bj + 1] - piy, pts[bj + 2] - piz];
             let ds = scalars[j] - si;
 
-            ata[0][0] += dx[0] * dx[0]; ata[0][1] += dx[0] * dx[1]; ata[0][2] += dx[0] * dx[2];
-            ata[1][1] += dx[1] * dx[1]; ata[1][2] += dx[1] * dx[2];
+            ata[0][0] += dx[0] * dx[0];
+            ata[0][1] += dx[0] * dx[1];
+            ata[0][2] += dx[0] * dx[2];
+            ata[1][1] += dx[1] * dx[1];
+            ata[1][2] += dx[1] * dx[2];
             ata[2][2] += dx[2] * dx[2];
-            atb[0] += dx[0] * ds; atb[1] += dx[1] * ds; atb[2] += dx[2] * ds;
+            atb[0] += dx[0] * ds;
+            atb[1] += dx[1] * ds;
+            atb[2] += dx[2] * ds;
         }
-        ata[1][0] = ata[0][1]; ata[2][0] = ata[0][2]; ata[2][1] = ata[1][2];
+        ata[1][0] = ata[0][1];
+        ata[2][0] = ata[0][2];
+        ata[2][1] = ata[1][2];
 
         if let Some(g) = solve_3x3(&ata, &atb) {
             grad_data[i * 3] = g[0];
@@ -101,9 +119,10 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Gradient", grad_data, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Gradient", grad_data, 3,
+        )));
     pd
 }
 
@@ -155,12 +174,12 @@ mod tests {
         // Use a richer mesh so least-squares has full-rank neighborhoods
         let mut pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0],  // 0
-                [1.0, 0.0, 0.0],  // 1
-                [2.0, 0.0, 0.0],  // 2
-                [0.5, 1.0, 0.0],  // 3
-                [1.5, 1.0, 0.0],  // 4
-                [1.0, 2.0, 0.0],  // 5
+                [0.0, 0.0, 0.0], // 0
+                [1.0, 0.0, 0.0], // 1
+                [2.0, 0.0, 0.0], // 2
+                [0.5, 1.0, 0.0], // 3
+                [1.5, 1.0, 0.0], // 4
+                [1.0, 2.0, 0.0], // 5
             ],
             vec![[0, 1, 3], [1, 2, 4], [1, 4, 3], [3, 4, 5]],
         );

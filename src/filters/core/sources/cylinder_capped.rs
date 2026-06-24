@@ -20,8 +20,10 @@ pub fn cylinder_capped(radius: f64, height: f64, resolution: usize) -> PolyData 
         pts.push([radius * a.cos(), radius * a.sin(), half_h]);
     }
     // Centers
-    let bot_center = pts.len(); pts.push([0.0, 0.0, -half_h]);
-    let top_center = pts.len(); pts.push([0.0, 0.0, half_h]);
+    let bot_center = pts.len();
+    pts.push([0.0, 0.0, -half_h]);
+    let top_center = pts.len();
+    pts.push([0.0, 0.0, half_h]);
 
     // Side quads
     for i in 0..res {
@@ -46,7 +48,12 @@ pub fn cylinder_capped(radius: f64, height: f64, resolution: usize) -> PolyData 
 }
 
 /// Create a tapered cylinder (different top and bottom radii).
-pub fn tapered_cylinder(bottom_radius: f64, top_radius: f64, height: f64, resolution: usize) -> PolyData {
+pub fn tapered_cylinder(
+    bottom_radius: f64,
+    top_radius: f64,
+    height: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(3);
     let half_h = height / 2.0;
     let mut pts = Points::<f64>::new();
@@ -60,8 +67,10 @@ pub fn tapered_cylinder(bottom_radius: f64, top_radius: f64, height: f64, resolu
         let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
         pts.push([top_radius * a.cos(), top_radius * a.sin(), half_h]);
     }
-    let bot_c = pts.len(); pts.push([0.0, 0.0, -half_h]);
-    let top_c = pts.len(); pts.push([0.0, 0.0, half_h]);
+    let bot_c = pts.len();
+    pts.push([0.0, 0.0, -half_h]);
+    let top_c = pts.len();
+    pts.push([0.0, 0.0, half_h]);
 
     for i in 0..res {
         let j = (i + 1) % res;

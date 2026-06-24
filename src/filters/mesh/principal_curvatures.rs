@@ -84,12 +84,18 @@ pub fn compute_principal_curvatures(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("PrincipalCurvature1", k1, 1),
-    ));
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("PrincipalCurvature2", k2, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "PrincipalCurvature1",
+            k1,
+            1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "PrincipalCurvature2",
+            k2,
+            1,
+        )));
     pd
 }
 
@@ -143,8 +149,14 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = compute_principal_curvatures(&pd);
-        let k1 = result.point_data().get_array("PrincipalCurvature1").unwrap();
-        let k2 = result.point_data().get_array("PrincipalCurvature2").unwrap();
+        let k1 = result
+            .point_data()
+            .get_array("PrincipalCurvature1")
+            .unwrap();
+        let k2 = result
+            .point_data()
+            .get_array("PrincipalCurvature2")
+            .unwrap();
         assert_eq!(k1.num_tuples(), 3);
         assert_eq!(k2.num_tuples(), 3);
     }
@@ -163,8 +175,14 @@ mod tests {
             vec![[0, 1, 4], [0, 4, 3], [1, 2, 5], [1, 5, 4]],
         );
         let result = compute_principal_curvatures(&pd);
-        let k1_arr = result.point_data().get_array("PrincipalCurvature1").unwrap();
-        let k2_arr = result.point_data().get_array("PrincipalCurvature2").unwrap();
+        let k1_arr = result
+            .point_data()
+            .get_array("PrincipalCurvature1")
+            .unwrap();
+        let k2_arr = result
+            .point_data()
+            .get_array("PrincipalCurvature2")
+            .unwrap();
         let mut v1 = [0.0f64];
         let mut v2 = [0.0f64];
         for i in 0..6 {
@@ -178,7 +196,10 @@ mod tests {
     fn empty_mesh() {
         let pd = PolyData::from_triangles(vec![], vec![]);
         let result = compute_principal_curvatures(&pd);
-        let k1 = result.point_data().get_array("PrincipalCurvature1").unwrap();
+        let k1 = result
+            .point_data()
+            .get_array("PrincipalCurvature1")
+            .unwrap();
         assert_eq!(k1.num_tuples(), 0);
     }
 }

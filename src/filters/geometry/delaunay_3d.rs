@@ -12,10 +12,12 @@ pub fn delaunay_3d(input: &PolyData) -> UnstructuredGrid {
     }
 
     // Extract 3D coordinates
-    let pts: Vec<[f64; 3]> = (0..n).map(|i| {
-        let p = input.points.get(i);
-        [p[0], p[1], p[2]]
-    }).collect();
+    let pts: Vec<[f64; 3]> = (0..n)
+        .map(|i| {
+            let p = input.points.get(i);
+            [p[0], p[1], p[2]]
+        })
+        .collect();
 
     // Compute bounding box
     let mut min = [f64::MAX; 3];
@@ -58,8 +60,11 @@ pub fn delaunay_3d(input: &PolyData) -> UnstructuredGrid {
         let mut bad = vec![false; tets.len()];
         for (ti, tet) in tets.iter().enumerate() {
             if in_circumsphere(
-                all_pts[tet[0]], all_pts[tet[1]],
-                all_pts[tet[2]], all_pts[tet[3]], p,
+                all_pts[tet[0]],
+                all_pts[tet[1]],
+                all_pts[tet[2]],
+                all_pts[tet[3]],
+                p,
             ) {
                 bad[ti] = true;
             }
@@ -98,7 +103,9 @@ pub fn delaunay_3d(input: &PolyData) -> UnstructuredGrid {
         }
 
         // Remove bad tetrahedra and create new ones
-        let mut new_tets: Vec<[usize; 4]> = tets.iter().enumerate()
+        let mut new_tets: Vec<[usize; 4]> = tets
+            .iter()
+            .enumerate()
             .filter(|(ti, _)| !bad[*ti])
             .map(|(_, t)| *t)
             .collect();
@@ -120,10 +127,10 @@ pub fn delaunay_3d(input: &PolyData) -> UnstructuredGrid {
     }
 
     for tet in &tets {
-        grid.push_cell(CellType::Tetra, &[
-            tet[0] as i64, tet[1] as i64,
-            tet[2] as i64, tet[3] as i64,
-        ]);
+        grid.push_cell(
+            CellType::Tetra,
+            &[tet[0] as i64, tet[1] as i64, tet[2] as i64, tet[3] as i64],
+        );
     }
 
     grid
@@ -134,13 +141,19 @@ pub fn delaunay_3d(input: &PolyData) -> UnstructuredGrid {
 /// Uses the determinant method: the point is inside if the determinant of
 /// the 5x5 matrix (with the lifted paraboloid) is positive (assuming
 /// consistent vertex orientation).
-fn in_circumsphere(
-    a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3], p: [f64; 3],
-) -> bool {
-    let ax = a[0] - p[0]; let ay = a[1] - p[1]; let az = a[2] - p[2];
-    let bx = b[0] - p[0]; let by = b[1] - p[1]; let bz = b[2] - p[2];
-    let cx = c[0] - p[0]; let cy = c[1] - p[1]; let cz = c[2] - p[2];
-    let dx = d[0] - p[0]; let dy = d[1] - p[1]; let dz = d[2] - p[2];
+fn in_circumsphere(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3], p: [f64; 3]) -> bool {
+    let ax = a[0] - p[0];
+    let ay = a[1] - p[1];
+    let az = a[2] - p[2];
+    let bx = b[0] - p[0];
+    let by = b[1] - p[1];
+    let bz = b[2] - p[2];
+    let cx = c[0] - p[0];
+    let cy = c[1] - p[1];
+    let cz = c[2] - p[2];
+    let dx = d[0] - p[0];
+    let dy = d[1] - p[1];
+    let dz = d[2] - p[2];
 
     let a2 = ax * ax + ay * ay + az * az;
     let b2 = bx * bx + by * by + bz * bz;
@@ -166,23 +179,21 @@ fn in_circumsphere(
 /// Orientation test for 4 points in 3D. Positive if d is above the plane (a,b,c)
 /// with right-hand-rule normal.
 fn orient3d(a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]) -> f64 {
-    let ax = a[0] - d[0]; let ay = a[1] - d[1]; let az = a[2] - d[2];
-    let bx = b[0] - d[0]; let by = b[1] - d[1]; let bz = b[2] - d[2];
-    let cx = c[0] - d[0]; let cy = c[1] - d[1]; let cz = c[2] - d[2];
+    let ax = a[0] - d[0];
+    let ay = a[1] - d[1];
+    let az = a[2] - d[2];
+    let bx = b[0] - d[0];
+    let by = b[1] - d[1];
+    let bz = b[2] - d[2];
+    let cx = c[0] - d[0];
+    let cy = c[1] - d[1];
+    let cz = c[2] - d[2];
 
-    ax * (by * cz - bz * cy)
-        - ay * (bx * cz - bz * cx)
-        + az * (bx * cy - by * cx)
+    ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)
 }
 
-fn det3x3(
-    a: f64, b: f64, c: f64,
-    d: f64, e: f64, f: f64,
-    g: f64, h: f64, i: f64,
-) -> f64 {
-    a * (e * i - f * h)
-        - b * (d * i - f * g)
-        + c * (d * h - e * g)
+fn det3x3(a: f64, b: f64, c: f64, d: f64, e: f64, f: f64, g: f64, h: f64, i: f64) -> f64 {
+    a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
 }
 
 /// Check if a tetrahedron has a face with the same 3 vertices (unordered, pre-sorted).
@@ -221,7 +232,11 @@ mod tests {
         let result = delaunay_3d(&pd);
         assert_eq!(result.num_points(), 5);
         // 5 points in general position -> at least 2 tetrahedra
-        assert!(result.num_cells() >= 2, "expected >= 2 tets, got {}", result.num_cells());
+        assert!(
+            result.num_cells() >= 2,
+            "expected >= 2 tets, got {}",
+            result.num_cells()
+        );
         // All cells should be tetrahedra
         for i in 0..result.num_cells() {
             assert_eq!(result.cell_type(i), CellType::Tetra);
@@ -243,8 +258,16 @@ mod tests {
         let result = delaunay_3d(&pd);
         assert_eq!(result.num_points(), 8);
         // A cube with 8 points -> 5 or 6 tetrahedra (depending on triangulation)
-        assert!(result.num_cells() >= 5, "expected >= 5 tets, got {}", result.num_cells());
-        assert!(result.num_cells() <= 12, "expected <= 12 tets, got {}", result.num_cells());
+        assert!(
+            result.num_cells() >= 5,
+            "expected >= 5 tets, got {}",
+            result.num_cells()
+        );
+        assert!(
+            result.num_cells() <= 12,
+            "expected <= 12 tets, got {}",
+            result.num_cells()
+        );
     }
 
     #[test]
@@ -276,9 +299,15 @@ mod tests {
         // Deterministic "random" point cloud
         let mut pd = PolyData::new();
         let seeds: Vec<[f64; 3]> = vec![
-            [0.1, 0.2, 0.3], [0.9, 0.1, 0.4], [0.5, 0.8, 0.2],
-            [0.3, 0.5, 0.9], [0.7, 0.7, 0.7], [0.2, 0.9, 0.5],
-            [0.8, 0.3, 0.8], [0.4, 0.4, 0.1], [0.6, 0.1, 0.6],
+            [0.1, 0.2, 0.3],
+            [0.9, 0.1, 0.4],
+            [0.5, 0.8, 0.2],
+            [0.3, 0.5, 0.9],
+            [0.7, 0.7, 0.7],
+            [0.2, 0.9, 0.5],
+            [0.8, 0.3, 0.8],
+            [0.4, 0.4, 0.1],
+            [0.6, 0.1, 0.6],
             [0.1, 0.6, 0.8],
         ];
         for p in &seeds {
@@ -287,6 +316,10 @@ mod tests {
 
         let result = delaunay_3d(&pd);
         assert_eq!(result.num_points(), 10);
-        assert!(result.num_cells() >= 5, "expected >= 5 tets, got {}", result.num_cells());
+        assert!(
+            result.num_cells() >= 5,
+            "expected >= 5 tets, got {}",
+            result.num_cells()
+        );
     }
 }

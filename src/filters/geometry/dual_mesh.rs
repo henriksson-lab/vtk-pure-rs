@@ -13,14 +13,16 @@ pub fn dual_mesh(input: &PolyData) -> PolyData {
     let mut tri_indices: Vec<[i64; 3]> = Vec::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
         let v1 = input.points.get(cell[1] as usize);
         let v2 = input.points.get(cell[2] as usize);
         centroids.push([
-            (v0[0]+v1[0]+v2[0])/3.0,
-            (v0[1]+v1[1]+v2[1])/3.0,
-            (v0[2]+v1[2]+v2[2])/3.0,
+            (v0[0] + v1[0] + v2[0]) / 3.0,
+            (v0[1] + v1[1] + v2[1]) / 3.0,
+            (v0[2] + v1[2] + v2[2]) / 3.0,
         ]);
         tri_indices.push([cell[0], cell[1], cell[2]]);
     }
@@ -44,16 +46,21 @@ pub fn dual_mesh(input: &PolyData) -> PolyData {
     // For each vertex with ≥3 adjacent triangles, create a dual polygon
     for pi in 0..n_pts {
         let adj = &pt_tris[pi];
-        if adj.len() < 3 { continue; }
+        if adj.len() < 3 {
+            continue;
+        }
 
         // Order by angle around the vertex
         let p = input.points.get(pi);
-        let mut angles: Vec<(usize, f64)> = adj.iter().map(|&ti| {
-            let c = centroids[ti];
-            let dx = c[0] - p[0];
-            let dy = c[1] - p[1];
-            (ti, dy.atan2(dx))
-        }).collect();
+        let mut angles: Vec<(usize, f64)> = adj
+            .iter()
+            .map(|&ti| {
+                let c = centroids[ti];
+                let dx = c[0] - p[0];
+                let dy = c[1] - p[1];
+                (ti, dy.atan2(dx))
+            })
+            .collect();
         angles.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
         let cell: Vec<i64> = angles.iter().map(|&(ti, _)| ti as i64).collect();

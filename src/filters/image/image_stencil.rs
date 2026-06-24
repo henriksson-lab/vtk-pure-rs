@@ -40,9 +40,13 @@ pub fn apply_stencil(
     }
 
     let mut output = input.clone();
-    output.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, result_data, 1),
-    ));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name,
+            result_data,
+            1,
+        )));
     output
 }
 
@@ -69,9 +73,11 @@ pub fn create_stencil_from_threshold(
     }
 
     let mut output = input.clone();
-    output.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Stencil", stencil, 1),
-    ));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Stencil", stencil, 1,
+        )));
     output
 }
 
@@ -116,9 +122,9 @@ pub fn window_level_to_rgba(
     }
 
     let mut output = input.clone();
-    output.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("RGBA", rgba, 4),
-    ));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RGBA", rgba, 4)));
     output
 }
 
@@ -157,7 +163,13 @@ pub fn ideal_highpass(magnitude: &mut [f64], width: usize, height: usize, cutoff
 
 /// Butterworth low-pass filter of given order.
 /// H(u,v) = 1 / (1 + (D/D0)^(2n))
-pub fn butterworth_lowpass(magnitude: &mut [f64], width: usize, height: usize, cutoff: f64, order: u32) {
+pub fn butterworth_lowpass(
+    magnitude: &mut [f64],
+    width: usize,
+    height: usize,
+    cutoff: f64,
+    order: u32,
+) {
     let cx = width as f64 / 2.0;
     let cy = height as f64 / 2.0;
     let n2 = 2 * order;
@@ -173,7 +185,13 @@ pub fn butterworth_lowpass(magnitude: &mut [f64], width: usize, height: usize, c
 }
 
 /// Butterworth high-pass filter of given order.
-pub fn butterworth_highpass(magnitude: &mut [f64], width: usize, height: usize, cutoff: f64, order: u32) {
+pub fn butterworth_highpass(
+    magnitude: &mut [f64],
+    width: usize,
+    height: usize,
+    cutoff: f64,
+    order: u32,
+) {
     let cx = width as f64 / 2.0;
     let cy = height as f64 / 2.0;
     let n2 = 2 * order;
@@ -182,7 +200,11 @@ pub fn butterworth_highpass(magnitude: &mut [f64], width: usize, height: usize, 
             let dx = x as f64 - cx;
             let dy = y as f64 - cy;
             let d = (dx * dx + dy * dy).sqrt();
-            let h = if d < 1e-30 { 0.0 } else { 1.0 / (1.0 + (cutoff / d).powi(n2 as i32)) };
+            let h = if d < 1e-30 {
+                0.0
+            } else {
+                1.0 / (1.0 + (cutoff / d).powi(n2 as i32))
+            };
             magnitude[y * width + x] *= h;
         }
     }
@@ -195,9 +217,8 @@ mod tests {
     fn make_grid() -> ImageData {
         let mut grid = ImageData::new([4, 4, 1], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]);
         let vals: Vec<f64> = (0..16).map(|i| i as f64).collect();
-        grid.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalar", vals, 1),
-        ));
+        grid.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("scalar", vals, 1)));
         grid
     }
 
@@ -217,9 +238,12 @@ mod tests {
     fn apply_stencil_test() {
         let mut grid = make_grid();
         let stencil_vals: Vec<f64> = (0..16).map(|i| if i >= 8 { 1.0 } else { 0.0 }).collect();
-        grid.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", stencil_vals, 1),
-        ));
+        grid.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                stencil_vals,
+                1,
+            )));
         let result = apply_stencil(&grid, "scalar", "mask", -1.0);
         let arr = result.point_data().get_array("scalar").unwrap();
         let mut v = [0.0f64];

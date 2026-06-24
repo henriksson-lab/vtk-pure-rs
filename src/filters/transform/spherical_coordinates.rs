@@ -18,7 +18,7 @@ pub fn spherical_coordinates(input: &PolyData, center: [f64; 3]) -> PolyData {
         let dx = p[0] - center[0];
         let dy = p[1] - center[1];
         let dz = p[2] - center[2];
-        let r = (dx*dx + dy*dy + dz*dz).sqrt();
+        let r = (dx * dx + dy * dy + dz * dz).sqrt();
         let theta = if r > 1e-15 { (dz / r).acos() } else { 0.0 };
         let phi = dy.atan2(dx);
 
@@ -28,9 +28,14 @@ pub fn spherical_coordinates(input: &PolyData, center: [f64; 3]) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("R", r_arr, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Theta", theta_arr, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Phi", phi_arr, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("R", r_arr, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Theta", theta_arr, 1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Phi", phi_arr, 1)));
     pd
 }
 
@@ -49,15 +54,18 @@ pub fn cylindrical_coordinates(input: &PolyData, center: [f64; 2]) -> PolyData {
         let p = input.points.get(i);
         let dx = p[0] - center[0];
         let dy = p[1] - center[1];
-        rho_arr.push((dx*dx + dy*dy).sqrt());
+        rho_arr.push((dx * dx + dy * dy).sqrt());
         phi_arr.push(dy.atan2(dx));
         z_arr.push(p[2]);
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Rho", rho_arr, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Phi", phi_arr, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("CylZ", z_arr, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Rho", rho_arr, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Phi", phi_arr, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("CylZ", z_arr, 1)));
     pd
 }
 

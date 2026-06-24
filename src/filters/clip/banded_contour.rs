@@ -77,18 +77,26 @@ pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyDa
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BandIndex", band_ids, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BandIndex",
+            band_ids,
+            1,
+        )));
     pd
 }
 
 /// Clip a triangle to the scalar band [lo, hi].
 /// Returns the polygon vertices that lie within the band.
 fn clip_triangle_to_band(
-    v0: [f64; 3], v1: [f64; 3], v2: [f64; 3],
-    s0: f64, s1: f64, s2: f64,
-    lo: f64, hi: f64,
+    v0: [f64; 3],
+    v1: [f64; 3],
+    v2: [f64; 3],
+    s0: f64,
+    s1: f64,
+    s2: f64,
+    lo: f64,
+    hi: f64,
 ) -> Vec<[f64; 3]> {
     // Start with the triangle, then clip by lo (keep >= lo), then by hi (keep <= hi)
     let verts = vec![v0, v1, v2];
@@ -117,7 +125,11 @@ fn clip_polygon_by_threshold(
     }
 
     let inside = |s: f64| -> bool {
-        if keep_above { s >= threshold } else { s <= threshold }
+        if keep_above {
+            s >= threshold
+        } else {
+            s <= threshold
+        }
     };
 
     let mut out_verts = Vec::new();
@@ -171,9 +183,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalars", vec![0.0, 1.0, 0.5], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "scalars",
+                vec![0.0, 1.0, 0.5],
+                1,
+            )));
         pd.point_data_mut().set_active_scalars("scalars");
         pd
     }

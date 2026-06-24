@@ -9,7 +9,9 @@ use crate::data::{AnyDataArray, DataArray, Table};
 pub fn compute_quantiles(table: &Table, column_name: &str, quantiles: &[f64]) -> Option<Vec<f64>> {
     let col = table.column_by_name(column_name)?;
     let n = col.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -19,15 +21,23 @@ pub fn compute_quantiles(table: &Table, column_name: &str, quantiles: &[f64]) ->
     }
     values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    Some(quantiles.iter().map(|&q| {
-        let q = q.clamp(0.0, 1.0);
-        let idx = q * (n - 1) as f64;
-        let lo = idx.floor() as usize;
-        let hi = idx.ceil() as usize;
-        let frac = idx - lo as f64;
-        if lo == hi { values[lo] }
-        else { values[lo] * (1.0 - frac) + values[hi] * frac }
-    }).collect())
+    Some(
+        quantiles
+            .iter()
+            .map(|&q| {
+                let q = q.clamp(0.0, 1.0);
+                let idx = q * (n - 1) as f64;
+                let lo = idx.floor() as usize;
+                let hi = idx.ceil() as usize;
+                let frac = idx - lo as f64;
+                if lo == hi {
+                    values[lo]
+                } else {
+                    values[lo] * (1.0 - frac) + values[hi] * frac
+                }
+            })
+            .collect(),
+    )
 }
 
 /// Compute quartiles (Q1, median, Q3) for a column.
@@ -40,7 +50,9 @@ pub fn compute_quartiles(table: &Table, column_name: &str) -> Option<(f64, f64, 
 pub fn compute_ranks(table: &Table, column_name: &str) -> Option<Vec<f64>> {
     let col = table.column_by_name(column_name)?;
     let n = col.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut indexed: Vec<(usize, f64)> = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -77,9 +89,11 @@ pub fn add_rank_column(table: &Table, column_name: &str) -> Table {
     };
 
     let mut result = table.clone();
-    result.add_column(AnyDataArray::F64(
-        DataArray::from_vec(&format!("{column_name}_rank"), ranks, 1),
-    ));
+    result.add_column(AnyDataArray::F64(DataArray::from_vec(
+        &format!("{column_name}_rank"),
+        ranks,
+        1,
+    )));
     result
 }
 
@@ -110,9 +124,11 @@ mod tests {
     use super::*;
 
     fn make_table() -> Table {
-        Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], 1)))
+        Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            1,
+        )))
     }
 
     #[test]
@@ -134,8 +150,11 @@ mod tests {
 
     #[test]
     fn ranks() {
-        let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![30.0, 10.0, 20.0], 1)));
+        let t = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![30.0, 10.0, 20.0],
+            1,
+        )));
         let ranks = compute_ranks(&t, "x").unwrap();
         assert!((ranks[0] - 3.0).abs() < 0.01); // 30 is largest
         assert!((ranks[1] - 1.0).abs() < 0.01); // 10 is smallest
@@ -144,8 +163,11 @@ mod tests {
 
     #[test]
     fn tied_ranks() {
-        let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 1.0, 3.0], 1)));
+        let t = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 1.0, 3.0],
+            1,
+        )));
         let ranks = compute_ranks(&t, "x").unwrap();
         assert!((ranks[0] - 1.5).abs() < 0.01); // average of rank 1 and 2
         assert!((ranks[1] - 1.5).abs() < 0.01);
@@ -153,9 +175,11 @@ mod tests {
 
     #[test]
     fn outlier_detection() {
-        let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![1.0, 2.0, 3.0, 4.0, 5.0, 100.0], 1)));
+        let t = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 100.0],
+            1,
+        )));
         let outliers = iqr_outliers(&t, "x", 1.5).unwrap();
         assert!(!outliers.is_empty());
         assert!(outliers.contains(&5)); // 100.0 is an outlier

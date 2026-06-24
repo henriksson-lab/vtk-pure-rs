@@ -23,9 +23,13 @@ pub fn mark_boundary_points(input: &PolyData) -> PolyData {
     }
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryPoint", is_boundary, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryPoint",
+            is_boundary,
+            1,
+        )));
     result
 }
 
@@ -36,7 +40,8 @@ pub fn mark_boundary_points(input: &PolyData) -> PolyData {
 /// Values: 1.0 = boundary cell, 0.0 = interior cell.
 pub fn mark_boundary_cells(input: &PolyData) -> PolyData {
     let boundary_edges = find_boundary_edges(input);
-    let boundary_set: std::collections::HashSet<(usize, usize)> = boundary_edges.into_iter().collect();
+    let boundary_set: std::collections::HashSet<(usize, usize)> =
+        boundary_edges.into_iter().collect();
 
     let n_cells = input.polys.num_cells();
     let mut is_boundary = vec![0.0f64; n_cells];
@@ -55,16 +60,21 @@ pub fn mark_boundary_cells(input: &PolyData) -> PolyData {
     }
 
     let mut result = input.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryCell", is_boundary, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryCell",
+            is_boundary,
+            1,
+        )));
     result
 }
 
 /// Mark both boundary points and cells.
 pub fn mark_boundary(input: &PolyData) -> PolyData {
     let boundary_edges = find_boundary_edges(input);
-    let boundary_set: std::collections::HashSet<(usize, usize)> = boundary_edges.iter().cloned().collect();
+    let boundary_set: std::collections::HashSet<(usize, usize)> =
+        boundary_edges.iter().cloned().collect();
 
     let n_pts = input.points.len();
     let n_cells = input.polys.num_cells();
@@ -91,12 +101,20 @@ pub fn mark_boundary(input: &PolyData) -> PolyData {
     }
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryPoint", is_boundary_point, 1),
-    ));
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryCell", is_boundary_cell, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryPoint",
+            is_boundary_point,
+            1,
+        )));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryCell",
+            is_boundary_cell,
+            1,
+        )));
     result
 }
 
@@ -117,7 +135,8 @@ pub fn count_boundary_vertices(input: &PolyData) -> usize {
 }
 
 fn find_boundary_edges(input: &PolyData) -> Vec<(usize, usize)> {
-    let mut edge_count: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
 
     for cell in input.polys.iter() {
         let n = cell.len();
@@ -129,7 +148,8 @@ fn find_boundary_edges(input: &PolyData) -> Vec<(usize, usize)> {
         }
     }
 
-    edge_count.into_iter()
+    edge_count
+        .into_iter()
         .filter(|(_, count)| *count == 1)
         .map(|(edge, _)| edge)
         .collect()
@@ -153,7 +173,9 @@ mod tests {
     fn two_triangles_shared_edge() {
         let mesh = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
                 [0.5, -1.0, 0.0],
             ],
             vec![[0, 1, 2], [0, 3, 1]],
@@ -206,8 +228,10 @@ mod tests {
         // Tetrahedron surface (closed)
         let mesh = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0], [0.5, 0.5, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, 0.5, 1.0],
             ],
             vec![[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]],
         );

@@ -30,9 +30,15 @@ pub fn image_convolve_3x3(input: &ImageData, scalars: &str, kernel: &[f64; 9]) -
 
     let mut result = vec![0.0f64; n];
     let offsets: [(i64, i64); 9] = [
-        (-1,-1), (0,-1), (1,-1),
-        (-1, 0), (0, 0), (1, 0),
-        (-1, 1), (0, 1), (1, 1),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+        (-1, 0),
+        (0, 0),
+        (1, 0),
+        (-1, 1),
+        (0, 1),
+        (1, 1),
     ];
 
     for k in 0..nz {
@@ -52,7 +58,11 @@ pub fn image_convolve_3x3(input: &ImageData, scalars: &str, kernel: &[f64; 9]) -
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, result.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -65,11 +75,7 @@ pub fn image_convolve_3x3(input: &ImageData, scalars: &str, kernel: &[f64; 9]) -
 pub fn image_sharpen(input: &ImageData, scalars: &str, amount: f64) -> ImageData {
     // Sharpen kernel = identity + amount * (identity - blur)
     let a = amount;
-    let kernel = [
-        0.0, -a, 0.0,
-        -a, 1.0+4.0*a, -a,
-        0.0, -a, 0.0,
-    ];
+    let kernel = [0.0, -a, 0.0, -a, 1.0 + 4.0 * a, -a, 0.0, -a, 0.0];
     image_convolve_3x3(input, scalars, &kernel)
 }
 
@@ -80,9 +86,12 @@ mod tests {
     #[test]
     fn identity_kernel() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+                1,
+            )));
 
         let identity = [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
         let result = image_convolve_3x3(&img, "v", &identity);
@@ -97,11 +106,10 @@ mod tests {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         let mut values = vec![0.0; 9];
         values[4] = 9.0; // center = 9
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
-        let blur = [1.0/9.0; 9];
+        let blur = [1.0 / 9.0; 9];
         let result = image_convolve_3x3(&img, "v", &blur);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
@@ -112,9 +120,12 @@ mod tests {
     #[test]
     fn sharpen_preserves_uniform() {
         let mut img = ImageData::with_dimensions(5, 5, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![5.0; 25], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![5.0; 25],
+                1,
+            )));
 
         let result = image_sharpen(&img, "v", 1.0);
         let arr = result.point_data().get_array("v").unwrap();

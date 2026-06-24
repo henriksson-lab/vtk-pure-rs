@@ -3,8 +3,8 @@
 //! Supports Tecplot ASCII `.dat` files with POINT and BLOCK data packing,
 //! and FE (finite element) zone types (TRIANGLE, QUADRILATERAL, TETRAHEDRON).
 
-use std::io::{BufRead, Write};
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::io::{BufRead, Write};
 
 /// Write a PolyData mesh as a Tecplot ASCII file.
 pub fn write_tecplot<W: Write>(w: &mut W, mesh: &PolyData, title: &str) -> std::io::Result<()> {
@@ -13,7 +13,10 @@ pub fn write_tecplot<W: Write>(w: &mut W, mesh: &PolyData, title: &str) -> std::
 
     writeln!(w, "TITLE = \"{title}\"")?;
     writeln!(w, "VARIABLES = \"X\" \"Y\" \"Z\"")?;
-    writeln!(w, "ZONE T=\"Zone1\", N={n_pts}, E={n_cells}, F=FEPOINT, ET=TRIANGLE")?;
+    writeln!(
+        w,
+        "ZONE T=\"Zone1\", N={n_pts}, E={n_cells}, F=FEPOINT, ET=TRIANGLE"
+    )?;
 
     // Point data
     for i in 0..n_pts {
@@ -46,7 +49,9 @@ pub fn read_tecplot<R: BufRead>(reader: R) -> Result<PolyData, String> {
     for line in reader.lines() {
         let line = line.map_err(|e| e.to_string())?;
         let trimmed = line.trim();
-        if trimmed.is_empty() { continue; }
+        if trimmed.is_empty() {
+            continue;
+        }
 
         let upper = trimmed.to_uppercase();
 
@@ -55,7 +60,9 @@ pub fn read_tecplot<R: BufRead>(reader: R) -> Result<PolyData, String> {
             let rest = &trimmed[trimmed.find('=').map(|i| i + 1).unwrap_or(0)..];
             for part in rest.split('"') {
                 let t = part.trim().trim_matches(',').trim();
-                if !t.is_empty() { var_names.push(t.to_string()); }
+                if !t.is_empty() {
+                    var_names.push(t.to_string());
+                }
             }
             let n_extra = var_names.len().saturating_sub(3);
             extra_data = vec![Vec::new(); n_extra];
@@ -76,15 +83,21 @@ pub fn read_tecplot<R: BufRead>(reader: R) -> Result<PolyData, String> {
             continue;
         }
 
-        if upper.starts_with("TITLE") { continue; }
+        if upper.starts_with("TITLE") {
+            continue;
+        }
 
         if in_data && nodes_read < n_nodes {
-            let vals: Vec<f64> = trimmed.split_whitespace()
-                .filter_map(|s| s.parse().ok()).collect();
+            let vals: Vec<f64> = trimmed
+                .split_whitespace()
+                .filter_map(|s| s.parse().ok())
+                .collect();
             if vals.len() >= 3 {
                 points.push([vals[0], vals[1], vals[2]]);
                 for (ei, &v) in vals[3..].iter().enumerate() {
-                    if ei < extra_data.len() { extra_data[ei].push(v); }
+                    if ei < extra_data.len() {
+                        extra_data[ei].push(v);
+                    }
                 }
                 nodes_read += 1;
             }
@@ -92,8 +105,10 @@ pub fn read_tecplot<R: BufRead>(reader: R) -> Result<PolyData, String> {
         }
 
         if in_data && nodes_read >= n_nodes && elements_read < n_elements {
-            let vals: Vec<i64> = trimmed.split_whitespace()
-                .filter_map(|s| s.parse().ok()).collect();
+            let vals: Vec<i64> = trimmed
+                .split_whitespace()
+                .filter_map(|s| s.parse().ok())
+                .collect();
             if vals.len() >= 3 {
                 // Convert from 1-based to 0-based
                 let ids: Vec<i64> = vals.iter().map(|&v| v - 1).collect();
@@ -110,10 +125,13 @@ pub fn read_tecplot<R: BufRead>(reader: R) -> Result<PolyData, String> {
     // Add extra variables as point data
     for (i, data) in extra_data.into_iter().enumerate() {
         if data.len() == n_nodes {
-            let name = if i + 3 < var_names.len() { &var_names[i + 3] } else { "var" };
-            mesh.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec(name, data, 1),
-            ));
+            let name = if i + 3 < var_names.len() {
+                &var_names[i + 3]
+            } else {
+                "var"
+            };
+            mesh.point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(name, data, 1)));
         }
     }
 
@@ -125,7 +143,11 @@ pub fn read_tecplot_file(path: &std::path::Path) -> Result<PolyData, String> {
     read_tecplot(std::io::BufReader::new(f))
 }
 
-pub fn write_tecplot_file(mesh: &PolyData, path: &std::path::Path, title: &str) -> Result<(), String> {
+pub fn write_tecplot_file(
+    mesh: &PolyData,
+    path: &std::path::Path,
+    title: &str,
+) -> Result<(), String> {
     let f = std::fs::File::create(path).map_err(|e| e.to_string())?;
     write_tecplot(&mut std::io::BufWriter::new(f), mesh, title).map_err(|e| e.to_string())
 }
@@ -137,8 +159,8 @@ mod tests {
     #[test]
     fn roundtrip() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let mut buf = Vec::new();
         write_tecplot(&mut buf, &mesh, "test").unwrap();

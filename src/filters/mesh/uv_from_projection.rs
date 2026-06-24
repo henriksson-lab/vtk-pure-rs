@@ -22,9 +22,12 @@ fn uv_planar(input: &PolyData, axis_u: usize, axis_v: usize) -> PolyData {
     let n: usize = input.points.len();
     if n == 0 {
         let mut pd = input.clone();
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("UV", Vec::<f64>::new(), 2),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "UV",
+                Vec::<f64>::new(),
+                2,
+            )));
         return pd;
     }
 
@@ -58,9 +61,8 @@ fn uv_planar(input: &PolyData, axis_u: usize, axis_v: usize) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("UV", uvs, 2),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
     pd
 }
 
@@ -72,9 +74,12 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
     let n: usize = input.points.len();
     if n == 0 {
         let mut pd = input.clone();
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("UV", Vec::<f64>::new(), 2),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "UV",
+                Vec::<f64>::new(),
+                2,
+            )));
         return pd;
     }
 
@@ -99,7 +104,8 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
         arbitrary[1] - dot_arb * ax[1],
         arbitrary[2] - dot_arb * ax[2],
     ];
-    let e1_len: f64 = (e1_raw[0] * e1_raw[0] + e1_raw[1] * e1_raw[1] + e1_raw[2] * e1_raw[2]).sqrt();
+    let e1_len: f64 =
+        (e1_raw[0] * e1_raw[0] + e1_raw[1] * e1_raw[1] + e1_raw[2] * e1_raw[2]).sqrt();
     let e1: [f64; 3] = [e1_raw[0] / e1_len, e1_raw[1] / e1_len, e1_raw[2] / e1_len];
     // e2 = ax cross e1
     let e2: [f64; 3] = [
@@ -139,9 +145,8 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("UV", uvs, 2),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
     pd
 }
 
@@ -184,11 +189,7 @@ mod tests {
     #[test]
     fn cylindrical_produces_uv() {
         let pd = PolyData::from_triangles(
-            vec![
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 1.0],
-                [-1.0, 0.0, 2.0],
-            ],
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 1.0], [-1.0, 0.0, 2.0]],
             vec![[0, 1, 2]],
         );
         let result = uv_cylindrical(&pd, [0.0, 0.0, 1.0]);

@@ -7,8 +7,9 @@ pub fn wireframe(mesh: &PolyData) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i]; let b = cell[(i+1)%nc];
-            let e = if a < b { (a,b) } else { (b,a) };
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            let e = if a < b { (a, b) } else { (b, a) };
             if edges.insert(e) {
                 lines.push_cell(&[a, b]);
             }
@@ -26,8 +27,8 @@ mod tests {
     #[test]
     fn test_wireframe() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let r = wireframe(&mesh);
         assert_eq!(r.lines.num_cells(), 3);

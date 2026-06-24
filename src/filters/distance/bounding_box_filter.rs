@@ -34,9 +34,12 @@ pub fn compute_cell_bounds(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CellBounds", bounds_data, 6),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CellBounds",
+            bounds_data,
+            6,
+        )));
     pd
 }
 
@@ -65,8 +68,12 @@ mod tests {
     fn two_cells() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
-                [10.0, 10.0, 10.0], [11.0, 10.0, 10.0], [10.5, 11.0, 10.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [10.0, 10.0, 10.0],
+                [11.0, 10.0, 10.0],
+                [10.5, 11.0, 10.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );

@@ -14,8 +14,8 @@ pub fn gun_turret(base_radius: f64, dome_radius: f64, barrel_length: f64, na: us
         }
     }
     for j in 0..na {
-        let j1 = (j+1)%na;
-        polys.push_cell(&[j as i64, (na+j) as i64, (na+j1) as i64, j1 as i64]);
+        let j1 = (j + 1) % na;
+        polys.push_cell(&[j as i64, (na + j) as i64, (na + j1) as i64, j1 as i64]);
     }
     // Dome (hemisphere)
     let dome_z = base_radius * 0.3;
@@ -31,13 +31,20 @@ pub fn gun_turret(base_radius: f64, dome_radius: f64, barrel_length: f64, na: us
             pts.push([r * a.cos(), r * a.sin(), z]);
         }
     }
-    for j in 0..na { polys.push_cell(&[dome_top as i64, (dome_top+1+j) as i64, (dome_top+1+(j+1)%na) as i64]); }
-    for p in 0..(np-1) {
-        let b0 = dome_top + 1 + p * na; let b1 = dome_top + 1 + (p+1) * na;
+    for j in 0..na {
+        polys.push_cell(&[
+            dome_top as i64,
+            (dome_top + 1 + j) as i64,
+            (dome_top + 1 + (j + 1) % na) as i64,
+        ]);
+    }
+    for p in 0..(np - 1) {
+        let b0 = dome_top + 1 + p * na;
+        let b1 = dome_top + 1 + (p + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
     // Barrel (cylinder extending forward)
@@ -52,14 +59,18 @@ pub fn gun_turret(base_radius: f64, dome_radius: f64, barrel_length: f64, na: us
         }
     }
     for s in 0..3 {
-        let b0 = bb + s * na; let b1 = bb + (s+1) * na;
+        let b0 = bb + s * na;
+        let b1 = bb + (s + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

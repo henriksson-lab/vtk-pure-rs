@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, KdTree};
+use crate::data::{CellArray, KdTree, Points, PolyData};
 
 /// Reconstruct a triangle mesh from a point cloud using ball pivoting.
 ///
@@ -7,9 +7,11 @@ use crate::data::{CellArray, Points, PolyData, KdTree};
 /// Works well for relatively uniform point clouds.
 pub fn point_cloud_to_mesh(input: &PolyData, k: usize) -> PolyData {
     let n = input.points.len();
-    if n < 3 { return PolyData::new(); }
+    if n < 3 {
+        return PolyData::new();
+    }
 
-    let pts: Vec<[f64;3]> = (0..n).map(|i| input.points.get(i)).collect();
+    let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
     let tree = KdTree::build(&pts);
     let k = k.max(3).min(n);
 
@@ -20,7 +22,9 @@ pub fn point_cloud_to_mesh(input: &PolyData, k: usize) -> PolyData {
         for &(j, _) in &knn {
             if j != i && !adj[i].contains(&j) {
                 adj[i].push(j);
-                if !adj[j].contains(&i) { adj[j].push(i); }
+                if !adj[j].contains(&i) {
+                    adj[j].push(i);
+                }
             }
         }
     }
@@ -29,9 +33,13 @@ pub fn point_cloud_to_mesh(input: &PolyData, k: usize) -> PolyData {
     let mut tris = std::collections::HashSet::new();
     for i in 0..n {
         for &j in &adj[i] {
-            if j <= i { continue; }
+            if j <= i {
+                continue;
+            }
             for &m in &adj[i] {
-                if m <= j { continue; }
+                if m <= j {
+                    continue;
+                }
                 if adj[j].contains(&m) {
                     let mut tri = [i, j, m];
                     tri.sort();
@@ -42,7 +50,9 @@ pub fn point_cloud_to_mesh(input: &PolyData, k: usize) -> PolyData {
     }
 
     let mut out_points = Points::<f64>::new();
-    for p in &pts { out_points.push(*p); }
+    for p in &pts {
+        out_points.push(*p);
+    }
 
     let mut out_polys = CellArray::new();
     for tri in &tris {
@@ -62,9 +72,11 @@ mod tests {
     #[test]
     fn grid_reconstruction() {
         let mut pd = PolyData::new();
-        for j in 0..3 { for i in 0..3 {
-            pd.points.push([i as f64, j as f64, 0.0]);
-        }}
+        for j in 0..3 {
+            for i in 0..3 {
+                pd.points.push([i as f64, j as f64, 0.0]);
+            }
+        }
         let result = point_cloud_to_mesh(&pd, 4);
         assert!(result.polys.num_cells() > 0);
     }
@@ -72,8 +84,8 @@ mod tests {
     #[test]
     fn too_few_points() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]);
-        pd.points.push([1.0,0.0,0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
         let result = point_cloud_to_mesh(&pd, 3);
         assert_eq!(result.polys.num_cells(), 0);
     }
@@ -81,9 +93,9 @@ mod tests {
     #[test]
     fn three_points() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]);
-        pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([0.5,1.0,0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
         let result = point_cloud_to_mesh(&pd, 3);
         assert_eq!(result.polys.num_cells(), 1);
     }

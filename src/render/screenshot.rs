@@ -60,14 +60,22 @@ pub fn save_tga(path: &Path, rgba: &[u8], width: u32, height: u32) -> std::io::R
 
     // TGA header
     let header: [u8; 18] = [
-        0,    // ID length
-        0,    // color map type
-        2,    // image type (uncompressed true-color)
-        0, 0, 0, 0, 0, // color map spec
-        0, 0, // x origin
-        0, 0, // y origin
-        (width & 0xFF) as u8, (width >> 8) as u8,
-        (height & 0xFF) as u8, (height >> 8) as u8,
+        0, // ID length
+        0, // color map type
+        2, // image type (uncompressed true-color)
+        0,
+        0,
+        0,
+        0,
+        0, // color map spec
+        0,
+        0, // x origin
+        0,
+        0, // y origin
+        (width & 0xFF) as u8,
+        (width >> 8) as u8,
+        (height & 0xFF) as u8,
+        (height >> 8) as u8,
         32,   // bits per pixel (RGBA)
         0x28, // image descriptor (top-left origin, 8 alpha bits)
     ];
@@ -87,7 +95,9 @@ mod tests {
 
     #[test]
     fn save_ppm_test() {
-        let rgba = vec![255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];
+        let rgba = vec![
+            255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ];
         let path = std::env::temp_dir().join("vtk_test.ppm");
         save_ppm(&path, &rgba, 2, 2).unwrap();
         let data = std::fs::read(&path).unwrap();
@@ -97,7 +107,9 @@ mod tests {
 
     #[test]
     fn save_bmp_test() {
-        let rgba = vec![255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];
+        let rgba = vec![
+            255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ];
         let path = std::env::temp_dir().join("vtk_test.bmp");
         save_bmp(&path, &rgba, 2, 2).unwrap();
         let data = std::fs::read(&path).unwrap();
@@ -107,7 +119,9 @@ mod tests {
 
     #[test]
     fn save_tga_test() {
-        let rgba = vec![255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255];
+        let rgba = vec![
+            255u8, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ];
         let path = std::env::temp_dir().join("vtk_test.tga");
         save_tga(&path, &rgba, 2, 2).unwrap();
         let data = std::fs::read(&path).unwrap();

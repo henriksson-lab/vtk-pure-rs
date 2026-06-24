@@ -1,5 +1,5 @@
-use std::io::BufRead;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::io::BufRead;
 
 /// Reader for Object File Format (OFF).
 pub struct OffReader<R: BufRead> {
@@ -17,8 +17,13 @@ impl<R: BufRead> OffReader<R> {
         let mut line_buf = String::new();
         loop {
             line_buf.clear();
-            let n = self.reader.read_line(&mut line_buf).map_err(|e| e.to_string())?;
-            if n == 0 { break; }
+            let n = self
+                .reader
+                .read_line(&mut line_buf)
+                .map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
             let trimmed = line_buf.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 continue;
@@ -51,7 +56,8 @@ impl<R: BufRead> OffReader<R> {
         }
 
         // Parse counts: nVertices nFaces nEdges
-        let counts: Vec<usize> = lines[idx].split_whitespace()
+        let counts: Vec<usize> = lines[idx]
+            .split_whitespace()
             .filter_map(|s| s.parse().ok())
             .collect();
         if counts.len() < 2 {
@@ -69,7 +75,8 @@ impl<R: BufRead> OffReader<R> {
             if idx + i >= lines.len() {
                 return Err(format!("expected {n_verts} vertices, got {i}"));
             }
-            let parts: Vec<f64> = lines[idx + i].split_whitespace()
+            let parts: Vec<f64> = lines[idx + i]
+                .split_whitespace()
                 .filter_map(|s| s.parse().ok())
                 .collect();
             if parts.len() < 3 {
@@ -79,9 +86,21 @@ impl<R: BufRead> OffReader<R> {
 
             if has_colors && parts.len() >= 6 {
                 // Colors as floats or ints (0-255)
-                let r = if parts[3] > 1.0 { parts[3] / 255.0 } else { parts[3] };
-                let g = if parts[4] > 1.0 { parts[4] / 255.0 } else { parts[4] };
-                let b = if parts[5] > 1.0 { parts[5] / 255.0 } else { parts[5] };
+                let r = if parts[3] > 1.0 {
+                    parts[3] / 255.0
+                } else {
+                    parts[3]
+                };
+                let g = if parts[4] > 1.0 {
+                    parts[4] / 255.0
+                } else {
+                    parts[4]
+                };
+                let b = if parts[5] > 1.0 {
+                    parts[5] / 255.0
+                } else {
+                    parts[5]
+                };
                 colors.push(r);
                 colors.push(g);
                 colors.push(b);
@@ -95,7 +114,8 @@ impl<R: BufRead> OffReader<R> {
             if idx + i >= lines.len() {
                 return Err(format!("expected {n_faces} faces, got {i}"));
             }
-            let parts: Vec<i64> = lines[idx + i].split_whitespace()
+            let parts: Vec<i64> = lines[idx + i]
+                .split_whitespace()
                 .filter_map(|s| s.parse().ok())
                 .collect();
             if parts.is_empty() {
@@ -103,7 +123,10 @@ impl<R: BufRead> OffReader<R> {
             }
             let n = parts[0] as usize;
             if parts.len() < n + 1 {
-                return Err(format!("face {i}: expected {n} indices, got {}", parts.len() - 1));
+                return Err(format!(
+                    "face {i}: expected {n} indices, got {}",
+                    parts.len() - 1
+                ));
             }
             let ids: Vec<i64> = parts[1..=n].to_vec();
             polys.push_cell(&ids);
@@ -134,7 +157,9 @@ pub fn read_off_file(path: &std::path::Path) -> Result<PolyData, String> {
 pub fn write_off_file(mesh: &PolyData, path: &std::path::Path) -> Result<(), String> {
     let file = std::fs::File::create(path).map_err(|e| e.to_string())?;
     let mut writer = std::io::BufWriter::new(file);
-    crate::io::off::OffWriter::new(&mut writer).write(mesh).map_err(|e| e.to_string())
+    crate::io::off::OffWriter::new(&mut writer)
+        .write(mesh)
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -152,7 +177,8 @@ mod tests {
 
     #[test]
     fn read_coff() {
-        let data = b"COFF\n3 1 0\n0 0 0 255 0 0 255\n1 0 0 0 255 0 255\n0 1 0 0 0 255 255\n3 0 1 2\n";
+        let data =
+            b"COFF\n3 1 0\n0 0 0 255 0 0 255\n1 0 0 0 255 0 255\n0 1 0 0 0 255 255\n3 0 1 2\n";
         let mut reader = OffReader::new(&data[..]);
         let mesh = reader.read().unwrap();
         assert_eq!(mesh.points.len(), 3);
@@ -166,7 +192,9 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let mut buf = Vec::new();
-        crate::io::off::OffWriter::new(&mut buf).write(&mesh).unwrap();
+        crate::io::off::OffWriter::new(&mut buf)
+            .write(&mesh)
+            .unwrap();
 
         let mut reader = OffReader::new(&buf[..]);
         let loaded = reader.read().unwrap();
@@ -183,11 +211,18 @@ mod tests {
     #[test]
     fn quad_roundtrip() {
         let mesh = PolyData::from_quads(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2, 3]],
         );
         let mut buf = Vec::new();
-        crate::io::off::OffWriter::new(&mut buf).write(&mesh).unwrap();
+        crate::io::off::OffWriter::new(&mut buf)
+            .write(&mesh)
+            .unwrap();
 
         let loaded = OffReader::new(&buf[..]).read().unwrap();
         assert_eq!(loaded.points.len(), 4);
@@ -196,7 +231,8 @@ mod tests {
 
     #[test]
     fn comments_and_blank_lines() {
-        let data = b"# This is a comment\nOFF\n# another comment\n\n3 1 0\n0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n";
+        let data =
+            b"# This is a comment\nOFF\n# another comment\n\n3 1 0\n0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n";
         let mesh = OffReader::new(&data[..]).read().unwrap();
         assert_eq!(mesh.points.len(), 3);
     }

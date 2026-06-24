@@ -62,7 +62,9 @@ fn cell_centroids(pd: &PolyData) -> Vec<[f64; 3]> {
         let mut cz = 0.0;
         for &vid in cell {
             let p = pd.points.get(vid as usize);
-            cx += p[0]; cy += p[1]; cz += p[2];
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
         }
         let n = cell.len() as f64;
         centroids.push([cx / n, cy / n, cz / n]);
@@ -77,7 +79,9 @@ fn point_in_mesh(point: &[f64; 3], mesh: &PolyData) -> bool {
 
     for ci in 0..nc {
         let cell = mesh.polys.cell(ci);
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
 
         // Fan-triangulate and test each sub-triangle
         let p0 = mesh.points.get(cell[0] as usize);
@@ -101,27 +105,37 @@ fn ray_intersects_triangle(origin: &[f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f
 
     let h = cross(dir, e2);
     let a = dot(e1, h);
-    if a.abs() < 1e-15 { return false; }
+    if a.abs() < 1e-15 {
+        return false;
+    }
 
     let f = 1.0 / a;
     let s = [origin[0] - v0[0], origin[1] - v0[1], origin[2] - v0[2]];
     let u = f * dot(s, h);
-    if u < 0.0 || u > 1.0 { return false; }
+    if u < 0.0 || u > 1.0 {
+        return false;
+    }
 
     let q = cross(s, e1);
     let v = f * dot(dir, q);
-    if v < 0.0 || u + v > 1.0 { return false; }
+    if v < 0.0 || u + v > 1.0 {
+        return false;
+    }
 
     let t = f * dot(e2, q);
     t > 1e-15
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 fn extract_kept_cells(pd: &PolyData, keep: &[bool]) -> PolyData {
@@ -130,7 +144,9 @@ fn extract_kept_cells(pd: &PolyData, keep: &[bool]) -> PolyData {
     let mut new_polys = crate::data::CellArray::new();
 
     for ci in 0..pd.polys.num_cells() {
-        if ci >= keep.len() || !keep[ci] { continue; }
+        if ci >= keep.len() || !keep[ci] {
+            continue;
+        }
         let cell = pd.polys.cell(ci);
         for &vid in cell {
             let vi = vid as usize;
@@ -170,10 +186,29 @@ mod tests {
         // Not a closed mesh, but sufficient for testing cell extraction
         PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
             ],
-            vec![[0,1,2],[0,2,3],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[2,3,7],[2,7,6],[0,3,7],[0,7,4],[1,2,6],[1,6,5]],
+            vec![
+                [0, 1, 2],
+                [0, 2, 3],
+                [4, 5, 6],
+                [4, 6, 7],
+                [0, 1, 5],
+                [0, 5, 4],
+                [2, 3, 7],
+                [2, 7, 6],
+                [0, 3, 7],
+                [0, 7, 4],
+                [1, 2, 6],
+                [1, 6, 5],
+            ],
         )
     }
 

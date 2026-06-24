@@ -46,7 +46,8 @@ pub fn center_of_mass_area_weighted(input: &PolyData) -> [f64; 3] {
                 e1[2] * e2[0] - e1[0] * e2[2],
                 e1[0] * e2[1] - e1[1] * e2[0],
             ];
-            let area = 0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            let area =
+                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
             let tc = [
                 (p0[0] + p1[0] + p2[0]) / 3.0,
                 (p0[1] + p1[1] + p2[1]) / 3.0,
@@ -86,8 +87,10 @@ mod tests {
     fn center_symmetric_mesh() {
         let pd = PolyData::from_triangles(
             vec![
-                [-1.0, -1.0, 0.0], [1.0, -1.0, 0.0],
-                [1.0, 1.0, 0.0], [-1.0, 1.0, 0.0],
+                [-1.0, -1.0, 0.0],
+                [1.0, -1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [-1.0, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [0, 2, 3]],
         );

@@ -8,7 +8,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::data::CellArray;
+/// use vtk_pure_rs::data::CellArray;
 ///
 /// let mut cells = CellArray::new();
 /// cells.push_cell(&[0, 1, 2]);    // triangle
@@ -38,7 +38,8 @@ impl Clone for CellArray {
 impl PartialEq for CellArray {
     fn eq(&self, other: &Self) -> bool {
         (Arc::ptr_eq(&self.offsets, &other.offsets) || *self.offsets == *other.offsets)
-            && (Arc::ptr_eq(&self.connectivity, &other.connectivity) || *self.connectivity == *other.connectivity)
+            && (Arc::ptr_eq(&self.connectivity, &other.connectivity)
+                || *self.connectivity == *other.connectivity)
     }
 }
 
@@ -58,8 +59,27 @@ impl CellArray {
 
     /// Create a CellArray from raw offsets and connectivity.
     pub fn from_raw(offsets: Vec<i64>, connectivity: Vec<i64>) -> Self {
-        assert!(!offsets.is_empty(), "offsets must have at least one element");
+        assert!(
+            !offsets.is_empty(),
+            "offsets must have at least one element"
+        );
         assert_eq!(offsets[0], 0, "first offset must be 0");
+        let conn_len = connectivity.len() as i64;
+        for pair in offsets.windows(2) {
+            assert!(
+                pair[0] <= pair[1],
+                "offsets must be monotonically non-decreasing"
+            );
+        }
+        assert!(
+            offsets.iter().all(|&o| o >= 0 && o <= conn_len),
+            "offsets must be in range 0..=connectivity.len()"
+        );
+        assert_eq!(
+            *offsets.last().unwrap(),
+            conn_len,
+            "last offset must equal connectivity length"
+        );
         Self {
             offsets: Arc::new(offsets),
             connectivity: Arc::new(connectivity),
@@ -156,7 +176,11 @@ impl CellArray {
     pub fn is_homogeneous(&self) -> Option<usize> {
         let mut sizes = self.cell_sizes();
         let first = sizes.next()?;
-        if sizes.all(|s| s == first) { Some(first) } else { None }
+        if sizes.all(|s| s == first) {
+            Some(first)
+        } else {
+            None
+        }
     }
 
     /// Iterate over cells, yielding a slice of point indices for each.
@@ -233,6 +257,18 @@ mod tests {
         assert_eq!(cells.num_cells(), 2);
         assert_eq!(cells.cell(0), &[0, 1, 2]);
         assert_eq!(cells.cell(1), &[3, 4, 5, 6]);
+    }
+
+    #[test]
+    #[should_panic(expected = "last offset must equal connectivity length")]
+    fn from_raw_rejects_truncated_offsets() {
+        CellArray::from_raw(vec![0, 3], vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    #[should_panic(expected = "offsets must be monotonically non-decreasing")]
+    fn from_raw_rejects_decreasing_offsets() {
+        CellArray::from_raw(vec![0, 3, 2], vec![0, 1, 2]);
     }
 
     #[test]

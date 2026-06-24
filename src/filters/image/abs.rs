@@ -12,7 +12,13 @@ pub fn image_sqrt(input: &ImageData, scalars: &str) -> ImageData {
 
 /// Compute log (natural) of an ImageData scalar field (clamped to > 0).
 pub fn image_log(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| if v > 0.0 { v.ln() } else { f64::NEG_INFINITY })
+    image_unary_op(input, scalars, |v| {
+        if v > 0.0 {
+            v.ln()
+        } else {
+            f64::NEG_INFINITY
+        }
+    })
 }
 
 /// Compute exponential of an ImageData scalar field.
@@ -33,17 +39,23 @@ fn image_unary_op<F: Fn(f64) -> f64>(input: &ImageData, scalars: &str, op: F) ->
 
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let values: Vec<f64> = (0..n).map(|i| {
-        arr.tuple_as_f64(i, &mut buf);
-        op(buf[0])
-    }).collect();
+    let values: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            op(buf[0])
+        })
+        .collect();
 
     let mut img = input.clone();
     let mut new_attrs = crate::data::DataSetAttributes::new();
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -59,7 +71,8 @@ mod tests {
     fn make_img(vals: Vec<f64>) -> ImageData {
         let n = vals.len();
         let mut img = ImageData::with_dimensions(n, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("v", vals, 1)));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vals, 1)));
         img
     }
 
@@ -69,8 +82,10 @@ mod tests {
         let r = image_abs(&img, "v");
         let arr = r.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 3.0);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 5.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 3.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 5.0);
     }
 
     #[test]
@@ -79,8 +94,10 @@ mod tests {
         let r = image_sqrt(&img, "v");
         let arr = r.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert!((buf[0] - 2.0).abs() < 1e-10);
-        arr.tuple_as_f64(1, &mut buf); assert!((buf[0] - 3.0).abs() < 1e-10);
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 2.0).abs() < 1e-10);
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 3.0).abs() < 1e-10);
     }
 
     #[test]
@@ -89,9 +106,12 @@ mod tests {
         let r = image_clamp(&img, "v", 0.0, 1.0);
         let arr = r.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0);
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 0.5);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.5);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 
     #[test]

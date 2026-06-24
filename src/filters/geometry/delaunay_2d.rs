@@ -12,10 +12,12 @@ pub fn delaunay_2d(input: &PolyData) -> PolyData {
     }
 
     // Extract 2D coordinates
-    let pts: Vec<[f64; 2]> = (0..n).map(|i| {
-        let p = input.points.get(i);
-        [p[0], p[1]]
-    }).collect();
+    let pts: Vec<[f64; 2]> = (0..n)
+        .map(|i| {
+            let p = input.points.get(i);
+            [p[0], p[1]]
+        })
+        .collect();
 
     // Compute bounding box
     let mut min_x = f64::MAX;
@@ -72,7 +74,11 @@ pub fn delaunay_2d(input: &PolyData) -> PolyData {
                         // We want: adjacent triangle is NOT bad
                         return false;
                     }
-                    let oedges = [(other[0], other[1]), (other[1], other[2]), (other[2], other[0])];
+                    let oedges = [
+                        (other[0], other[1]),
+                        (other[1], other[2]),
+                        (other[2], other[0]),
+                    ];
                     oedges.contains(&(b, a))
                 });
                 if !shared {

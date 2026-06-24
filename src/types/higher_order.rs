@@ -101,7 +101,10 @@ pub fn eval_lagrange_quad(control_points: &[[f64; 3]], order: usize, u: f64, v: 
 /// Tessellate a higher-order curve into line segments.
 ///
 /// Returns a list of points sampled uniformly along the curve.
-pub fn tessellate_lagrange_curve(control_points: &[[f64; 3]], num_segments: usize) -> Vec<[f64; 3]> {
+pub fn tessellate_lagrange_curve(
+    control_points: &[[f64; 3]],
+    num_segments: usize,
+) -> Vec<[f64; 3]> {
     (0..=num_segments)
         .map(|i| {
             let t = i as f64 / num_segments as f64;

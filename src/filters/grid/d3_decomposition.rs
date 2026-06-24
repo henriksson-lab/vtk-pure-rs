@@ -11,7 +11,9 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 /// Returns partitions with "PartitionId" point data.
 pub fn d3_decompose_points(mesh: &PolyData, depth: usize) -> Vec<PolyData> {
     let n = mesh.points.len();
-    if n == 0 { return Vec::new(); }
+    if n == 0 {
+        return Vec::new();
+    }
 
     let indices: Vec<usize> = (0..n).collect();
     let positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
@@ -30,7 +32,8 @@ pub fn d3_decompose_points(mesh: &PolyData, depth: usize) -> Vec<PolyData> {
 
             let mut sorted = part.clone();
             sorted.sort_by(|&a, &b| {
-                positions[a][axis].partial_cmp(&positions[b][axis])
+                positions[a][axis]
+                    .partial_cmp(&positions[b][axis])
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
 
@@ -42,36 +45,52 @@ pub fn d3_decompose_points(mesh: &PolyData, depth: usize) -> Vec<PolyData> {
         partitions = new_partitions;
     }
 
-    partitions.iter().enumerate().map(|(pid, indices)| {
-        let mut pts = Points::<f64>::new();
-        for &idx in indices { pts.push(positions[idx]); }
-        let ids = vec![pid as f64; indices.len()];
-        let mut part = PolyData::new();
-        part.points = pts;
-        part.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("PartitionId", ids, 1),
-        ));
-        part
-    }).collect()
+    partitions
+        .iter()
+        .enumerate()
+        .map(|(pid, indices)| {
+            let mut pts = Points::<f64>::new();
+            for &idx in indices {
+                pts.push(positions[idx]);
+            }
+            let ids = vec![pid as f64; indices.len()];
+            let mut part = PolyData::new();
+            part.points = pts;
+            part.point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    "PartitionId",
+                    ids,
+                    1,
+                )));
+            part
+        })
+        .collect()
 }
 
 /// Decompose a triangle mesh into balanced partitions.
 pub fn d3_decompose_cells(mesh: &PolyData, depth: usize) -> Vec<PolyData> {
     let n_cells = mesh.polys.num_cells();
-    if n_cells == 0 { return Vec::new(); }
+    if n_cells == 0 {
+        return Vec::new();
+    }
 
     let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
 
     // Compute cell centroids
-    let centroids: Vec<[f64; 3]> = all_cells.iter().map(|cell| {
-        let mut c = [0.0; 3];
-        for &pid in cell {
-            let p = mesh.points.get(pid as usize);
-            for j in 0..3 { c[j] += p[j]; }
-        }
-        let n = cell.len() as f64;
-        [c[0]/n, c[1]/n, c[2]/n]
-    }).collect();
+    let centroids: Vec<[f64; 3]> = all_cells
+        .iter()
+        .map(|cell| {
+            let mut c = [0.0; 3];
+            for &pid in cell {
+                let p = mesh.points.get(pid as usize);
+                for j in 0..3 {
+                    c[j] += p[j];
+                }
+            }
+            let n = cell.len() as f64;
+            [c[0] / n, c[1] / n, c[2] / n]
+        })
+        .collect();
 
     let cell_indices: Vec<usize> = (0..n_cells).collect();
     let mut partitions = vec![cell_indices];
@@ -80,10 +99,14 @@ pub fn d3_decompose_cells(mesh: &PolyData, depth: usize) -> Vec<PolyData> {
         let axis = level % 3;
         let mut new_parts = Vec::new();
         for part in &partitions {
-            if part.len() <= 1 { new_parts.push(part.clone()); continue; }
+            if part.len() <= 1 {
+                new_parts.push(part.clone());
+                continue;
+            }
             let mut sorted = part.clone();
             sorted.sort_by(|&a, &b| {
-                centroids[a][axis].partial_cmp(&centroids[b][axis])
+                centroids[a][axis]
+                    .partial_cmp(&centroids[b][axis])
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
             let mid = sorted.len() / 2;
@@ -93,29 +116,33 @@ pub fn d3_decompose_cells(mesh: &PolyData, depth: usize) -> Vec<PolyData> {
         partitions = new_parts;
     }
 
-    partitions.iter().map(|cell_idxs| {
-        let mut pts = Points::<f64>::new();
-        let mut polys = CellArray::new();
-        let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-        for &ci in cell_idxs {
-            let cell = &all_cells[ci];
-            let mut new_ids = Vec::new();
-            for &pid in cell {
-                let old = pid as usize;
-                let new_idx = *pt_map.entry(old).or_insert_with(|| {
-                    let idx = pts.len();
-                    pts.push(mesh.points.get(old));
-                    idx
-                });
-                new_ids.push(new_idx as i64);
+    partitions
+        .iter()
+        .map(|cell_idxs| {
+            let mut pts = Points::<f64>::new();
+            let mut polys = CellArray::new();
+            let mut pt_map: std::collections::HashMap<usize, usize> =
+                std::collections::HashMap::new();
+            for &ci in cell_idxs {
+                let cell = &all_cells[ci];
+                let mut new_ids = Vec::new();
+                for &pid in cell {
+                    let old = pid as usize;
+                    let new_idx = *pt_map.entry(old).or_insert_with(|| {
+                        let idx = pts.len();
+                        pts.push(mesh.points.get(old));
+                        idx
+                    });
+                    new_ids.push(new_idx as i64);
+                }
+                polys.push_cell(&new_ids);
             }
-            polys.push_cell(&new_ids);
-        }
-        let mut part = PolyData::new();
-        part.points = pts;
-        part.polys = polys;
-        part
-    }).collect()
+            let mut part = PolyData::new();
+            part.points = pts;
+            part.polys = polys;
+            part
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -125,7 +152,9 @@ mod tests {
     #[test]
     fn decompose_points_4() {
         let mesh = PolyData::from_points(
-            (0..100).map(|i| [i as f64, (i*7 % 50) as f64, 0.0]).collect::<Vec<_>>()
+            (0..100)
+                .map(|i| [i as f64, (i * 7 % 50) as f64, 0.0])
+                .collect::<Vec<_>>(),
         );
         let parts = d3_decompose_points(&mesh, 2);
         assert_eq!(parts.len(), 4);
@@ -137,11 +166,17 @@ mod tests {
     fn decompose_cells_2() {
         let mut pts = Vec::new();
         let mut tris = Vec::new();
-        for i in 0..10 { for j in 0..10 { pts.push([i as f64, j as f64, 0.0]); } }
-        for i in 0..9 { for j in 0..9 {
-            let bl = i*10+j;
-            tris.push([bl, bl+1, bl+11]);
-        }}
+        for i in 0..10 {
+            for j in 0..10 {
+                pts.push([i as f64, j as f64, 0.0]);
+            }
+        }
+        for i in 0..9 {
+            for j in 0..9 {
+                let bl = i * 10 + j;
+                tris.push([bl, bl + 1, bl + 11]);
+            }
+        }
         let mesh = PolyData::from_triangles(pts, tris);
         let parts = d3_decompose_cells(&mesh, 1);
         assert_eq!(parts.len(), 2);
@@ -151,7 +186,7 @@ mod tests {
 
     #[test]
     fn single_point() {
-        let mesh = PolyData::from_points(vec![[0.0,0.0,0.0]]);
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
         let parts = d3_decompose_points(&mesh, 3);
         // Should produce partitions, some may be empty
         assert!(parts.len() >= 1);

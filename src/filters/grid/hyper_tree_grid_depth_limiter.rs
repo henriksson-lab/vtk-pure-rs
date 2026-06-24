@@ -20,13 +20,21 @@ pub fn limit_resolution(htg: &HyperTreeGrid, max_coarse_cells_per_axis: usize) -
     let new_gs = [
         gs[0].min(max_coarse_cells_per_axis),
         gs[1].min(max_coarse_cells_per_axis),
-        if gs[2] > 1 { gs[2].min(max_coarse_cells_per_axis) } else { 1 },
+        if gs[2] > 1 {
+            gs[2].min(max_coarse_cells_per_axis)
+        } else {
+            1
+        },
     ];
 
     let new_spacing = [
         (bounds.x_max - bounds.x_min) / new_gs[0] as f64,
         (bounds.y_max - bounds.y_min) / new_gs[1] as f64,
-        if new_gs[2] > 1 { (bounds.z_max - bounds.z_min) / new_gs[2] as f64 } else { 1.0 },
+        if new_gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / new_gs[2] as f64
+        } else {
+            1.0
+        },
     ];
 
     HyperTreeGrid::new(
@@ -46,7 +54,9 @@ pub fn htg_to_uniform(htg: &HyperTreeGrid, resolution: [usize; 3]) -> ImageData 
         (bounds.y_max - bounds.y_min) / resolution[1] as f64,
         if resolution[2] > 1 {
             (bounds.z_max - bounds.z_min) / resolution[2] as f64
-        } else { 1.0 },
+        } else {
+            1.0
+        },
     ];
 
     ImageData::with_dimensions(resolution[0], resolution[1], resolution[2])

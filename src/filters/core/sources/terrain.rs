@@ -30,23 +30,32 @@ pub fn terrain(
     for j in 0..n {
         for i in 0..n {
             let p0 = (j * row + i) as i64;
-            polys.push_cell(&[p0, p0+1, p0+row as i64+1]);
-            polys.push_cell(&[p0, p0+row as i64+1, p0+row as i64]);
+            polys.push_cell(&[p0, p0 + 1, p0 + row as i64 + 1]);
+            polys.push_cell(&[p0, p0 + row as i64 + 1, p0 + row as i64]);
         }
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Height", height_data, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Height",
+            height_data,
+            1,
+        )));
     mesh.point_data_mut().set_active_scalars("Height");
     mesh
 }
 
 /// Generate a terrain with erosion-like features (ridges and valleys).
-pub fn terrain_ridged(width: f64, depth: f64, resolution: usize, amplitude: f64, seed: u64) -> PolyData {
+pub fn terrain_ridged(
+    width: f64,
+    depth: f64,
+    resolution: usize,
+    amplitude: f64,
+    seed: u64,
+) -> PolyData {
     let n = resolution.max(2);
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -72,16 +81,23 @@ pub fn terrain_ridged(width: f64, depth: f64, resolution: usize, amplitude: f64,
     }
 
     let row = n + 1;
-    for j in 0..n { for i in 0..n {
-        let p0 = (j*row+i) as i64;
-        polys.push_cell(&[p0,p0+1,p0+row as i64+1]);
-        polys.push_cell(&[p0,p0+row as i64+1,p0+row as i64]);
-    }}
+    for j in 0..n {
+        for i in 0..n {
+            let p0 = (j * row + i) as i64;
+            polys.push_cell(&[p0, p0 + 1, p0 + row as i64 + 1]);
+            polys.push_cell(&[p0, p0 + row as i64 + 1, p0 + row as i64]);
+        }
+    }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Height", height_data, 1)));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Height",
+            height_data,
+            1,
+        )));
     mesh
 }
 
@@ -112,9 +128,9 @@ fn value_noise(x: f64, y: f64, seed: u64) -> f64 {
     };
 
     let v00 = hash(ix, iy);
-    let v10 = hash(ix+1, iy);
-    let v01 = hash(ix, iy+1);
-    let v11 = hash(ix+1, iy+1);
+    let v10 = hash(ix + 1, iy);
+    let v01 = hash(ix, iy + 1);
+    let v11 = hash(ix + 1, iy + 1);
 
     let a = v00 + sx * (v10 - v00);
     let b = v01 + sx * (v11 - v01);
@@ -132,11 +148,13 @@ mod tests {
         assert!(t.point_data().get_array("Height").is_some());
         // Should have variation
         let arr = t.point_data().get_array("Height").unwrap();
-        let mut min_h = f64::MAX; let mut max_h = f64::MIN;
+        let mut min_h = f64::MAX;
+        let mut max_h = f64::MIN;
         let mut buf = [0.0f64];
         for i in 0..arr.num_tuples() {
             arr.tuple_as_f64(i, &mut buf);
-            min_h = min_h.min(buf[0]); max_h = max_h.max(buf[0]);
+            min_h = min_h.min(buf[0]);
+            max_h = max_h.max(buf[0]);
         }
         assert!(max_h - min_h > 0.1);
     }

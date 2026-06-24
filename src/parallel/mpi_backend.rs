@@ -5,8 +5,8 @@
 //! Wraps the `mpi` crate to provide distributed gather, scatter,
 //! and ghost exchange for vtk-rs data types.
 
-use mpi::traits::*;
 use mpi::topology::Communicator;
+use mpi::traits::*;
 
 use crate::data::PolyData;
 use crate::parallel::decomposition::Partition;

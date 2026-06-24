@@ -222,8 +222,7 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let arr = DataArray::from_vec("height", vec![0.0, 1.0, 2.0], 1);
-        pd.point_data_mut()
-            .add_array(AnyDataArray::F64(arr));
+        pd.point_data_mut().add_array(AnyDataArray::F64(arr));
 
         let rg = poly_data_to_reeb_graph(&pd, "height");
         assert!(rg.num_nodes() >= 2);
@@ -250,8 +249,7 @@ mod tests {
             vec![[0, 1, 2], [1, 3, 2]],
         );
         let arr = DataArray::from_vec("height", vec![0.0, 1.0, 2.0, 3.0], 1);
-        pd.point_data_mut()
-            .add_array(AnyDataArray::F64(arr));
+        pd.point_data_mut().add_array(AnyDataArray::F64(arr));
 
         let rg = poly_data_to_reeb_graph(&pd, "height");
         assert!(rg.num_nodes() >= 2);

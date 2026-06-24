@@ -4,11 +4,7 @@ use crate::data::{CellArray, Points, PolyData};
 ///
 /// Keeps the half-space where `dot(p - origin, normal) >= 0`.
 /// Triangles that cross the plane are split, generating new vertices on the plane.
-pub fn clip_by_plane(
-    input: &PolyData,
-    origin: [f64; 3],
-    normal: [f64; 3],
-) -> PolyData {
+pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
     let mut points = input.points.clone();
     let mut polys = CellArray::new();
 

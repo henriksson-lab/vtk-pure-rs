@@ -37,11 +37,14 @@ pub fn reverse_sense(input: &PolyData) -> PolyData {
         let mut buf = vec![0.0f64; nc];
         for i in 0..nt {
             normals.tuple_as_f64(i, &mut buf);
-            for v in &buf { flipped.push(-v); }
+            for v in &buf {
+                flipped.push(-v);
+            }
         }
-        pd.point_data_mut().add_array(crate::data::AnyDataArray::F64(
-            crate::data::DataArray::from_vec(&name, flipped, nc),
-        ));
+        pd.point_data_mut()
+            .add_array(crate::data::AnyDataArray::F64(
+                crate::data::DataArray::from_vec(&name, flipped, nc),
+            ));
         pd.point_data_mut().set_active_normals(&name);
     }
 
@@ -57,15 +60,23 @@ mod tests {
     #[test]
     fn reverse_triangle() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let r = reverse_sense(&pd);
         assert_eq!(r.polys.cell(0), &[2, 1, 0]);
     }
     #[test]
     fn reverse_multiple() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[2.0,0.0,0.0]],
-            vec![[0,1,2],[1,3,2]]);
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
+        );
         let r = reverse_sense(&pd);
         assert_eq!(r.polys.cell(0), &[2, 1, 0]);
         assert_eq!(r.polys.cell(1), &[2, 3, 1]);
@@ -73,7 +84,9 @@ mod tests {
     #[test]
     fn preserves_points() {
         let pd = PolyData::from_triangles(
-            vec![[1.0,2.0,3.0],[4.0,5.0,6.0],[7.0,8.0,9.0]], vec![[0,1,2]]);
+            vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
+            vec![[0, 1, 2]],
+        );
         let r = reverse_sense(&pd);
         assert_eq!(r.points.get(0), [1.0, 2.0, 3.0]);
     }

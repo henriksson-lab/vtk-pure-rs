@@ -8,12 +8,21 @@ use crate::data::PolyData;
 ///
 /// Analogous to VTK's `vtkCellLocator`.
 pub struct CellLocator {
-    /// Triangle data: (v0, v1, v2) positions for each triangle.
-    tris: Vec<[[f64; 3]; 3]>,
+    /// Search primitives generated from PolyData cells.
+    primitives: Vec<Primitive>,
     /// Original cell index for each stored triangle.
     cell_indices: Vec<usize>,
+    /// Total number of input PolyData cells, including unsupported/invalid cells.
+    total_cells: usize,
     /// Flat BVH nodes.
     nodes: Vec<BvhNode>,
+}
+
+#[derive(Clone)]
+enum Primitive {
+    Point([f64; 3]),
+    Segment([[f64; 3]; 2]),
+    Triangle([[f64; 3]; 3]),
 }
 
 #[derive(Clone)]
@@ -46,10 +55,19 @@ impl Aabb {
         }
     }
 
-    fn expand_tri(&mut self, tri: &[[f64; 3]; 3]) {
-        self.expand_point(tri[0]);
-        self.expand_point(tri[1]);
-        self.expand_point(tri[2]);
+    fn expand_primitive(&mut self, primitive: &Primitive) {
+        match primitive {
+            Primitive::Point(p) => self.expand_point(*p),
+            Primitive::Segment(segment) => {
+                self.expand_point(segment[0]);
+                self.expand_point(segment[1]);
+            }
+            Primitive::Triangle(tri) => {
+                self.expand_point(tri[0]);
+                self.expand_point(tri[1]);
+                self.expand_point(tri[2]);
+            }
+        }
     }
 
     fn center(&self) -> [f64; 3] {
@@ -64,9 +82,13 @@ impl Aabb {
         let dx = self.max[0] - self.min[0];
         let dy = self.max[1] - self.min[1];
         let dz = self.max[2] - self.min[2];
-        if dx >= dy && dx >= dz { 0 }
-        else if dy >= dz { 1 }
-        else { 2 }
+        if dx >= dy && dx >= dz {
+            0
+        } else if dy >= dz {
+            1
+        } else {
+            2
+        }
     }
 
     fn dist2_to_point(&self, p: [f64; 3]) -> f64 {
@@ -89,27 +111,89 @@ const MAX_LEAF_SIZE: usize = 4;
 impl CellLocator {
     /// Build a cell locator from a PolyData (triangulates polygon cells via fan).
     pub fn build(pd: &PolyData) -> Self {
-        let mut tris = Vec::new();
+        let mut primitives = Vec::new();
         let mut cell_indices = Vec::new();
+        let total_cells = pd.total_cells();
 
+        for (ci, cell) in pd.verts.iter().enumerate() {
+            if cell.len() != 1 {
+                continue;
+            }
+            let Some(p) = point_for_id(pd, cell[0]) else {
+                continue;
+            };
+            primitives.push(Primitive::Point(p));
+            cell_indices.push(ci);
+        }
+
+        let line_offset = pd.verts.num_cells();
+        for (ci, cell) in pd.lines.iter().enumerate() {
+            if cell.len() < 2 {
+                continue;
+            }
+            for i in 0..cell.len() - 1 {
+                let Some(p0) = point_for_id(pd, cell[i]) else {
+                    continue;
+                };
+                let Some(p1) = point_for_id(pd, cell[i + 1]) else {
+                    continue;
+                };
+                primitives.push(Primitive::Segment([p0, p1]));
+                cell_indices.push(line_offset + ci);
+            }
+        }
+
+        let poly_offset = line_offset + pd.lines.num_cells();
         for (ci, cell) in pd.polys.iter().enumerate() {
             if cell.len() < 3 {
                 continue;
             }
-            let v0 = pd.points.get(cell[0] as usize);
+            let Some(v0) = point_for_id(pd, cell[0]) else {
+                continue;
+            };
             for i in 1..cell.len() - 1 {
-                let v1 = pd.points.get(cell[i] as usize);
-                let v2 = pd.points.get(cell[i + 1] as usize);
-                tris.push([v0, v1, v2]);
-                cell_indices.push(ci);
+                let Some(v1) = point_for_id(pd, cell[i]) else {
+                    continue;
+                };
+                let Some(v2) = point_for_id(pd, cell[i + 1]) else {
+                    continue;
+                };
+                primitives.push(Primitive::Triangle([v0, v1, v2]));
+                cell_indices.push(poly_offset + ci);
             }
         }
 
-        let n = tris.len();
+        let strip_offset = poly_offset + pd.polys.num_cells();
+        for (ci, cell) in pd.strips.iter().enumerate() {
+            if cell.len() < 3 {
+                continue;
+            }
+            for i in 0..cell.len() - 2 {
+                let Some(p0) = point_for_id(pd, cell[i]) else {
+                    continue;
+                };
+                let Some(p1) = point_for_id(pd, cell[i + 1]) else {
+                    continue;
+                };
+                let Some(p2) = point_for_id(pd, cell[i + 2]) else {
+                    continue;
+                };
+                let tri = if i % 2 == 0 {
+                    [p0, p1, p2]
+                } else {
+                    [p1, p0, p2]
+                };
+                primitives.push(Primitive::Triangle(tri));
+                cell_indices.push(strip_offset + ci);
+            }
+        }
+
+        let n = primitives.len();
         let indices: Vec<usize> = (0..n).collect();
         let mut locator = CellLocator {
-            tris,
+            primitives,
             cell_indices,
+            total_cells,
             nodes: Vec::new(),
         };
 
@@ -117,11 +201,11 @@ impl CellLocator {
             let mut order: Vec<usize> = indices;
             locator.build_node(&mut order, 0, n, 0);
 
-            // Reorder tris/cell_indices by the final order
-            let old_tris = locator.tris.clone();
+            // Reorder primitives/cell_indices by the final order.
+            let old_primitives = locator.primitives.clone();
             let old_ci = locator.cell_indices.clone();
             for (i, &oi) in order.iter().enumerate() {
-                locator.tris[i] = old_tris[oi];
+                locator.primitives[i] = old_primitives[oi].clone();
                 locator.cell_indices[i] = old_ci[oi];
             }
         }
@@ -129,10 +213,16 @@ impl CellLocator {
         locator
     }
 
-    fn build_node(&mut self, order: &mut [usize], start: usize, end: usize, _depth: usize) -> usize {
+    fn build_node(
+        &mut self,
+        order: &mut [usize],
+        start: usize,
+        end: usize,
+        _depth: usize,
+    ) -> usize {
         let mut aabb = Aabb::empty();
         for &idx in &order[start..end] {
-            aabb.expand_tri(&self.tris[idx]);
+            aabb.expand_primitive(&self.primitives[idx]);
         }
 
         let count = end - start;
@@ -156,8 +246,7 @@ impl CellLocator {
         let mut lo = start;
         let mut hi = end;
         while lo < hi {
-            let tri = &self.tris[order[lo]];
-            let centroid_axis = (tri[0][axis] + tri[1][axis] + tri[2][axis]) / 3.0;
+            let centroid_axis = primitive_center(&self.primitives[order[lo]])[axis];
             if centroid_axis < mid_val {
                 lo += 1;
             } else {
@@ -218,7 +307,7 @@ impl CellLocator {
         if node.count > 0 {
             // Leaf node
             for i in node.start..node.start + node.count {
-                let cp = closest_point_on_triangle(point, &self.tris[i]);
+                let cp = closest_point_on_primitive(point, &self.primitives[i]);
                 let d2 = dist2(point, cp);
                 if d2 < *best_d2 {
                     *best_d2 = d2;
@@ -255,7 +344,7 @@ impl CellLocator {
             self.search_radius(0, point, r2, &mut results);
         }
         // Deduplicate by cell index (keep closest)
-        results.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.partial_cmp(&b.1).unwrap()));
+        results.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
         results.dedup_by_key(|x| x.0);
         results
     }
@@ -275,7 +364,7 @@ impl CellLocator {
 
         if node.count > 0 {
             for i in node.start..node.start + node.count {
-                let cp = closest_point_on_triangle(point, &self.tris[i]);
+                let cp = closest_point_on_primitive(point, &self.primitives[i]);
                 let d2 = dist2(point, cp);
                 if d2 <= r2 {
                     results.push((self.cell_indices[i], d2));
@@ -290,8 +379,47 @@ impl CellLocator {
 
     /// Number of cells stored.
     pub fn num_cells(&self) -> usize {
-        self.cell_indices.iter().copied().max().map(|m| m + 1).unwrap_or(0)
+        self.total_cells
     }
+
+    /// Number of valid search primitives in the locator.
+    pub fn num_primitives(&self) -> usize {
+        self.primitives.len()
+    }
+}
+
+fn primitive_center(primitive: &Primitive) -> [f64; 3] {
+    match primitive {
+        Primitive::Point(p) => *p,
+        Primitive::Segment([a, b]) => scale(add(*a, *b), 0.5),
+        Primitive::Triangle([a, b, c]) => scale(add(add(*a, *b), *c), 1.0 / 3.0),
+    }
+}
+
+fn closest_point_on_primitive(p: [f64; 3], primitive: &Primitive) -> [f64; 3] {
+    match primitive {
+        Primitive::Point(q) => *q,
+        Primitive::Segment(segment) => closest_point_on_segment(p, segment),
+        Primitive::Triangle(tri) => closest_point_on_triangle(p, tri),
+    }
+}
+
+fn closest_point_on_segment(p: [f64; 3], segment: &[[f64; 3]; 2]) -> [f64; 3] {
+    let a = segment[0];
+    let ab = sub(segment[1], a);
+    let denom = dot(ab, ab);
+    if denom <= f64::EPSILON {
+        return a;
+    }
+    let t = (dot(sub(p, a), ab) / denom).clamp(0.0, 1.0);
+    add(a, scale(ab, t))
+}
+
+fn point_for_id(pd: &PolyData, id: i64) -> Option<[f64; 3]> {
+    usize::try_from(id)
+        .ok()
+        .filter(|&idx| idx < pd.points.len())
+        .map(|idx| pd.points.get(idx))
 }
 
 /// Closest point on a triangle to a query point.
@@ -440,5 +568,60 @@ mod tests {
         let pd = PolyData::new();
         let loc = CellLocator::build(&pd);
         assert!(loc.find_closest_cell([0.0, 0.0, 0.0]).is_none());
+    }
+
+    #[test]
+    fn build_skips_invalid_polygon_point_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, -1, 2]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let loc = CellLocator::build(&pd);
+        assert_eq!(loc.num_cells(), 3);
+        assert_eq!(loc.num_primitives(), 1);
+        assert!(loc.find_closest_cell([0.25, 0.25, 0.0]).is_some());
+    }
+
+    #[test]
+    fn locator_includes_vertex_and_line_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.lines.push_cell(&[1, 2]);
+
+        let loc = CellLocator::build(&pd);
+        assert_eq!(loc.num_cells(), 2);
+        assert_eq!(loc.num_primitives(), 2);
+
+        let (cell, point, d2) = loc.find_closest_cell([1.5, 0.5, 0.0]).unwrap();
+        assert_eq!(cell, 1);
+        assert_eq!(point, [1.5, 0.0, 0.0]);
+        assert!((d2 - 0.25).abs() < 1e-10);
+    }
+
+    #[test]
+    fn locator_includes_triangle_strips_with_polydata_cell_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.lines.push_cell(&[0, 1]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let loc = CellLocator::build(&pd);
+        assert_eq!(loc.num_cells(), 4);
+        assert_eq!(loc.num_primitives(), 5);
+
+        let results = loc.find_cells_within_radius([0.75, 0.75, 0.0], 0.01);
+        assert!(results.iter().any(|&(cell_id, _)| cell_id == 3));
     }
 }

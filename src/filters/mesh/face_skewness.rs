@@ -18,7 +18,10 @@ pub fn compute_face_skewness(input: &PolyData) -> PolyData {
             continue;
         }
 
-        let pts: Vec<[f64; 3]> = cell.iter().map(|&id| input.points.get(id as usize)).collect();
+        let pts: Vec<[f64; 3]> = cell
+            .iter()
+            .map(|&id| input.points.get(id as usize))
+            .collect();
         let angles = interior_angles(&pts);
 
         // Ideal interior angle for a regular n-gon
@@ -47,35 +50,41 @@ pub fn compute_face_skewness(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Skewness", skewness_values, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Skewness",
+            skewness_values,
+            1,
+        )));
     pd
 }
 
 fn interior_angles(pts: &[[f64; 3]]) -> Vec<f64> {
     let n: usize = pts.len();
-    (0..n).map(|i| {
-        let prev: usize = if i == 0 { n - 1 } else { i - 1 };
-        let next: usize = (i + 1) % n;
-        let a = [
-            pts[prev][0] - pts[i][0],
-            pts[prev][1] - pts[i][1],
-            pts[prev][2] - pts[i][2],
-        ];
-        let b = [
-            pts[next][0] - pts[i][0],
-            pts[next][1] - pts[i][1],
-            pts[next][2] - pts[i][2],
-        ];
-        let la: f64 = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
-        let lb: f64 = (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]).sqrt();
-        if la < 1e-20 || lb < 1e-20 {
-            return 0.0;
-        }
-        let cos_angle: f64 = ((a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb)).clamp(-1.0, 1.0);
-        cos_angle.acos()
-    }).collect()
+    (0..n)
+        .map(|i| {
+            let prev: usize = if i == 0 { n - 1 } else { i - 1 };
+            let next: usize = (i + 1) % n;
+            let a = [
+                pts[prev][0] - pts[i][0],
+                pts[prev][1] - pts[i][1],
+                pts[prev][2] - pts[i][2],
+            ];
+            let b = [
+                pts[next][0] - pts[i][0],
+                pts[next][1] - pts[i][1],
+                pts[next][2] - pts[i][2],
+            ];
+            let la: f64 = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
+            let lb: f64 = (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]).sqrt();
+            if la < 1e-20 || lb < 1e-20 {
+                return 0.0;
+            }
+            let cos_angle: f64 =
+                ((a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb)).clamp(-1.0, 1.0);
+            cos_angle.acos()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -120,7 +129,11 @@ mod tests {
         let arr = result.cell_data().get_array("Skewness").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] < 0.01, "equilateral triangle skewness should be near 0, got {}", buf[0]);
+        assert!(
+            buf[0] < 0.01,
+            "equilateral triangle skewness should be near 0, got {}",
+            buf[0]
+        );
     }
 
     #[test]
@@ -130,7 +143,11 @@ mod tests {
         let arr = result.cell_data().get_array("Skewness").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] > 0.9, "degenerate triangle skewness should be near 1, got {}", buf[0]);
+        assert!(
+            buf[0] > 0.9,
+            "degenerate triangle skewness should be near 1, got {}",
+            buf[0]
+        );
     }
 
     #[test]
@@ -152,6 +169,10 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         // Right triangle: 45-45-90, ideal is 60. Max deviation = 30 degrees
-        assert!(buf[0] > 0.1 && buf[0] < 0.9, "right triangle should have moderate skewness, got {}", buf[0]);
+        assert!(
+            buf[0] > 0.1 && buf[0] < 0.9,
+            "right triangle should have moderate skewness, got {}",
+            buf[0]
+        );
     }
 }

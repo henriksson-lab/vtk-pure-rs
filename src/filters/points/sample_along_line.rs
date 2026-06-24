@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData, KdTree};
+use crate::data::{AnyDataArray, CellArray, DataArray, KdTree, Points, PolyData};
 
 /// Sample scalar values from a PolyData along a line between two points.
 ///
@@ -31,7 +31,8 @@ pub fn sample_along_line(
     let mut line_ids = Vec::with_capacity(num_samples);
     let mut buf = [0.0f64];
 
-    let total_len = ((p1[0]-p0[0]).powi(2) + (p1[1]-p0[1]).powi(2) + (p1[2]-p0[2]).powi(2)).sqrt();
+    let total_len =
+        ((p1[0] - p0[0]).powi(2) + (p1[1] - p0[1]).powi(2) + (p1[2] - p0[2]).powi(2)).sqrt();
 
     for i in 0..num_samples {
         let t = i as f64 / (num_samples - 1) as f64;
@@ -60,12 +61,16 @@ pub fn sample_along_line(
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.lines = lines;
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, values, 1),
-    ));
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ArcLength", arc_length, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, values, 1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ArcLength",
+            arc_length,
+            1,
+        )));
     pd
 }
 
@@ -79,9 +84,12 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([2.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![10.0, 20.0, 30.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
 
         let result = sample_along_line(&pd, "temp", [0.0, 0.0, 0.0], [2.0, 0.0, 0.0], 5);
         assert_eq!(result.points.len(), 5);
@@ -93,7 +101,7 @@ mod tests {
     #[test]
     fn missing_array() {
         let pd = PolyData::new();
-        let result = sample_along_line(&pd, "nope", [0.0,0.0,0.0], [1.0,0.0,0.0], 10);
+        let result = sample_along_line(&pd, "nope", [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 10);
         assert_eq!(result.points.len(), 0);
     }
 
@@ -102,9 +110,12 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([10.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![100.0, 200.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![100.0, 200.0],
+                1,
+            )));
 
         let result = sample_along_line(&pd, "v", [0.0, 0.0, 0.0], [10.0, 0.0, 0.0], 3);
         let arr = result.point_data().get_array("v").unwrap();

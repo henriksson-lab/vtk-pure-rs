@@ -7,7 +7,7 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 /// and returns a PolyData with slice center points and "Area" scalars.
 pub fn cross_section_areas(
     input: &PolyData,
-    axis: usize,  // 0=X, 1=Y, 2=Z
+    axis: usize, // 0=X, 1=Y, 2=Z
     num_slices: usize,
 ) -> PolyData {
     use crate::data::DataSet;
@@ -34,11 +34,13 @@ pub fn cross_section_areas(
         // Sum triangle areas that intersect this slice
         let mut slice_area = 0.0;
         for cell in input.polys.iter() {
-            if cell.len() < 3 { continue; }
+            if cell.len() < 3 {
+                continue;
+            }
             let v0 = input.points.get(cell[0] as usize);
             for j in 1..cell.len() - 1 {
                 let v1 = input.points.get(cell[j] as usize);
-                let v2 = input.points.get(cell[j+1] as usize);
+                let v2 = input.points.get(cell[j + 1] as usize);
                 let vals = [v0[axis], v1[axis], v2[axis]];
                 let min_v = vals[0].min(vals[1]).min(vals[2]);
                 let max_v = vals[0].max(vals[1]).max(vals[2]);
@@ -64,18 +66,22 @@ pub fn cross_section_areas(
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.verts = out_verts;
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Area", areas, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Position", positions, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Area", areas, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Position", positions, 1,
+        )));
     pd
 }
 
 fn triangle_area(v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> f64 {
-    let e1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
-    let e2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
-    let cx = e1[1]*e2[2]-e1[2]*e2[1];
-    let cy = e1[2]*e2[0]-e1[0]*e2[2];
-    let cz = e1[0]*e2[1]-e1[1]*e2[0];
-    0.5 * (cx*cx+cy*cy+cz*cz).sqrt()
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let cx = e1[1] * e2[2] - e1[2] * e2[1];
+    let cy = e1[2] * e2[0] - e1[0] * e2[2];
+    let cz = e1[0] * e2[1] - e1[1] * e2[0];
+    0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
 }
 
 #[cfg(test)]

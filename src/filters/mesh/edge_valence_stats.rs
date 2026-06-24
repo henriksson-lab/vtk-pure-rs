@@ -30,9 +30,12 @@ pub fn compute_edge_valence(input: &PolyData) -> PolyData {
     let valence_f64: Vec<f64> = valence.iter().map(|&v| v as f64).collect();
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("EdgeValence", valence_f64, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "EdgeValence",
+            valence_f64,
+            1,
+        )));
     pd
 }
 

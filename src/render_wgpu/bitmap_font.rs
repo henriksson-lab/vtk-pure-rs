@@ -1,4 +1,4 @@
-use crate::render_wgpu::overlay::{OverlayVertex, push_quad};
+use crate::render_wgpu::overlay::{push_quad, OverlayVertex};
 
 /// Minimal 5x7 bitmap font for ASCII characters 32-126.
 /// Each glyph is stored as 7 rows of 5 bits (packed into u8 per row).
@@ -162,7 +162,15 @@ mod tests {
     fn render_text_produces_vertices() {
         let mut verts = Vec::new();
         let mut idxs = Vec::new();
-        let w = render_text(&mut verts, &mut idxs, "Hi", 0.0, 0.0, 0.02, [1.0, 1.0, 1.0, 1.0]);
+        let w = render_text(
+            &mut verts,
+            &mut idxs,
+            "Hi",
+            0.0,
+            0.0,
+            0.02,
+            [1.0, 1.0, 1.0, 1.0],
+        );
         assert!(w > 0.0);
         assert!(!verts.is_empty());
         assert!(!idxs.is_empty());
@@ -172,7 +180,15 @@ mod tests {
     fn render_empty_text() {
         let mut verts = Vec::new();
         let mut idxs = Vec::new();
-        let w = render_text(&mut verts, &mut idxs, "", 0.0, 0.0, 0.02, [1.0, 1.0, 1.0, 1.0]);
+        let w = render_text(
+            &mut verts,
+            &mut idxs,
+            "",
+            0.0,
+            0.0,
+            0.02,
+            [1.0, 1.0, 1.0, 1.0],
+        );
         assert_eq!(w, 0.0);
         assert!(verts.is_empty());
     }

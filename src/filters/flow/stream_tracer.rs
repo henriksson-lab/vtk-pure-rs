@@ -28,11 +28,7 @@ impl Default for StreamTracerParams {
 ///
 /// `source` contains the vector field (active vectors in point data).
 /// `seeds` contains the starting points.
-pub fn stream_tracer(
-    source: &PolyData,
-    seeds: &PolyData,
-    params: &StreamTracerParams,
-) -> PolyData {
+pub fn stream_tracer(source: &PolyData, seeds: &PolyData, params: &StreamTracerParams) -> PolyData {
     let n_source = source.points.len();
     if n_source == 0 {
         return PolyData::new();
@@ -64,10 +60,18 @@ pub fn stream_tracer(
             }
 
             let h = params.step_size;
-            let p2 = [pos[0] + 0.5 * h * k1[0], pos[1] + 0.5 * h * k1[1], pos[2] + 0.5 * h * k1[2]];
+            let p2 = [
+                pos[0] + 0.5 * h * k1[0],
+                pos[1] + 0.5 * h * k1[1],
+                pos[2] + 0.5 * h * k1[2],
+            ];
             let k2 = interpolate_vector(source, vectors, p2);
 
-            let p3 = [pos[0] + 0.5 * h * k2[0], pos[1] + 0.5 * h * k2[1], pos[2] + 0.5 * h * k2[2]];
+            let p3 = [
+                pos[0] + 0.5 * h * k2[0],
+                pos[1] + 0.5 * h * k2[1],
+                pos[2] + 0.5 * h * k2[2],
+            ];
             let k3 = interpolate_vector(source, vectors, p3);
 
             let p4 = [pos[0] + h * k3[0], pos[1] + h * k3[1], pos[2] + h * k3[2]];
@@ -91,7 +95,11 @@ pub fn stream_tracer(
     pd
 }
 
-fn interpolate_vector(source: &PolyData, vectors: &crate::data::AnyDataArray, pos: [f64; 3]) -> [f64; 3] {
+fn interpolate_vector(
+    source: &PolyData,
+    vectors: &crate::data::AnyDataArray,
+    pos: [f64; 3],
+) -> [f64; 3] {
     // Nearest-neighbor interpolation
     let mut best_dist = f64::MAX;
     let mut best_idx = 0;
@@ -130,11 +138,15 @@ mod tests {
         let mut seeds = PolyData::new();
         seeds.points.push([0.0, 0.0, 0.0]);
 
-        let result = stream_tracer(&source, &seeds, &StreamTracerParams {
-            max_steps: 20,
-            step_size: 0.5,
-            ..Default::default()
-        });
+        let result = stream_tracer(
+            &source,
+            &seeds,
+            &StreamTracerParams {
+                max_steps: 20,
+                step_size: 0.5,
+                ..Default::default()
+            },
+        );
 
         assert_eq!(result.lines.num_cells(), 1);
         assert!(result.points.len() > 5);

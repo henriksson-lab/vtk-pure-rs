@@ -18,16 +18,27 @@ pub fn integral_image(input: &ImageData, scalars: &str) -> ImageData {
             let idx = ix + iy * nx;
             arr.tuple_as_f64(idx, &mut buf);
             let mut val = buf[0];
-            if ix > 0 { val += sat[idx - 1]; }
-            if iy > 0 { val += sat[idx - nx]; }
-            if ix > 0 && iy > 0 { val -= sat[idx - nx - 1]; }
+            if ix > 0 {
+                val += sat[idx - 1];
+            }
+            if iy > 0 {
+                val += sat[idx - nx];
+            }
+            if ix > 0 && iy > 0 {
+                val -= sat[idx - nx - 1];
+            }
             sat[idx] = val;
         }
     }
 
     ImageData::with_dimensions(nx, ny, dims[2])
-        .with_spacing(input.spacing()).with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("IntegralImage", sat, 1)))
+        .with_spacing(input.spacing())
+        .with_origin(input.origin())
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+            "IntegralImage",
+            sat,
+            1,
+        )))
 }
 
 /// Query sum over rectangle [x0,y0]-[x1,y1] from integral image.
@@ -40,12 +51,19 @@ pub fn query_rect_sum(integral: &ImageData, x0: usize, y0: usize, x1: usize, y1:
     let mut buf = [0.0f64];
     let mut buf2 = [0.0f64];
     let mut get = |x: usize, y: usize| -> f64 {
-        arr.tuple_as_f64(x + y * nx, &mut buf2); buf2[0]
+        arr.tuple_as_f64(x + y * nx, &mut buf2);
+        buf2[0]
     };
     let mut sum = get(x1, y1);
-    if x0 > 0 { sum -= get(x0 - 1, y1); }
-    if y0 > 0 { sum -= get(x1, y0 - 1); }
-    if x0 > 0 && y0 > 0 { sum += get(x0 - 1, y0 - 1); }
+    if x0 > 0 {
+        sum -= get(x0 - 1, y1);
+    }
+    if y0 > 0 {
+        sum -= get(x1, y0 - 1);
+    }
+    if x0 > 0 && y0 > 0 {
+        sum += get(x0 - 1, y0 - 1);
+    }
     sum
 }
 
@@ -65,7 +83,13 @@ mod tests {
     use super::*;
     #[test]
     fn test_integral() {
-        let img = ImageData::from_function([4, 4, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |_, _, _| 1.0);
+        let img = ImageData::from_function(
+            [4, 4, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 1.0,
+        );
         let ii = integral_image(&img, "v");
         let arr = ii.point_data().get_array("IntegralImage").unwrap();
         let mut buf = [0.0];
@@ -74,7 +98,13 @@ mod tests {
     }
     #[test]
     fn test_query() {
-        let img = ImageData::from_function([4, 4, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |_, _, _| 1.0);
+        let img = ImageData::from_function(
+            [4, 4, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 1.0,
+        );
         let ii = integral_image(&img, "v");
         let s = query_rect_sum(&ii, 1, 1, 2, 2);
         assert!((s - 4.0).abs() < 1e-10); // 2x2 region

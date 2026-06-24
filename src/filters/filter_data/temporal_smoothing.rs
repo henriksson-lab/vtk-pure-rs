@@ -11,10 +11,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 ///
 /// Returns a PolyData with the averaged scalar arrays. The geometry comes
 /// from the first time step.
-pub fn temporal_smooth(
-    time_steps: &[PolyData],
-    array_name: &str,
-) -> Option<PolyData> {
+pub fn temporal_smooth(time_steps: &[PolyData], array_name: &str) -> Option<PolyData> {
     if time_steps.is_empty() {
         return None;
     }
@@ -51,9 +48,9 @@ pub fn temporal_smooth(
     let avg: Vec<f64> = sum.iter().map(|s| s / count as f64).collect();
     let mut result = first.clone();
     let name = format!("{}_temporal_avg", array_name);
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&name, avg, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(&name, avg, 1)));
     Some(result)
 }
 
@@ -88,19 +85,20 @@ pub fn critical_time(
     }
 
     let mut result = first.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CriticalTime", critical, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CriticalTime",
+            critical,
+            1,
+        )));
     Some(result)
 }
 
 /// Compute temporal statistics (min, max, mean, std) at each point across time.
 ///
 /// Adds arrays: `{name}_min`, `{name}_max`, `{name}_mean`, `{name}_std`.
-pub fn temporal_statistics(
-    time_steps: &[PolyData],
-    array_name: &str,
-) -> Option<PolyData> {
+pub fn temporal_statistics(time_steps: &[PolyData], array_name: &str) -> Option<PolyData> {
     if time_steps.is_empty() {
         return None;
     }
@@ -146,10 +144,26 @@ pub fn temporal_statistics(
 
     let mut result = first.clone();
     let pd = result.point_data_mut();
-    pd.add_array(AnyDataArray::F64(DataArray::from_vec(&format!("{array_name}_min"), min_vals, 1)));
-    pd.add_array(AnyDataArray::F64(DataArray::from_vec(&format!("{array_name}_max"), max_vals, 1)));
-    pd.add_array(AnyDataArray::F64(DataArray::from_vec(&format!("{array_name}_mean"), mean, 1)));
-    pd.add_array(AnyDataArray::F64(DataArray::from_vec(&format!("{array_name}_std"), std_dev, 1)));
+    pd.add_array(AnyDataArray::F64(DataArray::from_vec(
+        &format!("{array_name}_min"),
+        min_vals,
+        1,
+    )));
+    pd.add_array(AnyDataArray::F64(DataArray::from_vec(
+        &format!("{array_name}_max"),
+        max_vals,
+        1,
+    )));
+    pd.add_array(AnyDataArray::F64(DataArray::from_vec(
+        &format!("{array_name}_mean"),
+        mean,
+        1,
+    )));
+    pd.add_array(AnyDataArray::F64(DataArray::from_vec(
+        &format!("{array_name}_std"),
+        std_dev,
+        1,
+    )));
     Some(result)
 }
 
@@ -162,15 +176,17 @@ mod tests {
         let n = values.len();
         let pts: Vec<[f64; 3]> = (0..n).map(|i| [i as f64, 0.0, 0.0]).collect();
         let mut pd = PolyData::from_triangles(pts, vec![]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", values, 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("temp", values, 1)));
         pd
     }
 
     #[test]
     fn smooth_two_steps() {
-        let steps = vec![make_step(vec![0.0, 2.0, 4.0]), make_step(vec![2.0, 4.0, 6.0])];
+        let steps = vec![
+            make_step(vec![0.0, 2.0, 4.0]),
+            make_step(vec![2.0, 4.0, 6.0]),
+        ];
         let result = temporal_smooth(&steps, "temp").unwrap();
         let avg = result.point_data().get_array("temp_temporal_avg").unwrap();
         if let AnyDataArray::F64(arr) = avg {
@@ -191,9 +207,18 @@ mod tests {
         let result = critical_time(&steps, &times, "temp", 1.0).unwrap();
         let ct = result.point_data().get_array("CriticalTime").unwrap();
         if let AnyDataArray::F64(arr) = ct {
-            assert!((arr.tuple(0)[0] - 2.0).abs() < 1e-10, "point 0 exceeds at t=2");
-            assert!((arr.tuple(1)[0] - 1.0).abs() < 1e-10, "point 1 exceeds at t=1");
-            assert!((arr.tuple(2)[0] - 0.0).abs() < 1e-10, "point 2 exceeds at t=0");
+            assert!(
+                (arr.tuple(0)[0] - 2.0).abs() < 1e-10,
+                "point 0 exceeds at t=2"
+            );
+            assert!(
+                (arr.tuple(1)[0] - 1.0).abs() < 1e-10,
+                "point 1 exceeds at t=1"
+            );
+            assert!(
+                (arr.tuple(2)[0] - 0.0).abs() < 1e-10,
+                "point 2 exceeds at t=0"
+            );
         }
     }
 

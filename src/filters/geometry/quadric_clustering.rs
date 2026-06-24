@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, DataSet};
+use crate::data::{CellArray, DataSet, Points, PolyData};
 
 /// Simplify a mesh by quadric error metric vertex clustering.
 ///
@@ -41,7 +41,8 @@ pub fn quadric_clustering(input: &PolyData, divisions: usize) -> PolyData {
         let ix = ((pts[b] - ox) * inv_dx).floor() as usize;
         let iy = ((pts[b + 1] - oy) * inv_dy).floor() as usize;
         let iz = ((pts[b + 2] - oz) * inv_dz).floor() as usize;
-        let bin = iz.min(divisions - 1) * d2 + iy.min(divisions - 1) * divisions + ix.min(divisions - 1);
+        let bin =
+            iz.min(divisions - 1) * d2 + iy.min(divisions - 1) * divisions + ix.min(divisions - 1);
         bin_ids[i] = bin as u32;
         bin_sx[bin] += pts[b];
         bin_sy[bin] += pts[b + 1];
@@ -56,7 +57,9 @@ pub fn quadric_clustering(input: &PolyData, divisions: usize) -> PolyData {
 
     for bin in 0..total_bins {
         let cnt = bin_cnt[bin];
-        if cnt == 0 { continue; }
+        if cnt == 0 {
+            continue;
+        }
         bin_to_out[bin] = n_out;
         let inv = 1.0 / cnt as f64;
         out_flat.push(bin_sx[bin] * inv);
@@ -90,10 +93,15 @@ pub fn quadric_clustering(input: &PolyData, divisions: usize) -> PolyData {
         } else if mapped.len() >= 3 {
             // General check for small cells
             for i in 0..mapped.len() {
-                for j in (i+1)..mapped.len() {
-                    if mapped[i] == mapped[j] { degenerate = true; break; }
+                for j in (i + 1)..mapped.len() {
+                    if mapped[i] == mapped[j] {
+                        degenerate = true;
+                        break;
+                    }
                 }
-                if degenerate { break; }
+                if degenerate {
+                    break;
+                }
             }
         } else {
             degenerate = true;

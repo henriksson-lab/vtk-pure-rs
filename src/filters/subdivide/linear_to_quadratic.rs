@@ -25,7 +25,8 @@ pub fn linear_to_quadratic_triangles(input: &PolyData) -> PolyData {
     }
 
     // Track edge midpoints to avoid duplicates: (min_id, max_id) -> midpoint_index
-    let mut edge_map: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut edge_map: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
 
     let mut new_polys = CellArray::new();
 
@@ -63,12 +64,38 @@ pub fn linear_to_quadratic_triangles(input: &PolyData) -> PolyData {
         let v2 = cell[2] as usize;
 
         // Get or create midpoints
-        let m01 = get_or_create_midpoint(v0, v1, &mut edge_map, &mut new_points, input, &mut array_data, &array_nc);
-        let m12 = get_or_create_midpoint(v1, v2, &mut edge_map, &mut new_points, input, &mut array_data, &array_nc);
-        let m20 = get_or_create_midpoint(v2, v0, &mut edge_map, &mut new_points, input, &mut array_data, &array_nc);
+        let m01 = get_or_create_midpoint(
+            v0,
+            v1,
+            &mut edge_map,
+            &mut new_points,
+            input,
+            &mut array_data,
+            &array_nc,
+        );
+        let m12 = get_or_create_midpoint(
+            v1,
+            v2,
+            &mut edge_map,
+            &mut new_points,
+            input,
+            &mut array_data,
+            &array_nc,
+        );
+        let m20 = get_or_create_midpoint(
+            v2,
+            v0,
+            &mut edge_map,
+            &mut new_points,
+            input,
+            &mut array_data,
+            &array_nc,
+        );
 
         // Quadratic triangle: v0, v1, v2, m01, m12, m20
-        new_polys.push_cell(&[v0 as i64, v1 as i64, v2 as i64, m01 as i64, m12 as i64, m20 as i64]);
+        new_polys.push_cell(&[
+            v0 as i64, v1 as i64, v2 as i64, m01 as i64, m12 as i64, m20 as i64,
+        ]);
     }
 
     let mut result = PolyData::new();
@@ -163,7 +190,9 @@ mod tests {
         // Two triangles sharing an edge
         let mesh = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
                 [1.0, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [1, 3, 2]],
@@ -181,9 +210,12 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![0.0, 100.0, 200.0], 1),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![0.0, 100.0, 200.0],
+                1,
+            )));
 
         let result = linear_to_quadratic_triangles(&mesh);
         let arr = result.point_data().get_array("temp").unwrap();

@@ -52,9 +52,13 @@ pub fn compute_distance_to_surface(image: &ImageData, surface: &PolyData) -> Ima
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("DistanceToSurface", distances, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DistanceToSurface",
+            distances,
+            1,
+        )));
     result
 }
 

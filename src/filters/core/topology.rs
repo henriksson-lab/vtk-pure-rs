@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use crate::data::PolyData;
+use std::collections::{HashMap, HashSet};
 
 /// Topology analysis results for a PolyData mesh.
 #[derive(Debug, Clone)]
@@ -44,11 +44,17 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
         let len = end - start;
-        if len != 3 { is_all_tris = false; }
+        if len != 3 {
+            is_all_tris = false;
+        }
         for i in 0..len {
             let a = conn[start + i];
             let b = conn[start + (i + 1) % len];
-            let key = if a < b { (a as u64) << 32 | b as u64 } else { (b as u64) << 32 | a as u64 };
+            let key = if a < b {
+                (a as u64) << 32 | b as u64
+            } else {
+                (b as u64) << 32 | a as u64
+            };
             let e = edge_count.entry(key).or_insert(0);
             *e = (*e).saturating_add(1);
         }
@@ -87,7 +93,9 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
 /// Count connected components using union-find with rank.
 fn count_components(pd: &PolyData) -> usize {
     let n = pd.points.len();
-    if n == 0 { return 0; }
+    if n == 0 {
+        return 0;
+    }
 
     let mut parent: Vec<u32> = (0..n as u32).collect();
     let mut rank: Vec<u8> = vec![0; n];
@@ -126,7 +134,9 @@ fn count_components(pd: &PolyData) -> usize {
     for ci in 0..nc {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
-        if start >= end { continue; }
+        if start >= end {
+            continue;
+        }
         let first = conn[start] as u32;
         used[first as usize] = true;
         for idx in (start + 1)..end {
@@ -140,7 +150,9 @@ fn count_components(pd: &PolyData) -> usize {
     let mut seen = vec![false; n];
     let mut count = 0usize;
     for v in 0..n {
-        if !used[v] { continue; }
+        if !used[v] {
+            continue;
+        }
         let r = find(&mut parent, v as u32) as usize;
         if !seen[r] {
             seen[r] = true;
@@ -163,7 +175,8 @@ pub fn boundary_edges(pd: &PolyData) -> Vec<(usize, usize)> {
             *edge_count.entry(edge).or_insert(0) += 1;
         }
     }
-    edge_count.into_iter()
+    edge_count
+        .into_iter()
         .filter(|(_, count)| *count == 1)
         .map(|(edge, _)| edge)
         .collect()
@@ -206,8 +219,12 @@ mod tests {
     fn two_components() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-                [5.0, 0.0, 0.0], [6.0, 0.0, 0.0], [5.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [5.0, 0.0, 0.0],
+                [6.0, 0.0, 0.0],
+                [5.0, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );
@@ -231,7 +248,10 @@ mod tests {
     fn shared_edge_not_boundary() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], [0.5, -1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, -1.0, 0.0],
             ],
             vec![[0, 1, 2], [0, 3, 1]],
         );
@@ -243,7 +263,12 @@ mod tests {
     #[test]
     fn quad_mesh() {
         let pd = PolyData::from_quads(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2, 3]],
         );
         let info = analyze_topology(&pd);

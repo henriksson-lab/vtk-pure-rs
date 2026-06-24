@@ -51,7 +51,11 @@ pub fn histogram(array: &AnyDataArray, n_bins: usize) -> Table {
     let mut table = Table::new();
     table.add_column(AnyDataArray::F64(DataArray::from_vec("BinMin", bin_min, 1)));
     table.add_column(AnyDataArray::F64(DataArray::from_vec("BinMax", bin_max, 1)));
-    table.add_column(AnyDataArray::F64(DataArray::from_vec("BinCenters", centers, 1)));
+    table.add_column(AnyDataArray::F64(DataArray::from_vec(
+        "BinCenters",
+        centers,
+        1,
+    )));
     table.add_column(AnyDataArray::F64(DataArray::from_vec("Counts", counts, 1)));
     table
 }
@@ -82,11 +86,7 @@ mod tests {
 
     #[test]
     fn single_value() {
-        let data = AnyDataArray::F64(DataArray::from_vec(
-            "values",
-            vec![5.0; 20],
-            1,
-        ));
+        let data = AnyDataArray::F64(DataArray::from_vec("values", vec![5.0; 20], 1));
         let result = histogram(&data, 5);
         let counts = result.column_by_name("Counts").unwrap();
         // All values in one bin
@@ -101,11 +101,7 @@ mod tests {
 
     #[test]
     fn bin_edges_correct() {
-        let data = AnyDataArray::F64(DataArray::from_vec(
-            "values",
-            vec![0.0, 1.0, 2.0, 3.0],
-            1,
-        ));
+        let data = AnyDataArray::F64(DataArray::from_vec("values", vec![0.0, 1.0, 2.0, 3.0], 1));
         let result = histogram(&data, 3);
         let bin_min = result.column_by_name("BinMin").unwrap();
         let bin_max = result.column_by_name("BinMax").unwrap();

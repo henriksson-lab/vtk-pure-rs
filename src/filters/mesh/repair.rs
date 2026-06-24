@@ -7,7 +7,9 @@ pub fn remove_duplicate_cells(input: &PolyData) -> PolyData {
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let mut key = [cell[0], cell[1], cell[2]];
         key.sort();
         if seen.insert(key) {
@@ -26,16 +28,18 @@ pub fn remove_degenerate_cells(input: &PolyData, min_area: f64) -> PolyData {
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
         let v1 = input.points.get(cell[1] as usize);
         let v2 = input.points.get(cell[2] as usize);
-        let e1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
-        let e2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
-        let cx = e1[1]*e2[2]-e1[2]*e2[1];
-        let cy = e1[2]*e2[0]-e1[0]*e2[2];
-        let cz = e1[0]*e2[1]-e1[1]*e2[0];
-        let area2_x4 = cx*cx + cy*cy + cz*cz;
+        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let cx = e1[1] * e2[2] - e1[2] * e2[1];
+        let cy = e1[2] * e2[0] - e1[0] * e2[2];
+        let cz = e1[0] * e2[1] - e1[1] * e2[0];
+        let area2_x4 = cx * cx + cy * cy + cz * cz;
         if area2_x4 >= min_a2 {
             out_polys.push_cell(cell);
         }
@@ -51,10 +55,26 @@ pub fn remove_unused_points(input: &PolyData) -> PolyData {
     let n = input.points.len();
     let mut used = vec![false; n];
 
-    for cell in input.polys.iter() { for &id in cell.iter() { used[id as usize] = true; } }
-    for cell in input.lines.iter() { for &id in cell.iter() { used[id as usize] = true; } }
-    for cell in input.verts.iter() { for &id in cell.iter() { used[id as usize] = true; } }
-    for cell in input.strips.iter() { for &id in cell.iter() { used[id as usize] = true; } }
+    for cell in input.polys.iter() {
+        for &id in cell.iter() {
+            used[id as usize] = true;
+        }
+    }
+    for cell in input.lines.iter() {
+        for &id in cell.iter() {
+            used[id as usize] = true;
+        }
+    }
+    for cell in input.verts.iter() {
+        for &id in cell.iter() {
+            used[id as usize] = true;
+        }
+    }
+    for cell in input.strips.iter() {
+        for &id in cell.iter() {
+            used[id as usize] = true;
+        }
+    }
 
     let mut pt_map = vec![-1i64; n];
     let mut out_points = Points::<f64>::new();
@@ -68,11 +88,17 @@ pub fn remove_unused_points(input: &PolyData) -> PolyData {
     let remap = |cell: &[i64]| -> Vec<i64> { cell.iter().map(|&id| pt_map[id as usize]).collect() };
 
     let mut out_polys = CellArray::new();
-    for cell in input.polys.iter() { out_polys.push_cell(&remap(cell)); }
+    for cell in input.polys.iter() {
+        out_polys.push_cell(&remap(cell));
+    }
     let mut out_lines = CellArray::new();
-    for cell in input.lines.iter() { out_lines.push_cell(&remap(cell)); }
+    for cell in input.lines.iter() {
+        out_lines.push_cell(&remap(cell));
+    }
     let mut out_verts = CellArray::new();
-    for cell in input.verts.iter() { out_verts.push_cell(&remap(cell)); }
+    for cell in input.verts.iter() {
+        out_verts.push_cell(&remap(cell));
+    }
 
     let mut pd = PolyData::new();
     pd.points = out_points;

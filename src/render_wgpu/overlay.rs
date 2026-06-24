@@ -249,10 +249,22 @@ impl OverlayPipeline {
             let ny = dx / len * 0.003;
 
             let base = vertices.len() as u32;
-            vertices.push(OverlayVertex { position: [cx - nx, cy - ny], color: rgba });
-            vertices.push(OverlayVertex { position: [cx + nx, cy + ny], color: rgba });
-            vertices.push(OverlayVertex { position: [tip[0] + nx, tip[1] + ny], color: rgba });
-            vertices.push(OverlayVertex { position: [tip[0] - nx, tip[1] - ny], color: rgba });
+            vertices.push(OverlayVertex {
+                position: [cx - nx, cy - ny],
+                color: rgba,
+            });
+            vertices.push(OverlayVertex {
+                position: [cx + nx, cy + ny],
+                color: rgba,
+            });
+            vertices.push(OverlayVertex {
+                position: [tip[0] + nx, tip[1] + ny],
+                color: rgba,
+            });
+            vertices.push(OverlayVertex {
+                position: [tip[0] - nx, tip[1] - ny],
+                color: rgba,
+            });
             indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 
             // Arrowhead
@@ -333,9 +345,21 @@ pub fn push_quad(
     color: [f32; 4],
 ) {
     let base = vertices.len() as u32;
-    vertices.push(OverlayVertex { position: [x, y], color });
-    vertices.push(OverlayVertex { position: [x + w, y], color });
-    vertices.push(OverlayVertex { position: [x + w, y + h], color });
-    vertices.push(OverlayVertex { position: [x, y + h], color });
+    vertices.push(OverlayVertex {
+        position: [x, y],
+        color,
+    });
+    vertices.push(OverlayVertex {
+        position: [x + w, y],
+        color,
+    });
+    vertices.push(OverlayVertex {
+        position: [x + w, y + h],
+        color,
+    });
+    vertices.push(OverlayVertex {
+        position: [x, y + h],
+        color,
+    });
     indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }

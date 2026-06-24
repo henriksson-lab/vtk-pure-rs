@@ -35,12 +35,16 @@ pub fn closest_point_on_surface(source: &PolyData, target: &PolyData) -> PolyDat
     }
 
     let mut pd = source.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ClosestPoint", closest_pts, 3),
-    ));
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Distance", distances, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ClosestPoint",
+            closest_pts,
+            3,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Distance", distances, 1,
+        )));
     pd
 }
 
@@ -161,12 +165,20 @@ mod tests {
         let dist_arr = result.point_data().get_array("Distance").unwrap();
         let mut d = [0.0f64];
         dist_arr.tuple_as_f64(0, &mut d);
-        assert!((d[0] - 3.0).abs() < 1e-10, "distance should be 3.0, got {}", d[0]);
+        assert!(
+            (d[0] - 3.0).abs() < 1e-10,
+            "distance should be 3.0, got {}",
+            d[0]
+        );
 
         let cp_arr = result.point_data().get_array("ClosestPoint").unwrap();
         let mut cp = [0.0f64; 3];
         cp_arr.tuple_as_f64(0, &mut cp);
-        assert!((cp[2]).abs() < 1e-10, "closest z should be 0, got {}", cp[2]);
+        assert!(
+            (cp[2]).abs() < 1e-10,
+            "closest z should be 0, got {}",
+            cp[2]
+        );
     }
 
     #[test]
@@ -185,12 +197,20 @@ mod tests {
         let mut cp = [0.0f64; 3];
         cp_arr.tuple_as_f64(0, &mut cp);
         // Closest should be on the edge y=0, at x=0.5
-        assert!((cp[0] - 0.5).abs() < 1e-10, "x should be 0.5, got {}", cp[0]);
+        assert!(
+            (cp[0] - 0.5).abs() < 1e-10,
+            "x should be 0.5, got {}",
+            cp[0]
+        );
         assert!(cp[1].abs() < 1e-10, "y should be 0, got {}", cp[1]);
 
         let dist_arr = result.point_data().get_array("Distance").unwrap();
         let mut d = [0.0f64];
         dist_arr.tuple_as_f64(0, &mut d);
-        assert!((d[0] - 1.0).abs() < 1e-10, "distance should be 1.0, got {}", d[0]);
+        assert!(
+            (d[0] - 1.0).abs() < 1e-10,
+            "distance should be 1.0, got {}",
+            d[0]
+        );
     }
 }

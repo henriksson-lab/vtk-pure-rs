@@ -19,7 +19,10 @@ impl VtrWriter {
         let ext = format!("0 {} 0 {} 0 {}", dims[0] - 1, dims[1] - 1, dims[2] - 1);
 
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"RectilinearGrid\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"RectilinearGrid\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <RectilinearGrid WholeExtent=\"{}\">", ext)?;
         writeln!(w, "    <Piece Extent=\"{}\">", ext)?;
 
@@ -49,7 +52,11 @@ impl VtrWriter {
 }
 
 fn write_coord_array<W: Write>(w: &mut W, name: &str, coords: &[f64]) -> Result<(), VtkError> {
-    writeln!(w, "        <DataArray type=\"Float64\" Name=\"{}\" format=\"ascii\">", name)?;
+    writeln!(
+        w,
+        "        <DataArray type=\"Float64\" Name=\"{}\" format=\"ascii\">",
+        name
+    )?;
     write!(w, "          ")?;
     for &v in coords {
         write!(w, "{} ", v)?;
@@ -59,7 +66,11 @@ fn write_coord_array<W: Write>(w: &mut W, name: &str, coords: &[f64]) -> Result<
     Ok(())
 }
 
-fn write_data_section<W: Write>(w: &mut W, section: &str, attrs: &DataSetAttributes) -> Result<(), VtkError> {
+fn write_data_section<W: Write>(
+    w: &mut W,
+    section: &str,
+    attrs: &DataSetAttributes,
+) -> Result<(), VtkError> {
     let scalars_name = attrs.scalars().map(|a| a.name().to_string());
     let mut attrs_str = String::new();
     if let Some(ref name) = scalars_name {
@@ -81,15 +92,22 @@ fn write_any_data_array<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), V
         crate::types::ScalarType::F64 => "Float64",
         _ => "Float64",
     };
-    writeln!(w, "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"ascii\">",
-        type_name, arr.name(), arr.num_components())?;
+    writeln!(
+        w,
+        "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"ascii\">",
+        type_name,
+        arr.name(),
+        arr.num_components()
+    )?;
     write!(w, "          ")?;
     let nt = arr.num_tuples();
     let nc = arr.num_components();
     let mut buf = vec![0.0f64; nc];
     for i in 0..nt {
         arr.tuple_as_f64(i, &mut buf);
-        for v in &buf { write!(w, "{} ", v)?; }
+        for v in &buf {
+            write!(w, "{} ", v)?;
+        }
     }
     writeln!(w)?;
     writeln!(w, "        </DataArray>")?;
@@ -103,11 +121,7 @@ mod tests {
 
     #[test]
     fn write_simple_vtr() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 3.0],
-            vec![0.0, 2.0],
-            vec![0.0],
-        );
+        let grid = RectilinearGrid::from_coords(vec![0.0, 1.0, 3.0], vec![0.0, 2.0], vec![0.0]);
         let mut buf = Vec::new();
         VtrWriter::write_to(&mut buf, &grid).unwrap();
         let output = String::from_utf8(buf).unwrap();

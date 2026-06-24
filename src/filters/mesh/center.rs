@@ -1,4 +1,4 @@
-use crate::data::{Points, PolyData, DataSet};
+use crate::data::{DataSet, Points, PolyData};
 
 /// Center a mesh so its bounding box center is at the origin.
 pub fn center_mesh(input: &PolyData) -> PolyData {
@@ -11,7 +11,7 @@ pub fn center_mesh(input: &PolyData) -> PolyData {
     let mut points = Points::<f64>::new();
     for i in 0..n {
         let p = input.points.get(i);
-        points.push([p[0]-cx, p[1]-cy, p[2]-cz]);
+        points.push([p[0] - cx, p[1] - cy, p[2] - cz]);
     }
     let mut pd = input.clone();
     pd.points = points;
@@ -33,7 +33,11 @@ pub fn normalize_mesh(input: &PolyData) -> PolyData {
     let mut points = Points::<f64>::new();
     for i in 0..n {
         let p = input.points.get(i);
-        points.push([(p[0]-cx)*scale, (p[1]-cy)*scale, (p[2]-cz)*scale]);
+        points.push([
+            (p[0] - cx) * scale,
+            (p[1] - cy) * scale,
+            (p[2] - cz) * scale,
+        ]);
     }
     let mut pd = input.clone();
     pd.points = points;
@@ -43,20 +47,35 @@ pub fn normalize_mesh(input: &PolyData) -> PolyData {
 /// Align the principal axis of the mesh to the Z axis using PCA.
 pub fn align_to_z(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    if n < 3 { return input.clone(); }
+    if n < 3 {
+        return input.clone();
+    }
 
     // Centroid
-    let mut cx = 0.0; let mut cy = 0.0; let mut cz = 0.0;
-    for i in 0..n { let p = input.points.get(i); cx+=p[0]; cy+=p[1]; cz+=p[2]; }
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+    let mut cz = 0.0;
+    for i in 0..n {
+        let p = input.points.get(i);
+        cx += p[0];
+        cy += p[1];
+        cz += p[2];
+    }
     let nf = n as f64;
-    cx /= nf; cy /= nf; cz /= nf;
+    cx /= nf;
+    cy /= nf;
+    cz /= nf;
 
     // Covariance
     let mut cov = [[0.0f64; 3]; 3];
     for i in 0..n {
         let p = input.points.get(i);
-        let d = [p[0]-cx, p[1]-cy, p[2]-cz];
-        for r in 0..3 { for c in 0..3 { cov[r][c] += d[r]*d[c]; } }
+        let d = [p[0] - cx, p[1] - cy, p[2] - cz];
+        for r in 0..3 {
+            for c in 0..3 {
+                cov[r][c] += d[r] * d[c];
+            }
+        }
     }
 
     // Find dominant eigenvector via power iteration
@@ -64,37 +83,51 @@ pub fn align_to_z(input: &PolyData) -> PolyData {
     let mut v = [s, s, s];
     for _ in 0..50 {
         let mut nv = [0.0; 3];
-        for r in 0..3 { for c in 0..3 { nv[r] += cov[r][c]*v[c]; } }
-        let len = (nv[0]*nv[0]+nv[1]*nv[1]+nv[2]*nv[2]).sqrt();
-        if len > 1e-15 { v = [nv[0]/len, nv[1]/len, nv[2]/len]; }
+        for r in 0..3 {
+            for c in 0..3 {
+                nv[r] += cov[r][c] * v[c];
+            }
+        }
+        let len = (nv[0] * nv[0] + nv[1] * nv[1] + nv[2] * nv[2]).sqrt();
+        if len > 1e-15 {
+            v = [nv[0] / len, nv[1] / len, nv[2] / len];
+        }
     }
 
     // Rotation from v to [0,0,1]
     let target = [0.0, 0.0, 1.0];
-    let dot = v[0]*target[0]+v[1]*target[1]+v[2]*target[2];
+    let dot = v[0] * target[0] + v[1] * target[1] + v[2] * target[2];
 
     if dot.abs() > 0.999 {
         // Already aligned (or anti-aligned)
         return center_mesh(input);
     }
 
-    let cross = [v[1]*target[2]-v[2]*target[1], v[2]*target[0]-v[0]*target[2], v[0]*target[1]-v[1]*target[0]];
-    let sin_a = (cross[0]*cross[0]+cross[1]*cross[1]+cross[2]*cross[2]).sqrt();
+    let cross = [
+        v[1] * target[2] - v[2] * target[1],
+        v[2] * target[0] - v[0] * target[2],
+        v[0] * target[1] - v[1] * target[0],
+    ];
+    let sin_a = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
     let cos_a = dot;
 
-    let k = [cross[0]/sin_a, cross[1]/sin_a, cross[2]/sin_a];
+    let k = [cross[0] / sin_a, cross[1] / sin_a, cross[2] / sin_a];
 
     // Rodrigues rotation matrix
     let mut points = Points::<f64>::new();
     for i in 0..n {
         let p = input.points.get(i);
-        let d = [p[0]-cx, p[1]-cy, p[2]-cz];
-        let kdot = k[0]*d[0]+k[1]*d[1]+k[2]*d[2];
-        let kcross = [k[1]*d[2]-k[2]*d[1], k[2]*d[0]-k[0]*d[2], k[0]*d[1]-k[1]*d[0]];
+        let d = [p[0] - cx, p[1] - cy, p[2] - cz];
+        let kdot = k[0] * d[0] + k[1] * d[1] + k[2] * d[2];
+        let kcross = [
+            k[1] * d[2] - k[2] * d[1],
+            k[2] * d[0] - k[0] * d[2],
+            k[0] * d[1] - k[1] * d[0],
+        ];
         points.push([
-            d[0]*cos_a + kcross[0]*sin_a + k[0]*kdot*(1.0-cos_a),
-            d[1]*cos_a + kcross[1]*sin_a + k[1]*kdot*(1.0-cos_a),
-            d[2]*cos_a + kcross[2]*sin_a + k[2]*kdot*(1.0-cos_a),
+            d[0] * cos_a + kcross[0] * sin_a + k[0] * kdot * (1.0 - cos_a),
+            d[1] * cos_a + kcross[1] * sin_a + k[1] * kdot * (1.0 - cos_a),
+            d[2] * cos_a + kcross[2] * sin_a + k[2] * kdot * (1.0 - cos_a),
         ]);
     }
 

@@ -16,9 +16,16 @@ pub fn extract_quads(mesh: &PolyData) -> PolyData {
 pub fn extract_by_vertex_count(mesh: &PolyData, count: usize) -> PolyData {
     let mut used = vec![false; mesh.points.len()];
     let mut new_polys = CellArray::new();
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().filter(|c| c.len() == count).map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .filter(|c| c.len() == count)
+        .map(|c| c.to_vec())
+        .collect();
     for cell in &cells {
-        for &v in cell { used[v as usize] = true; }
+        for &v in cell {
+            used[v as usize] = true;
+        }
     }
     let mut pt_map = vec![0usize; mesh.points.len()];
     let mut pts = Points::<f64>::new();
@@ -42,9 +49,16 @@ pub fn extract_by_vertex_count(mesh: &PolyData, count: usize) -> PolyData {
 pub fn extract_by_vertex_count_range(mesh: &PolyData, min: usize, max: usize) -> PolyData {
     let mut used = vec![false; mesh.points.len()];
     let mut new_polys = CellArray::new();
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().filter(|c| c.len() >= min && c.len() <= max).map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .filter(|c| c.len() >= min && c.len() <= max)
+        .map(|c| c.to_vec())
+        .collect();
     for cell in &cells {
-        for &v in cell { used[v as usize] = true; }
+        for &v in cell {
+            used[v as usize] = true;
+        }
     }
     let mut pt_map = vec![0usize; mesh.points.len()];
     let mut pts = Points::<f64>::new();
@@ -70,8 +84,13 @@ mod tests {
     #[test]
     fn test_extract_tris() {
         let mut mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2]],
         );
         // Add a quad
         mesh.polys.push_cell(&[0, 1, 3, 2]);
@@ -83,8 +102,13 @@ mod tests {
     #[test]
     fn test_range() {
         let mut mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2]],
         );
         mesh.polys.push_cell(&[0, 1, 3, 2]);
         let all = extract_by_vertex_count_range(&mesh, 3, 4);

@@ -72,7 +72,11 @@ mod tests {
         let studio = EnvironmentMap::studio();
         assert!(!studio.is_none());
         match studio {
-            EnvironmentMap::GradientSky { top, horizon, ground } => {
+            EnvironmentMap::GradientSky {
+                top,
+                horizon,
+                ground,
+            } => {
                 // Studio should have muted gray tones
                 assert!(top[0] > 0.0 && top[0] < 1.0);
                 assert!(horizon[0] > top[0]); // horizon brighter than top

@@ -11,17 +11,25 @@ use crate::data::{AnyDataArray, DataArray, Points, PolyData};
 /// Level 0 is the root (all points), level 1 has up to 8 bins, etc.
 pub fn hierarchical_bin(mesh: &PolyData, max_depth: usize) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     // Compute bounding box
     let mut min = mesh.points.get(0);
     let mut max = min;
     for i in 1..n {
         let p = mesh.points.get(i);
-        for j in 0..3 { min[j] = min[j].min(p[j]); max[j] = max[j].max(p[j]); }
+        for j in 0..3 {
+            min[j] = min[j].min(p[j]);
+            max[j] = max[j].max(p[j]);
+        }
     }
     // Pad to avoid edge cases
-    for j in 0..3 { min[j] -= 1e-10; max[j] += 1e-10; }
+    for j in 0..3 {
+        min[j] -= 1e-10;
+        max[j] += 1e-10;
+    }
 
     let mut bin_ids = vec![0usize; n];
     let mut bin_levels = vec![0usize; n];
@@ -51,12 +59,20 @@ pub fn hierarchical_bin(mesh: &PolyData, max_depth: usize) -> PolyData {
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BinId", bin_ids.iter().map(|&b| b as f64).collect(), 1),
-    ));
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BinLevel", bin_levels.iter().map(|&l| l as f64).collect(), 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BinId",
+            bin_ids.iter().map(|&b| b as f64).collect(),
+            1,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BinLevel",
+            bin_levels.iter().map(|&l| l as f64).collect(),
+            1,
+        )));
     result
 }
 
@@ -101,8 +117,11 @@ mod tests {
     #[test]
     fn basic_binning() {
         let mesh = PolyData::from_points(vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0], [0.5, 0.5, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.5, 0.5, 0.0],
         ]);
         let result = hierarchical_bin(&mesh, 2);
         assert!(result.point_data().get_array("BinId").is_some());
@@ -112,7 +131,8 @@ mod tests {
     #[test]
     fn bin_count() {
         let mesh = PolyData::from_points(vec![
-            [0.0, 0.0, 0.0], [0.01, 0.01, 0.0], // same bin
+            [0.0, 0.0, 0.0],
+            [0.01, 0.01, 0.0],  // same bin
             [10.0, 10.0, 10.0], // different bin
         ]);
         let binned = hierarchical_bin(&mesh, 1);
@@ -122,10 +142,8 @@ mod tests {
 
     #[test]
     fn extract_specific_bin() {
-        let mesh = PolyData::from_points(vec![
-            [0.0, 0.0, 0.0], [0.01, 0.01, 0.0],
-            [10.0, 10.0, 10.0],
-        ]);
+        let mesh =
+            PolyData::from_points(vec![[0.0, 0.0, 0.0], [0.01, 0.01, 0.0], [10.0, 10.0, 10.0]]);
         let binned = hierarchical_bin(&mesh, 1);
         let counts = bin_counts(&binned);
         // Extract the most common bin

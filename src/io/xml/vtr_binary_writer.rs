@@ -21,7 +21,10 @@ impl VtrBinaryWriter {
         let ext = format!("0 {} 0 {} 0 {}", dims[0] - 1, dims[1] - 1, dims[2] - 1);
 
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"RectilinearGrid\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"RectilinearGrid\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <RectilinearGrid WholeExtent=\"{ext}\">")?;
         writeln!(w, "    <Piece Extent=\"{ext}\">")?;
 
@@ -52,7 +55,11 @@ fn write_coord_binary<W: Write>(w: &mut W, name: &str, coords: &[f64]) -> Result
     Ok(())
 }
 
-fn write_binary_attrs<W: Write>(w: &mut W, section: &str, attrs: &DataSetAttributes) -> Result<(), VtkError> {
+fn write_binary_attrs<W: Write>(
+    w: &mut W,
+    section: &str,
+    attrs: &DataSetAttributes,
+) -> Result<(), VtkError> {
     writeln!(w, "      <{section}>")?;
     for i in 0..attrs.num_arrays() {
         if let Some(arr) = attrs.get_array_by_index(i) {
@@ -80,11 +87,7 @@ mod tests {
 
     #[test]
     fn roundtrip_vtr_binary() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 2.0],
-            vec![0.0, 1.0],
-            vec![0.0],
-        );
+        let grid = RectilinearGrid::from_coords(vec![0.0, 1.0, 2.0], vec![0.0, 1.0], vec![0.0]);
         let mut buf = Vec::new();
         VtrBinaryWriter::write_to(&mut buf, &grid).unwrap();
 

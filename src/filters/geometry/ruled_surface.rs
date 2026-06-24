@@ -53,7 +53,8 @@ pub fn ruled_surface(input: &PolyData) -> PolyData {
 
 /// Resample a polyline to `target_n` evenly-spaced points.
 fn resample_line(input: &PolyData, cell: &[i64], target_n: usize) -> Vec<[f64; 3]> {
-    let pts: Vec<[f64; 3]> = cell.iter()
+    let pts: Vec<[f64; 3]> = cell
+        .iter()
         .map(|&id| input.points.get(id as usize))
         .collect();
 
@@ -92,7 +93,11 @@ fn resample_line(input: &PolyData, cell: &[i64], target_n: usize) -> Vec<[f64; 3
         }
 
         let seg_len = arc[seg + 1] - arc[seg];
-        let local_t = if seg_len > 1e-15 { (t - arc[seg]) / seg_len } else { 0.0 };
+        let local_t = if seg_len > 1e-15 {
+            (t - arc[seg]) / seg_len
+        } else {
+            0.0
+        };
 
         result.push(lerp3(pts[seg], pts[seg + 1], local_t));
     }

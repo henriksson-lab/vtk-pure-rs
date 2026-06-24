@@ -10,10 +10,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData, PolyData};
 /// Each voxel in the output ImageData stores the count of points that
 /// fall within it. The grid covers the bounding box of the input points
 /// with the given spacing.
-pub fn point_occupancy(
-    points: &PolyData,
-    spacing: [f64; 3],
-) -> ImageData {
+pub fn point_occupancy(points: &PolyData, spacing: [f64; 3]) -> ImageData {
     let n = points.points.len();
     if n == 0 {
         return ImageData::new();
@@ -61,16 +58,15 @@ pub fn point_occupancy(
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(spacing)
         .with_origin(min)
-        .with_point_array(AnyDataArray::F64(
-            DataArray::from_vec("Occupancy", counts, 1),
-        ))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+            "Occupancy",
+            counts,
+            1,
+        )))
 }
 
 /// Create a binary occupancy grid (1.0 if any points, 0.0 otherwise).
-pub fn point_occupancy_binary(
-    points: &PolyData,
-    spacing: [f64; 3],
-) -> ImageData {
+pub fn point_occupancy_binary(points: &PolyData, spacing: [f64; 3]) -> ImageData {
     let mut grid = point_occupancy(points, spacing);
     if let Some(arr) = grid.point_data().get_array("Occupancy") {
         let n = arr.num_tuples();
@@ -80,9 +76,12 @@ pub fn point_occupancy_binary(
             arr.tuple_as_f64(i, &mut buf);
             binary.push(if buf[0] > 0.0 { 1.0 } else { 0.0 });
         }
-        grid.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Occupancy", binary, 1),
-        ));
+        grid.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Occupancy",
+                binary,
+                1,
+            )));
     }
     grid
 }
@@ -95,11 +94,7 @@ mod tests {
     #[test]
     fn basic_occupancy() {
         let mut mesh = PolyData::new();
-        mesh.points = Points::from(vec![
-            [0.5, 0.5, 0.5],
-            [0.6, 0.5, 0.5],
-            [5.0, 5.0, 5.0],
-        ]);
+        mesh.points = Points::from(vec![[0.5, 0.5, 0.5], [0.6, 0.5, 0.5], [5.0, 5.0, 5.0]]);
 
         let grid = point_occupancy(&mesh, [1.0, 1.0, 1.0]);
         let dims = grid.dimensions();
@@ -128,7 +123,9 @@ mod tests {
         for i in 0..arr.num_tuples() {
             arr.tuple_as_f64(i, &mut buf);
             assert!(buf[0] == 0.0 || buf[0] == 1.0);
-            if buf[0] == 1.0 { has_one = true; }
+            if buf[0] == 1.0 {
+                has_one = true;
+            }
         }
         assert!(has_one);
     }

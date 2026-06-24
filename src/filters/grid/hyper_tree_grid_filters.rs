@@ -14,13 +14,18 @@ pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 0.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            0.0
+        },
     ];
     let origin = [bounds.x_min, bounds.y_min, bounds.z_min];
 
     let mut points = Points::<f64>::new();
     let mut polys = crate::data::CellArray::new();
-    let mut point_map: std::collections::HashMap<[i64; 3], usize> = std::collections::HashMap::new();
+    let mut point_map: std::collections::HashMap<[i64; 3], usize> =
+        std::collections::HashMap::new();
 
     if htg.dimension() == 2 {
         // 2D: one quad per coarse cell
@@ -31,9 +36,7 @@ pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
                 let x1 = x0 + spacing[0];
                 let y1 = y0 + spacing[1];
 
-                let corners = [
-                    [x0, y0, 0.0], [x1, y0, 0.0], [x1, y1, 0.0], [x0, y1, 0.0],
-                ];
+                let corners = [[x0, y0, 0.0], [x1, y0, 0.0], [x1, y1, 0.0], [x0, y1, 0.0]];
                 let mut ids = Vec::new();
                 for c in &corners {
                     let key = [(c[0] * 1e6) as i64, (c[1] * 1e6) as i64, 0];
@@ -62,19 +65,35 @@ pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
                     // Add boundary faces
                     let faces: Vec<[[f64; 3]; 4]> = {
                         let mut f = Vec::new();
-                        if i == 0 { f.push([[x0,y0,z0],[x0,y1,z0],[x0,y1,z1],[x0,y0,z1]]); }
-                        if i == gs[0]-1 { f.push([[x1,y0,z0],[x1,y0,z1],[x1,y1,z1],[x1,y1,z0]]); }
-                        if j == 0 { f.push([[x0,y0,z0],[x0,y0,z1],[x1,y0,z1],[x1,y0,z0]]); }
-                        if j == gs[1]-1 { f.push([[x0,y1,z0],[x1,y1,z0],[x1,y1,z1],[x0,y1,z1]]); }
-                        if k == 0 { f.push([[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]]); }
-                        if k == gs[2]-1 { f.push([[x0,y0,z1],[x0,y1,z1],[x1,y1,z1],[x1,y0,z1]]); }
+                        if i == 0 {
+                            f.push([[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]]);
+                        }
+                        if i == gs[0] - 1 {
+                            f.push([[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]]);
+                        }
+                        if j == 0 {
+                            f.push([[x0, y0, z0], [x0, y0, z1], [x1, y0, z1], [x1, y0, z0]]);
+                        }
+                        if j == gs[1] - 1 {
+                            f.push([[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]);
+                        }
+                        if k == 0 {
+                            f.push([[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]]);
+                        }
+                        if k == gs[2] - 1 {
+                            f.push([[x0, y0, z1], [x0, y1, z1], [x1, y1, z1], [x1, y0, z1]]);
+                        }
                         f
                     };
 
                     for face in &faces {
                         let mut ids = Vec::new();
                         for c in face {
-                            let key = [(c[0]*1e6) as i64, (c[1]*1e6) as i64, (c[2]*1e6) as i64];
+                            let key = [
+                                (c[0] * 1e6) as i64,
+                                (c[1] * 1e6) as i64,
+                                (c[2] * 1e6) as i64,
+                            ];
                             let idx = *point_map.entry(key).or_insert_with(|| {
                                 let idx = points.len();
                                 points.push(*c);
@@ -102,7 +121,11 @@ pub fn hyper_tree_grid_cell_centers(htg: &HyperTreeGrid) -> PolyData {
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 0.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            0.0
+        },
     ];
     let origin = [bounds.x_min, bounds.y_min, bounds.z_min];
 
@@ -112,7 +135,11 @@ pub fn hyper_tree_grid_cell_centers(htg: &HyperTreeGrid) -> PolyData {
             for i in 0..gs[0] {
                 let cx = origin[0] + (i as f64 + 0.5) * spacing[0];
                 let cy = origin[1] + (j as f64 + 0.5) * spacing[1];
-                let cz = if gs[2] > 1 { origin[2] + (k as f64 + 0.5) * spacing[2] } else { 0.0 };
+                let cz = if gs[2] > 1 {
+                    origin[2] + (k as f64 + 0.5) * spacing[2]
+                } else {
+                    0.0
+                };
                 points.push([cx, cy, cz]);
             }
         }
@@ -124,9 +151,12 @@ pub fn hyper_tree_grid_cell_centers(htg: &HyperTreeGrid) -> PolyData {
     // Add depth info
     let depth_data = vec![0.0f64; gs[0] * gs[1] * gs[2]];
     // depth_data stays 0 for coarse cells (depth info would need tree traversal)
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CoarseDepth", depth_data, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CoarseDepth",
+            depth_data,
+            1,
+        )));
 
     mesh
 }
@@ -138,7 +168,11 @@ pub fn hyper_tree_grid_to_image_data(htg: &HyperTreeGrid) -> ImageData {
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 1.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            1.0
+        },
     ];
 
     ImageData::with_dimensions(gs[0], gs[1], gs[2].max(1))
@@ -151,7 +185,9 @@ pub fn hyper_tree_grid_info(htg: &HyperTreeGrid) -> String {
     format!(
         "HyperTreeGrid: {}D, coarse grid {}x{}x{}, {} trees, {} total cells, max depth {}",
         htg.dimension(),
-        htg.grid_size()[0], htg.grid_size()[1], htg.grid_size()[2],
+        htg.grid_size()[0],
+        htg.grid_size()[1],
+        htg.grid_size()[2],
         htg.num_trees(),
         htg.num_cells(),
         htg.max_depth(),

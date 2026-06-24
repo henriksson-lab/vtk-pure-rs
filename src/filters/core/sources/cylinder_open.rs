@@ -32,7 +32,12 @@ pub fn open_cylinder(radius: f64, height: f64, resolution: usize) -> PolyData {
 }
 
 /// Create a cone frustum (truncated cone) along Z axis.
-pub fn cone_frustum(bottom_radius: f64, top_radius: f64, height: f64, resolution: usize) -> PolyData {
+pub fn cone_frustum(
+    bottom_radius: f64,
+    top_radius: f64,
+    height: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(3);
     let half_h = height * 0.5;
     let mut pts = Points::<f64>::new();
@@ -40,7 +45,11 @@ pub fn cone_frustum(bottom_radius: f64, top_radius: f64, height: f64, resolution
 
     for i in 0..res {
         let angle = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
-        pts.push([bottom_radius * angle.cos(), bottom_radius * angle.sin(), -half_h]);
+        pts.push([
+            bottom_radius * angle.cos(),
+            bottom_radius * angle.sin(),
+            -half_h,
+        ]);
         pts.push([top_radius * angle.cos(), top_radius * angle.sin(), half_h]);
     }
 

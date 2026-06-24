@@ -63,9 +63,7 @@ mod tests {
         let mut buf = Vec::new();
         PlyBinaryWriter::write_to(&mut buf, &pd).unwrap();
         // Header should be ASCII
-        let header_end = buf.windows(11)
-            .position(|w| w == b"end_header\n")
-            .unwrap() + 11;
+        let header_end = buf.windows(11).position(|w| w == b"end_header\n").unwrap() + 11;
         let header = std::str::from_utf8(&buf[..header_end]).unwrap();
         assert!(header.contains("binary_little_endian"));
         // Binary data: 3 vertices * 12 bytes + 1 face * (1 + 12) bytes

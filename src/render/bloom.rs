@@ -28,7 +28,10 @@ impl Default for BloomConfig {
 impl BloomConfig {
     /// Create enabled bloom with default settings.
     pub fn new() -> Self {
-        Self { enabled: true, ..Default::default() }
+        Self {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     /// Set threshold.

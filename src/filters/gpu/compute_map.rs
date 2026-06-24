@@ -35,10 +35,12 @@ pub fn gpu_map_array(
         return DataArray::from_vec(input.name(), vec![], input.num_components());
     }
 
-    let shader = ctx.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("map shader"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("compute_map.wgsl").into()),
-    });
+    let shader = ctx
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("map shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("compute_map.wgsl").into()),
+        });
 
     let input_buf = ctx.create_storage_buffer(data);
     let output_buf = ctx.create_output_buffer((n * 4) as u64);
@@ -46,28 +48,38 @@ pub fn gpu_map_array(
     let params = [op as u32 as f32, param1, param2, n as f32];
     let params_buf = {
         use wgpu::util::DeviceExt;
-        ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("params"),
-            contents: bytemuck::cast_slice(&params),
-            usage: wgpu::BufferUsages::UNIFORM,
-        })
+        ctx.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("params"),
+                contents: bytemuck::cast_slice(&params),
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
     };
 
-    let bgl = ctx.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: None,
-        entries: &[
-            bgl_storage_ro(0), bgl_storage_rw(1), bgl_uniform(2),
-        ],
-    });
+    let bgl = ctx
+        .device
+        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[bgl_storage_ro(0), bgl_storage_rw(1), bgl_uniform(2)],
+        });
 
     let pipeline = create_compute_pipeline(ctx, &shader, &bgl);
     let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
         layout: &bgl,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: input_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: output_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: params_buf.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: input_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: output_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: params_buf.as_entire_binding(),
+            },
         ],
     });
 
@@ -120,19 +132,22 @@ fn create_compute_pipeline(
     shader: &wgpu::ShaderModule,
     bgl: &wgpu::BindGroupLayout,
 ) -> wgpu::ComputePipeline {
-    let layout = ctx.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: None,
-        bind_group_layouts: &[bgl],
-        push_constant_ranges: &[],
-    });
-    ctx.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: None,
-        layout: Some(&layout),
-        module: shader,
-        entry_point: Some("main"),
-        compilation_options: Default::default(),
-        cache: None,
-    })
+    let layout = ctx
+        .device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[bgl],
+            push_constant_ranges: &[],
+        });
+    ctx.device
+        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: None,
+            layout: Some(&layout),
+            module: shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        })
 }
 
 #[cfg(test)]

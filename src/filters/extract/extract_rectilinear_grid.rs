@@ -140,9 +140,8 @@ mod tests {
         // Add point data
         let n = 5 * 5 * 2;
         let values: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        grid.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("data", values, 1),
-        ));
+        grid.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("data", values, 1)));
 
         grid
     }

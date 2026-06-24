@@ -15,9 +15,9 @@ pub fn castle_turret(radius: f64, height: f64, n_merlons: usize, n_angular: usiz
         }
     }
     for j in 0..na {
-        let j1 = (j+1)%na;
-        polys.push_cell(&[j as i64, (na+j) as i64, (na+j1) as i64]);
-        polys.push_cell(&[j as i64, (na+j1) as i64, j1 as i64]);
+        let j1 = (j + 1) % na;
+        polys.push_cell(&[j as i64, (na + j) as i64, (na + j1) as i64]);
+        polys.push_cell(&[j as i64, (na + j1) as i64, j1 as i64]);
     }
     // Crenellations (merlons)
     let merlon_h = height * 0.2;
@@ -31,9 +31,12 @@ pub fn castle_turret(radius: f64, height: f64, n_merlons: usize, n_angular: usiz
         pts.push([radius * a1.cos(), radius * a1.sin(), height]);
         pts.push([radius * a1.cos(), radius * a1.sin(), height + merlon_h]);
         pts.push([radius * a0.cos(), radius * a0.sin(), height + merlon_h]);
-        polys.push_cell(&[b as i64, (b+1) as i64, (b+2) as i64, (b+3) as i64]);
+        polys.push_cell(&[b as i64, (b + 1) as i64, (b + 2) as i64, (b + 3) as i64]);
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

@@ -32,7 +32,9 @@ impl Default for QuadricDecimateParams {
 pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> PolyData {
     let n_pts = mesh.points.len();
     let n_tris = mesh.polys.num_cells();
-    if n_pts < 4 || n_tris < 2 { return mesh.clone(); }
+    if n_pts < 4 || n_tris < 2 {
+        return mesh.clone();
+    }
 
     let target_tris = (n_tris as f64 * (1.0 - params.target_reduction)).max(1.0) as usize;
 
@@ -54,10 +56,12 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
         let p1 = positions[tri[1]];
         let p2 = positions[tri[2]];
         let n = face_normal(p0, p1, p2);
-        let d = -(n[0]*p0[0] + n[1]*p0[1] + n[2]*p0[2]);
+        let d = -(n[0] * p0[0] + n[1] * p0[1] + n[2] * p0[2]);
         let q = plane_quadric(n, d);
         for &vi in tri {
-            for k in 0..10 { quadrics[vi][k] += q[k]; }
+            for k in 0..10 {
+                quadrics[vi][k] += q[k];
+            }
         }
     }
 
@@ -73,8 +77,8 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
     let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
     for tri in &triangles {
         for i in 0..3 {
-            let a = tri[i].min(tri[(i+1)%3]);
-            let b = tri[i].max(tri[(i+1)%3]);
+            let a = tri[i].min(tri[(i + 1) % 3]);
+            let b = tri[i].max(tri[(i + 1) % 3]);
             if seen.insert((a, b)) {
                 let (cost, opt) = edge_cost(&quadrics[a], &quadrics[b], positions[a], positions[b]);
                 edges.push((a, b, cost, opt));
@@ -88,8 +92,12 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
     let mut current_tris = triangles.len();
 
     for &(a, b, _cost, opt_pos) in &edges {
-        if current_tris <= target_tris { break; }
-        if !alive_pt[a] || !alive_pt[b] { continue; }
+        if current_tris <= target_tris {
+            break;
+        }
+        if !alive_pt[a] || !alive_pt[b] {
+            continue;
+        }
 
         // Skip boundary edges if preserving
         if params.preserve_boundary && boundary.contains(&(a.min(b), a.max(b))) {
@@ -101,13 +109,19 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
         alive_pt[b] = false;
 
         // Update quadric
-        for k in 0..10 { quadrics[a][k] += quadrics[b][k]; }
+        for k in 0..10 {
+            quadrics[a][k] += quadrics[b][k];
+        }
 
         // Update triangles: replace b with a, remove degenerate
         for (ti, tri) in triangles.iter_mut().enumerate() {
-            if !alive_tri[ti] { continue; }
+            if !alive_tri[ti] {
+                continue;
+            }
             for v in tri.iter_mut() {
-                if *v == b { *v = a; }
+                if *v == b {
+                    *v = a;
+                }
             }
             if tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2] {
                 alive_tri[ti] = false;
@@ -128,8 +142,12 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
 
     let mut new_polys = CellArray::new();
     for (ti, tri) in triangles.iter().enumerate() {
-        if !alive_tri[ti] { continue; }
-        if !alive_pt[tri[0]] || !alive_pt[tri[1]] || !alive_pt[tri[2]] { continue; }
+        if !alive_tri[ti] {
+            continue;
+        }
+        if !alive_pt[tri[0]] || !alive_pt[tri[1]] || !alive_pt[tri[2]] {
+            continue;
+        }
         new_polys.push_cell(&[
             point_map[tri[0]] as i64,
             point_map[tri[1]] as i64,
@@ -144,49 +162,80 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
 }
 
 fn face_normal(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3]) -> [f64; 3] {
-    let e1 = [p1[0]-p0[0], p1[1]-p0[1], p1[2]-p0[2]];
-    let e2 = [p2[0]-p0[0], p2[1]-p0[1], p2[2]-p0[2]];
-    let n = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-    let len = (n[0]*n[0]+n[1]*n[1]+n[2]*n[2]).sqrt();
-    if len > 1e-15 { [n[0]/len, n[1]/len, n[2]/len] } else { [0.0, 0.0, 1.0] }
+    let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    let n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len > 1e-15 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
 }
 
 fn plane_quadric(n: [f64; 3], d: f64) -> [f64; 10] {
     // Symmetric 4x4 matrix Q = p*p^T where p = [a,b,c,d]
     [
-        n[0]*n[0], n[0]*n[1], n[0]*n[2], n[0]*d,
-        n[1]*n[1], n[1]*n[2], n[1]*d,
-        n[2]*n[2], n[2]*d,
-        d*d,
+        n[0] * n[0],
+        n[0] * n[1],
+        n[0] * n[2],
+        n[0] * d,
+        n[1] * n[1],
+        n[1] * n[2],
+        n[1] * d,
+        n[2] * n[2],
+        n[2] * d,
+        d * d,
     ]
 }
 
 fn edge_cost(q1: &[f64; 10], q2: &[f64; 10], p1: [f64; 3], p2: [f64; 3]) -> (f64, [f64; 3]) {
     let mut q = [0.0; 10];
-    for k in 0..10 { q[k] = q1[k] + q2[k]; }
+    for k in 0..10 {
+        q[k] = q1[k] + q2[k];
+    }
 
     // Use midpoint as optimal position (simpler than solving 4x4 system)
-    let opt = [(p1[0]+p2[0])/2.0, (p1[1]+p2[1])/2.0, (p1[2]+p2[2])/2.0];
+    let opt = [
+        (p1[0] + p2[0]) / 2.0,
+        (p1[1] + p2[1]) / 2.0,
+        (p1[2] + p2[2]) / 2.0,
+    ];
 
     // Evaluate quadric error at optimal point
-    let cost = q[0]*opt[0]*opt[0] + 2.0*q[1]*opt[0]*opt[1] + 2.0*q[2]*opt[0]*opt[2] + 2.0*q[3]*opt[0]
-        + q[4]*opt[1]*opt[1] + 2.0*q[5]*opt[1]*opt[2] + 2.0*q[6]*opt[1]
-        + q[7]*opt[2]*opt[2] + 2.0*q[8]*opt[2]
+    let cost = q[0] * opt[0] * opt[0]
+        + 2.0 * q[1] * opt[0] * opt[1]
+        + 2.0 * q[2] * opt[0] * opt[2]
+        + 2.0 * q[3] * opt[0]
+        + q[4] * opt[1] * opt[1]
+        + 2.0 * q[5] * opt[1] * opt[2]
+        + 2.0 * q[6] * opt[1]
+        + q[7] * opt[2] * opt[2]
+        + 2.0 * q[8] * opt[2]
         + q[9];
 
     (cost.abs(), opt)
 }
 
 fn find_boundary_edges_set(triangles: &[[usize; 3]]) -> std::collections::HashSet<(usize, usize)> {
-    let mut edge_count: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for tri in triangles {
         for i in 0..3 {
-            let a = tri[i].min(tri[(i+1)%3]);
-            let b = tri[i].max(tri[(i+1)%3]);
+            let a = tri[i].min(tri[(i + 1) % 3]);
+            let b = tri[i].max(tri[(i + 1) % 3]);
             *edge_count.entry((a, b)).or_insert(0) += 1;
         }
     }
-    edge_count.into_iter().filter(|(_, c)| *c == 1).map(|(e, _)| e).collect()
+    edge_count
+        .into_iter()
+        .filter(|(_, c)| *c == 1)
+        .map(|(e, _)| e)
+        .collect()
 }
 
 #[cfg(test)]
@@ -203,9 +252,9 @@ mod tests {
         let mut tris = Vec::new();
         for y in 0..9 {
             for x in 0..9 {
-                let bl = y*10+x;
-                tris.push([bl, bl+1, bl+11]);
-                tris.push([bl, bl+11, bl+10]);
+                let bl = y * 10 + x;
+                tris.push([bl, bl + 1, bl + 11]);
+                tris.push([bl, bl + 11, bl + 10]);
             }
         }
         PolyData::from_triangles(pts, tris)
@@ -223,19 +272,22 @@ mod tests {
     #[test]
     fn preserve_boundary() {
         let mesh = make_grid_mesh();
-        let result = quadric_decimate(&mesh, &QuadricDecimateParams {
-            target_reduction: 0.3,
-            preserve_boundary: true,
-            ..Default::default()
-        });
+        let result = quadric_decimate(
+            &mesh,
+            &QuadricDecimateParams {
+                target_reduction: 0.3,
+                preserve_boundary: true,
+                ..Default::default()
+            },
+        );
         assert!(result.polys.num_cells() > 0);
     }
 
     #[test]
     fn small_mesh_unchanged() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let result = quadric_decimate(&mesh, &QuadricDecimateParams::default());
         assert_eq!(result.polys.num_cells(), 1);
@@ -244,12 +296,18 @@ mod tests {
     #[test]
     fn aggressive_reduction() {
         let mesh = make_grid_mesh();
-        let result = quadric_decimate(&mesh, &QuadricDecimateParams {
-            target_reduction: 0.9,
-            ..Default::default()
-        });
+        let result = quadric_decimate(
+            &mesh,
+            &QuadricDecimateParams {
+                target_reduction: 0.9,
+                ..Default::default()
+            },
+        );
         let original = mesh.polys.num_cells();
         assert!(result.polys.num_cells() > 0);
-        assert!(result.polys.num_cells() < original, "should have fewer triangles");
+        assert!(
+            result.polys.num_cells() < original,
+            "should have fewer triangles"
+        );
     }
 }

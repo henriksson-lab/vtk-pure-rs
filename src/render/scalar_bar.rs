@@ -177,9 +177,10 @@ impl ScalarBar {
             ScalarBarOrientation::Vertical => {
                 [self.position[0], self.position[1] + self.size[1] + 0.02]
             }
-            ScalarBarOrientation::Horizontal => {
-                [self.position[0] + self.size[0] / 2.0, self.position[1] + self.size[1] + 0.02]
-            }
+            ScalarBarOrientation::Horizontal => [
+                self.position[0] + self.size[0] / 2.0,
+                self.position[1] + self.size[1] + 0.02,
+            ],
         }
     }
 }

@@ -30,14 +30,20 @@ pub fn shape_index(mesh: &PolyData) -> PolyData {
         let diff = kmax - kmin;
         let si = if diff.abs() > 1e-12 {
             (2.0 / std::f64::consts::PI) * ((kmax + kmin) / diff).atan()
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         shape_idx.push(si);
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ShapeIndex", shape_idx, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ShapeIndex",
+            shape_idx,
+            1,
+        )));
     result
 }
 
@@ -53,9 +59,13 @@ pub fn curvedness(mesh: &PolyData) -> PolyData {
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Curvedness", curv_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Curvedness",
+            curv_data,
+            1,
+        )));
     result
 }
 
@@ -69,16 +79,28 @@ pub fn classify_curvature(mesh: &PolyData) -> PolyData {
 
     let mut classification = Vec::with_capacity(n);
     for &c in &curv {
-        let class = if c.abs() < 0.01 { 0.0 }       // flat
-            else if c > 0.0 { 1.0 }                   // convex
-            else { 2.0 };                              // concave
+        let class = if c.abs() < 0.01 {
+            0.0
+        }
+        // flat
+        else if c > 0.0 {
+            1.0
+        }
+        // convex
+        else {
+            2.0
+        }; // concave
         classification.push(class);
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CurvatureType", classification, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CurvatureType",
+            classification,
+            1,
+        )));
     result
 }
 
@@ -94,9 +116,13 @@ fn compute_and_classify(mesh: &PolyData) -> PolyData {
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ShapeIndex", shape_idx, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ShapeIndex",
+            shape_idx,
+            1,
+        )));
     result
 }
 
@@ -106,8 +132,9 @@ fn build_adjacency(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
-            let b = cell[(i+1)%nc] as usize;
-            adj[a].insert(b); adj[b].insert(a);
+            let b = cell[(i + 1) % nc] as usize;
+            adj[a].insert(b);
+            adj[b].insert(a);
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
@@ -117,16 +144,22 @@ fn compute_mean_curvature(mesh: &PolyData, adj: &[Vec<usize>]) -> Vec<f64> {
     let n = mesh.points.len();
     let mut curv = vec![0.0f64; n];
     for i in 0..n {
-        if adj[i].is_empty() { continue; }
+        if adj[i].is_empty() {
+            continue;
+        }
         let pi = mesh.points.get(i);
         let mut lap = [0.0; 3];
         for &j in &adj[i] {
             let pj = mesh.points.get(j);
-            for c in 0..3 { lap[c] += pj[c] - pi[c]; }
+            for c in 0..3 {
+                lap[c] += pj[c] - pi[c];
+            }
         }
         let k = adj[i].len() as f64;
-        for c in 0..3 { lap[c] /= k; }
-        curv[i] = (lap[0]*lap[0] + lap[1]*lap[1] + lap[2]*lap[2]).sqrt();
+        for c in 0..3 {
+            lap[c] /= k;
+        }
+        curv[i] = (lap[0] * lap[0] + lap[1] * lap[1] + lap[2] * lap[2]).sqrt();
         // Sign from normal direction (positive = convex for outward normals)
     }
     curv
@@ -138,8 +171,14 @@ mod tests {
 
     fn test_mesh() -> PolyData {
         PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[0.5,0.5,0.5],[1.5,1.0,0.0]],
-            vec![[0,1,2],[1,4,2],[0,2,3],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, 0.5, 0.5],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 4, 2], [0, 2, 3], [1, 3, 2]],
         )
     }
 
@@ -168,8 +207,13 @@ mod tests {
     #[test]
     fn flat_mesh() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[1.0,1.0,0.0]],
-            vec![[0,1,2],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
         );
         let result = classify_curvature(&mesh);
         let arr = result.point_data().get_array("CurvatureType").unwrap();

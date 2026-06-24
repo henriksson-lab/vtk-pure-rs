@@ -35,16 +35,41 @@ pub fn geodesic_sphere(params: &GeodesicSphereParams) -> PolyData {
     let b = t / len;
 
     let mut verts: Vec<[f64; 3]> = vec![
-        [-a,  b,  0.0], [ a,  b,  0.0], [-a, -b,  0.0], [ a, -b,  0.0],
-        [ 0.0, -a,  b], [ 0.0,  a,  b], [ 0.0, -a, -b], [ 0.0,  a, -b],
-        [ b,  0.0, -a], [ b,  0.0,  a], [-b,  0.0, -a], [-b,  0.0,  a],
+        [-a, b, 0.0],
+        [a, b, 0.0],
+        [-a, -b, 0.0],
+        [a, -b, 0.0],
+        [0.0, -a, b],
+        [0.0, a, b],
+        [0.0, -a, -b],
+        [0.0, a, -b],
+        [b, 0.0, -a],
+        [b, 0.0, a],
+        [-b, 0.0, -a],
+        [-b, 0.0, a],
     ];
 
     let mut tris: Vec<[usize; 3]> = vec![
-        [0,11,5], [0,5,1], [0,1,7], [0,7,10], [0,10,11],
-        [1,5,9], [5,11,4], [11,10,2], [10,7,6], [7,1,8],
-        [3,9,4], [3,4,2], [3,2,6], [3,6,8], [3,8,9],
-        [4,9,5], [2,4,11], [6,2,10], [8,6,7], [9,8,1],
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
     ];
 
     // Subdivide
@@ -70,7 +95,7 @@ pub fn geodesic_sphere(params: &GeodesicSphereParams) -> PolyData {
     let mut polys = CellArray::new();
 
     for v in &verts {
-        let len = (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]).sqrt();
+        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
         let nx = v[0] / len;
         let ny = v[1] / len;
         let nz = v[2] / len;
@@ -110,9 +135,9 @@ fn get_midpoint_idx(
         (verts[a][2] + verts[b][2]) * 0.5,
     ];
     // Project onto unit sphere
-    let len = (mid[0]*mid[0] + mid[1]*mid[1] + mid[2]*mid[2]).sqrt();
+    let len = (mid[0] * mid[0] + mid[1] * mid[1] + mid[2] * mid[2]).sqrt();
     let idx = verts.len();
-    verts.push([mid[0]/len, mid[1]/len, mid[2]/len]);
+    verts.push([mid[0] / len, mid[1] / len, mid[2] / len]);
     cache.insert(key, idx);
     idx
 }
@@ -161,7 +186,7 @@ mod tests {
         });
         for i in 0..pd.points.len() {
             let p = pd.points.get(i);
-            let r = (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt();
+            let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
             assert!((r - 2.0).abs() < 1e-10, "r={} at point {}", r, i);
         }
     }

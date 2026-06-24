@@ -51,9 +51,12 @@ pub fn image_checkerboard(
     }
 
     let mut img = a.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Checkerboard", values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Checkerboard",
+            values,
+            1,
+        )));
     img
 }
 

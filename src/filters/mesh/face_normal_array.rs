@@ -36,9 +36,12 @@ pub fn compute_face_normals(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("FaceNormals", normals, 3),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FaceNormals",
+            normals,
+            3,
+        )));
     pd
 }
 

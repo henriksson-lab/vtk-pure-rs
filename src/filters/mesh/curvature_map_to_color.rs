@@ -55,9 +55,8 @@ pub fn scalar_to_color(input: &PolyData, array_name: &str, colormap: ColorMapTyp
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Colors", colors, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Colors", colors, 3)));
     pd
 }
 
@@ -168,9 +167,12 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let scalars = vec![0.0, 5.0, 10.0];
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Elevation", scalars, 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Elevation",
+                scalars,
+                1,
+            )));
         pd
     }
 

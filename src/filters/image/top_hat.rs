@@ -64,9 +64,11 @@ fn write_scalars(input: &ImageData, scalars: &str, result: Vec<f64>) -> ImageDat
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, result.clone(), 1),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -128,9 +130,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(7, 7, 1);
         let mut values = vec![0.0f64; 49];
         values[24] = 1.0; // center pixel bright spike
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("data", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("data", values, 1)));
         img
     }
 

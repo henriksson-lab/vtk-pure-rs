@@ -34,9 +34,10 @@ pub fn extract_slice_z(input: &ImageData, scalars: &str, k: usize) -> ImageData 
     let mut img = ImageData::with_dimensions(nx, ny, 1);
     img.set_spacing(spacing);
     img.set_origin(new_origin);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, ncomp),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, values, ncomp,
+        )));
     img
 }
 
@@ -74,9 +75,10 @@ pub fn extract_slice_y(input: &ImageData, scalars: &str, j: usize) -> ImageData 
     let mut img = ImageData::with_dimensions(nx, 1, nz);
     img.set_spacing(spacing);
     img.set_origin(new_origin);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, ncomp),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, values, ncomp,
+        )));
     img
 }
 
@@ -114,9 +116,10 @@ pub fn extract_slice_x(input: &ImageData, scalars: &str, i: usize) -> ImageData 
     let mut img = ImageData::with_dimensions(1, ny, nz);
     img.set_spacing(spacing);
     img.set_origin(new_origin);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, ncomp),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, values, ncomp,
+        )));
     img
 }
 
@@ -128,9 +131,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(4, 3, 5);
         let n: usize = 4 * 3 * 5;
         let values: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("data", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("data", values, 1)));
         img
     }
 

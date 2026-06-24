@@ -24,7 +24,9 @@ pub fn weighted_transform(mesh: &PolyData, transforms: &[WeightedTransformEntry]
     }
 
     let total_weight: f64 = transforms.iter().map(|t| t.weight).sum();
-    if total_weight < 1e-15 { return mesh.clone(); }
+    if total_weight < 1e-15 {
+        return mesh.clone();
+    }
 
     let n = mesh.points.len();
     let mut new_points = Points::<f64>::new();
@@ -36,9 +38,9 @@ pub fn weighted_transform(mesh: &PolyData, transforms: &[WeightedTransformEntry]
         for t in transforms {
             let w = t.weight / total_weight;
             let m = &t.matrix;
-            let tx = m[0]*p[0] + m[1]*p[1] + m[2]*p[2] + m[3];
-            let ty = m[4]*p[0] + m[5]*p[1] + m[6]*p[2] + m[7];
-            let tz = m[8]*p[0] + m[9]*p[1] + m[10]*p[2] + m[11];
+            let tx = m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3];
+            let ty = m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7];
+            let tz = m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11];
             result[0] += w * tx;
             result[1] += w * ty;
             result[2] += w * tz;
@@ -63,7 +65,9 @@ pub fn skeletal_transform(
 ) -> PolyData {
     let n = mesh.points.len();
     let n_bones = bone_matrices.len();
-    if n == 0 || n_bones == 0 { return mesh.clone(); }
+    if n == 0 || n_bones == 0 {
+        return mesh.clone();
+    }
 
     let weights = match mesh.point_data().get_array(weight_array_name) {
         Some(a) if a.num_components() == n_bones => a,
@@ -86,10 +90,12 @@ pub fn skeletal_transform(
 
         for (bi, m) in bone_matrices.iter().enumerate() {
             let w = buf[bi] / w_sum;
-            if w < 1e-15 { continue; }
-            result[0] += w * (m[0]*p[0] + m[1]*p[1] + m[2]*p[2] + m[3]);
-            result[1] += w * (m[4]*p[0] + m[5]*p[1] + m[6]*p[2] + m[7]);
-            result[2] += w * (m[8]*p[0] + m[9]*p[1] + m[10]*p[2] + m[11]);
+            if w < 1e-15 {
+                continue;
+            }
+            result[0] += w * (m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3]);
+            result[1] += w * (m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7]);
+            result[2] += w * (m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11]);
         }
 
         new_points.push(result);
@@ -102,12 +108,16 @@ pub fn skeletal_transform(
 
 /// Create an identity 4x4 matrix.
 pub fn identity_matrix() -> [f64; 16] {
-    [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0]
+    [
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ]
 }
 
 /// Create a translation 4x4 matrix.
 pub fn translation_matrix(tx: f64, ty: f64, tz: f64) -> [f64; 16] {
-    [1.0,0.0,0.0,tx, 0.0,1.0,0.0,ty, 0.0,0.0,1.0,tz, 0.0,0.0,0.0,1.0]
+    [
+        1.0, 0.0, 0.0, tx, 0.0, 1.0, 0.0, ty, 0.0, 0.0, 1.0, tz, 0.0, 0.0, 0.0, 1.0,
+    ]
 }
 
 #[cfg(test)]
@@ -120,9 +130,13 @@ mod tests {
             vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]],
             vec![[0, 1, 2]],
         );
-        let result = weighted_transform(&mesh, &[
-            WeightedTransformEntry { matrix: identity_matrix(), weight: 1.0 },
-        ]);
+        let result = weighted_transform(
+            &mesh,
+            &[WeightedTransformEntry {
+                matrix: identity_matrix(),
+                weight: 1.0,
+            }],
+        );
         let p = result.points.get(0);
         assert!((p[0] - 1.0).abs() < 1e-10);
     }
@@ -130,10 +144,19 @@ mod tests {
     #[test]
     fn translation_blend() {
         let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
-        let result = weighted_transform(&mesh, &[
-            WeightedTransformEntry { matrix: translation_matrix(2.0, 0.0, 0.0), weight: 0.5 },
-            WeightedTransformEntry { matrix: translation_matrix(0.0, 4.0, 0.0), weight: 0.5 },
-        ]);
+        let result = weighted_transform(
+            &mesh,
+            &[
+                WeightedTransformEntry {
+                    matrix: translation_matrix(2.0, 0.0, 0.0),
+                    weight: 0.5,
+                },
+                WeightedTransformEntry {
+                    matrix: translation_matrix(0.0, 4.0, 0.0),
+                    weight: 0.5,
+                },
+            ],
+        );
         let p = result.points.get(0);
         assert!((p[0] - 1.0).abs() < 1e-10); // 50% of 2.0
         assert!((p[1] - 2.0).abs() < 1e-10); // 50% of 4.0
@@ -143,9 +166,12 @@ mod tests {
     fn skeletal() {
         let mut mesh = PolyData::from_points(vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
         // Two bones: identity and translate-X
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("BoneWeights", vec![1.0, 0.0, 0.0, 1.0], 2),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "BoneWeights",
+                vec![1.0, 0.0, 0.0, 1.0],
+                2,
+            )));
         let bones = [identity_matrix(), translation_matrix(5.0, 0.0, 0.0)];
         let result = skeletal_transform(&mesh, &bones, "BoneWeights");
         let p0 = result.points.get(0);

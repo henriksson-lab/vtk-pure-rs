@@ -106,9 +106,12 @@ pub fn particle_trace_steady(
     let mut mesh = PolyData::new();
     mesh.points = out_points;
     mesh.lines = out_lines;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ParticleId", particle_id_data, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ParticleId",
+            particle_id_data,
+            1,
+        )));
     mesh
 }
 
@@ -214,12 +217,14 @@ pub fn particle_trace_temporal(
     let mut mesh = PolyData::new();
     mesh.points = out_points;
     mesh.lines = out_lines;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ParticleId", particle_id_data, 1),
-    ));
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Time", time_data, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ParticleId",
+            particle_id_data,
+            1,
+        )));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Time", time_data, 1)));
     mesh
 }
 
@@ -304,12 +309,19 @@ mod tests {
         }
 
         let mut field = ImageData::new();
-        field.set_extent([0, dims[0] as i64 - 1, 0, dims[1] as i64 - 1, 0, dims[2] as i64 - 1]);
+        field.set_extent([
+            0,
+            dims[0] as i64 - 1,
+            0,
+            dims[1] as i64 - 1,
+            0,
+            dims[2] as i64 - 1,
+        ]);
         field.set_spacing(spacing);
         field.set_origin(origin);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vx, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vx, 3)));
         field.point_data_mut().set_active_vectors("velocity");
         field
     }
@@ -339,12 +351,7 @@ mod tests {
         let field = make_uniform_field();
         let seeds = vec![[2.0, 5.0, 5.0], [3.0, 5.0, 5.0]];
 
-        let result = particle_trace_temporal(
-            &[&field, &field],
-            &seeds,
-            10,
-            0.1,
-        );
+        let result = particle_trace_temporal(&[&field, &field], &seeds, 10, 0.1);
         assert!(result.points.len() > 10);
         assert!(result.lines.num_cells() >= 1);
         assert!(result.point_data().get_array("Time").is_some());

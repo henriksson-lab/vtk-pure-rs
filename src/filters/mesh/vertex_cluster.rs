@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
+use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 
 /// Cluster mesh vertices into N groups using farthest-point sampling.
 ///
@@ -7,7 +7,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
 /// Adds a "ClusterId" scalar array.
 pub fn vertex_cluster(input: &PolyData, n_clusters: usize) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
     let k = n_clusters.max(1).min(n);
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
@@ -24,7 +26,9 @@ pub fn vertex_cluster(input: &PolyData, n_clusters: usize) -> PolyData {
             min_dist[i] = min_dist[i].min(d2);
         }
         // Find farthest point
-        let farthest = (0..n).max_by(|&a, &b| min_dist[a].partial_cmp(&min_dist[b]).unwrap()).unwrap();
+        let farthest = (0..n)
+            .max_by(|&a, &b| min_dist[a].partial_cmp(&min_dist[b]).unwrap())
+            .unwrap();
         seeds.push(farthest);
     }
 
@@ -40,14 +44,17 @@ pub fn vertex_cluster(input: &PolyData, n_clusters: usize) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ClusterId", cluster_ids, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ClusterId",
+            cluster_ids,
+            1,
+        )));
     pd
 }
 
 fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
-    (a[0]-b[0]).powi(2)+(a[1]-b[1]).powi(2)+(a[2]-b[2]).powi(2)
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
 }
 
 #[cfg(test)]
@@ -58,8 +65,12 @@ mod tests {
     fn two_clusters() {
         let mut pd = PolyData::new();
         // Two groups of points
-        for i in 0..5 { pd.points.push([i as f64, 0.0, 0.0]); }
-        for i in 0..5 { pd.points.push([100.0 + i as f64, 0.0, 0.0]); }
+        for i in 0..5 {
+            pd.points.push([i as f64, 0.0, 0.0]);
+        }
+        for i in 0..5 {
+            pd.points.push([100.0 + i as f64, 0.0, 0.0]);
+        }
 
         let result = vertex_cluster(&pd, 2);
         let arr = result.point_data().get_array("ClusterId").unwrap();
@@ -80,8 +91,10 @@ mod tests {
         let result = vertex_cluster(&pd, 1);
         let arr = result.point_data().get_array("ClusterId").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0);
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 
     #[test]

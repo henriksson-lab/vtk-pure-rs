@@ -39,16 +39,8 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
                 let i: usize = (k + 1) % 3;
                 let j: usize = (k + 2) % 3;
 
-                let v1: [f64; 3] = [
-                    p[i][0] - p[k][0],
-                    p[i][1] - p[k][1],
-                    p[i][2] - p[k][2],
-                ];
-                let v2: [f64; 3] = [
-                    p[j][0] - p[k][0],
-                    p[j][1] - p[k][1],
-                    p[j][2] - p[k][2],
-                ];
+                let v1: [f64; 3] = [p[i][0] - p[k][0], p[i][1] - p[k][1], p[i][2] - p[k][2]];
+                let v2: [f64; 3] = [p[j][0] - p[k][0], p[j][1] - p[k][1], p[j][2] - p[k][2]];
 
                 let dot: f64 = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
                 let cross: [f64; 3] = [

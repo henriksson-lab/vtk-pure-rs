@@ -9,7 +9,7 @@ const NONE: usize = 0; // sentinel – node index 0 is never used as a child
 struct KdNode {
     point_idx: usize,
     split_axis: u8,
-    left: usize,  // index into KdTree::nodes, NONE = no child
+    left: usize, // index into KdTree::nodes, NONE = no child
     right: usize,
 }
 
@@ -63,8 +63,12 @@ impl KdTree {
                 let mut mx = f64::MIN;
                 for &idx in &indices[lo..hi] {
                     let v = points[idx][ax as usize];
-                    if v < mn { mn = v; }
-                    if v > mx { mx = v; }
+                    if v < mn {
+                        mn = v;
+                    }
+                    if v > mx {
+                        mx = v;
+                    }
                 }
                 let spread = mx - mn;
                 if spread > best_spread {

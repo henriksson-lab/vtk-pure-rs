@@ -34,19 +34,21 @@ impl Default for StereoConfig {
 
 impl StereoConfig {
     pub fn side_by_side() -> Self {
-        Self { mode: StereoMode::SideBySide, ..Default::default() }
+        Self {
+            mode: StereoMode::SideBySide,
+            ..Default::default()
+        }
     }
 
     pub fn anaglyph() -> Self {
-        Self { mode: StereoMode::AnaglyphRedCyan, ..Default::default() }
+        Self {
+            mode: StereoMode::AnaglyphRedCyan,
+            ..Default::default()
+        }
     }
 
     /// Compute left and right eye camera positions given the main camera.
-    pub fn eye_positions(
-        &self,
-        camera_pos: [f64; 3],
-        right: [f64; 3],
-    ) -> ([f64; 3], [f64; 3]) {
+    pub fn eye_positions(&self, camera_pos: [f64; 3], right: [f64; 3]) -> ([f64; 3], [f64; 3]) {
         let half = self.eye_separation / 2.0;
         let left = [
             camera_pos[0] - right[0] * half,
@@ -85,7 +87,10 @@ mod tests {
 
     #[test]
     fn eye_positions() {
-        let s = StereoConfig { eye_separation: 2.0, ..Default::default() };
+        let s = StereoConfig {
+            eye_separation: 2.0,
+            ..Default::default()
+        };
         let (left, right) = s.eye_positions([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         assert!((left[0] - (-1.0)).abs() < 1e-10);
         assert!((right[0] - 1.0).abs() < 1e-10);

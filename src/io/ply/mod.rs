@@ -1,8 +1,8 @@
-mod writer;
-mod reader;
-mod binary_writer;
 mod binary_reader;
-pub use writer::PlyWriter;
-pub use reader::PlyReader;
-pub use binary_writer::PlyBinaryWriter;
+mod binary_writer;
+mod reader;
+mod writer;
 pub use binary_reader::PlyBinaryReader;
+pub use binary_writer::PlyBinaryWriter;
+pub use reader::PlyReader;
+pub use writer::PlyWriter;

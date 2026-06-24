@@ -84,11 +84,7 @@ pub fn cross(params: &CrossParams) -> PolyData {
         &mut points,
         &mut normals,
         &mut polys,
-        [
-            [cx - al, cx + al],
-            [cy - hw, cy + hw],
-            [cz - hw, cz + hw],
-        ],
+        [[cx - al, cx + al], [cy - hw, cy + hw], [cz - hw, cz + hw]],
     );
 
     // Y-arm box: extends along Y, narrow in X and Z
@@ -96,11 +92,7 @@ pub fn cross(params: &CrossParams) -> PolyData {
         &mut points,
         &mut normals,
         &mut polys,
-        [
-            [cx - hw, cx + hw],
-            [cy - al, cy + al],
-            [cz - hw, cz + hw],
-        ],
+        [[cx - hw, cx + hw], [cy - al, cy + al], [cz - hw, cz + hw]],
     );
 
     // Z-arm box: extends along Z, narrow in X and Y
@@ -108,11 +100,7 @@ pub fn cross(params: &CrossParams) -> PolyData {
         &mut points,
         &mut normals,
         &mut polys,
-        [
-            [cx - hw, cx + hw],
-            [cy - hw, cy + hw],
-            [cz - al, cz + al],
-        ],
+        [[cx - hw, cx + hw], [cy - hw, cy + hw], [cz - al, cz + al]],
     );
 
     let mut pd = PolyData::new();

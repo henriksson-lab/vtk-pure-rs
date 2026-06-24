@@ -10,10 +10,7 @@ use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 /// For each point in the first time step, finds the nearest point in
 /// subsequent time steps and connects them as a polyline.
 /// Adds "Time" point data and "Speed" arrays.
-pub fn temporal_pathlines(
-    time_steps: &[PolyData],
-    times: &[f64],
-) -> PolyData {
+pub fn temporal_pathlines(time_steps: &[PolyData], times: &[f64]) -> PolyData {
     if time_steps.is_empty() || times.len() != time_steps.len() {
         return PolyData::new();
     }
@@ -65,12 +62,14 @@ pub fn temporal_pathlines(
     let mut result = PolyData::new();
     result.points = points;
     result.lines = lines;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Time", time_data, 1),
-    ));
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Speed", speed_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Time", time_data, 1)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Speed", speed_data, 1,
+        )));
     result
 }
 
@@ -79,7 +78,8 @@ fn nearest_point(points: &crate::data::Points<f64>, target: [f64; 3]) -> [f64; 3
     let mut best_dist = f64::MAX;
     for i in 0..points.len() {
         let p = points.get(i);
-        let d = (p[0] - target[0]).powi(2) + (p[1] - target[1]).powi(2) + (p[2] - target[2]).powi(2);
+        let d =
+            (p[0] - target[0]).powi(2) + (p[1] - target[1]).powi(2) + (p[2] - target[2]).powi(2);
         if d < best_dist {
             best_dist = d;
             best = p;
@@ -94,14 +94,8 @@ mod tests {
 
     #[test]
     fn pathlines_basic() {
-        let step0 = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-            vec![],
-        );
-        let step1 = PolyData::from_triangles(
-            vec![[0.1, 0.0, 0.0], [1.1, 0.0, 0.0]],
-            vec![],
-        );
+        let step0 = PolyData::from_triangles(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], vec![]);
+        let step1 = PolyData::from_triangles(vec![[0.1, 0.0, 0.0], [1.1, 0.0, 0.0]], vec![]);
         let result = temporal_pathlines(&[step0, step1], &[0.0, 1.0]);
         assert_eq!(result.lines.num_cells(), 2); // 2 seed points → 2 pathlines
         assert_eq!(result.points.len(), 4); // 2 seeds × 2 time steps

@@ -39,9 +39,8 @@ pub fn min_projection_z(input: &ImageData, scalars: &str) -> ImageData {
     out.set_spacing([spacing[0], spacing[1], 1.0]);
     let origin = input.origin();
     out.set_origin(origin);
-    out.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, 1),
-    ));
+    out.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
     out
 }
 
@@ -70,9 +69,8 @@ mod tests {
         vals[10] = 50.0;
         vals[11] = 50.0;
 
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("s", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", vals, 1)));
 
         let result = min_projection_z(&img, "s");
         let dims = result.dimensions();
@@ -96,9 +94,8 @@ mod tests {
     fn single_slice_unchanged() {
         let mut img = ImageData::with_dimensions(3, 2, 1);
         let vals: Vec<f64> = vec![5.0, 3.0, 1.0, 2.0, 4.0, 6.0];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("data", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("data", vals, 1)));
 
         let result = min_projection_z(&img, "data");
         assert_eq!(result.dimensions()[2], 1);

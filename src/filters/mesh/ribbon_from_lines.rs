@@ -10,8 +10,13 @@ pub fn ribbon_from_lines(mesh: &PolyData, width: f64, up: [f64; 3]) -> PolyData 
     let mut polys = CellArray::new();
 
     for line in mesh.lines.iter() {
-        if line.len() < 2 { continue; }
-        let line_pts: Vec<[f64; 3]> = line.iter().map(|&id| mesh.points.get(id as usize)).collect();
+        if line.len() < 2 {
+            continue;
+        }
+        let line_pts: Vec<[f64; 3]> = line
+            .iter()
+            .map(|&id| mesh.points.get(id as usize))
+            .collect();
         let start_idx = pts.len();
 
         for (i, p) in line_pts.iter().enumerate() {
@@ -24,13 +29,26 @@ pub fn ribbon_from_lines(mesh: &PolyData, width: f64, up: [f64; 3]) -> PolyData 
             };
             let t = normalize(tangent);
             let side = normalize(cross(t, up_n));
-            pts.push([p[0] - half * side[0], p[1] - half * side[1], p[2] - half * side[2]]);
-            pts.push([p[0] + half * side[0], p[1] + half * side[1], p[2] + half * side[2]]);
+            pts.push([
+                p[0] - half * side[0],
+                p[1] - half * side[1],
+                p[2] - half * side[2],
+            ]);
+            pts.push([
+                p[0] + half * side[0],
+                p[1] + half * side[1],
+                p[2] + half * side[2],
+            ]);
         }
 
         for i in 0..line_pts.len() - 1 {
             let base = start_idx + i * 2;
-            polys.push_cell(&[base as i64, (base + 2) as i64, (base + 3) as i64, (base + 1) as i64]);
+            polys.push_cell(&[
+                base as i64,
+                (base + 2) as i64,
+                (base + 3) as i64,
+                (base + 1) as i64,
+            ]);
         }
     }
 
@@ -40,16 +58,24 @@ pub fn ribbon_from_lines(mesh: &PolyData, width: f64, up: [f64; 3]) -> PolyData 
     result
 }
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
     let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len < 1e-15 { return [0.0, 0.0, 1.0]; }
+    if len < 1e-15 {
+        return [0.0, 0.0, 1.0];
+    }
     [v[0] / len, v[1] / len, v[2] / len]
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 #[cfg(test)]

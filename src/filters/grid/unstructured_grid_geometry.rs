@@ -8,7 +8,8 @@ use crate::types::CellType;
 /// A boundary face is a face that is not shared by two cells.
 pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
     // Build face → cell count map
-    let mut face_count: std::collections::HashMap<Vec<usize>, usize> = std::collections::HashMap::new();
+    let mut face_count: std::collections::HashMap<Vec<usize>, usize> =
+        std::collections::HashMap::new();
     let mut all_faces: Vec<Vec<usize>> = Vec::new();
 
     for cell in grid.cells().iter() {
@@ -29,7 +30,9 @@ pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
     for face in &all_faces {
         let mut sorted = face.clone();
         sorted.sort();
-        if face_count.get(&sorted) != Some(&1) { continue; }
+        if face_count.get(&sorted) != Some(&1) {
+            continue;
+        }
         // Mark as processed to avoid duplicates
         face_count.insert(sorted, 0);
 
@@ -65,7 +68,9 @@ pub fn extract_all_faces(grid: &UnstructuredGrid) -> PolyData {
         for face in faces {
             let mut sorted = face.clone();
             sorted.sort();
-            if !seen_faces.insert(sorted) { continue; }
+            if !seen_faces.insert(sorted) {
+                continue;
+            }
 
             let mut ids = Vec::new();
             for &pid in &face {
@@ -96,7 +101,9 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
     let mut point_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     for (ci, cell) in grid.cells().iter().enumerate() {
-        if ci >= types.len() || types[ci] != cell_type { continue; }
+        if ci >= types.len() || types[ci] != cell_type {
+            continue;
+        }
         let faces = cell_faces(cell);
         for face in faces {
             let mut ids = Vec::new();
@@ -108,7 +115,9 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
                 });
                 ids.push(new_idx as i64);
             }
-            if ids.len() >= 3 { polys.push_cell(&ids); }
+            if ids.len() >= 3 {
+                polys.push_cell(&ids);
+            }
         }
     }
 
@@ -165,8 +174,13 @@ mod tests {
     #[test]
     fn single_tet_boundary() {
         let grid = UnstructuredGrid::from_tetrahedra(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],
-            vec![[0,1,2,3]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 1, 2, 3]],
         );
         let boundary = extract_boundary_faces(&grid);
         assert_eq!(boundary.polys.num_cells(), 4); // 4 triangular faces
@@ -175,8 +189,13 @@ mod tests {
     #[test]
     fn all_faces() {
         let grid = UnstructuredGrid::from_tetrahedra(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],
-            vec![[0,1,2,3]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 1, 2, 3]],
         );
         let faces = extract_all_faces(&grid);
         assert_eq!(faces.polys.num_cells(), 4);
@@ -186,10 +205,13 @@ mod tests {
     fn two_tets_shared_face() {
         let grid = UnstructuredGrid::from_tetrahedra(
             vec![
-                [0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0],
-                [1.0,1.0,1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
             ],
-            vec![[0,1,2,3],[1,2,3,4]],
+            vec![[0, 1, 2, 3], [1, 2, 3, 4]],
         );
         let boundary = extract_boundary_faces(&grid);
         // Shared face (1,2,3) should not appear in boundary
@@ -200,10 +222,16 @@ mod tests {
     fn hex_boundary() {
         let grid = UnstructuredGrid::from_hexahedra(
             vec![
-                [0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0],
-                [0.0,0.0,1.0],[1.0,0.0,1.0],[1.0,1.0,1.0],[0.0,1.0,1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
             ],
-            vec![[0,1,2,3,4,5,6,7]],
+            vec![[0, 1, 2, 3, 4, 5, 6, 7]],
         );
         let boundary = extract_boundary_faces(&grid);
         assert_eq!(boundary.polys.num_cells(), 6); // 6 quad faces

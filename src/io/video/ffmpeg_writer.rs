@@ -5,8 +5,8 @@
 //! apt install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
 //! ```
 
-use std::path::Path;
 use crate::io::video::FrameSequence;
+use std::path::Path;
 
 /// Video codec selection.
 #[derive(Debug, Clone, Copy)]
@@ -71,16 +71,19 @@ pub fn write_video(
     let codec = ffmpeg::encoder::find(codec_id)
         .ok_or_else(|| format!("codec {:?} not found", options.codec))?;
 
-    let mut octx = ffmpeg::format::output(&output_path)
-        .map_err(|e| format!("create output: {e}"))?;
+    let mut octx =
+        ffmpeg::format::output(&output_path).map_err(|e| format!("create output: {e}"))?;
 
-    let mut stream = octx.add_stream(codec)
+    let mut stream = octx
+        .add_stream(codec)
         .map_err(|e| format!("add stream: {e}"))?;
 
     let encoder_ctx = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
         .map_err(|e| format!("encoder context: {e}"))?;
 
-    let mut encoder = encoder_ctx.encoder().video()
+    let mut encoder = encoder_ctx
+        .encoder()
+        .video()
         .map_err(|e| format!("video encoder: {e}"))?;
 
     encoder.set_width(seq.width);
@@ -88,7 +91,8 @@ pub fn write_video(
     encoder.set_format(ffmpeg::format::Pixel::YUV420P);
     encoder.set_time_base(ffmpeg::Rational::new(1, seq.fps as i32));
 
-    let mut encoder = encoder.open_as(codec)
+    let mut encoder = encoder
+        .open_as(codec)
         .map_err(|e| format!("open encoder: {e}"))?;
 
     stream.set_parameters(&encoder);
@@ -99,21 +103,20 @@ pub fn write_video(
     // Create scaler for RGB→YUV conversion
     let mut sws = ffmpeg::software::scaling::Context::get(
         ffmpeg::format::Pixel::RGB24,
-        seq.width, seq.height,
+        seq.width,
+        seq.height,
         ffmpeg::format::Pixel::YUV420P,
-        seq.width, seq.height,
+        seq.width,
+        seq.height,
         ffmpeg::software::scaling::Flags::BILINEAR,
-    ).map_err(|e| format!("scaler: {e}"))?;
+    )
+    .map_err(|e| format!("scaler: {e}"))?;
 
-    let mut frame_yuv = ffmpeg::frame::Video::new(
-        ffmpeg::format::Pixel::YUV420P,
-        seq.width, seq.height,
-    );
+    let mut frame_yuv =
+        ffmpeg::frame::Video::new(ffmpeg::format::Pixel::YUV420P, seq.width, seq.height);
 
-    let mut frame_rgb = ffmpeg::frame::Video::new(
-        ffmpeg::format::Pixel::RGB24,
-        seq.width, seq.height,
-    );
+    let mut frame_rgb =
+        ffmpeg::frame::Video::new(ffmpeg::format::Pixel::RGB24, seq.width, seq.height);
 
     for (i, _) in seq.frames.iter().enumerate() {
         let rgb = seq.frame_as_rgb(i);
@@ -135,13 +138,15 @@ pub fn write_video(
         frame_yuv.set_pts(Some(i as i64));
 
         // Encode frame
-        encoder.send_frame(&frame_yuv)
+        encoder
+            .send_frame(&frame_yuv)
             .map_err(|e| format!("send frame {i}: {e}"))?;
 
         let mut packet = ffmpeg::Packet::empty();
         while encoder.receive_packet(&mut packet).is_ok() {
             packet.set_stream(0);
-            packet.write_interleaved(&mut octx)
+            packet
+                .write_interleaved(&mut octx)
                 .map_err(|e| format!("write packet: {e}"))?;
         }
     }
@@ -151,7 +156,8 @@ pub fn write_video(
     let mut packet = ffmpeg::Packet::empty();
     while encoder.receive_packet(&mut packet).is_ok() {
         packet.set_stream(0);
-        packet.write_interleaved(&mut octx)
+        packet
+            .write_interleaved(&mut octx)
             .map_err(|e| format!("write flush packet: {e}"))?;
     }
 

@@ -71,7 +71,11 @@ where
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 /// Generate a torus as a parametric surface.
@@ -106,11 +110,7 @@ pub fn klein_bottle(resolution: usize) -> PolyData {
                     r * sv,
                 ]
             } else {
-                [
-                    6.0 * cu * (1.0 + su) - r * cv,
-                    16.0 * su,
-                    r * sv,
-                ]
+                [6.0 * cu * (1.0 + su) - r * cv, 16.0 * su, r * sv]
             }
         },
         [0.0, pi2],
@@ -126,13 +126,7 @@ mod tests {
 
     #[test]
     fn parametric_plane() {
-        let pd = parametric_function(
-            |u, v| [u, v, 0.0],
-            [0.0, 1.0],
-            [0.0, 1.0],
-            4,
-            4,
-        );
+        let pd = parametric_function(|u, v| [u, v, 0.0], [0.0, 1.0], [0.0, 1.0], 4, 4);
         assert_eq!(pd.points.len(), 16); // 4x4
         assert_eq!(pd.polys.num_cells(), 9); // 3x3 quads
     }

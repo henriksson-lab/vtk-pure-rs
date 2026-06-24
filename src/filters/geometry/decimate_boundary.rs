@@ -30,9 +30,12 @@ pub fn mark_boundary(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BoundaryPoints", boundary, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BoundaryPoints",
+            boundary,
+            1,
+        )));
     pd
 }
 

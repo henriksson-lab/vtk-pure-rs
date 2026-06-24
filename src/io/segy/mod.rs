@@ -3,8 +3,8 @@
 //! Reads SEG-Y rev 1 files: 3200-byte EBCDIC header, 400-byte binary header,
 //! then trace headers + trace data. Outputs as ImageData (2D) or PolyData points.
 
-use std::io::{Read, Seek, SeekFrom};
 use crate::data::{AnyDataArray, DataArray, ImageData, Points, PolyData};
+use std::io::{Read, Seek, SeekFrom};
 
 /// Read SEG-Y trace data as a 2D ImageData (traces × samples).
 pub fn read_segy_as_image<R: Read + Seek>(r: &mut R) -> Result<ImageData, String> {
@@ -19,7 +19,9 @@ pub fn read_segy_as_image<R: Read + Seek>(r: &mut R) -> Result<ImageData, String
     let n_samples = i16::from_be_bytes([bin_hdr[20], bin_hdr[21]]) as usize;
     let format_code = i16::from_be_bytes([bin_hdr[24], bin_hdr[25]]);
 
-    if n_samples == 0 { return Err("zero samples per trace".into()); }
+    if n_samples == 0 {
+        return Err("zero samples per trace".into());
+    }
 
     let bytes_per_sample = match format_code {
         1 => 4, // IBM float
@@ -38,9 +40,15 @@ pub fn read_segy_as_image<R: Read + Seek>(r: &mut R) -> Result<ImageData, String
     let end = r.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
     let data_bytes = end - current;
     let trace_size = trace_header_size + trace_data_size as u64;
-    let n_traces = if trace_size > 0 { (data_bytes / trace_size) as usize } else { 0 };
+    let n_traces = if trace_size > 0 {
+        (data_bytes / trace_size) as usize
+    } else {
+        0
+    };
 
-    if n_traces == 0 { return Err("no traces found".into()); }
+    if n_traces == 0 {
+        return Err("no traces found".into());
+    }
 
     r.seek(SeekFrom::Start(3600)).map_err(|e| e.to_string())?;
 
@@ -49,26 +57,39 @@ pub fn read_segy_as_image<R: Read + Seek>(r: &mut R) -> Result<ImageData, String
     let mut hdr_buf = [0u8; 240];
 
     for ti in 0..n_traces {
-        if r.read_exact(&mut hdr_buf).is_err() { break; }
-        if r.read_exact(&mut trace_buf).is_err() { break; }
+        if r.read_exact(&mut hdr_buf).is_err() {
+            break;
+        }
+        if r.read_exact(&mut trace_buf).is_err() {
+            break;
+        }
 
         for si in 0..n_samples {
             let offset = si * bytes_per_sample;
             let val = match format_code {
-                5 => { // IEEE float
+                5 => {
+                    // IEEE float
                     if offset + 4 <= trace_buf.len() {
-                        f32::from_be_bytes(trace_buf[offset..offset+4].try_into().unwrap()) as f64
-                    } else { 0.0 }
+                        f32::from_be_bytes(trace_buf[offset..offset + 4].try_into().unwrap()) as f64
+                    } else {
+                        0.0
+                    }
                 }
-                2 => { // 4-byte int
+                2 => {
+                    // 4-byte int
                     if offset + 4 <= trace_buf.len() {
-                        i32::from_be_bytes(trace_buf[offset..offset+4].try_into().unwrap()) as f64
-                    } else { 0.0 }
+                        i32::from_be_bytes(trace_buf[offset..offset + 4].try_into().unwrap()) as f64
+                    } else {
+                        0.0
+                    }
                 }
-                3 => { // 2-byte int
+                3 => {
+                    // 2-byte int
                     if offset + 2 <= trace_buf.len() {
-                        i16::from_be_bytes(trace_buf[offset..offset+2].try_into().unwrap()) as f64
-                    } else { 0.0 }
+                        i16::from_be_bytes(trace_buf[offset..offset + 2].try_into().unwrap()) as f64
+                    } else {
+                        0.0
+                    }
                 }
                 _ => 0.0,
             };
@@ -78,9 +99,11 @@ pub fn read_segy_as_image<R: Read + Seek>(r: &mut R) -> Result<ImageData, String
 
     let img = ImageData::with_dimensions(n_traces, n_samples, 1)
         .with_spacing([1.0, sample_interval.max(1.0), 1.0])
-        .with_point_array(AnyDataArray::F64(
-            DataArray::from_vec("Amplitude", all_data, 1),
-        ));
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+            "Amplitude",
+            all_data,
+            1,
+        )));
 
     Ok(img)
 }
@@ -93,7 +116,12 @@ pub fn read_segy_as_points<R: Read + Seek>(r: &mut R) -> Result<PolyData, String
 
     let n_samples = i16::from_be_bytes([bin_hdr[20], bin_hdr[21]]) as usize;
     let format_code = i16::from_be_bytes([bin_hdr[24], bin_hdr[25]]);
-    let bps = match format_code { 1|2|5 => 4, 3 => 2, 8 => 1, _ => 4 };
+    let bps = match format_code {
+        1 | 2 | 5 => 4,
+        3 => 2,
+        8 => 1,
+        _ => 4,
+    };
     let trace_data_size = n_samples * bps;
 
     let mut points = Points::<f64>::new();
@@ -101,12 +129,16 @@ pub fn read_segy_as_points<R: Read + Seek>(r: &mut R) -> Result<PolyData, String
     let mut skip_buf = vec![0u8; trace_data_size];
 
     loop {
-        if r.read_exact(&mut hdr_buf).is_err() { break; }
+        if r.read_exact(&mut hdr_buf).is_err() {
+            break;
+        }
         // CDP X at bytes 180-184, CDP Y at bytes 184-188 (big-endian i32)
         let x = i32::from_be_bytes(hdr_buf[180..184].try_into().unwrap()) as f64;
         let y = i32::from_be_bytes(hdr_buf[184..188].try_into().unwrap()) as f64;
         points.push([x, y, 0.0]);
-        if r.read_exact(&mut skip_buf).is_err() { break; }
+        if r.read_exact(&mut skip_buf).is_err() {
+            break;
+        }
     }
 
     let mut mesh = PolyData::new();

@@ -39,7 +39,9 @@ fn main() {
     println!("  sphere(256) points: {}", pd256.points.len());
 
     bench("normals (sphere 256)", 5, || {
-        black_box(vtk_pure_rs::filters::normals::normals::compute_normals(&pd256));
+        black_box(vtk_pure_rs::filters::normals::normals::compute_normals(
+            &pd256,
+        ));
     });
 
     bench("elevation (sphere 256)", 5, || {
@@ -53,15 +55,15 @@ fn main() {
     let (img64, scalars64) = make_image_data(64);
     bench("marching_cubes (64^3)", 5, || {
         black_box(vtk_pure_rs::filters::core::marching_cubes::marching_cubes(
-            &img64,
-            &scalars64,
-            0.0,
+            &img64, &scalars64, 0.0,
         ));
     });
 
     let pd128 = make_sphere(128);
     bench("triangulate (sphere 128)", 10, || {
-        black_box(vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd128));
+        black_box(vtk_pure_rs::filters::geometry::triangulate::triangulate(
+            &pd128,
+        ));
     });
 
     bench("clean (sphere 128)", 5, || {
@@ -73,7 +75,9 @@ fn main() {
     });
 
     bench("smooth 20 iters (sphere 128)", 5, || {
-        black_box(vtk_pure_rs::filters::smooth::smooth::smooth(&pd128, 20, 1.0, true));
+        black_box(vtk_pure_rs::filters::smooth::smooth::smooth(
+            &pd128, 20, 1.0, true,
+        ));
     });
 }
 

@@ -3,18 +3,21 @@
 //! Supports eigenvalue decomposition, determinant, inverse, and
 //! matrix multiplication for 3x3 matrices stored as 9-component tuples.
 
-use crate::data::{DataArray};
+use crate::data::DataArray;
 
 /// Compute determinant of 3x3 matrices stored as 9-component tuples.
 pub fn matrix_determinant(input: &DataArray<f64>) -> DataArray<f64> {
-    assert_eq!(input.num_components(), 9, "input must have 9 components (3x3 matrix)");
+    assert_eq!(
+        input.num_components(),
+        9,
+        "input must have 9 components (3x3 matrix)"
+    );
     let n = input.num_tuples();
     let mut data = Vec::with_capacity(n);
 
     for i in 0..n {
         let m = input.tuple(i);
-        let det = m[0] * (m[4] * m[8] - m[5] * m[7])
-            - m[1] * (m[3] * m[8] - m[5] * m[6])
+        let det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
             + m[2] * (m[3] * m[7] - m[4] * m[6]);
         data.push(det);
     }
@@ -31,8 +34,7 @@ pub fn matrix_inverse(input: &DataArray<f64>) -> DataArray<f64> {
 
     for i in 0..n {
         let m = input.tuple(i);
-        let det = m[0] * (m[4] * m[8] - m[5] * m[7])
-            - m[1] * (m[3] * m[8] - m[5] * m[6])
+        let det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
             + m[2] * (m[3] * m[7] - m[4] * m[6]);
 
         if det.abs() < 1e-30 {
@@ -100,7 +102,12 @@ pub fn matrix_frobenius_norm(input: &DataArray<f64>) -> DataArray<f64> {
 }
 
 fn eigenvalues_3x3_symmetric(
-    a11: f64, a22: f64, a33: f64, a12: f64, a23: f64, a13: f64,
+    a11: f64,
+    a22: f64,
+    a33: f64,
+    a12: f64,
+    a23: f64,
+    a13: f64,
 ) -> [f64; 3] {
     let p1 = a12 * a12 + a13 * a13 + a23 * a23;
     if p1.abs() < 1e-30 {
@@ -120,8 +127,7 @@ fn eigenvalues_3x3_symmetric(
     let b13 = a13 / p;
     let b23 = a23 / p;
 
-    let det_b = b11 * (b22 * b33 - b23 * b23)
-        - b12 * (b12 * b33 - b23 * b13)
+    let det_b = b11 * (b22 * b33 - b23 * b23) - b12 * (b12 * b33 - b23 * b13)
         + b13 * (b12 * b23 - b22 * b13);
     let r = (det_b / 2.0).clamp(-1.0, 1.0);
 

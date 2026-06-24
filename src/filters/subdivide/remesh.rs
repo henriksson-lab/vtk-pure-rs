@@ -12,9 +12,11 @@ use std::collections::HashMap;
 /// This is a simplified version — performs only split and collapse for robustness.
 pub fn remesh(input: &PolyData, target_edge_length: f64, iterations: usize) -> PolyData {
     let mut points = input.points.clone();
-    let mut tris: Vec<[i64; 3]> = input.polys.iter()
+    let mut tris: Vec<[i64; 3]> = input
+        .polys
+        .iter()
         .filter(|c| c.len() >= 3)
-        .flat_map(|c| (1..c.len()-1).map(move |i| [c[0], c[i], c[i+1]]))
+        .flat_map(|c| (1..c.len() - 1).map(move |i| [c[0], c[i], c[i + 1]]))
         .collect();
 
     let split_threshold = target_edge_length * 4.0 / 3.0;
@@ -65,13 +67,16 @@ pub fn remesh(input: &PolyData, target_edge_length: f64, iterations: usize) -> P
     let mut out_polys = CellArray::new();
 
     for tri in &tris {
-        let mapped: Vec<i64> = tri.iter().map(|&id| {
-            *used.entry(id).or_insert_with(|| {
-                let idx = out_points.len() as i64;
-                out_points.push(points.get(id as usize));
-                idx
+        let mapped: Vec<i64> = tri
+            .iter()
+            .map(|&id| {
+                *used.entry(id).or_insert_with(|| {
+                    let idx = out_points.len() as i64;
+                    out_points.push(points.get(id as usize));
+                    idx
+                })
             })
-        }).collect();
+            .collect();
         out_polys.push_cell(&mapped);
     }
 
@@ -83,17 +88,23 @@ pub fn remesh(input: &PolyData, target_edge_length: f64, iterations: usize) -> P
 
 fn get_mid(points: &mut Points<f64>, cache: &mut HashMap<(i64, i64), i64>, a: i64, b: i64) -> i64 {
     let key = if a < b { (a, b) } else { (b, a) };
-    if let Some(&m) = cache.get(&key) { return m; }
+    if let Some(&m) = cache.get(&key) {
+        return m;
+    }
     let pa = points.get(a as usize);
     let pb = points.get(b as usize);
     let idx = points.len() as i64;
-    points.push([(pa[0]+pb[0])*0.5, (pa[1]+pb[1])*0.5, (pa[2]+pb[2])*0.5]);
+    points.push([
+        (pa[0] + pb[0]) * 0.5,
+        (pa[1] + pb[1]) * 0.5,
+        (pa[2] + pb[2]) * 0.5,
+    ]);
     cache.insert(key, idx);
     idx
 }
 
 fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
-    (a[0]-b[0]).powi(2) + (a[1]-b[1]).powi(2) + (a[2]-b[2]).powi(2)
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
 }
 
 #[cfg(test)]

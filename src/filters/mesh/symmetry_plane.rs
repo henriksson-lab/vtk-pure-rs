@@ -99,11 +99,7 @@ pub fn find_symmetry_plane(input: &PolyData) -> SymmetryPlaneResult {
 /// Reflect a PolyData mesh about an arbitrary plane defined by a point and normal.
 ///
 /// The reflected polygons have reversed winding order to maintain consistent normals.
-pub fn reflect_about_plane(
-    input: &PolyData,
-    point: [f64; 3],
-    normal: [f64; 3],
-) -> PolyData {
+pub fn reflect_about_plane(input: &PolyData, point: [f64; 3], normal: [f64; 3]) -> PolyData {
     let n: usize = input.points.len();
 
     // Normalize the normal vector

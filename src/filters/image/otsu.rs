@@ -7,7 +7,9 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 pub fn otsu_threshold(input: &ImageData, scalars: &str, n_bins: usize) -> Option<f64> {
     let arr = input.point_data().get_array(scalars)?;
     let n = arr.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let n_bins = n_bins.max(2);
     let mut buf = [0.0f64];
@@ -45,9 +47,13 @@ pub fn otsu_threshold(input: &ImageData, scalars: &str, n_bins: usize) -> Option
 
     for t in 0..n_bins {
         w_bg += hist[t] as f64;
-        if w_bg == 0.0 { continue; }
+        if w_bg == 0.0 {
+            continue;
+        }
         let w_fg = total - w_bg;
-        if w_fg == 0.0 { break; }
+        if w_fg == 0.0 {
+            break;
+        }
 
         sum_bg += t as f64 * hist[t] as f64;
         let mean_bg = sum_bg / w_bg;
@@ -82,24 +88,30 @@ mod tests {
         let mut img = ImageData::with_dimensions(20, 1, 1);
         let mut values = vec![0.0f64; 20];
         // 10 low values, 10 high values
-        for i in 0..10 { values[i] = 10.0 + (i as f64) * 0.1; }
-        for i in 10..20 { values[i] = 90.0 + (i as f64) * 0.1; }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        for i in 0..10 {
+            values[i] = 10.0 + (i as f64) * 0.1;
+        }
+        for i in 10..20 {
+            values[i] = 90.0 + (i as f64) * 0.1;
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let thresh = otsu_threshold(&img, "v", 100).unwrap();
         // Threshold should be between the two clusters
-        assert!(thresh > 10.0 && thresh < 95.0, "otsu threshold = {}", thresh);
+        assert!(
+            thresh > 10.0 && thresh < 95.0,
+            "otsu threshold = {}",
+            thresh
+        );
     }
 
     #[test]
     fn uniform_distribution() {
         let mut img = ImageData::with_dimensions(10, 1, 1);
         let values: Vec<f64> = (0..10).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let thresh = otsu_threshold(&img, "v", 10);
         assert!(thresh.is_some());
@@ -109,10 +121,11 @@ mod tests {
     fn otsu_binary() {
         let mut img = ImageData::with_dimensions(10, 1, 1);
         let mut values = vec![0.0f64; 10];
-        for i in 5..10 { values[i] = 100.0; }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        for i in 5..10 {
+            values[i] = 100.0;
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_otsu(&img, "v", 50);
         assert!(result.point_data().get_array("Mask").is_some());

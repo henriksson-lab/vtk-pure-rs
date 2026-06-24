@@ -19,18 +19,24 @@ pub fn cactus(trunk_height: f64, trunk_radius: f64, na: usize) -> PolyData {
         }
     }
     for f in 0..nf {
-        let b0 = f * na; let b1 = (f+1) * na;
+        let b0 = f * na;
+        let b1 = (f + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
     // Top dome
     let top_ring = nf * na;
-    let apex = pts.len(); pts.push([0.0, 0.0, trunk_height + trunk_radius * 0.5]);
+    let apex = pts.len();
+    pts.push([0.0, 0.0, trunk_height + trunk_radius * 0.5]);
     for j in 0..na {
-        polys.push_cell(&[(top_ring+j) as i64, apex as i64, (top_ring+(j+1)%na) as i64]);
+        polys.push_cell(&[
+            (top_ring + j) as i64,
+            apex as i64,
+            (top_ring + (j + 1) % na) as i64,
+        ]);
     }
     // Right arm
     let arm_z = trunk_height * 0.55;
@@ -48,14 +54,18 @@ pub fn cactus(trunk_height: f64, trunk_radius: f64, na: usize) -> PolyData {
         }
     }
     for s in 0..arm_segs {
-        let b0 = arm_base + s * na; let b1 = arm_base + (s+1) * na;
+        let b0 = arm_base + s * na;
+        let b1 = arm_base + (s + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

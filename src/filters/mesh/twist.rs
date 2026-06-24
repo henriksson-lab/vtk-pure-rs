@@ -1,4 +1,4 @@
-use crate::data::{Points, PolyData, DataSet};
+use crate::data::{DataSet, Points, PolyData};
 
 /// Twist a mesh around an axis by a given angle per unit length.
 ///
@@ -6,7 +6,9 @@ use crate::data::{Points, PolyData, DataSet};
 /// position along that axis. `twist_rate` is in radians per unit.
 pub fn twist(input: &PolyData, axis: usize, twist_rate: f64) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let bb = input.bounds();
     let center = bb.center();
@@ -16,24 +18,31 @@ pub fn twist(input: &PolyData, axis: usize, twist_rate: f64) -> PolyData {
         let p = input.points.get(i);
         let height = p[axis.min(2)] - center[axis.min(2)];
         let angle = height * twist_rate;
-        let c = angle.cos(); let s = angle.sin();
+        let c = angle.cos();
+        let s = angle.sin();
 
         let mut out = p;
         match axis.min(2) {
-            0 => { // twist around X: rotate YZ
-                let dy = p[1]-center[1]; let dz = p[2]-center[2];
-                out[1] = center[1]+dy*c-dz*s;
-                out[2] = center[2]+dy*s+dz*c;
+            0 => {
+                // twist around X: rotate YZ
+                let dy = p[1] - center[1];
+                let dz = p[2] - center[2];
+                out[1] = center[1] + dy * c - dz * s;
+                out[2] = center[2] + dy * s + dz * c;
             }
-            1 => { // twist around Y: rotate XZ
-                let dx = p[0]-center[0]; let dz = p[2]-center[2];
-                out[0] = center[0]+dx*c-dz*s;
-                out[2] = center[2]+dx*s+dz*c;
+            1 => {
+                // twist around Y: rotate XZ
+                let dx = p[0] - center[0];
+                let dz = p[2] - center[2];
+                out[0] = center[0] + dx * c - dz * s;
+                out[2] = center[2] + dx * s + dz * c;
             }
-            _ => { // twist around Z: rotate XY
-                let dx = p[0]-center[0]; let dy = p[1]-center[1];
-                out[0] = center[0]+dx*c-dy*s;
-                out[1] = center[1]+dx*s+dy*c;
+            _ => {
+                // twist around Z: rotate XY
+                let dx = p[0] - center[0];
+                let dy = p[1] - center[1];
+                out[0] = center[0] + dx * c - dy * s;
+                out[1] = center[1] + dx * s + dy * c;
             }
         }
         points.push(out);
@@ -48,7 +57,9 @@ pub fn twist(input: &PolyData, axis: usize, twist_rate: f64) -> PolyData {
 /// displaced along a circular arc. `curvature` controls bend amount.
 pub fn bend(input: &PolyData, axis: usize, curvature: f64) -> PolyData {
     let n = input.points.len();
-    if n == 0 || curvature.abs() < 1e-15 { return input.clone(); }
+    if n == 0 || curvature.abs() < 1e-15 {
+        return input.clone();
+    }
 
     let bb = input.bounds();
     let center = bb.center();
@@ -62,9 +73,18 @@ pub fn bend(input: &PolyData, axis: usize, curvature: f64) -> PolyData {
 
         let mut out = p;
         match axis.min(2) {
-            0 => { out[1] += r*(1.0-angle.cos()); out[0] = center[0]+r*angle.sin(); }
-            1 => { out[2] += r*(1.0-angle.cos()); out[1] = center[1]+r*angle.sin(); }
-            _ => { out[0] += r*(1.0-angle.cos()); out[2] = center[2]+r*angle.sin(); }
+            0 => {
+                out[1] += r * (1.0 - angle.cos());
+                out[0] = center[0] + r * angle.sin();
+            }
+            1 => {
+                out[2] += r * (1.0 - angle.cos());
+                out[1] = center[1] + r * angle.sin();
+            }
+            _ => {
+                out[0] += r * (1.0 - angle.cos());
+                out[2] = center[2] + r * angle.sin();
+            }
         }
         points.push(out);
     }

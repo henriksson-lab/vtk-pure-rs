@@ -1,4 +1,4 @@
-use crate::data::{PolyData, DataSet};
+use crate::data::{DataSet, PolyData};
 
 /// Summary statistics for a PolyData mesh.
 #[derive(Debug, Clone)]
@@ -21,8 +21,12 @@ pub fn poly_data_summary(input: &PolyData) -> PolyDataSummary {
 
     // Rough memory estimate
     let pts_bytes = n_pts * 3 * 8; // 3 * f64
-    let cells_bytes = (input.polys.num_cells() + input.lines.num_cells()
-        + input.verts.num_cells() + input.strips.num_cells()) * 4 * 8; // rough
+    let cells_bytes = (input.polys.num_cells()
+        + input.lines.num_cells()
+        + input.verts.num_cells()
+        + input.strips.num_cells())
+        * 4
+        * 8; // rough
 
     PolyDataSummary {
         num_points: n_pts,

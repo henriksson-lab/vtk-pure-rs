@@ -11,13 +11,17 @@ pub fn image_histogram_equalize(input: &ImageData, scalars: &str) -> ImageData {
     };
 
     let n = arr.num_tuples();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let mut buf = [0.0f64];
-    let mut values: Vec<(f64, usize)> = (0..n).map(|i| {
-        arr.tuple_as_f64(i, &mut buf);
-        (buf[0], i)
-    }).collect();
+    let mut values: Vec<(f64, usize)> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            (buf[0], i)
+        })
+        .collect();
 
     values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
@@ -31,7 +35,11 @@ pub fn image_histogram_equalize(input: &ImageData, scalars: &str) -> ImageData {
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, result.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -48,9 +56,12 @@ mod tests {
     fn equalizes_range() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         // Skewed distribution: [1, 1, 1, 1, 100]
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0, 1.0, 1.0, 1.0, 100.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 1.0, 1.0, 1.0, 100.0],
+                1,
+            )));
 
         let result = image_histogram_equalize(&img, "v");
         let arr = result.point_data().get_array("v").unwrap();
@@ -66,15 +77,20 @@ mod tests {
     #[test]
     fn uniform_unchanged() {
         let mut img = ImageData::with_dimensions(4, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0, 2.0, 3.0, 4.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
 
         let result = image_histogram_equalize(&img, "v");
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert!((buf[0] - 0.0).abs() < 1e-10);
-        arr.tuple_as_f64(3, &mut buf); assert!((buf[0] - 1.0).abs() < 1e-10);
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.0).abs() < 1e-10);
+        arr.tuple_as_f64(3, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
     }
 
     #[test]

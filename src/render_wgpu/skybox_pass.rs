@@ -91,7 +91,11 @@ impl SkyboxPass {
             cache: None,
         });
 
-        Self { pipeline, uniform_buffer, bind_group }
+        Self {
+            pipeline,
+            uniform_buffer,
+            bind_group,
+        }
     }
 
     /// Render the skybox as a full-screen gradient.
@@ -119,7 +123,11 @@ impl SkyboxPass {
                 top: *top,
                 mode: 1.0,
             },
-            Skybox::ThreeStop { bottom, horizon, top } => SkyboxUniforms {
+            Skybox::ThreeStop {
+                bottom,
+                horizon,
+                top,
+            } => SkyboxUniforms {
                 bottom: *bottom,
                 _pad0: 0.0,
                 horizon: *horizon,

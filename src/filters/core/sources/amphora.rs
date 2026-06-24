@@ -5,10 +5,22 @@ pub fn amphora(height: f64, na: usize) -> PolyData {
     let na = na.max(12);
     // Profile: (radius_fraction, height_fraction)
     let profile = [
-        (0.15, 0.0), (0.25, 0.03), (0.3, 0.08), (0.35, 0.15),
-        (0.4, 0.25), (0.42, 0.35), (0.4, 0.45), (0.35, 0.55),
-        (0.25, 0.65), (0.15, 0.72), (0.1, 0.78), (0.08, 0.82),
-        (0.12, 0.85), (0.15, 0.88), (0.12, 0.92), (0.08, 0.95),
+        (0.15, 0.0),
+        (0.25, 0.03),
+        (0.3, 0.08),
+        (0.35, 0.15),
+        (0.4, 0.25),
+        (0.42, 0.35),
+        (0.4, 0.45),
+        (0.35, 0.55),
+        (0.25, 0.65),
+        (0.15, 0.72),
+        (0.1, 0.78),
+        (0.08, 0.82),
+        (0.12, 0.85),
+        (0.15, 0.88),
+        (0.12, 0.92),
+        (0.08, 0.95),
         (0.0, 1.0),
     ];
     let mut pts = Points::<f64>::new();
@@ -27,23 +39,33 @@ pub fn amphora(height: f64, na: usize) -> PolyData {
     }
     // Connect rings
     let mut ring_start = 0usize;
-    for pi in 0..profile.len()-1 {
-        let r0 = profile[pi].0; let r1 = profile[pi+1].0;
+    for pi in 0..profile.len() - 1 {
+        let r0 = profile[pi].0;
+        let r1 = profile[pi + 1].0;
         if r0 < 1e-10 && r1 >= 1e-10 {
             let apex = ring_start;
             let next = ring_start + 1;
-            for j in 0..na { polys.push_cell(&[apex as i64, (next+j) as i64, (next+(j+1)%na) as i64]); }
+            for j in 0..na {
+                polys.push_cell(&[apex as i64, (next + j) as i64, (next + (j + 1) % na) as i64]);
+            }
             ring_start += 1;
         } else if r0 >= 1e-10 && r1 < 1e-10 {
             let apex = ring_start + na;
-            for j in 0..na { polys.push_cell(&[(ring_start+j) as i64, apex as i64, (ring_start+(j+1)%na) as i64]); }
+            for j in 0..na {
+                polys.push_cell(&[
+                    (ring_start + j) as i64,
+                    apex as i64,
+                    (ring_start + (j + 1) % na) as i64,
+                ]);
+            }
             ring_start += na;
         } else if r0 >= 1e-10 && r1 >= 1e-10 {
-            let b0 = ring_start; let b1 = ring_start + na;
+            let b0 = ring_start;
+            let b1 = ring_start + na;
             for j in 0..na {
-                let j1 = (j+1)%na;
-                polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-                polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+                let j1 = (j + 1) % na;
+                polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+                polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
             }
             ring_start += na;
         }
@@ -62,9 +84,15 @@ pub fn amphora(height: f64, na: usize) -> PolyData {
             let hz = height * 0.4 + hr * angle.cos();
             pts.push([hx, hy, hz]);
         }
-        for j in 0..handle_na { lines.push_cell(&[(hb+j) as i64, (hb+j+1) as i64]); }
+        for j in 0..handle_na {
+            lines.push_cell(&[(hb + j) as i64, (hb + j + 1) as i64]);
+        }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

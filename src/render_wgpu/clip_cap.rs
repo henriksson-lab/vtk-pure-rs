@@ -135,15 +135,13 @@ mod tests {
     #[test]
     fn cap_single_triangle() {
         // Triangle straddling XY plane (z=0)
-        let points = vec![
-            [0.0, 0.0, -1.0],
-            [1.0, 0.0, 1.0],
-            [0.0, 1.0, 1.0],
-        ];
+        let points = vec![[0.0, 0.0, -1.0], [1.0, 0.0, 1.0], [0.0, 1.0, 1.0]];
         let tris = vec![[0, 1, 2]];
         let (verts, idxs) = generate_clip_cap(
-            &points, &tris,
-            [0.0, 0.0, 1.0], 0.0, // z=0 plane
+            &points,
+            &tris,
+            [0.0, 0.0, 1.0],
+            0.0, // z=0 plane
             [1.0, 1.0, 1.0],
         );
         assert!(!verts.is_empty());
@@ -156,17 +154,10 @@ mod tests {
     #[test]
     fn cap_no_intersection() {
         // Triangle entirely above plane
-        let points = vec![
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 2.0],
-            [0.0, 1.0, 3.0],
-        ];
+        let points = vec![[0.0, 0.0, 1.0], [1.0, 0.0, 2.0], [0.0, 1.0, 3.0]];
         let tris = vec![[0, 1, 2]];
-        let (verts, idxs) = generate_clip_cap(
-            &points, &tris,
-            [0.0, 0.0, 1.0], 0.0,
-            [1.0, 1.0, 1.0],
-        );
+        let (verts, idxs) =
+            generate_clip_cap(&points, &tris, [0.0, 0.0, 1.0], 0.0, [1.0, 1.0, 1.0]);
         assert!(verts.is_empty());
         assert!(idxs.is_empty());
     }

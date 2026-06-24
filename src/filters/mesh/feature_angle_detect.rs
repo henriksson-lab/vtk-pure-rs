@@ -108,7 +108,7 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]); // 0
         pd.points.push([1.0, 0.0, 0.0]); // 1
         pd.points.push([0.5, 1.0, 0.0]); // 2
-        // Triangle 2: in XZ plane, sharing edge 0-1
+                                         // Triangle 2: in XZ plane, sharing edge 0-1
         pd.points.push([0.5, 0.0, 1.0]); // 3
 
         pd.polys.push_cell(&[0, 1, 2]);
@@ -122,10 +122,7 @@ mod tests {
         // Threshold of 45 degrees should detect the 90-degree edge
         let result = detect_feature_edges_by_angle(&mesh, 45.0);
         // Should have at least the shared edge plus boundary edges
-        assert!(
-            result.lines.num_cells() > 0,
-            "should detect feature edges"
-        );
+        assert!(result.lines.num_cells() > 0, "should detect feature edges");
     }
 
     #[test]

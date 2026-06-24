@@ -198,9 +198,13 @@ fn parse_node_line(line: &str) -> Option<(i64, [f64; 3])> {
 /// Parse a *ELEMENT_SHELL data line: "eid, pid, n1, n2, n3, n4".
 fn parse_element_shell_line(line: &str) -> Option<(i64, Vec<i64>)> {
     let parts: Vec<i64> = if line.contains(',') {
-        line.split(',').filter_map(|s| s.trim().parse().ok()).collect()
+        line.split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect()
     } else {
-        line.split_whitespace().filter_map(|s| s.parse().ok()).collect()
+        line.split_whitespace()
+            .filter_map(|s| s.parse().ok())
+            .collect()
     };
 
     if parts.len() >= 5 {
@@ -250,7 +254,8 @@ $# LS-DYNA keyword file
 
     #[test]
     fn parse_quad_element() {
-        let content = "*NODE\n1 0 0 0\n2 1 0 0\n3 1 1 0\n4 0 1 0\n*ELEMENT_SHELL\n1 1 1 2 3 4\n*END\n";
+        let content =
+            "*NODE\n1 0 0 0\n2 1 0 0\n3 1 1 0\n4 0 1 0\n*ELEMENT_SHELL\n1 1 1 2 3 4\n*END\n";
         let pd = LsDynaReader::read_poly_data_from_str(content).unwrap();
         assert_eq!(pd.points.len(), 4);
         assert_eq!(pd.polys.num_cells(), 1);

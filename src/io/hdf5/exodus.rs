@@ -3,23 +3,29 @@
 //! Exodus II is a finite element data model built on HDF5/NetCDF,
 //! widely used in FEM/FEA tools (Cubit, SIERRA, Trilinos).
 
-use std::path::Path;
 use crate::data::{AnyDataArray, DataArray, UnstructuredGrid};
 use crate::types::{CellType, VtkError};
+use std::path::Path;
 
 use crate::types::{ExodusElementType, ExodusInfo};
 
 /// Read an Exodus II file, returning an UnstructuredGrid + metadata.
 pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkError> {
-    let file = hdf5::File::open(path)
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))?;
+    let file = hdf5::File::open(path).map_err(|e| {
+        VtkError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{e}"),
+        ))
+    })?;
 
     let mut info = ExodusInfo::default();
 
     // Read dimensions from root attributes
     if let Ok(attr) = file.attr("title") {
-        info.title = attr.read_scalar::<hdf5::types::VarLenAscii>()
-            .map(|s| s.to_string()).unwrap_or_default();
+        info.title = attr
+            .read_scalar::<hdf5::types::VarLenAscii>()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
     }
     info.num_dim = read_dim(&file, "num_dim").unwrap_or(3);
     info.num_nodes = read_dim(&file, "num_nodes").unwrap_or(0);
@@ -54,7 +60,8 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
             let num_elem = shape.get(0).copied().unwrap_or(0);
             let nodes_per_elem = shape.get(1).copied().unwrap_or(0);
 
-            let data: Vec<i32> = ds.read_raw()
+            let data: Vec<i32> = ds
+                .read_raw()
                 .map_err(|e| VtkError::Parse(format!("read {connect_name}: {e}")))?;
 
             // Determine cell type from nodes per element
@@ -82,7 +89,15 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
 
     // Build UnstructuredGrid
     let points = crate::data::Points::from_vec(
-        (0..num_nodes).map(|i| [points_flat[i*3], points_flat[i*3+1], points_flat[i*3+2]]).collect()
+        (0..num_nodes)
+            .map(|i| {
+                [
+                    points_flat[i * 3],
+                    points_flat[i * 3 + 1],
+                    points_flat[i * 3 + 2],
+                ]
+            })
+            .collect(),
     );
 
     let mut grid = UnstructuredGrid::new();
@@ -102,9 +117,8 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
             for (vi, name) in names.iter().enumerate() {
                 let ds_name = format!("vals_nod_var{}time{}", vi + 1, ts);
                 if let Ok(vals) = read_f64_dataset(&file, &ds_name) {
-                    grid.point_data_mut().add_array(AnyDataArray::F64(
-                        DataArray::from_vec(name.trim(), vals, 1),
-                    ));
+                    grid.point_data_mut()
+                        .add_array(AnyDataArray::F64(DataArray::from_vec(name.trim(), vals, 1)));
                 }
             }
         }
@@ -116,13 +130,13 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
 }
 
 /// Write an UnstructuredGrid to Exodus II format.
-pub fn write_exodus(
-    path: &Path,
-    grid: &UnstructuredGrid,
-    title: &str,
-) -> Result<(), VtkError> {
-    let file = hdf5::File::create(path)
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))?;
+pub fn write_exodus(path: &Path, grid: &UnstructuredGrid, title: &str) -> Result<(), VtkError> {
+    let file = hdf5::File::create(path).map_err(|e| {
+        VtkError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{e}"),
+        ))
+    })?;
 
     let num_nodes = grid.points.len();
     let num_dim = 3usize;
@@ -146,7 +160,12 @@ pub fn write_exodus(
     file.new_attr::<hdf5::types::VarLenAscii>()
         .create("title")
         .and_then(|a| a.write_scalar(&hdf5::types::VarLenAscii::from_ascii(title).unwrap()))
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))?;
+        .map_err(|e| {
+            VtkError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("{e}"),
+            ))
+        })?;
 
     // Write dimensions
     write_dim(&file, "num_dim", num_dim)?;
@@ -158,18 +177,21 @@ pub fn write_exodus(
 // --- HDF5 helpers ---
 
 fn read_dim(file: &hdf5::File, name: &str) -> Option<usize> {
-    file.attr(name).ok()
+    file.attr(name)
+        .ok()
         .and_then(|a| a.read_scalar::<i64>().ok())
         .map(|v| v as usize)
         .or_else(|| {
-            file.dataset(name).ok()
+            file.dataset(name)
+                .ok()
                 .and_then(|ds| ds.read_scalar::<i64>().ok())
                 .map(|v| v as usize)
         })
 }
 
 fn read_f64_dataset(file: &hdf5::File, name: &str) -> Result<Vec<f64>, VtkError> {
-    let ds = file.dataset(name)
+    let ds = file
+        .dataset(name)
         .map_err(|e| VtkError::Parse(format!("dataset '{name}': {e}")))?;
     ds.read_raw::<f64>()
         .map_err(|e| VtkError::Parse(format!("read '{name}': {e}")))
@@ -180,14 +202,24 @@ fn write_f64_dataset(file: &hdf5::File, name: &str, data: &[f64]) -> Result<(), 
         .shape([data.len()])
         .create(name)
         .and_then(|ds| ds.write(data))
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))
+        .map_err(|e| {
+            VtkError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("{e}"),
+            ))
+        })
 }
 
 fn write_dim(file: &hdf5::File, name: &str, value: usize) -> Result<(), VtkError> {
     file.new_attr::<i64>()
         .create(name)
         .and_then(|a| a.write_scalar(&(value as i64)))
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))
+        .map_err(|e| {
+            VtkError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("{e}"),
+            ))
+        })
 }
 
 fn read_string_array(ds: &hdf5::Dataset) -> Result<Vec<String>, VtkError> {

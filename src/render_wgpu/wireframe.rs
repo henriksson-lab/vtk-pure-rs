@@ -1,14 +1,17 @@
 use crate::data::PolyData;
 use crate::render::Coloring;
 
-use crate::render_wgpu::mesh::{Vertex, resolve_colors_pub};
+use crate::render_wgpu::mesh::{resolve_colors_pub, Vertex};
 
 /// Convert PolyData polygon edges to line-list vertices and indices
 /// suitable for wireframe rendering.
 ///
 /// Returns vertex and index buffers where each edge of each polygon
 /// becomes a pair of indices.
-pub fn poly_data_to_wireframe(poly_data: &PolyData, coloring: &Coloring) -> (Vec<Vertex>, Vec<u32>) {
+pub fn poly_data_to_wireframe(
+    poly_data: &PolyData,
+    coloring: &Coloring,
+) -> (Vec<Vertex>, Vec<u32>) {
     let point_colors = resolve_colors_pub(poly_data, coloring);
     let n = poly_data.points.len();
 

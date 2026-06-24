@@ -9,8 +9,9 @@ pub fn genus(mesh: &PolyData) -> i64 {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i]; let b = cell[(i+1)%nc];
-            let e = if a < b { (a,b) } else { (b,a) };
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            let e = if a < b { (a, b) } else { (b, a) };
             edges.insert(e);
         }
     }
@@ -28,8 +29,9 @@ pub fn euler_characteristic(mesh: &PolyData) -> i64 {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i]; let b = cell[(i+1)%nc];
-            let e = if a < b { (a,b) } else { (b,a) };
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            let e = if a < b { (a, b) } else { (b, a) };
             edges.insert(e);
         }
     }
@@ -43,7 +45,9 @@ mod tests {
     fn test_genus() {
         // Simple triangle: V=3, E=3, F=1 => chi=1 => genus=0 (or 1 for boundary)
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let chi = euler_characteristic(&mesh);
         assert_eq!(chi, 1); // open surface
     }

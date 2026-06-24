@@ -6,11 +6,18 @@ use crate::data::{AnyDataArray, FieldData};
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DataSetAttributes {
     field_data: FieldData,
-    active_scalars: Option<usize>,
-    active_vectors: Option<usize>,
-    active_normals: Option<usize>,
-    active_tcoords: Option<usize>,
-    active_tensors: Option<usize>,
+    active_scalars: Option<String>,
+    active_vectors: Option<String>,
+    active_normals: Option<String>,
+    active_tcoords: Option<String>,
+    active_tensors: Option<String>,
+    active_global_ids: Option<String>,
+    active_pedigree_ids: Option<String>,
+    active_edge_flags: Option<String>,
+    active_tangents: Option<String>,
+    active_rational_weights: Option<String>,
+    active_higher_order_degrees: Option<String>,
+    active_process_ids: Option<String>,
 }
 
 impl DataSetAttributes {
@@ -45,68 +52,195 @@ impl DataSetAttributes {
     // Active attribute setters/getters
 
     pub fn set_active_scalars(&mut self, name: &str) -> bool {
-        if let Some(idx) = self.find_index(name) {
-            self.active_scalars = Some(idx);
+        if self.check_attribute_components(name, AttributeLimit::NoLimit, 0) {
+            self.active_scalars = Some(name.to_string());
             true
         } else {
+            self.active_scalars = None;
             false
         }
     }
 
     pub fn set_active_vectors(&mut self, name: &str) -> bool {
-        if let Some(idx) = self.find_index(name) {
-            self.active_vectors = Some(idx);
+        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
+            self.active_vectors = Some(name.to_string());
             true
         } else {
+            self.active_vectors = None;
             false
         }
     }
 
     pub fn set_active_normals(&mut self, name: &str) -> bool {
-        if let Some(idx) = self.find_index(name) {
-            self.active_normals = Some(idx);
+        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
+            self.active_normals = Some(name.to_string());
             true
         } else {
+            self.active_normals = None;
             false
         }
     }
 
     pub fn set_active_tcoords(&mut self, name: &str) -> bool {
-        if let Some(idx) = self.find_index(name) {
-            self.active_tcoords = Some(idx);
+        if self.check_attribute_components(name, AttributeLimit::Max, 3) {
+            self.active_tcoords = Some(name.to_string());
             true
         } else {
+            self.active_tcoords = None;
             false
         }
     }
 
     pub fn set_active_tensors(&mut self, name: &str) -> bool {
-        if let Some(idx) = self.find_index(name) {
-            self.active_tensors = Some(idx);
+        if self.check_attribute_components(name, AttributeLimit::Tensor, 9) {
+            self.active_tensors = Some(name.to_string());
             true
         } else {
+            self.active_tensors = None;
+            false
+        }
+    }
+
+    pub fn set_active_global_ids(&mut self, name: &str) -> bool {
+        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
+            self.active_global_ids = Some(name.to_string());
+            true
+        } else {
+            self.active_global_ids = None;
+            false
+        }
+    }
+
+    pub fn set_active_pedigree_ids(&mut self, name: &str) -> bool {
+        if self.has_array(name) {
+            self.active_pedigree_ids = Some(name.to_string());
+            true
+        } else {
+            self.active_pedigree_ids = None;
+            false
+        }
+    }
+
+    pub fn set_active_edge_flags(&mut self, name: &str) -> bool {
+        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
+            self.active_edge_flags = Some(name.to_string());
+            true
+        } else {
+            self.active_edge_flags = None;
+            false
+        }
+    }
+
+    pub fn set_active_tangents(&mut self, name: &str) -> bool {
+        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
+            self.active_tangents = Some(name.to_string());
+            true
+        } else {
+            self.active_tangents = None;
+            false
+        }
+    }
+
+    pub fn set_active_rational_weights(&mut self, name: &str) -> bool {
+        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
+            self.active_rational_weights = Some(name.to_string());
+            true
+        } else {
+            self.active_rational_weights = None;
+            false
+        }
+    }
+
+    pub fn set_active_higher_order_degrees(&mut self, name: &str) -> bool {
+        if self.check_attribute_components(name, AttributeLimit::Exact, 3) {
+            self.active_higher_order_degrees = Some(name.to_string());
+            true
+        } else {
+            self.active_higher_order_degrees = None;
+            false
+        }
+    }
+
+    pub fn set_active_process_ids(&mut self, name: &str) -> bool {
+        if self.check_attribute_components(name, AttributeLimit::Exact, 1) {
+            self.active_process_ids = Some(name.to_string());
+            true
+        } else {
+            self.active_process_ids = None;
             false
         }
     }
 
     pub fn scalars(&self) -> Option<&AnyDataArray> {
-        self.active_scalars.and_then(|i| self.field_data.get_array_by_index(i))
+        self.active_scalars
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
     }
 
     pub fn vectors(&self) -> Option<&AnyDataArray> {
-        self.active_vectors.and_then(|i| self.field_data.get_array_by_index(i))
+        self.active_vectors
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
     }
 
     pub fn normals(&self) -> Option<&AnyDataArray> {
-        self.active_normals.and_then(|i| self.field_data.get_array_by_index(i))
+        self.active_normals
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
     }
 
     pub fn tcoords(&self) -> Option<&AnyDataArray> {
-        self.active_tcoords.and_then(|i| self.field_data.get_array_by_index(i))
+        self.active_tcoords
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
     }
 
     pub fn tensors(&self) -> Option<&AnyDataArray> {
-        self.active_tensors.and_then(|i| self.field_data.get_array_by_index(i))
+        self.active_tensors
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn global_ids(&self) -> Option<&AnyDataArray> {
+        self.active_global_ids
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn pedigree_ids(&self) -> Option<&AnyDataArray> {
+        self.active_pedigree_ids
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn edge_flags(&self) -> Option<&AnyDataArray> {
+        self.active_edge_flags
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn tangents(&self) -> Option<&AnyDataArray> {
+        self.active_tangents
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn rational_weights(&self) -> Option<&AnyDataArray> {
+        self.active_rational_weights
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn higher_order_degrees(&self) -> Option<&AnyDataArray> {
+        self.active_higher_order_degrees
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
+    }
+
+    pub fn process_ids(&self) -> Option<&AnyDataArray> {
+        self.active_process_ids
+            .as_deref()
+            .and_then(|name| self.field_data.get_array(name))
     }
 
     /// Check if an array with the given name exists.
@@ -121,10 +255,9 @@ impl DataSetAttributes {
 
     /// Remove an array by name. Adjusts active attribute indices.
     pub fn remove_array(&mut self, name: &str) -> Option<AnyDataArray> {
-        let idx = self.find_index(name);
         let result = self.field_data.remove_array(name);
-        if let Some(removed_idx) = idx {
-            self.adjust_active_after_remove(removed_idx);
+        if result.is_some() {
+            self.clear_active_name(name);
         }
         result
     }
@@ -137,15 +270,29 @@ impl DataSetAttributes {
         self.active_normals = None;
         self.active_tcoords = None;
         self.active_tensors = None;
+        self.active_global_ids = None;
+        self.active_pedigree_ids = None;
+        self.active_edge_flags = None;
+        self.active_tangents = None;
+        self.active_rational_weights = None;
+        self.active_higher_order_degrees = None;
+        self.active_process_ids = None;
     }
 
     /// Check if any active attributes are set.
     pub fn has_active_attributes(&self) -> bool {
-        self.active_scalars.is_some()
-            || self.active_vectors.is_some()
-            || self.active_normals.is_some()
-            || self.active_tcoords.is_some()
-            || self.active_tensors.is_some()
+        self.scalars().is_some()
+            || self.vectors().is_some()
+            || self.normals().is_some()
+            || self.tcoords().is_some()
+            || self.tensors().is_some()
+            || self.global_ids().is_some()
+            || self.pedigree_ids().is_some()
+            || self.edge_flags().is_some()
+            || self.tangents().is_some()
+            || self.rational_weights().is_some()
+            || self.higher_order_degrees().is_some()
+            || self.process_ids().is_some()
     }
 
     /// Iterate over all arrays.
@@ -153,25 +300,51 @@ impl DataSetAttributes {
         self.field_data.iter()
     }
 
-    fn find_index(&self, name: &str) -> Option<usize> {
-        (0..self.field_data.num_arrays())
-            .find(|&i| self.field_data.get_array_by_index(i).map(|a| a.name()) == Some(name))
+    fn clear_active_name(&mut self, name: &str) {
+        fn clear_if_matches(active: &mut Option<String>, name: &str) {
+            if active.as_deref() == Some(name) {
+                *active = None;
+            }
+        }
+        clear_if_matches(&mut self.active_scalars, name);
+        clear_if_matches(&mut self.active_vectors, name);
+        clear_if_matches(&mut self.active_normals, name);
+        clear_if_matches(&mut self.active_tcoords, name);
+        clear_if_matches(&mut self.active_tensors, name);
+        clear_if_matches(&mut self.active_global_ids, name);
+        clear_if_matches(&mut self.active_pedigree_ids, name);
+        clear_if_matches(&mut self.active_edge_flags, name);
+        clear_if_matches(&mut self.active_tangents, name);
+        clear_if_matches(&mut self.active_rational_weights, name);
+        clear_if_matches(&mut self.active_higher_order_degrees, name);
+        clear_if_matches(&mut self.active_process_ids, name);
     }
 
-    fn adjust_active_after_remove(&mut self, removed: usize) {
-        fn adjust(active: &mut Option<usize>, removed: usize) {
-            *active = match *active {
-                Some(i) if i == removed => None,
-                Some(i) if i > removed => Some(i - 1),
-                other => other,
-            };
+    fn check_attribute_components(
+        &self,
+        name: &str,
+        limit: AttributeLimit,
+        expected: usize,
+    ) -> bool {
+        let Some(array) = self.field_data.get_array(name) else {
+            return false;
+        };
+        let num_components = array.num_components();
+        match limit {
+            AttributeLimit::NoLimit => true,
+            AttributeLimit::Max => num_components <= expected,
+            AttributeLimit::Exact => num_components == expected,
+            AttributeLimit::Tensor => num_components == expected || num_components == 6,
         }
-        adjust(&mut self.active_scalars, removed);
-        adjust(&mut self.active_vectors, removed);
-        adjust(&mut self.active_normals, removed);
-        adjust(&mut self.active_tcoords, removed);
-        adjust(&mut self.active_tensors, removed);
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum AttributeLimit {
+    Max,
+    Exact,
+    NoLimit,
+    Tensor,
 }
 
 #[cfg(test)]
@@ -182,7 +355,11 @@ mod tests {
     #[test]
     fn add_and_get() {
         let mut attrs = DataSetAttributes::new();
-        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("temp", vec![1.0, 2.0, 3.0], 1)));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "temp",
+            vec![1.0, 2.0, 3.0],
+            1,
+        )));
         assert_eq!(attrs.num_arrays(), 1);
         assert!(attrs.has_array("temp"));
     }
@@ -199,9 +376,66 @@ mod tests {
     #[test]
     fn active_normals() {
         let mut attrs = DataSetAttributes::new();
-        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("N", vec![0.0, 0.0, 1.0], 3)));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "N",
+            vec![0.0, 0.0, 1.0],
+            3,
+        )));
         attrs.set_active_normals("N");
         assert!(attrs.normals().is_some());
+    }
+
+    #[test]
+    fn active_attribute_component_limits_match_vtk() {
+        let mut attrs = DataSetAttributes::new();
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "bad_v",
+            vec![1.0, 2.0],
+            2,
+        )));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "v",
+            vec![1.0, 2.0, 3.0],
+            3,
+        )));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "tc",
+            vec![1.0, 2.0],
+            2,
+        )));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "tensor6",
+            vec![0.0; 6],
+            6,
+        )));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("ids", vec![7.0], 1)));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("edge", vec![1.0], 1)));
+
+        assert!(!attrs.set_active_vectors("bad_v"));
+        assert!(attrs.vectors().is_none());
+        assert!(attrs.set_active_vectors("v"));
+        assert!(attrs.set_active_tcoords("tc"));
+        assert!(attrs.set_active_tensors("tensor6"));
+        assert!(attrs.set_active_global_ids("ids"));
+        assert!(attrs.global_ids().is_some());
+        assert!(attrs.set_active_edge_flags("edge"));
+        assert!(attrs.edge_flags().is_some());
+    }
+
+    #[test]
+    fn missing_active_attribute_name_clears_like_vtk() {
+        let mut attrs = DataSetAttributes::new();
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            "v",
+            vec![1.0, 2.0, 3.0],
+            3,
+        )));
+        assert!(attrs.set_active_vectors("v"));
+
+        assert!(!attrs.set_active_vectors("missing"));
+
+        assert!(attrs.vectors().is_none());
+        assert!(!attrs.has_active_attributes());
     }
 
     #[test]
@@ -213,6 +447,31 @@ mod tests {
         attrs.remove_array("a");
         assert!(attrs.scalars().is_some());
         assert_eq!(attrs.scalars().unwrap().name(), "b");
+    }
+
+    #[test]
+    fn active_names_survive_external_field_data_mutation() {
+        let mut attrs = DataSetAttributes::new();
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0], 1)));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("b", vec![2.0], 1)));
+        attrs.set_active_scalars("b");
+
+        attrs.field_data_mut().remove_array("a");
+
+        assert_eq!(attrs.scalars().unwrap().name(), "b");
+    }
+
+    #[test]
+    fn active_names_do_not_retarget_after_external_remove() {
+        let mut attrs = DataSetAttributes::new();
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0], 1)));
+        attrs.add_array(AnyDataArray::F64(DataArray::from_vec("b", vec![2.0], 1)));
+        attrs.set_active_scalars("a");
+
+        attrs.field_data_mut().remove_array("a");
+
+        assert!(attrs.scalars().is_none());
+        assert!(!attrs.has_active_attributes());
     }
 
     #[test]

@@ -33,47 +33,65 @@ pub fn cube(params: &CubeParams) -> PolyData {
 
     let faces: [([f64; 3], [[f64; 3]; 4]); 6] = [
         // +X face
-        ([1.0, 0.0, 0.0], [
-            [cx + hx, cy - hy, cz - hz],
-            [cx + hx, cy + hy, cz - hz],
-            [cx + hx, cy + hy, cz + hz],
-            [cx + hx, cy - hy, cz + hz],
-        ]),
+        (
+            [1.0, 0.0, 0.0],
+            [
+                [cx + hx, cy - hy, cz - hz],
+                [cx + hx, cy + hy, cz - hz],
+                [cx + hx, cy + hy, cz + hz],
+                [cx + hx, cy - hy, cz + hz],
+            ],
+        ),
         // -X face
-        ([-1.0, 0.0, 0.0], [
-            [cx - hx, cy - hy, cz + hz],
-            [cx - hx, cy + hy, cz + hz],
-            [cx - hx, cy + hy, cz - hz],
-            [cx - hx, cy - hy, cz - hz],
-        ]),
+        (
+            [-1.0, 0.0, 0.0],
+            [
+                [cx - hx, cy - hy, cz + hz],
+                [cx - hx, cy + hy, cz + hz],
+                [cx - hx, cy + hy, cz - hz],
+                [cx - hx, cy - hy, cz - hz],
+            ],
+        ),
         // +Y face
-        ([0.0, 1.0, 0.0], [
-            [cx - hx, cy + hy, cz - hz],
-            [cx - hx, cy + hy, cz + hz],
-            [cx + hx, cy + hy, cz + hz],
-            [cx + hx, cy + hy, cz - hz],
-        ]),
+        (
+            [0.0, 1.0, 0.0],
+            [
+                [cx - hx, cy + hy, cz - hz],
+                [cx - hx, cy + hy, cz + hz],
+                [cx + hx, cy + hy, cz + hz],
+                [cx + hx, cy + hy, cz - hz],
+            ],
+        ),
         // -Y face
-        ([0.0, -1.0, 0.0], [
-            [cx - hx, cy - hy, cz + hz],
-            [cx - hx, cy - hy, cz - hz],
-            [cx + hx, cy - hy, cz - hz],
-            [cx + hx, cy - hy, cz + hz],
-        ]),
+        (
+            [0.0, -1.0, 0.0],
+            [
+                [cx - hx, cy - hy, cz + hz],
+                [cx - hx, cy - hy, cz - hz],
+                [cx + hx, cy - hy, cz - hz],
+                [cx + hx, cy - hy, cz + hz],
+            ],
+        ),
         // +Z face
-        ([0.0, 0.0, 1.0], [
-            [cx - hx, cy - hy, cz + hz],
-            [cx + hx, cy - hy, cz + hz],
-            [cx + hx, cy + hy, cz + hz],
-            [cx - hx, cy + hy, cz + hz],
-        ]),
+        (
+            [0.0, 0.0, 1.0],
+            [
+                [cx - hx, cy - hy, cz + hz],
+                [cx + hx, cy - hy, cz + hz],
+                [cx + hx, cy + hy, cz + hz],
+                [cx - hx, cy + hy, cz + hz],
+            ],
+        ),
         // -Z face
-        ([0.0, 0.0, -1.0], [
-            [cx - hx, cy + hy, cz - hz],
-            [cx + hx, cy + hy, cz - hz],
-            [cx + hx, cy - hy, cz - hz],
-            [cx - hx, cy - hy, cz - hz],
-        ]),
+        (
+            [0.0, 0.0, -1.0],
+            [
+                [cx - hx, cy + hy, cz - hz],
+                [cx + hx, cy + hy, cz - hz],
+                [cx + hx, cy - hy, cz - hz],
+                [cx - hx, cy - hy, cz - hz],
+            ],
+        ),
     ];
 
     for (normal, verts) in &faces {

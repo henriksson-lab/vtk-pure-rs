@@ -11,9 +11,21 @@ pub fn compute_sdf(input: &PolyData, dims: [u32; 3], bounds: [[f64; 2]; 3]) -> I
     let nz: usize = dims[2] as usize;
 
     let spacing: [f64; 3] = [
-        if nx > 1 { (bounds[0][1] - bounds[0][0]) / (nx - 1) as f64 } else { 1.0 },
-        if ny > 1 { (bounds[1][1] - bounds[1][0]) / (ny - 1) as f64 } else { 1.0 },
-        if nz > 1 { (bounds[2][1] - bounds[2][0]) / (nz - 1) as f64 } else { 1.0 },
+        if nx > 1 {
+            (bounds[0][1] - bounds[0][0]) / (nx - 1) as f64
+        } else {
+            1.0
+        },
+        if ny > 1 {
+            (bounds[1][1] - bounds[1][0]) / (ny - 1) as f64
+        } else {
+            1.0
+        },
+        if nz > 1 {
+            (bounds[2][1] - bounds[2][0]) / (nz - 1) as f64
+        } else {
+            1.0
+        },
     ];
     let origin: [f64; 3] = [bounds[0][0], bounds[1][0], bounds[2][0]];
 
@@ -170,28 +182,34 @@ mod tests {
         // A simple closed cube from -0.5 to 0.5
         let pts: Vec<[f64; 3]> = vec![
             [-0.5, -0.5, -0.5], // 0
-            [ 0.5, -0.5, -0.5], // 1
-            [ 0.5,  0.5, -0.5], // 2
-            [-0.5,  0.5, -0.5], // 3
-            [-0.5, -0.5,  0.5], // 4
-            [ 0.5, -0.5,  0.5], // 5
-            [ 0.5,  0.5,  0.5], // 6
-            [-0.5,  0.5,  0.5], // 7
+            [0.5, -0.5, -0.5],  // 1
+            [0.5, 0.5, -0.5],   // 2
+            [-0.5, 0.5, -0.5],  // 3
+            [-0.5, -0.5, 0.5],  // 4
+            [0.5, -0.5, 0.5],   // 5
+            [0.5, 0.5, 0.5],    // 6
+            [-0.5, 0.5, 0.5],   // 7
         ];
         // 12 triangles (2 per face), outward-facing normals
         let tris: Vec<[i64; 3]> = vec![
             // -Z face
-            [0, 2, 1], [0, 3, 2],
+            [0, 2, 1],
+            [0, 3, 2],
             // +Z face
-            [4, 5, 6], [4, 6, 7],
+            [4, 5, 6],
+            [4, 6, 7],
             // -Y face
-            [0, 1, 5], [0, 5, 4],
+            [0, 1, 5],
+            [0, 5, 4],
             // +Y face
-            [2, 3, 7], [2, 7, 6],
+            [2, 3, 7],
+            [2, 7, 6],
             // -X face
-            [0, 4, 7], [0, 7, 3],
+            [0, 4, 7],
+            [0, 7, 3],
             // +X face
-            [1, 2, 6], [1, 6, 5],
+            [1, 2, 6],
+            [1, 6, 5],
         ];
         PolyData::from_triangles(pts, tris)
     }
@@ -222,7 +240,11 @@ mod tests {
         // Index ordering: x varies fastest. center = x=1,y=1,z=1 = 1+1*3+1*9=13
         let idx: usize = 1 + 1 * 3 + 1 * 9;
         arr.tuple_as_f64(idx, &mut buf);
-        assert!(buf[0] < 0.0, "Center should be negative (inside), got {}", buf[0]);
+        assert!(
+            buf[0] < 0.0,
+            "Center should be negative (inside), got {}",
+            buf[0]
+        );
         let _ = center_idx; // suppress unused warning
     }
 
@@ -236,6 +258,10 @@ mod tests {
         let arr = image.point_data().get_array("SDF").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] > 0.0, "Corner should be positive (outside), got {}", buf[0]);
+        assert!(
+            buf[0] > 0.0,
+            "Corner should be positive (outside), got {}",
+            buf[0]
+        );
     }
 }

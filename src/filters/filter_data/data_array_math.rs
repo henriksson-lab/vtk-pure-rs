@@ -34,7 +34,12 @@ pub fn array_scale(input: &PolyData, name: &str, factor: f64, result_name: &str)
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, nc)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     pd
 }
 
@@ -56,7 +61,8 @@ pub fn array_magnitude(input: &PolyData, name: &str, result_name: &str) -> PolyD
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, 1)));
     pd
 }
 
@@ -87,7 +93,12 @@ where
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, nc)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     pd
 }
 
@@ -100,8 +111,18 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([2.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0, 2.0, 3.0], 1)));
-        pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("b", vec![10.0, 20.0, 30.0], 1)));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "a",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "b",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
         pd
     }
 
@@ -129,7 +150,12 @@ mod tests {
     fn vector_magnitude() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![3.0, 4.0, 0.0], 3)));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![3.0, 4.0, 0.0],
+                3,
+            )));
         let result = array_magnitude(&pd, "v", "mag");
         let arr = result.point_data().get_array("mag").unwrap();
         let mut val = [0.0f64];

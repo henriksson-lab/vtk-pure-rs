@@ -35,7 +35,10 @@ impl Default for ShadowConfig {
 impl ShadowConfig {
     /// Create enabled shadow config with default settings.
     pub fn new() -> Self {
-        Self { enabled: true, ..Default::default() }
+        Self {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     /// Set shadow map resolution.
@@ -68,13 +71,15 @@ impl ShadowConfig {
 }
 
 fn normalize3(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]).sqrt();
-    if len < 1e-15 { return [0.0, -1.0, 0.0]; }
-    [v[0]/len, v[1]/len, v[2]/len]
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len < 1e-15 {
+        return [0.0, -1.0, 0.0];
+    }
+    [v[0] / len, v[1] / len, v[2] / len]
 }
 
 fn look_at(eye: [f64; 3], target: [f64; 3], up: [f64; 3]) -> [[f64; 4]; 4] {
-    let f = normalize3([target[0]-eye[0], target[1]-eye[1], target[2]-eye[2]]);
+    let f = normalize3([target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]]);
     let s = normalize3(cross3(f, up));
     let u = cross3(s, f);
     [
@@ -87,19 +92,28 @@ fn look_at(eye: [f64; 3], target: [f64; 3], up: [f64; 3]) -> [[f64; 4]; 4] {
 
 fn ortho(l: f64, r: f64, b: f64, t: f64, n: f64, f: f64) -> [[f64; 4]; 4] {
     [
-        [2.0/(r-l), 0.0, 0.0, 0.0],
-        [0.0, 2.0/(t-b), 0.0, 0.0],
-        [0.0, 0.0, -2.0/(f-n), 0.0],
-        [-(r+l)/(r-l), -(t+b)/(t-b), -(f+n)/(f-n), 1.0],
+        [2.0 / (r - l), 0.0, 0.0, 0.0],
+        [0.0, 2.0 / (t - b), 0.0, 0.0],
+        [0.0, 0.0, -2.0 / (f - n), 0.0],
+        [
+            -(r + l) / (r - l),
+            -(t + b) / (t - b),
+            -(f + n) / (f - n),
+            1.0,
+        ],
     ]
 }
 
 fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 fn mat4_mul(a: [[f64; 4]; 4], b: [[f64; 4]; 4]) -> [[f64; 4]; 4] {
@@ -144,7 +158,7 @@ mod tests {
     #[test]
     fn normalize() {
         let n = normalize3([3.0, 4.0, 0.0]);
-        let len = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
         assert!((len - 1.0).abs() < 1e-10);
     }
 }

@@ -48,8 +48,7 @@ pub fn mean_filter(input: &ImageData, scalars: &str, radius: usize) -> ImageData
                             if ii < 0 || ii >= nx as i64 {
                                 continue;
                             }
-                            let idx: usize =
-                                kk as usize * ny * nx + jj as usize * nx + ii as usize;
+                            let idx: usize = kk as usize * ny * nx + jj as usize * nx + ii as usize;
                             sum += values[idx];
                             count += 1.0;
                         }
@@ -90,9 +89,8 @@ mod tests {
         let mut values: Vec<f64> = vec![0.0; n];
         // Spike at center (2,2,2) -> index = 2*25 + 2*5 + 2 = 62
         values[62] = 125.0;
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 
@@ -122,9 +120,12 @@ mod tests {
     #[test]
     fn mean_filter_preserves_uniform() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![7.0; 27], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![7.0; 27],
+                1,
+            )));
         let result = mean_filter(&img, "val", 1);
         let arr = result.point_data().get_array("val").unwrap();
         let mut buf: [f64; 1] = [0.0];

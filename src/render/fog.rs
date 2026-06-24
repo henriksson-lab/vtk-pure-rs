@@ -42,12 +42,22 @@ impl Default for Fog {
 impl Fog {
     /// Create linear fog with default colors.
     pub fn linear(near: f64, far: f64) -> Self {
-        Self { near, far, enabled: true, ..Default::default() }
+        Self {
+            near,
+            far,
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     /// Create exponential fog.
     pub fn exponential(density: f64) -> Self {
-        Self { density, mode: FogMode::Exponential, enabled: true, ..Default::default() }
+        Self {
+            density,
+            mode: FogMode::Exponential,
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     /// Set fog color.
@@ -58,14 +68,12 @@ impl Fog {
 
     /// Compute fog factor (0 = no fog, 1 = fully fogged) for a given distance.
     pub fn factor(&self, distance: f64) -> f64 {
-        if !self.enabled { return 0.0; }
+        if !self.enabled {
+            return 0.0;
+        }
         match self.mode {
-            FogMode::Linear => {
-                ((distance - self.near) / (self.far - self.near)).clamp(0.0, 1.0)
-            }
-            FogMode::Exponential => {
-                1.0 - (-self.density * distance).exp()
-            }
+            FogMode::Linear => ((distance - self.near) / (self.far - self.near)).clamp(0.0, 1.0),
+            FogMode::Exponential => 1.0 - (-self.density * distance).exp(),
             FogMode::ExponentialSquared => {
                 let d = self.density * distance;
                 1.0 - (-d * d).exp()

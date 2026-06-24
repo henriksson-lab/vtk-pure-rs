@@ -16,7 +16,11 @@ impl Texture {
     /// Create a texture from RGBA data.
     pub fn from_rgba(data: Vec<u8>, width: u32, height: u32) -> Self {
         assert_eq!(data.len(), (width * height * 4) as usize);
-        Self { data, width, height }
+        Self {
+            data,
+            width,
+            height,
+        }
     }
 
     /// Create a 1x1 solid color texture.
@@ -38,7 +42,11 @@ impl Texture {
                 data.extend_from_slice(&[v, v, v, 255]);
             }
         }
-        Self { data, width: size, height: size }
+        Self {
+            data,
+            width: size,
+            height: size,
+        }
     }
 }
 
@@ -204,7 +212,10 @@ impl TextureAtlas {
 
     /// Get the atlas region for a named texture.
     pub fn region(&self, name: &str) -> Option<AtlasRegion> {
-        self.regions.iter().find(|(n, _)| n == name).map(|(_, r)| *r)
+        self.regions
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, r)| *r)
     }
 
     /// Get the atlas region by index.
@@ -284,9 +295,13 @@ mod tests {
         let r1 = atlas.region("big").unwrap();
         let r2 = atlas.region("small").unwrap();
         // Regions should not overlap
-        assert!(r1.u_max <= r2.u_min || r2.u_max <= r1.u_min
-            || r1.v_max <= r2.v_min || r2.v_max <= r1.v_min,
-            "regions should not overlap");
+        assert!(
+            r1.u_max <= r2.u_min
+                || r2.u_max <= r1.u_min
+                || r1.v_max <= r2.v_min
+                || r2.v_max <= r1.v_min,
+            "regions should not overlap"
+        );
     }
 
     #[test]
@@ -304,7 +319,12 @@ mod tests {
 
     #[test]
     fn atlas_region_remap() {
-        let region = AtlasRegion { u_min: 0.25, v_min: 0.0, u_max: 0.75, v_max: 0.5 };
+        let region = AtlasRegion {
+            u_min: 0.25,
+            v_min: 0.0,
+            u_max: 0.75,
+            v_max: 0.5,
+        };
         let (u, v) = region.remap(0.0, 0.0);
         assert!((u - 0.25).abs() < 1e-6);
         assert!((v - 0.0).abs() < 1e-6);
@@ -318,7 +338,10 @@ mod tests {
         let big = Texture::checkerboard(128, 8);
         let mut atlas = TextureAtlas::new(64);
         atlas.add("too_big", &big);
-        assert!(!atlas.pack(), "128x128 texture should not fit in 64x64 atlas");
+        assert!(
+            !atlas.pack(),
+            "128x128 texture should not fit in 64x64 atlas"
+        );
     }
 
     #[test]

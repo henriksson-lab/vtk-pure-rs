@@ -5,22 +5,24 @@ use crate::data::{AnyDataArray, DataArray, PolyData, Table, TemporalDataSet};
 /// Extract scalar values at the closest point to `probe_point` across all time steps.
 ///
 /// Returns a Table with columns "Time" and one column per scalar array.
-pub fn extract_data_over_time(
-    temporal: &TemporalDataSet,
-    probe_point: [f64; 3],
-) -> Table {
+pub fn extract_data_over_time(temporal: &TemporalDataSet, probe_point: [f64; 3]) -> Table {
     let times = temporal.times();
-    if times.is_empty() { return Table::new(); }
+    if times.is_empty() {
+        return Table::new();
+    }
 
     let mut time_col: Vec<f64> = Vec::new();
-    let mut data_cols: std::collections::HashMap<String, Vec<f64>> = std::collections::HashMap::new();
+    let mut data_cols: std::collections::HashMap<String, Vec<f64>> =
+        std::collections::HashMap::new();
 
     for (ti, &t) in times.iter().enumerate() {
         let mesh = match temporal.step(ti) {
             Some(m) => m,
             None => continue,
         };
-        if mesh.points.len() == 0 { continue; }
+        if mesh.points.len() == 0 {
+            continue;
+        }
 
         // Find closest point
         let closest = find_closest_point(mesh, probe_point);
@@ -30,7 +32,9 @@ pub fn extract_data_over_time(
         let pd = mesh.point_data();
         for ai in 0..pd.num_arrays() {
             if let Some(arr) = pd.get_array_by_index(ai) {
-                if arr.num_components() != 1 { continue; }
+                if arr.num_components() != 1 {
+                    continue;
+                }
                 let name = arr.name().to_string();
                 let mut buf = [0.0f64];
                 arr.tuple_as_f64(closest, &mut buf);
@@ -53,10 +57,7 @@ pub fn extract_data_over_time(
 }
 
 /// Extract position of the closest point over time.
-pub fn extract_position_over_time(
-    temporal: &TemporalDataSet,
-    probe_point: [f64; 3],
-) -> Table {
+pub fn extract_position_over_time(temporal: &TemporalDataSet, probe_point: [f64; 3]) -> Table {
     let times = temporal.times();
     let mut time_col = Vec::new();
     let mut x_col = Vec::new();
@@ -88,8 +89,12 @@ fn find_closest_point(mesh: &PolyData, target: [f64; 3]) -> usize {
     let mut best_d2 = f64::MAX;
     for i in 0..mesh.points.len() {
         let p = mesh.points.get(i);
-        let d2 = (p[0]-target[0]).powi(2) + (p[1]-target[1]).powi(2) + (p[2]-target[2]).powi(2);
-        if d2 < best_d2 { best_d2 = d2; best = i; }
+        let d2 =
+            (p[0] - target[0]).powi(2) + (p[1] - target[1]).powi(2) + (p[2] - target[2]).powi(2);
+        if d2 < best_d2 {
+            best_d2 = d2;
+            best = i;
+        }
     }
     best
 }
@@ -101,12 +106,13 @@ mod tests {
     fn make_temporal() -> TemporalDataSet {
         let mut ts = TemporalDataSet::new();
         for i in 0..5 {
-            let mut mesh = PolyData::from_points(vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-            ]);
-            mesh.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec("temp", vec![i as f64 * 10.0, i as f64 * 20.0], 1),
-            ));
+            let mut mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+            mesh.point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    "temp",
+                    vec![i as f64 * 10.0, i as f64 * 20.0],
+                    1,
+                )));
             ts.add_step(i as f64, mesh);
         }
         ts

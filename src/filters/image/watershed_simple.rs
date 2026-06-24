@@ -42,12 +42,24 @@ pub fn watershed_segment(input: &ImageData, scalars: &str) -> ImageData {
         let y: usize = (pi / nx) % ny;
         let z: usize = pi / (ny * nx);
         let mut nb = Vec::with_capacity(6);
-        if x > 0 { nb.push(idx(x - 1, y, z)); }
-        if x + 1 < nx { nb.push(idx(x + 1, y, z)); }
-        if y > 0 { nb.push(idx(x, y - 1, z)); }
-        if y + 1 < ny { nb.push(idx(x, y + 1, z)); }
-        if z > 0 { nb.push(idx(x, y, z - 1)); }
-        if z + 1 < nz { nb.push(idx(x, y, z + 1)); }
+        if x > 0 {
+            nb.push(idx(x - 1, y, z));
+        }
+        if x + 1 < nx {
+            nb.push(idx(x + 1, y, z));
+        }
+        if y > 0 {
+            nb.push(idx(x, y - 1, z));
+        }
+        if y + 1 < ny {
+            nb.push(idx(x, y + 1, z));
+        }
+        if z > 0 {
+            nb.push(idx(x, y, z - 1));
+        }
+        if z + 1 < nz {
+            nb.push(idx(x, y, z + 1));
+        }
         nb
     };
 
@@ -99,9 +111,12 @@ pub fn watershed_segment(input: &ImageData, scalars: &str) -> ImageData {
 
     let labels_f: Vec<f64> = labels.iter().map(|&l| l as f64).collect();
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("WatershedLabel", labels_f, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "WatershedLabel",
+            labels_f,
+            1,
+        )));
     img
 }
 
@@ -114,9 +129,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(7, 1, 1);
         // Two valleys: minimum at index 1 and index 5
         let values = vec![3.0, 0.0, 3.0, 5.0, 3.0, 0.0, 3.0];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("scalars", values, 1)));
 
         let result = watershed_segment(&img, "scalars");
         let arr = result.point_data().get_array("WatershedLabel").unwrap();
@@ -130,16 +144,18 @@ mod tests {
 
         assert!(label_a > 0.0);
         assert!(label_b > 0.0);
-        assert!((label_a - label_b).abs() > 0.5, "two minima should get different labels");
+        assert!(
+            (label_a - label_b).abs() > 0.5,
+            "two minima should get different labels"
+        );
     }
 
     #[test]
     fn all_voxels_labeled() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         let values = vec![2.0, 1.0, 0.0, 1.0, 2.0];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("s", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", values, 1)));
 
         let result = watershed_segment(&img, "s");
         let arr = result.point_data().get_array("WatershedLabel").unwrap();

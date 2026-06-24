@@ -65,7 +65,11 @@ pub fn klein_bottle(params: &KleinBottleParams) -> PolyData {
             let su2 = u2.sin();
             let s2u2 = (2.0 * u2).sin();
             let r_u = a + cv2 * su2 - sv2 * s2u2;
-            let du = [r_u * cv - r * cv, r_u * sv - r * sv, sv2 * su2 + cv2 * s2u2 - (sv2 * su + cv2 * s2u)];
+            let du = [
+                r_u * cv - r * cv,
+                r_u * sv - r * sv,
+                sv2 * su2 + cv2 * s2u2 - (sv2 * su + cv2 * s2u),
+            ];
 
             let v2 = v + eps;
             let cv2_ = v2.cos();
@@ -73,7 +77,11 @@ pub fn klein_bottle(params: &KleinBottleParams) -> PolyData {
             let cv22 = (v2 / 2.0).cos();
             let sv22 = (v2 / 2.0).sin();
             let r_v = a + cv22 * su - sv22 * s2u;
-            let dv = [r_v * cv2_ - r * cv, r_v * sv2_ - r * sv, sv22 * su + cv22 * s2u - (sv2 * su + cv2 * s2u)];
+            let dv = [
+                r_v * cv2_ - r * cv,
+                r_v * sv2_ - r * sv,
+                sv22 * su + cv22 * s2u - (sv2 * su + cv2 * s2u),
+            ];
 
             // Cross product du x dv
             let nx = du[1] * dv[2] - du[2] * dv[1];

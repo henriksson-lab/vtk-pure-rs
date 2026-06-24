@@ -8,11 +8,7 @@ use crate::data::PolyData;
 /// a factor `lambda` (0.0 = no movement, 1.0 = move to average). The process
 /// is repeated for the given number of `iterations`. Boundary vertices are
 /// preserved (not moved).
-pub fn smooth_laplacian_simple(
-    input: &PolyData,
-    iterations: usize,
-    lambda: f64,
-) -> PolyData {
+pub fn smooth_laplacian_simple(input: &PolyData, iterations: usize, lambda: f64) -> PolyData {
     let mut output = input.clone();
     let n: usize = output.points.len();
     if n == 0 || iterations == 0 {
@@ -109,12 +105,7 @@ mod tests {
                 [0.0, 2.0, 0.0],
                 [1.5, 1.5, 0.0], // slightly off-center
             ],
-            vec![
-                [0, 1, 4],
-                [1, 2, 4],
-                [2, 3, 4],
-                [3, 0, 4],
-            ],
+            vec![[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]],
         )
     }
 

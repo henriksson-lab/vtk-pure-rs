@@ -1,8 +1,15 @@
 //! Waterfall (cliff face with cascading water surface).
 use crate::data::{CellArray, Points, PolyData};
 
-pub fn waterfall(width: f64, cliff_height: f64, _pool_depth: f64, n_width: usize, n_height: usize) -> PolyData {
-    let nw = n_width.max(4); let nh = n_height.max(6);
+pub fn waterfall(
+    width: f64,
+    cliff_height: f64,
+    _pool_depth: f64,
+    n_width: usize,
+    n_height: usize,
+) -> PolyData {
+    let nw = n_width.max(4);
+    let nh = n_height.max(6);
     let hw = width / 2.0;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -17,10 +24,13 @@ pub fn waterfall(width: f64, cliff_height: f64, _pool_depth: f64, n_width: usize
         }
     }
     let stride = nw + 1;
-    for h in 0..nh { for w in 0..nw {
-        let i0 = h*stride+w; let i1 = (h+1)*stride+w;
-        polys.push_cell(&[i0 as i64, i1 as i64, (i1+1) as i64, (i0+1) as i64]);
-    }}
+    for h in 0..nh {
+        for w in 0..nw {
+            let i0 = h * stride + w;
+            let i1 = (h + 1) * stride + w;
+            polys.push_cell(&[i0 as i64, i1 as i64, (i1 + 1) as i64, (i0 + 1) as i64]);
+        }
+    }
     // Water surface (curved sheet falling)
     let wb = pts.len();
     let water_segs = 8;
@@ -33,17 +43,26 @@ pub fn waterfall(width: f64, cliff_height: f64, _pool_depth: f64, n_width: usize
             pts.push([x, y - 0.2, z]);
         }
     }
-    for s in 0..water_segs { for w in 0..nw {
-        let i0 = wb+s*stride+w; let i1 = wb+(s+1)*stride+w;
-        polys.push_cell(&[i0 as i64, (i0+1) as i64, (i1+1) as i64, i1 as i64]);
-    }}
+    for s in 0..water_segs {
+        for w in 0..nw {
+            let i0 = wb + s * stride + w;
+            let i1 = wb + (s + 1) * stride + w;
+            polys.push_cell(&[i0 as i64, (i0 + 1) as i64, (i1 + 1) as i64, i1 as i64]);
+        }
+    }
     // Pool at base
     let pb = pts.len();
-    let pool_w = width * 1.2; let pool_d = cliff_height * 0.4;
-    pts.push([-pool_w/2.0, -pool_d, 0.0]); pts.push([pool_w/2.0, -pool_d, 0.0]);
-    pts.push([pool_w/2.0, 0.0, 0.0]); pts.push([-pool_w/2.0, 0.0, 0.0]);
-    polys.push_cell(&[pb as i64, (pb+1) as i64, (pb+2) as i64, (pb+3) as i64]);
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let pool_w = width * 1.2;
+    let pool_d = cliff_height * 0.4;
+    pts.push([-pool_w / 2.0, -pool_d, 0.0]);
+    pts.push([pool_w / 2.0, -pool_d, 0.0]);
+    pts.push([pool_w / 2.0, 0.0, 0.0]);
+    pts.push([-pool_w / 2.0, 0.0, 0.0]);
+    polys.push_cell(&[pb as i64, (pb + 1) as i64, (pb + 2) as i64, (pb + 3) as i64]);
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

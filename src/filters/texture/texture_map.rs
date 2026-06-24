@@ -46,8 +46,7 @@ pub fn texture_map_to_plane(
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(tcoords));
+    pd.point_data_mut().add_array(AnyDataArray::F64(tcoords));
     pd.point_data_mut().set_active_tcoords("TCoords");
     pd
 }
@@ -75,8 +74,7 @@ pub fn texture_map_to_sphere(input: &PolyData, center: [f64; 3]) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(tcoords));
+    pd.point_data_mut().add_array(AnyDataArray::F64(tcoords));
     pd.point_data_mut().set_active_tcoords("TCoords");
     pd
 }
@@ -91,12 +89,7 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let result = texture_map_to_plane(
-            &pd,
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let result = texture_map_to_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         let tc = result.point_data().tcoords().unwrap();
         assert_eq!(tc.num_tuples(), 3);
 

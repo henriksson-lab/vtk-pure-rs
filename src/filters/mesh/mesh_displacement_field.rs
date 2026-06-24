@@ -4,7 +4,8 @@ use crate::data::{Points, PolyData};
 pub fn apply_displacement(mesh: &PolyData, array_name: &str, scale: f64) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) => a, None => return mesh.clone(),
+        Some(a) => a,
+        None => return mesh.clone(),
     };
     let nc = arr.num_components();
     let mut pts = Points::<f64>::new();
@@ -29,10 +30,15 @@ mod tests {
     #[test]
     fn test_displacement() {
         let mut mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
-        mesh.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("disp", vec![0.0,0.0,1.0, 0.0,0.0,1.0, 0.0,0.0,1.0], 3)));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "disp",
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                3,
+            )));
         let r = apply_displacement(&mesh, "disp", 2.0);
         let p = r.points.get(0);
         assert!((p[2] - 2.0).abs() < 1e-9);

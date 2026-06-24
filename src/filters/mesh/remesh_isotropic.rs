@@ -231,8 +231,16 @@ fn flip_edges_for_valence(points: &[[f64; 3]], tris: &mut Vec<[usize; 3]>) {
         let ti1: usize = face_list[1];
 
         // Find opposite vertices
-        let c: usize = tris[ti0].iter().copied().find(|&v| v != a && v != b).unwrap();
-        let d: usize = tris[ti1].iter().copied().find(|&v| v != a && v != b).unwrap();
+        let c: usize = tris[ti0]
+            .iter()
+            .copied()
+            .find(|&v| v != a && v != b)
+            .unwrap();
+        let d: usize = tris[ti1]
+            .iter()
+            .copied()
+            .find(|&v| v != a && v != b)
+            .unwrap();
 
         if c == d {
             continue;

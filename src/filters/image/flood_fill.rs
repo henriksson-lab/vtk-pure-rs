@@ -72,7 +72,13 @@ pub fn flood_fill(
             let ny2: i64 = pos[1] as i64 + off[1];
             let nz2: i64 = pos[2] as i64 + off[2];
 
-            if nx2 < 0 || nx2 >= nx as i64 || ny2 < 0 || ny2 >= ny as i64 || nz2 < 0 || nz2 >= nz as i64 {
+            if nx2 < 0
+                || nx2 >= nx as i64
+                || ny2 < 0
+                || ny2 >= ny as i64
+                || nz2 < 0
+                || nz2 >= nz as i64
+            {
                 continue;
             }
 
@@ -97,9 +103,11 @@ pub fn flood_fill(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, values.clone(), 1),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -117,9 +125,8 @@ mod tests {
         // Uniform value of 1.0 except center = 5.0
         let mut values: Vec<f64> = vec![1.0; 9];
         values[4] = 5.0; // center voxel
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalar", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalar", values, 1)));
         img
     }
 

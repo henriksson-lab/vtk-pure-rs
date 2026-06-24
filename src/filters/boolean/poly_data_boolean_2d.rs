@@ -28,9 +28,12 @@ pub fn bounding_boxes_overlap(a: &PolyData, b: &PolyData) -> bool {
     let ba = a.bounds();
     let bb = b.bounds();
 
-    ba.x_min <= bb.x_max && ba.x_max >= bb.x_min
-        && ba.y_min <= bb.y_max && ba.y_max >= bb.y_min
-        && ba.z_min <= bb.z_max && ba.z_max >= bb.z_min
+    ba.x_min <= bb.x_max
+        && ba.x_max >= bb.x_min
+        && ba.y_min <= bb.y_max
+        && ba.y_max >= bb.y_min
+        && ba.z_min <= bb.z_max
+        && ba.z_max >= bb.z_min
 }
 
 #[cfg(test)]

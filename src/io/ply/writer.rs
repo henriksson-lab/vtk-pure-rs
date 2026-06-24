@@ -58,7 +58,9 @@ impl PlyWriter {
                 writeln!(
                     w,
                     "{} {} {} {} {} {}",
-                    p[0], p[1], p[2],
+                    p[0],
+                    p[1],
+                    p[2],
                     (cbuf[0].clamp(0.0, 1.0) * 255.0) as u8,
                     (cbuf[1].clamp(0.0, 1.0) * 255.0) as u8,
                     (cbuf[2].clamp(0.0, 1.0) * 255.0) as u8,

@@ -90,9 +90,8 @@ mod tests {
         hm.set_spacing([1.0, 1.0, 1.0]);
         hm.set_origin([0.0, 0.0, 0.0]);
         let heights = vec![5.0f64; 9];
-        hm.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("height", heights, 1),
-        ));
+        hm.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("height", heights, 1)));
         hm.point_data_mut().set_active_scalars("height");
 
         // Create a mesh with points at z = 0

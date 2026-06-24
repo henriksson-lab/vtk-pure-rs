@@ -75,7 +75,12 @@ pub fn sphere(params: &SphereParams) -> PolyData {
         let nrs = 1 + (j + 1) * n_theta;
         for i in 0..n_theta {
             let next = (i + 1) % n_theta;
-            let (a, b, c, d) = ((rs+i) as i64, (nrs+i) as i64, (nrs+next) as i64, (rs+next) as i64);
+            let (a, b, c, d) = (
+                (rs + i) as i64,
+                (nrs + i) as i64,
+                (nrs + next) as i64,
+                (rs + next) as i64,
+            );
             conn.extend_from_slice(&[a, b, c]);
             offsets.push(conn.len() as i64);
             conn.extend_from_slice(&[a, c, d]);
@@ -87,14 +92,15 @@ pub fn sphere(params: &SphereParams) -> PolyData {
     let lrs = 1 + (n_phi - 2) * n_theta;
     for i in 0..n_theta {
         let next = (i + 1) % n_theta;
-        conn.extend_from_slice(&[(lrs+i) as i64, south_pole, (lrs+next) as i64]);
+        conn.extend_from_slice(&[(lrs + i) as i64, south_pole, (lrs + next) as i64]);
         offsets.push(conn.len() as i64);
     }
 
     let mut pd = PolyData::new();
     pd.points = Points::from_flat_vec(pts_flat);
     pd.polys = CellArray::from_raw(offsets, conn);
-    pd.point_data_mut().add_array(DataArray::from_vec("Normals", nrm_flat, 3).into());
+    pd.point_data_mut()
+        .add_array(DataArray::from_vec("Normals", nrm_flat, 3).into());
     pd.point_data_mut().set_active_normals("Normals");
     pd
 }

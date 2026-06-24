@@ -3,12 +3,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Pad an ImageData with constant values on each side.
 ///
 /// Adds `pad` voxels on each side of each axis, filled with `fill_value`.
-pub fn image_pad(
-    input: &ImageData,
-    scalars: &str,
-    pad: [usize; 3],
-    fill_value: f64,
-) -> ImageData {
+pub fn image_pad(input: &ImageData, scalars: &str, pad: [usize; 3], fill_value: f64) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -50,9 +45,8 @@ pub fn image_pad(
     let mut img = ImageData::with_dimensions(new_nx, new_ny, new_nz);
     img.set_origin(new_origin);
     img.set_spacing(spacing);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
     img
 }
 
@@ -64,9 +58,8 @@ mod tests {
     fn pad_1_each_side() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         let values: Vec<f64> = (1..=9).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_pad(&img, "v", [1, 1, 0], 0.0);
         assert_eq!(result.dimensions(), [5, 5, 1]);
@@ -84,9 +77,12 @@ mod tests {
     #[test]
     fn zero_pad() {
         let mut img = ImageData::with_dimensions(2, 2, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0, 2.0, 3.0, 4.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
 
         let result = image_pad(&img, "v", [0, 0, 0], 0.0);
         assert_eq!(result.dimensions(), [2, 2, 1]);

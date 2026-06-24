@@ -15,22 +15,23 @@ pub fn subdivide_midpoint(input: &PolyData) -> PolyData {
     // Cache midpoints to avoid duplicates on shared edges
     let mut midpoint_cache: HashMap<(i64, i64), i64> = HashMap::new();
 
-    let get_midpoint = |a: i64, b: i64, pts: &mut Points<f64>, cache: &mut HashMap<(i64, i64), i64>| -> i64 {
-        let key = if a < b { (a, b) } else { (b, a) };
-        if let Some(&mid) = cache.get(&key) {
-            return mid;
-        }
-        let pa = pts.get(a as usize);
-        let pb = pts.get(b as usize);
-        let idx = pts.len() as i64;
-        pts.push([
-            (pa[0] + pb[0]) * 0.5,
-            (pa[1] + pb[1]) * 0.5,
-            (pa[2] + pb[2]) * 0.5,
-        ]);
-        cache.insert(key, idx);
-        idx
-    };
+    let get_midpoint =
+        |a: i64, b: i64, pts: &mut Points<f64>, cache: &mut HashMap<(i64, i64), i64>| -> i64 {
+            let key = if a < b { (a, b) } else { (b, a) };
+            if let Some(&mid) = cache.get(&key) {
+                return mid;
+            }
+            let pa = pts.get(a as usize);
+            let pb = pts.get(b as usize);
+            let idx = pts.len() as i64;
+            pts.push([
+                (pa[0] + pb[0]) * 0.5,
+                (pa[1] + pb[1]) * 0.5,
+                (pa[2] + pb[2]) * 0.5,
+            ]);
+            cache.insert(key, idx);
+            idx
+        };
 
     for cell in input.polys.iter() {
         if cell.len() == 3 {
@@ -104,8 +105,10 @@ mod tests {
     fn shared_edge_reuses_midpoint() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0], [1.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [1, 3, 2]],
         );

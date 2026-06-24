@@ -37,13 +37,21 @@ pub struct RasterInfo {
 
 impl RasterInfo {
     /// Pixel size in X direction.
-    pub fn pixel_width(&self) -> f64 { self.geo_transform[1] }
+    pub fn pixel_width(&self) -> f64 {
+        self.geo_transform[1]
+    }
     /// Pixel size in Y direction (usually negative).
-    pub fn pixel_height(&self) -> f64 { self.geo_transform[5] }
+    pub fn pixel_height(&self) -> f64 {
+        self.geo_transform[5]
+    }
     /// Origin X coordinate.
-    pub fn origin_x(&self) -> f64 { self.geo_transform[0] }
+    pub fn origin_x(&self) -> f64 {
+        self.geo_transform[0]
+    }
     /// Origin Y coordinate.
-    pub fn origin_y(&self) -> f64 { self.geo_transform[3] }
+    pub fn origin_y(&self) -> f64 {
+        self.geo_transform[3]
+    }
 }
 
 /// Vector layer metadata.

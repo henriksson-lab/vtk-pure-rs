@@ -29,7 +29,9 @@ pub fn cut_with_cap_merged(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3]) 
     let (mut clipped, cap) = cut_with_cap(mesh, origin, normal);
     if cap.points.len() > 0 {
         let offset = clipped.points.len() as i64;
-        for i in 0..cap.points.len() { clipped.points.push(cap.points.get(i)); }
+        for i in 0..cap.points.len() {
+            clipped.points.push(cap.points.get(i));
+        }
         for cell in cap.polys.iter() {
             let shifted: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
             clipped.polys.push_cell(&shifted);
@@ -38,18 +40,27 @@ pub fn cut_with_cap_merged(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3]) 
     clipped
 }
 
-fn find_boundary_on_plane(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3], tolerance: f64) -> Vec<[f64; 3]> {
-    let nlen = (normal[0].powi(2)+normal[1].powi(2)+normal[2].powi(2)).sqrt();
-    if nlen < 1e-15 { return Vec::new(); }
-    let n = [normal[0]/nlen, normal[1]/nlen, normal[2]/nlen];
+fn find_boundary_on_plane(
+    mesh: &PolyData,
+    origin: [f64; 3],
+    normal: [f64; 3],
+    tolerance: f64,
+) -> Vec<[f64; 3]> {
+    let nlen = (normal[0].powi(2) + normal[1].powi(2) + normal[2].powi(2)).sqrt();
+    if nlen < 1e-15 {
+        return Vec::new();
+    }
+    let n = [normal[0] / nlen, normal[1] / nlen, normal[2] / nlen];
 
     // Find boundary edges
-    let mut edge_count: std::collections::HashMap<(usize,usize), usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize; let b = cell[(i+1)%nc] as usize;
-            *edge_count.entry((a.min(b),a.max(b))).or_insert(0) += 1;
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % nc] as usize;
+            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
 
@@ -57,11 +68,16 @@ fn find_boundary_on_plane(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3], t
     let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
 
     for (&(a, b), &count) in &edge_count {
-        if count != 1 { continue; }
+        if count != 1 {
+            continue;
+        }
         for &vid in &[a, b] {
-            if seen.contains(&vid) { continue; }
+            if seen.contains(&vid) {
+                continue;
+            }
             let p = mesh.points.get(vid);
-            let dist = (p[0]-origin[0])*n[0]+(p[1]-origin[1])*n[1]+(p[2]-origin[2])*n[2];
+            let dist =
+                (p[0] - origin[0]) * n[0] + (p[1] - origin[1]) * n[1] + (p[2] - origin[2]) * n[2];
             if dist.abs() < tolerance {
                 plane_pts.push(p);
                 seen.insert(vid);
@@ -75,18 +91,26 @@ fn find_boundary_on_plane(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3], t
         let cy = plane_pts.iter().map(|p| p[1]).sum::<f64>() / plane_pts.len() as f64;
         let cz = plane_pts.iter().map(|p| p[2]).sum::<f64>() / plane_pts.len() as f64;
 
-        let up = if n[0].abs() < 0.9 { [1.0,0.0,0.0] } else { [0.0,1.0,0.0] };
+        let up = if n[0].abs() < 0.9 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
         let u = cross(n, up);
-        let ul = (u[0]*u[0]+u[1]*u[1]+u[2]*u[2]).sqrt();
-        let u = [u[0]/ul, u[1]/ul, u[2]/ul];
+        let ul = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
+        let u = [u[0] / ul, u[1] / ul, u[2] / ul];
         let v = cross(n, u);
 
         plane_pts.sort_by(|a, b| {
-            let da = [a[0]-cx, a[1]-cy, a[2]-cz];
-            let db = [b[0]-cx, b[1]-cy, b[2]-cz];
-            let angle_a = (da[0]*v[0]+da[1]*v[1]+da[2]*v[2]).atan2(da[0]*u[0]+da[1]*u[1]+da[2]*u[2]);
-            let angle_b = (db[0]*v[0]+db[1]*v[1]+db[2]*v[2]).atan2(db[0]*u[0]+db[1]*u[1]+db[2]*u[2]);
-            angle_a.partial_cmp(&angle_b).unwrap_or(std::cmp::Ordering::Equal)
+            let da = [a[0] - cx, a[1] - cy, a[2] - cz];
+            let db = [b[0] - cx, b[1] - cy, b[2] - cz];
+            let angle_a = (da[0] * v[0] + da[1] * v[1] + da[2] * v[2])
+                .atan2(da[0] * u[0] + da[1] * u[1] + da[2] * u[2]);
+            let angle_b = (db[0] * v[0] + db[1] * v[1] + db[2] * v[2])
+                .atan2(db[0] * u[0] + db[1] * u[1] + db[2] * u[2]);
+            angle_a
+                .partial_cmp(&angle_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
 
@@ -95,13 +119,15 @@ fn find_boundary_on_plane(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3], t
 
 fn build_cap_polygon(pts: &[[f64; 3]], _normal: [f64; 3]) -> PolyData {
     let mut points = Points::<f64>::new();
-    for p in pts { points.push(*p); }
+    for p in pts {
+        points.push(*p);
+    }
     let mut polys = CellArray::new();
 
     // Fan triangulation
     let n = pts.len();
-    for i in 1..n-1 {
-        polys.push_cell(&[0, i as i64, (i+1) as i64]);
+    for i in 1..n - 1 {
+        polys.push_cell(&[0, i as i64, (i + 1) as i64]);
     }
 
     let mut mesh = PolyData::new();
@@ -111,35 +137,63 @@ fn build_cap_polygon(pts: &[[f64; 3]], _normal: [f64; 3]) -> PolyData {
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 /// Simple plane clip: keeps cells whose centroid is on the positive side.
 fn simple_clip_by_plane(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
-    let nlen = (normal[0].powi(2)+normal[1].powi(2)+normal[2].powi(2)).sqrt();
-    if nlen < 1e-15 { return mesh.clone(); }
-    let n = [normal[0]/nlen, normal[1]/nlen, normal[2]/nlen];
+    let nlen = (normal[0].powi(2) + normal[1].powi(2) + normal[2].powi(2)).sqrt();
+    if nlen < 1e-15 {
+        return mesh.clone();
+    }
+    let n = [normal[0] / nlen, normal[1] / nlen, normal[2] / nlen];
     let mut used = vec![false; mesh.points.len()];
     let mut kept = Vec::new();
     for cell in mesh.polys.iter() {
-        if cell.is_empty() { continue; }
-        let mut cx = 0.0; let mut cy = 0.0; let mut cz = 0.0;
-        for &v in cell { let p = mesh.points.get(v as usize); cx+=p[0]; cy+=p[1]; cz+=p[2]; }
+        if cell.is_empty() {
+            continue;
+        }
+        let mut cx = 0.0;
+        let mut cy = 0.0;
+        let mut cz = 0.0;
+        for &v in cell {
+            let p = mesh.points.get(v as usize);
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
+        }
         let nv = cell.len() as f64;
-        let d = (cx/nv-origin[0])*n[0]+(cy/nv-origin[1])*n[1]+(cz/nv-origin[2])*n[2];
-        if d >= 0.0 { for &v in cell { used[v as usize] = true; } kept.push(cell.to_vec()); }
+        let d = (cx / nv - origin[0]) * n[0]
+            + (cy / nv - origin[1]) * n[1]
+            + (cz / nv - origin[2]) * n[2];
+        if d >= 0.0 {
+            for &v in cell {
+                used[v as usize] = true;
+            }
+            kept.push(cell.to_vec());
+        }
     }
     let mut pt_map = vec![0usize; mesh.points.len()];
     let mut pts = Points::<f64>::new();
     for i in 0..mesh.points.len() {
-        if used[i] { pt_map[i] = pts.len(); pts.push(mesh.points.get(i)); }
+        if used[i] {
+            pt_map[i] = pts.len();
+            pts.push(mesh.points.get(i));
+        }
     }
     let mut polys = CellArray::new();
     for cell in &kept {
         let mapped: Vec<i64> = cell.iter().map(|&v| pt_map[v as usize] as i64).collect();
         polys.push_cell(&mapped);
     }
-    let mut r = PolyData::new(); r.points = pts; r.polys = polys; r
+    let mut r = PolyData::new();
+    r.points = pts;
+    r.polys = polys;
+    r
 }
 
 #[cfg(test)]
@@ -148,16 +202,54 @@ mod tests {
 
     #[test]
     fn cut_sphere() {
-        let sphere = PolyData::from_triangles(vec![[0.0,0.0,1.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[-1.0,0.0,0.0],[0.0,-1.0,0.0],[0.0,0.0,-1.0]],vec![[0,1,2],[0,2,3],[0,3,4],[0,4,1],[5,2,1],[5,3,2],[5,4,3],[5,1,4]]);
-        let (clipped, cap) = cut_with_cap(&sphere, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+        let sphere = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ],
+            vec![
+                [0, 1, 2],
+                [0, 2, 3],
+                [0, 3, 4],
+                [0, 4, 1],
+                [5, 2, 1],
+                [5, 3, 2],
+                [5, 4, 3],
+                [5, 1, 4],
+            ],
+        );
+        let (clipped, cap) = cut_with_cap(&sphere, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
         assert!(clipped.polys.num_cells() > 0);
         // Cap may or may not have points depending on tolerance
     }
 
     #[test]
     fn merged() {
-        let sphere = PolyData::from_triangles(vec![[0.0,0.0,1.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[-1.0,0.0,0.0],[0.0,-1.0,0.0],[0.0,0.0,-1.0]],vec![[0,1,2],[0,2,3],[0,3,4],[0,4,1],[5,2,1],[5,3,2],[5,4,3],[5,1,4]]);
-        let result = cut_with_cap_merged(&sphere, [0.0,0.0,0.0], [0.0,0.0,1.0]);
+        let sphere = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ],
+            vec![
+                [0, 1, 2],
+                [0, 2, 3],
+                [0, 3, 4],
+                [0, 4, 1],
+                [5, 2, 1],
+                [5, 3, 2],
+                [5, 4, 3],
+                [5, 1, 4],
+            ],
+        );
+        let result = cut_with_cap_merged(&sphere, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
         assert!(result.polys.num_cells() > 0);
     }
 }

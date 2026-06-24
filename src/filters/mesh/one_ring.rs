@@ -13,13 +13,16 @@ pub fn extract_one_ring(input: &PolyData, vertex_id: usize) -> PolyData {
 
     for cell in input.polys.iter() {
         if cell.iter().any(|&id| id == vid) {
-            let mapped: Vec<i64> = cell.iter().map(|&id| {
-                *pt_map.entry(id).or_insert_with(|| {
-                    let idx = out_points.len() as i64;
-                    out_points.push(input.points.get(id as usize));
-                    idx
+            let mapped: Vec<i64> = cell
+                .iter()
+                .map(|&id| {
+                    *pt_map.entry(id).or_insert_with(|| {
+                        let idx = out_points.len() as i64;
+                        out_points.push(input.points.get(id as usize));
+                        idx
+                    })
                 })
-            }).collect();
+                .collect();
             out_polys.push_cell(&mapped);
         }
     }
@@ -39,7 +42,8 @@ pub fn extract_n_ring(input: &PolyData, vertex_id: usize, n: usize) -> PolyData 
     let mut adj: HashMap<i64, Vec<i64>> = HashMap::new();
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a = cell[i]; let b = cell[(i+1)%cell.len()];
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
             adj.entry(a).or_default().push(b);
             adj.entry(b).or_default().push(a);
         }
@@ -49,7 +53,9 @@ pub fn extract_n_ring(input: &PolyData, vertex_id: usize, n: usize) -> PolyData 
         let mut next = current_verts.clone();
         for &v in &current_verts {
             if let Some(nbrs) = adj.get(&v) {
-                for &nb in nbrs { next.insert(nb); }
+                for &nb in nbrs {
+                    next.insert(nb);
+                }
             }
         }
         current_verts = next;
@@ -62,13 +68,16 @@ pub fn extract_n_ring(input: &PolyData, vertex_id: usize, n: usize) -> PolyData 
 
     for cell in input.polys.iter() {
         if cell.iter().all(|&id| current_verts.contains(&id)) {
-            let mapped: Vec<i64> = cell.iter().map(|&id| {
-                *pt_map.entry(id).or_insert_with(|| {
-                    let idx = out_points.len() as i64;
-                    out_points.push(input.points.get(id as usize));
-                    idx
+            let mapped: Vec<i64> = cell
+                .iter()
+                .map(|&id| {
+                    *pt_map.entry(id).or_insert_with(|| {
+                        let idx = out_points.len() as i64;
+                        out_points.push(input.points.get(id as usize));
+                        idx
+                    })
                 })
-            }).collect();
+                .collect();
             out_polys.push_cell(&mapped);
         }
     }
@@ -85,13 +94,14 @@ mod tests {
 
     fn make_fan() -> PolyData {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); // center
+        pd.points.push([0.0, 0.0, 0.0]); // center
         for i in 0..6 {
-            let a = std::f64::consts::PI*2.0*i as f64/6.0;
+            let a = std::f64::consts::PI * 2.0 * i as f64 / 6.0;
             pd.points.push([a.cos(), a.sin(), 0.0]);
         }
         for i in 0..6 {
-            pd.polys.push_cell(&[0, (i+1) as i64, ((i+1)%6+1) as i64]);
+            pd.polys
+                .push_cell(&[0, (i + 1) as i64, ((i + 1) % 6 + 1) as i64]);
         }
         pd
     }

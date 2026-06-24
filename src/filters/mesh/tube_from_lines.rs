@@ -9,8 +9,13 @@ pub fn tube_from_lines(mesh: &PolyData, radius: f64, sides: usize) -> PolyData {
     let mut polys = CellArray::new();
 
     for line in mesh.lines.iter() {
-        if line.len() < 2 { continue; }
-        let line_pts: Vec<[f64; 3]> = line.iter().map(|&id| mesh.points.get(id as usize)).collect();
+        if line.len() < 2 {
+            continue;
+        }
+        let line_pts: Vec<[f64; 3]> = line
+            .iter()
+            .map(|&id| mesh.points.get(id as usize))
+            .collect();
         let seg_count = line_pts.len() - 1;
         let ring_start = pts.len();
 
@@ -60,23 +65,35 @@ pub fn tube_from_lines(mesh: &PolyData, radius: f64, sides: usize) -> PolyData {
     result
 }
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
     let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len < 1e-15 { return [0.0, 0.0, 1.0]; }
+    if len < 1e-15 {
+        return [0.0, 0.0, 1.0];
+    }
     [v[0] / len, v[1] / len, v[2] / len]
 }
 
 fn perpendicular_frame(t: [f64; 3]) -> ([f64; 3], [f64; 3]) {
-    let up = if t[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let up = if t[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let n1 = normalize(cross(t, up));
     let n2 = cross(t, n1);
     (n1, n2)
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 #[cfg(test)]

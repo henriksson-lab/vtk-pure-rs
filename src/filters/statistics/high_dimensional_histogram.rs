@@ -25,14 +25,20 @@ impl NdHistogram {
     /// Get the count for a specific bin index tuple.
     pub fn get(&self, indices: &[usize]) -> usize {
         let flat = self.flat_index(indices);
-        if flat < self.counts.len() { self.counts[flat] } else { 0 }
+        if flat < self.counts.len() {
+            self.counts[flat]
+        } else {
+            0
+        }
     }
 
     /// Convert bin indices to the center coordinate of the bin.
     pub fn bin_center(&self, indices: &[usize]) -> Vec<f64> {
-        indices.iter().enumerate().map(|(d, &i)| {
-            self.mins[d] + (i as f64 + 0.5) * self.bin_widths[d]
-        }).collect()
+        indices
+            .iter()
+            .enumerate()
+            .map(|(d, &i)| self.mins[d] + (i as f64 + 0.5) * self.bin_widths[d])
+            .collect()
     }
 
     fn flat_index(&self, indices: &[usize]) -> usize {
@@ -53,7 +59,9 @@ impl NdHistogram {
 pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
     let mut cols: Vec<(String, Vec<f64>)> = Vec::new();
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
@@ -64,10 +72,14 @@ pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
         cols.push((col.name().to_string(), values));
     }
 
-    if cols.is_empty() { return None; }
+    if cols.is_empty() {
+        return None;
+    }
     let ndims = cols.len();
     let n = cols[0].1.len();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut mins = Vec::with_capacity(ndims);
     let mut maxs = Vec::with_capacity(ndims);
@@ -75,10 +87,16 @@ pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
         let mn = vals.iter().cloned().fold(f64::MAX, f64::min);
         let mx = vals.iter().cloned().fold(f64::MIN, f64::max);
         mins.push(mn);
-        maxs.push(if (mx - mn).abs() < 1e-15 { mn + 1.0 } else { mx });
+        maxs.push(if (mx - mn).abs() < 1e-15 {
+            mn + 1.0
+        } else {
+            mx
+        });
     }
 
-    let bin_widths: Vec<f64> = (0..ndims).map(|d| (maxs[d] - mins[d]) / bins as f64).collect();
+    let bin_widths: Vec<f64> = (0..ndims)
+        .map(|d| (maxs[d] - mins[d]) / bins as f64)
+        .collect();
     let bins_per_dim = vec![bins; ndims];
     let total_bins: usize = bins_per_dim.iter().product();
     let mut counts = vec![0usize; total_bins];
@@ -104,7 +122,9 @@ pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
 
     Some(NdHistogram {
         bins_per_dim,
-        mins, maxs, bin_widths,
+        mins,
+        maxs,
+        bin_widths,
         counts,
         total: n,
         column_names: cols.iter().map(|(name, _)| name.clone()).collect(),
@@ -113,7 +133,9 @@ pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
 
 /// Convert a 2D histogram to a Table with columns (x_center, y_center, count).
 pub fn histogram_2d_to_table(hist: &NdHistogram) -> Table {
-    if hist.bins_per_dim.len() != 2 { return Table::new(); }
+    if hist.bins_per_dim.len() != 2 {
+        return Table::new();
+    }
 
     let nx = hist.bins_per_dim[0];
     let ny = hist.bins_per_dim[1];
@@ -134,7 +156,9 @@ pub fn histogram_2d_to_table(hist: &NdHistogram) -> Table {
     let mut result = Table::new();
     result.add_column(AnyDataArray::F64(DataArray::from_vec("x", x_data, 1)));
     result.add_column(AnyDataArray::F64(DataArray::from_vec("y", y_data, 1)));
-    result.add_column(AnyDataArray::F64(DataArray::from_vec("count", count_data, 1)));
+    result.add_column(AnyDataArray::F64(DataArray::from_vec(
+        "count", count_data, 1,
+    )));
     result
 }
 
@@ -145,10 +169,16 @@ mod tests {
     #[test]
     fn basic_2d_histogram() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![0.1, 0.2, 0.8, 0.9, 0.5], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y",
-                vec![0.1, 0.2, 0.8, 0.9, 0.5], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![0.1, 0.2, 0.8, 0.9, 0.5],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.1, 0.2, 0.8, 0.9, 0.5],
+                1,
+            )));
 
         let hist = nd_histogram(&table, 2).unwrap();
         assert_eq!(hist.bins_per_dim.len(), 2);
@@ -160,8 +190,16 @@ mod tests {
     #[test]
     fn to_table() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![0.0, 1.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![0.0, 1.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![0.0, 1.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.0, 1.0],
+                1,
+            )));
         let hist = nd_histogram(&table, 4).unwrap();
         let result = histogram_2d_to_table(&hist);
         assert_eq!(result.num_rows(), 16); // 4x4
@@ -169,9 +207,11 @@ mod tests {
 
     #[test]
     fn single_dimension() {
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![1.0, 2.0, 3.0, 4.0, 5.0], 1)));
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            1,
+        )));
         let hist = nd_histogram(&table, 5).unwrap();
         assert_eq!(hist.bins_per_dim.len(), 1);
     }
@@ -179,9 +219,21 @@ mod tests {
     #[test]
     fn three_dimensions() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![0.0, 1.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![0.0, 1.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("z", vec![0.0, 1.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![0.0, 1.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.0, 1.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "z",
+                vec![0.0, 1.0],
+                1,
+            )));
         let hist = nd_histogram(&table, 3).unwrap();
         assert_eq!(hist.counts.len(), 27); // 3^3
     }

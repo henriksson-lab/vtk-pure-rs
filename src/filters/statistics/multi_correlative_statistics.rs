@@ -21,16 +21,25 @@ pub struct MultivariateStats {
 pub fn multivariate_stats(table: &Table) -> Option<MultivariateStats> {
     let (names, cols) = extract_columns(table);
     let p = cols.len();
-    if p == 0 { return None; }
+    if p == 0 {
+        return None;
+    }
     let n = cols[0].len();
-    if n < 2 { return None; }
+    if n < 2 {
+        return None;
+    }
 
-    let means: Vec<f64> = cols.iter().map(|c| c.iter().sum::<f64>() / n as f64).collect();
+    let means: Vec<f64> = cols
+        .iter()
+        .map(|c| c.iter().sum::<f64>() / n as f64)
+        .collect();
 
     let mut cov = vec![vec![0.0; p]; p];
     for i in 0..p {
         for j in i..p {
-            let s: f64 = (0..n).map(|k| (cols[i][k] - means[i]) * (cols[j][k] - means[j])).sum();
+            let s: f64 = (0..n)
+                .map(|k| (cols[i][k] - means[i]) * (cols[j][k] - means[j]))
+                .sum();
             cov[i][j] = s / (n - 1) as f64;
             cov[j][i] = cov[i][j];
         }
@@ -38,7 +47,13 @@ pub fn multivariate_stats(table: &Table) -> Option<MultivariateStats> {
 
     let inv = invert_matrix(&cov);
 
-    Some(MultivariateStats { names, means, covariance: cov, inv_covariance: inv, n })
+    Some(MultivariateStats {
+        names,
+        means,
+        covariance: cov,
+        inv_covariance: inv,
+        n,
+    })
 }
 
 /// Compute Mahalanobis distance of each row from the multivariate mean.
@@ -71,9 +86,11 @@ pub fn mahalanobis_distance(table: &Table) -> Table {
     }
 
     let mut result = table.clone();
-    result.add_column(AnyDataArray::F64(
-        DataArray::from_vec("MahalanobisDistance", distances, 1),
-    ));
+    result.add_column(AnyDataArray::F64(DataArray::from_vec(
+        "MahalanobisDistance",
+        distances,
+        1,
+    )));
     result
 }
 
@@ -100,11 +117,16 @@ fn extract_columns(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     let mut names = Vec::new();
     let mut cols = Vec::new();
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
-        for i in 0..n { col.tuple_as_f64(i, &mut buf); values.push(buf[0]); }
+        for i in 0..n {
+            col.tuple_as_f64(i, &mut buf);
+            values.push(buf[0]);
+        }
         names.push(col.name().to_string());
         cols.push(values);
     }
@@ -113,31 +135,45 @@ fn extract_columns(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
 
 fn invert_matrix(m: &[Vec<f64>]) -> Option<Vec<Vec<f64>>> {
     let n = m.len();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     // Augmented matrix [A | I]
     let mut aug = vec![vec![0.0; 2 * n]; n];
     for i in 0..n {
-        for j in 0..n { aug[i][j] = m[i][j]; }
+        for j in 0..n {
+            aug[i][j] = m[i][j];
+        }
         aug[i][n + i] = 1.0;
     }
 
     // Gauss-Jordan elimination
     for col in 0..n {
         let mut max_row = col;
-        for row in col+1..n {
-            if aug[row][col].abs() > aug[max_row][col].abs() { max_row = row; }
+        for row in col + 1..n {
+            if aug[row][col].abs() > aug[max_row][col].abs() {
+                max_row = row;
+            }
         }
         aug.swap(col, max_row);
-        if aug[col][col].abs() < 1e-12 { return None; } // singular
+        if aug[col][col].abs() < 1e-12 {
+            return None;
+        } // singular
 
         let pivot = aug[col][col];
-        for j in 0..2*n { aug[col][j] /= pivot; }
+        for j in 0..2 * n {
+            aug[col][j] /= pivot;
+        }
 
         for row in 0..n {
-            if row == col { continue; }
+            if row == col {
+                continue;
+            }
             let factor = aug[row][col];
-            for j in 0..2*n { aug[row][j] -= factor * aug[col][j]; }
+            for j in 0..2 * n {
+                aug[row][j] -= factor * aug[col][j];
+            }
         }
     }
 
@@ -152,8 +188,16 @@ mod tests {
     #[test]
     fn basic_stats() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![0.5, 3.0, 1.5, 4.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.5, 3.0, 1.5, 4.0],
+                1,
+            )));
         let stats = multivariate_stats(&t).unwrap();
         assert_eq!(stats.names.len(), 2);
         assert!((stats.means[0] - 2.5).abs() < 1e-10);
@@ -163,10 +207,16 @@ mod tests {
     #[test]
     fn mahalanobis() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![0.0, 0.1, -0.1, 0.2, 10.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y",
-                vec![0.0, -0.1, 0.1, 0.0, 10.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![0.0, 0.1, -0.1, 0.2, 10.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.0, -0.1, 0.1, 0.0, 10.0],
+                1,
+            )));
         let result = mahalanobis_distance(&t);
         assert!(result.column_by_name("MahalanobisDistance").is_some());
 
@@ -183,9 +233,11 @@ mod tests {
     fn outlier_detection_runs() {
         // Just verify it runs without panicking — the actual detection
         // depends on matrix conditioning
-        let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![1.0, 2.0, 1.5, 2.5, 50.0], 1)));
+        let t = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 1.5, 2.5, 50.0],
+            1,
+        )));
         let out = multivariate_outliers(&t, 3.0);
         // With 1D data, the matrix is always invertible
         // The outlier at index 4 (value 50) should be detected

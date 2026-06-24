@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use crate::types::{Scalar, ScalarType};
+use std::sync::Arc;
 
 /// A contiguous array of tuples, where each tuple has `num_components` values.
 ///
@@ -9,7 +9,7 @@ use crate::types::{Scalar, ScalarType};
 /// # Examples
 ///
 /// ```
-/// use crate::data::DataArray;
+/// use vtk_pure_rs::data::DataArray;
 ///
 /// // Create a 3-component array (e.g., for normals or positions)
 /// let mut normals = DataArray::<f64>::new("Normals", 3);
@@ -110,7 +110,7 @@ impl<T: Scalar> DataArray<T> {
     }
 
     pub fn push_tuple(&mut self, values: &[T]) {
-        debug_assert_eq!(
+        assert_eq!(
             values.len(),
             self.num_components,
             "expected {} components, got {}",
@@ -213,7 +213,10 @@ impl<T: Scalar> DataArray<T> {
 
     /// Iterate over tuples as slices.
     pub fn iter_tuples(&self) -> DataArrayTupleIter<'_, T> {
-        DataArrayTupleIter { array: self, idx: 0 }
+        DataArrayTupleIter {
+            array: self,
+            idx: 0,
+        }
     }
 }
 
@@ -312,7 +315,10 @@ impl DataArray<f64> {
 impl DataArray<f64> {
     /// Extract a single component as a new 1-component array.
     pub fn extract_component(&self, component: usize, name: impl Into<String>) -> DataArray<f64> {
-        assert!(component < self.num_components, "component index out of range");
+        assert!(
+            component < self.num_components,
+            "component index out of range"
+        );
         let mut result = DataArray::new(name, 1);
         for i in 0..self.num_tuples() {
             result.push_tuple(&[self.tuple(i)[component]]);
@@ -322,8 +328,10 @@ impl DataArray<f64> {
 
     /// Concatenate two arrays with the same number of components.
     pub fn concat(&self, other: &DataArray<f64>) -> DataArray<f64> {
-        assert_eq!(self.num_components, other.num_components,
-            "cannot concatenate arrays with different component counts");
+        assert_eq!(
+            self.num_components, other.num_components,
+            "cannot concatenate arrays with different component counts"
+        );
         let mut data = (*self.data).clone();
         data.extend_from_slice(&other.data);
         DataArray::from_vec(self.name(), data, self.num_components)
@@ -340,7 +348,11 @@ impl DataArray<f64> {
         assert!(!components.is_empty());
         let nt = components[0].num_tuples();
         for c in components {
-            assert_eq!(c.num_tuples(), nt, "all components must have same tuple count");
+            assert_eq!(
+                c.num_tuples(),
+                nt,
+                "all components must have same tuple count"
+            );
             assert_eq!(c.num_components(), 1, "all inputs must be 1-component");
         }
         let nc = components.len();
@@ -510,7 +522,13 @@ impl AnyDataArray {
         }
         let mean = sum / nt as f64;
         let variance = sum_sq / nt as f64 - mean * mean;
-        Some(ArrayStatistics { min, max, mean, variance: variance.max(0.0), count: nt })
+        Some(ArrayStatistics {
+            min,
+            max,
+            mean,
+            variance: variance.max(0.0),
+            count: nt,
+        })
     }
 
     /// Compute the range [min, max] of the first component.
@@ -577,8 +595,14 @@ impl std::fmt::Display for AnyDataArray {
             ScalarType::U32 => "UInt32",
             ScalarType::U64 => "UInt64",
         };
-        write!(f, "DataArray<{}>(\"{}\", {} tuples, {} components)",
-            type_name, self.name(), self.num_tuples(), self.num_components())
+        write!(
+            f,
+            "DataArray<{}>(\"{}\", {} tuples, {} components)",
+            type_name,
+            self.name(),
+            self.num_tuples(),
+            self.num_components()
+        )
     }
 }
 
@@ -637,6 +661,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "expected 3 components")]
+    fn push_tuple_rejects_wrong_component_count() {
+        let mut arr = DataArray::<f64>::new("vectors", 3);
+        arr.push_tuple(&[1.0, 2.0]);
+    }
+
+    #[test]
     fn data_array_from_vec() {
         let arr = DataArray::from_vec("coords", vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0], 3);
         assert_eq!(arr.num_tuples(), 2);
@@ -658,7 +689,11 @@ mod tests {
 
     #[test]
     fn statistics_basic() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("test", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1));
+        let arr = AnyDataArray::F64(DataArray::from_vec(
+            "test",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            1,
+        ));
         let stats = arr.statistics().unwrap();
         assert_eq!(stats.min, 1.0);
         assert_eq!(stats.max, 5.0);
@@ -701,7 +736,7 @@ mod tests {
     #[test]
     fn map_tuples_magnitude() {
         let arr = DataArray::from_vec("vec", vec![3.0f64, 4.0, 0.0], 3);
-        let mag = arr.map_tuples("mag", |t| (t[0]*t[0] + t[1]*t[1] + t[2]*t[2]).sqrt());
+        let mag = arr.map_tuples("mag", |t| (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt());
         assert!((mag.tuple(0)[0] - 5.0).abs() < 1e-12);
     }
 
@@ -828,7 +863,11 @@ mod tests {
 
     #[test]
     fn to_f64_vec_flat() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("v", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 3));
+        let arr = AnyDataArray::F64(DataArray::from_vec(
+            "v",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            3,
+        ));
         let v = arr.to_f64_vec_flat();
         assert_eq!(v, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
     }

@@ -38,7 +38,9 @@ pub fn mesh_quality(input: &PolyData) -> MeshQualityStats {
     let mut num_degen = 0usize;
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
 
         let v0 = input.points.get(cell[0] as usize);
         for ti in 1..cell.len() - 1 {
@@ -63,7 +65,11 @@ pub fn mesh_quality(input: &PolyData) -> MeshQualityStats {
             // Simplified: longest / shortest edge ratio
             let longest = e0.max(e1).max(e2);
             let shortest = e0.min(e1).min(e2);
-            let ar = if shortest > 1e-15 { longest / shortest } else { f64::MAX };
+            let ar = if shortest > 1e-15 {
+                longest / shortest
+            } else {
+                f64::MAX
+            };
 
             if area < 1e-15 {
                 num_degen += 1;
@@ -81,10 +87,17 @@ pub fn mesh_quality(input: &PolyData) -> MeshQualityStats {
 
     if num_tris == 0 {
         return MeshQualityStats {
-            min_edge_length: 0.0, max_edge_length: 0.0, mean_edge_length: 0.0,
-            min_area: 0.0, max_area: 0.0, mean_area: 0.0,
-            min_aspect_ratio: 0.0, max_aspect_ratio: 0.0, mean_aspect_ratio: 0.0,
-            num_triangles: 0, num_degenerate: 0,
+            min_edge_length: 0.0,
+            max_edge_length: 0.0,
+            mean_edge_length: 0.0,
+            min_area: 0.0,
+            max_area: 0.0,
+            mean_area: 0.0,
+            min_aspect_ratio: 0.0,
+            max_aspect_ratio: 0.0,
+            mean_aspect_ratio: 0.0,
+            num_triangles: 0,
+            num_degenerate: 0,
         };
     }
 
@@ -125,34 +138,40 @@ pub fn mesh_quality_arrays(input: &PolyData) -> PolyData {
         let e2 = dist(v2, v0);
         let longest = e0.max(e1).max(e2);
         let shortest = e0.min(e1).min(e2);
-        let ar = if shortest > 1e-15 { longest / shortest } else { f64::MAX };
+        let ar = if shortest > 1e-15 {
+            longest / shortest
+        } else {
+            f64::MAX
+        };
 
         aspect_ratios.push(if ar < f64::MAX { ar } else { 0.0 });
         areas.push(triangle_area(v0, v1, v2));
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("AspectRatio", aspect_ratios, 1),
-    ));
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CellArea", areas, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "AspectRatio",
+            aspect_ratios,
+            1,
+        )));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("CellArea", areas, 1)));
     pd
 }
 
 fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    let d = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
-    (d[0]*d[0] + d[1]*d[1] + d[2]*d[2]).sqrt()
+    let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
 fn triangle_area(v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> f64 {
-    let e1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
-    let e2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
-    let cx = e1[1]*e2[2]-e1[2]*e2[1];
-    let cy = e1[2]*e2[0]-e1[0]*e2[2];
-    let cz = e1[0]*e2[1]-e1[1]*e2[0];
-    0.5 * (cx*cx + cy*cy + cz*cz).sqrt()
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let cx = e1[1] * e2[2] - e1[2] * e2[1];
+    let cy = e1[2] * e2[0] - e1[0] * e2[2];
+    let cz = e1[0] * e2[1] - e1[1] * e2[0];
+    0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
 }
 
 #[cfg(test)]

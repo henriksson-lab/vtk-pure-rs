@@ -1,5 +1,5 @@
-use rayon::prelude::*;
 use crate::data::{CellArray, DataArray, PolyData};
+use rayon::prelude::*;
 
 /// Compute normals for a PolyData.
 ///
@@ -10,15 +10,9 @@ pub fn compute_normals(input: &PolyData) -> PolyData {
 
     let cell_normals = compute_cell_normals(&input.points, &input.polys);
 
-    let point_normals = compute_point_normals(
-        input.points.len(),
-        &input.polys,
-        &cell_normals,
-    );
+    let point_normals = compute_point_normals(input.points.len(), &input.polys, &cell_normals);
 
-    output
-        .point_data_mut()
-        .add_array(point_normals.into());
+    output.point_data_mut().add_array(point_normals.into());
     output.point_data_mut().set_active_normals("Normals");
 
     output
@@ -52,11 +46,7 @@ pub fn compute_normals_par(input: &PolyData) -> PolyData {
         .map(|cell| compute_single_cell_normal(&input.points, cell))
         .collect();
 
-    let point_normals = compute_point_normals(
-        input.points.len(),
-        &input.polys,
-        &cell_normals,
-    );
+    let point_normals = compute_point_normals(input.points.len(), &input.polys, &cell_normals);
 
     output.point_data_mut().add_array(point_normals.into());
     output.point_data_mut().set_active_normals("Normals");
@@ -86,10 +76,7 @@ fn compute_single_cell_normal(points: &crate::data::Points<f64>, cell: &[i64]) -
     }
 }
 
-fn compute_cell_normals(
-    points: &crate::data::Points<f64>,
-    polys: &CellArray,
-) -> Vec<[f64; 3]> {
+fn compute_cell_normals(points: &crate::data::Points<f64>, polys: &CellArray) -> Vec<[f64; 3]> {
     let mut normals = Vec::with_capacity(polys.num_cells());
 
     for cell in polys.iter() {

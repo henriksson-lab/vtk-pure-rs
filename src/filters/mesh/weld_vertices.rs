@@ -12,7 +12,11 @@ pub fn weld_vertices(input: &PolyData, tolerance: f64) -> PolyData {
     let tol2: f64 = tolerance * tolerance;
 
     // Spatial hashing for efficient neighbor lookup
-    let inv_tol: f64 = if tolerance > 0.0 { 1.0 / tolerance } else { 1e12 };
+    let inv_tol: f64 = if tolerance > 0.0 {
+        1.0 / tolerance
+    } else {
+        1e12
+    };
 
     let mut new_points: Points<f64> = Points::new();
     let mut point_map: Vec<usize> = vec![0; n];
@@ -75,11 +79,7 @@ pub fn weld_vertices(input: &PolyData, tolerance: f64) -> PolyData {
 }
 
 /// Remap cell indices and discard degenerate cells.
-fn remap_cell_array(
-    cells: &CellArray,
-    point_map: &[usize],
-    min_unique: usize,
-) -> CellArray {
+fn remap_cell_array(cells: &CellArray, point_map: &[usize], min_unique: usize) -> CellArray {
     let mut out = CellArray::new();
     for cell in cells.iter() {
         let mapped: Vec<i64> = cell

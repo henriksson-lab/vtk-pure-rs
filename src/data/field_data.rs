@@ -79,7 +79,11 @@ mod tests {
     #[test]
     fn add_and_get() {
         let mut fd = FieldData::new();
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("temp", vec![1.0, 2.0], 1)));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "temp",
+            vec![1.0, 2.0],
+            1,
+        )));
         assert_eq!(fd.num_arrays(), 1);
         assert!(fd.has_array("temp"));
         assert!(!fd.has_array("other"));
@@ -88,8 +92,16 @@ mod tests {
     #[test]
     fn replace_same_name() {
         let mut fd = FieldData::new();
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("x", vec![1.0], 1)));
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("x", vec![2.0, 3.0], 1)));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0],
+            1,
+        )));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![2.0, 3.0],
+            1,
+        )));
         assert_eq!(fd.num_arrays(), 1);
         assert_eq!(fd.get_array("x").unwrap().num_tuples(), 2);
     }
@@ -97,8 +109,16 @@ mod tests {
     #[test]
     fn remove() {
         let mut fd = FieldData::new();
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("a", vec![1.0], 1)));
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("b", vec![2.0], 1)));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "a",
+            vec![1.0],
+            1,
+        )));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "b",
+            vec![2.0],
+            1,
+        )));
         fd.remove_array("a");
         assert_eq!(fd.num_arrays(), 1);
         assert!(!fd.has_array("a"));
@@ -107,15 +127,27 @@ mod tests {
     #[test]
     fn names() {
         let mut fd = FieldData::new();
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("x", vec![1.0], 1)));
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("y", vec![2.0], 1)));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0],
+            1,
+        )));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "y",
+            vec![2.0],
+            1,
+        )));
         assert_eq!(fd.names(), vec!["x", "y"]);
     }
 
     #[test]
     fn clear() {
         let mut fd = FieldData::new();
-        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec("x", vec![1.0], 1)));
+        fd.add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0],
+            1,
+        )));
         assert!(!fd.is_empty());
         fd.clear();
         assert!(fd.is_empty());

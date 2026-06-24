@@ -107,7 +107,10 @@ impl SsaoPass {
             push_constant_ranges: &[],
         });
 
-        let make_pipeline = |label: &str, entry: &str, format: wgpu::TextureFormat, blend: Option<wgpu::BlendState>| {
+        let make_pipeline = |label: &str,
+                             entry: &str,
+                             format: wgpu::TextureFormat,
+                             blend: Option<wgpu::BlendState>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(&pipeline_layout),
@@ -140,7 +143,8 @@ impl SsaoPass {
 
         // AO and blur write to R8 textures
         let ao_pipeline = make_pipeline("ssao ao", "fs_ssao", wgpu::TextureFormat::R8Unorm, None);
-        let blur_pipeline = make_pipeline("ssao blur", "fs_blur", wgpu::TextureFormat::R8Unorm, None);
+        let blur_pipeline =
+            make_pipeline("ssao blur", "fs_blur", wgpu::TextureFormat::R8Unorm, None);
         // Composite multiplies onto the color target
         let composite_pipeline = make_pipeline(
             "ssao composite",
@@ -177,7 +181,11 @@ impl SsaoPass {
         let make_tex = |label: &str| {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -263,10 +271,22 @@ impl SsaoPass {
                 label: Some("ssao ao bg"),
                 layout: &self.bind_group_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buffer.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(ao_view) }, // dummy, not used in AO pass
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(ao_view),
+                    }, // dummy, not used in AO pass
                 ],
             });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -274,7 +294,10 @@ impl SsaoPass {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: ao_view,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 ..Default::default()
@@ -290,10 +313,22 @@ impl SsaoPass {
                 label: Some("ssao blur bg"),
                 layout: &self.bind_group_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buffer.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(ao_view) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(ao_view),
+                    },
                 ],
             });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -301,7 +336,10 @@ impl SsaoPass {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: blur_view,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::WHITE), store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 ..Default::default()
@@ -317,10 +355,22 @@ impl SsaoPass {
                 label: Some("ssao composite bg"),
                 layout: &self.bind_group_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buffer.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(depth_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(blur_view) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: self.uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(depth_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::TextureView(blur_view),
+                    },
                 ],
             });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -328,7 +378,10 @@ impl SsaoPass {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: color_view,
                     resolve_target: None,
-                    ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
                 })],
                 depth_stencil_attachment: None,
                 ..Default::default()
@@ -358,7 +411,11 @@ mod tests {
         let kernel = SsaoPass::generate_kernel(16);
         // All z components should be positive (hemisphere)
         for i in 0..16 {
-            assert!(kernel[i][2] >= 0.0, "sample {i} z={} should be >= 0", kernel[i][2]);
+            assert!(
+                kernel[i][2] >= 0.0,
+                "sample {i} z={} should be >= 0",
+                kernel[i][2]
+            );
         }
     }
 

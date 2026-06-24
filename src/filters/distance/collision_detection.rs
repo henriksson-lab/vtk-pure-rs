@@ -111,12 +111,20 @@ pub fn collision_detection_marked(
     let mut out_a = mesh_a.clone();
     let mut out_b = mesh_b.clone();
 
-    out_a.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CollisionId", marks_a, 1),
-    ));
-    out_b.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CollisionId", marks_b, 1),
-    ));
+    out_a
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CollisionId",
+            marks_a,
+            1,
+        )));
+    out_b
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CollisionId",
+            marks_b,
+            1,
+        )));
 
     (out_a, out_b, result)
 }
@@ -177,32 +185,32 @@ fn aabb_overlap(a: &Aabb, b: &Aabb) -> bool {
 /// Triangle-triangle intersection test using the separating axis theorem.
 fn tri_tri_intersect(t1: &Triangle, t2: &Triangle) -> bool {
     // Edge vectors
-    let e1 = [
-        sub(t1[1], t1[0]),
-        sub(t1[2], t1[1]),
-        sub(t1[0], t1[2]),
-    ];
-    let e2 = [
-        sub(t2[1], t2[0]),
-        sub(t2[2], t2[1]),
-        sub(t2[0], t2[2]),
-    ];
+    let e1 = [sub(t1[1], t1[0]), sub(t1[2], t1[1]), sub(t1[0], t1[2])];
+    let e2 = [sub(t2[1], t2[0]), sub(t2[2], t2[1]), sub(t2[0], t2[2])];
 
     // Face normals
     let n1 = cross(e1[0], sub(t1[2], t1[0]));
     let n2 = cross(e2[0], sub(t2[2], t2[0]));
 
     // Test face normals as separating axes
-    if separating_axis(t1, t2, n1) { return false; }
-    if separating_axis(t1, t2, n2) { return false; }
+    if separating_axis(t1, t2, n1) {
+        return false;
+    }
+    if separating_axis(t1, t2, n2) {
+        return false;
+    }
 
     // Test cross products of edge pairs
     for ea in &e1 {
         for eb in &e2 {
             let axis = cross(*ea, *eb);
             let len_sq = axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2];
-            if len_sq < 1e-20 { continue; } // parallel edges
-            if separating_axis(t1, t2, axis) { return false; }
+            if len_sq < 1e-20 {
+                continue;
+            } // parallel edges
+            if separating_axis(t1, t2, axis) {
+                return false;
+            }
         }
     }
 
@@ -308,8 +316,12 @@ mod tests {
         // Two triangles in mesh A, one overlaps with B
         let a = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-                [10.0, 0.0, 0.0], [11.0, 0.0, 0.0], [10.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [11.0, 0.0, 0.0],
+                [10.0, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );

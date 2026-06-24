@@ -66,9 +66,12 @@ pub fn vertex_curvature_gaussian(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GaussianCurvature", curvature, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GaussianCurvature",
+            curvature,
+            1,
+        )));
     pd
 }
 
@@ -150,11 +153,7 @@ mod tests {
     #[test]
     fn has_correct_array_length() {
         let pd = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0i64, 1, 2]],
         );
         let result = vertex_curvature_gaussian(&pd);

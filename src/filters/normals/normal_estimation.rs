@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
+use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 
 /// Estimate normals for an unstructured point cloud.
 ///
@@ -68,9 +68,9 @@ pub fn normal_estimation(input: &PolyData, k: usize) -> PolyData {
     // Orient normals consistently: start from point with max Z,
     // orient it upward, then propagate via nearest neighbors
     let mut oriented = vec![false; n];
-    let start = (0..n).max_by(|&a, &b| {
-        pts[a][2].partial_cmp(&pts[b][2]).unwrap()
-    }).unwrap_or(0);
+    let start = (0..n)
+        .max_by(|&a, &b| pts[a][2].partial_cmp(&pts[b][2]).unwrap())
+        .unwrap_or(0);
 
     // Orient start normal to point "up" (positive Z)
     if normals_arr[start][2] < 0.0 {
@@ -99,9 +99,8 @@ pub fn normal_estimation(input: &PolyData, k: usize) -> PolyData {
 
     let mut pd = input.clone();
     let flat: Vec<f64> = normals_arr.iter().flat_map(|n| n.iter().copied()).collect();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Normals", flat, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Normals", flat, 3)));
     pd.point_data_mut().set_active_normals("Normals");
     pd
 }
@@ -141,11 +140,15 @@ fn smallest_eigenvector(m: &[[f64; 3]; 3]) -> [f64; 3] {
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 fn negate(v: [f64; 3]) -> [f64; 3] {
@@ -195,11 +198,8 @@ mod tests {
             let phi = PI * i as f64 / 19.0;
             for j in 0..20 {
                 let theta = 2.0 * PI * j as f64 / 20.0;
-                pd.points.push([
-                    phi.sin() * theta.cos(),
-                    phi.sin() * theta.sin(),
-                    phi.cos(),
-                ]);
+                pd.points
+                    .push([phi.sin() * theta.cos(), phi.sin() * theta.sin(), phi.cos()]);
             }
         }
 
@@ -213,7 +213,7 @@ mod tests {
             let p = pd.points.get(i);
             arr.tuple_as_f64(i, &mut buf);
             // dot(normal, position) should be close to ±1 for a unit sphere
-            let d = (p[0]*buf[0] + p[1]*buf[1] + p[2]*buf[2]).abs();
+            let d = (p[0] * buf[0] + p[1] * buf[1] + p[2] * buf[2]).abs();
             dot_sum += d;
         }
         let avg_dot = dot_sum / pd.points.len() as f64;

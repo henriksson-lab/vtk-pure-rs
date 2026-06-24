@@ -40,67 +40,95 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
 
     let actual_tris = indices.len() / 3;
 
-    let shader = ctx.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("normals shader"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("compute_normals.wgsl").into()),
-    });
+    let shader = ctx
+        .device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("normals shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("compute_normals.wgsl").into()),
+        });
 
     let pos_buf = ctx.create_storage_buffer(&positions);
     let idx_buf = {
         use wgpu::util::DeviceExt;
-        ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("indices"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::STORAGE,
-        })
+        ctx.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("indices"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::STORAGE,
+            })
     };
     let normals_buf = ctx.create_output_buffer((actual_tris * 3 * 4) as u64);
     let params = [actual_tris as f32, 0.0, 0.0, 0.0];
     let params_buf = {
         use wgpu::util::DeviceExt;
-        ctx.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("params"),
-            contents: bytemuck::cast_slice(&params),
-            usage: wgpu::BufferUsages::UNIFORM,
-        })
+        ctx.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("params"),
+                contents: bytemuck::cast_slice(&params),
+                usage: wgpu::BufferUsages::UNIFORM,
+            })
     };
 
-    let bgl = ctx.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: None,
-        entries: &[
-            bgl_entry(0, true), bgl_entry(1, true), bgl_entry(2, false),
-            wgpu::BindGroupLayoutEntry {
-                binding: 3,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false, min_binding_size: None,
+    let bgl = ctx
+        .device
+        .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: None,
+            entries: &[
+                bgl_entry(0, true),
+                bgl_entry(1, true),
+                bgl_entry(2, false),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            },
-        ],
-    });
+            ],
+        });
 
-    let pipeline_layout = ctx.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: None, bind_group_layouts: &[&bgl], push_constant_ranges: &[],
-    });
+    let pipeline_layout = ctx
+        .device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: None,
+            bind_group_layouts: &[&bgl],
+            push_constant_ranges: &[],
+        });
 
-    let pipeline = ctx.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("normals pipeline"),
-        layout: Some(&pipeline_layout),
-        module: &shader,
-        entry_point: Some("main"),
-        compilation_options: Default::default(),
-        cache: None,
-    });
+    let pipeline = ctx
+        .device
+        .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("normals pipeline"),
+            layout: Some(&pipeline_layout),
+            module: &shader,
+            entry_point: Some("main"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
     let bind_group = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: None, layout: &bgl,
+        label: None,
+        layout: &bgl,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: pos_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: idx_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: normals_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: params_buf.as_entire_binding() },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: pos_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: idx_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: normals_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: params_buf.as_entire_binding(),
+            },
         ],
     });
 
@@ -110,9 +138,13 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
     let normals_f64: Vec<f64> = normals_f32.iter().map(|&v| v as f64).collect();
 
     let mut result = input.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Normals", normals_f64, 3),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Normals",
+            normals_f64,
+            3,
+        )));
     result
 }
 
@@ -122,7 +154,8 @@ fn bgl_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
         visibility: wgpu::ShaderStages::COMPUTE,
         ty: wgpu::BindingType::Buffer {
             ty: wgpu::BufferBindingType::Storage { read_only },
-            has_dynamic_offset: false, min_binding_size: None,
+            has_dynamic_offset: false,
+            min_binding_size: None,
         },
         count: None,
     }
@@ -147,7 +180,10 @@ mod tests {
         let mut n = [0.0f64; 3];
         normals.tuple_as_f64(0, &mut n);
         // Normal should be (0, 0, 1) for XY plane triangle
-        assert!((n[2] - 1.0).abs() < 1e-4 || (n[2] + 1.0).abs() < 1e-4,
-            "normal z should be ±1, got {:?}", n);
+        assert!(
+            (n[2] - 1.0).abs() < 1e-4 || (n[2] + 1.0).abs() < 1e-4,
+            "normal z should be ±1, got {:?}",
+            n
+        );
     }
 }

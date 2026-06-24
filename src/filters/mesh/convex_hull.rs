@@ -5,13 +5,21 @@ use crate::data::{CellArray, Points, PolyData};
 /// Compute 2D convex hull (in XY plane) using Graham scan.
 pub fn convex_hull_2d(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
-    if n < 3 { return mesh.clone(); }
+    if n < 3 {
+        return mesh.clone();
+    }
 
     let mut points: Vec<(usize, [f64; 3])> = (0..n).map(|i| (i, mesh.points.get(i))).collect();
     // Find bottom-left point
     points.sort_by(|a, b| {
-        a.1[1].partial_cmp(&b.1[1]).unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.1[0].partial_cmp(&b.1[0]).unwrap_or(std::cmp::Ordering::Equal))
+        a.1[1]
+            .partial_cmp(&b.1[1])
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(
+                a.1[0]
+                    .partial_cmp(&b.1[0])
+                    .unwrap_or(std::cmp::Ordering::Equal),
+            )
     });
     let pivot = points[0].1;
 
@@ -27,27 +35,39 @@ pub fn convex_hull_2d(mesh: &PolyData) -> PolyData {
         while hull.len() >= 2 {
             let a = mesh.points.get(hull[hull.len() - 2]);
             let b = mesh.points.get(hull[hull.len() - 1]);
-            let cross = (b[0]-a[0])*(p[1]-a[1]) - (b[1]-a[1])*(p[0]-a[0]);
-            if cross <= 0.0 { hull.pop(); } else { break; }
+            let cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+            if cross <= 0.0 {
+                hull.pop();
+            } else {
+                break;
+            }
         }
         hull.push(idx);
     }
 
     let mut pts = Points::<f64>::new();
-    let ids: Vec<i64> = hull.iter().enumerate().map(|(i, &v)| {
-        pts.push(mesh.points.get(v));
-        i as i64
-    }).collect();
+    let ids: Vec<i64> = hull
+        .iter()
+        .enumerate()
+        .map(|(i, &v)| {
+            pts.push(mesh.points.get(v));
+            i as i64
+        })
+        .collect();
     let mut polys = CellArray::new();
     polys.push_cell(&ids);
     let mut result = PolyData::new();
-    result.points = pts; result.polys = polys; result
+    result.points = pts;
+    result.polys = polys;
+    result
 }
 
 /// Extract convex hull as wireframe (lines).
 pub fn convex_hull_2d_wireframe(mesh: &PolyData) -> PolyData {
     let hull = convex_hull_2d(mesh);
-    if hull.polys.num_cells() == 0 { return hull; }
+    if hull.polys.num_cells() == 0 {
+        return hull;
+    }
     let cell: Vec<i64> = hull.polys.iter().next().unwrap().to_vec();
     let n = cell.len();
     let mut lines = CellArray::new();
@@ -63,7 +83,9 @@ pub fn convex_hull_2d_wireframe(mesh: &PolyData) -> PolyData {
 /// Compute convex hull area (2D, XY plane).
 pub fn convex_hull_area(mesh: &PolyData) -> f64 {
     let hull = convex_hull_2d(mesh);
-    if hull.polys.num_cells() == 0 { return 0.0; }
+    if hull.polys.num_cells() == 0 {
+        return 0.0;
+    }
     let cell: Vec<i64> = hull.polys.iter().next().unwrap().to_vec();
     let n = cell.len();
     let mut area = 0.0;

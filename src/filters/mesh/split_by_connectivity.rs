@@ -45,10 +45,7 @@ pub fn split_by_connectivity(input: &PolyData) -> Vec<PolyData> {
             continue;
         }
         let root = find(&mut parent, cell[0] as usize);
-        component_cells
-            .entry(root)
-            .or_default()
-            .push(cell.to_vec());
+        component_cells.entry(root).or_default().push(cell.to_vec());
     }
 
     // Sort by size (largest first)
@@ -62,8 +59,7 @@ pub fn split_by_connectivity(input: &PolyData) -> Vec<PolyData> {
 }
 
 fn build_component(input: &PolyData, cells: &[Vec<i64>]) -> PolyData {
-    let mut point_map: std::collections::HashMap<usize, usize> =
-        std::collections::HashMap::new();
+    let mut point_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     let mut new_points: Points<f64> = Points::new();
     let mut polys = CellArray::new();
 

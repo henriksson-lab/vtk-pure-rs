@@ -8,11 +8,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Adds a 1-component "AmbientOcclusion" array to point data.
 ///
 /// Uses a simple hash-based PRNG for reproducibility.
-pub fn compute_ambient_occlusion(
-    input: &PolyData,
-    num_rays: usize,
-    max_distance: f64,
-) -> PolyData {
+pub fn compute_ambient_occlusion(input: &PolyData, num_rays: usize, max_distance: f64) -> PolyData {
     let n: usize = input.points.len();
     if n == 0 {
         return input.clone();
@@ -73,9 +69,12 @@ pub fn compute_ambient_occlusion(
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("AmbientOcclusion", ao_values, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "AmbientOcclusion",
+            ao_values,
+            1,
+        )));
     pd
 }
 
@@ -248,7 +247,11 @@ mod tests {
         let mut val = [0.0f64];
         for i in 0..3 {
             arr.tuple_as_f64(i, &mut val);
-            assert!(val[0] < 1e-10, "expected no occlusion for single triangle, got {}", val[0]);
+            assert!(
+                val[0] < 1e-10,
+                "expected no occlusion for single triangle, got {}",
+                val[0]
+            );
         }
     }
 
@@ -257,14 +260,24 @@ mod tests {
         // Build a simple box-like shape to get some occlusion
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
             ],
             vec![
-                [0, 1, 2], [0, 2, 3], // bottom
-                [4, 6, 5], [4, 7, 6], // top
-                [0, 4, 5], [0, 5, 1], // front
-                [2, 6, 7], [2, 7, 3], // back
+                [0, 1, 2],
+                [0, 2, 3], // bottom
+                [4, 6, 5],
+                [4, 7, 6], // top
+                [0, 4, 5],
+                [0, 5, 1], // front
+                [2, 6, 7],
+                [2, 7, 3], // back
             ],
         );
         let result = compute_ambient_occlusion(&pd, 16, 10.0);
@@ -273,7 +286,11 @@ mod tests {
         let mut val = [0.0f64];
         for i in 0..8 {
             arr.tuple_as_f64(i, &mut val);
-            assert!(val[0] >= 0.0 && val[0] <= 1.0, "AO out of range: {}", val[0]);
+            assert!(
+                val[0] >= 0.0 && val[0] <= 1.0,
+                "AO out of range: {}",
+                val[0]
+            );
         }
     }
 

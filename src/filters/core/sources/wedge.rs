@@ -6,9 +6,13 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn wedge(base: [[f64; 3]; 3], height: f64) -> PolyData {
     let mut pts = Points::<f64>::new();
     // Bottom face
-    for p in &base { pts.push(*p); }
+    for p in &base {
+        pts.push(*p);
+    }
     // Top face (offset along Z)
-    for p in &base { pts.push([p[0], p[1], p[2] + height]); }
+    for p in &base {
+        pts.push([p[0], p[1], p[2] + height]);
+    }
 
     let mut polys = CellArray::new();
     // Bottom face (reversed winding for outward normal)
@@ -31,7 +35,11 @@ pub fn regular_wedge(size: f64, height: f64) -> PolyData {
     let s = size * 0.5;
     let h = s * 3.0f64.sqrt() / 2.0;
     wedge(
-        [[-s, -h / 3.0, -height * 0.5], [s, -h / 3.0, -height * 0.5], [0.0, 2.0 * h / 3.0, -height * 0.5]],
+        [
+            [-s, -h / 3.0, -height * 0.5],
+            [s, -h / 3.0, -height * 0.5],
+            [0.0, 2.0 * h / 3.0, -height * 0.5],
+        ],
         height,
     )
 }
@@ -41,7 +49,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_wedge() {
-        let w = wedge([[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], 2.0);
+        let w = wedge([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]], 2.0);
         assert_eq!(w.points.len(), 6);
         assert_eq!(w.polys.num_cells(), 5); // 2 caps + 3 sides
     }

@@ -6,11 +6,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// The scalar range is mapped linearly onto the lookup table indices.
 ///
 /// Returns a new ImageData with a 3-component "Colors" array (f64 RGB).
-pub fn image_map_to_colors(
-    input: &ImageData,
-    scalars: &str,
-    lut: &[[f64; 3]],
-) -> ImageData {
+pub fn image_map_to_colors(input: &ImageData, scalars: &str, lut: &[[f64; 3]]) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -59,9 +55,8 @@ pub fn image_map_to_colors(
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Colors", colors, 3),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Colors", colors, 3)));
     img
 }
 
@@ -72,9 +67,12 @@ mod tests {
     #[test]
     fn map_linear_ramp() {
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 0.5, 1.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 0.5, 1.0],
+                1,
+            )));
 
         let lut = vec![
             [0.0, 0.0, 0.0], // black at min
@@ -102,9 +100,12 @@ mod tests {
     #[test]
     fn constant_scalar() {
         let mut img = ImageData::with_dimensions(2, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![5.0, 5.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![5.0, 5.0],
+                1,
+            )));
 
         let lut = vec![[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
         let result = image_map_to_colors(&img, "v", &lut);

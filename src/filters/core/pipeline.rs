@@ -133,22 +133,34 @@ impl Pipeline {
 
     /// Add a normals computation stage.
     pub fn with_normals(self) -> Self {
-        self.then("normals", Box::new(|pd| crate::filters::core::normals::compute_normals(pd)))
+        self.then(
+            "normals",
+            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+        )
     }
 
     /// Add a triangulation stage.
     pub fn with_triangulate(self) -> Self {
-        self.then("triangulate", Box::new(|pd| crate::filters::core::triangulate::triangulate(pd)))
+        self.then(
+            "triangulate",
+            Box::new(|pd| crate::filters::core::triangulate::triangulate(pd)),
+        )
     }
 
     /// Add an elevation stage along the Z axis.
     pub fn with_elevation_z(self) -> Self {
-        self.then("elevation", Box::new(|pd| crate::filters::core::elevation::elevation_z(pd)))
+        self.then(
+            "elevation",
+            Box::new(|pd| crate::filters::core::elevation::elevation_z(pd)),
+        )
     }
 
     /// Add a decimation stage.
     pub fn with_decimate(self, target_reduction: f64) -> Self {
-        self.then("decimate", Box::new(move |pd| crate::filters::core::decimate::decimate(pd, target_reduction)))
+        self.then(
+            "decimate",
+            Box::new(move |pd| crate::filters::core::decimate::decimate(pd, target_reduction)),
+        )
     }
 
     /// Get list of stage names.
@@ -193,9 +205,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let mut pipe = Pipeline::new(pd);
-        pipe.add("normals", Box::new(|pd| {
-            crate::filters::core::normals::compute_normals(pd)
-        }));
+        pipe.add(
+            "normals",
+            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+        );
 
         let result = pipe.output();
         assert!(result.point_data().normals().is_some());
@@ -211,10 +224,13 @@ mod tests {
 
         let call_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let cc = call_count.clone();
-        pipe.add("counter", Box::new(move |pd| {
-            cc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            pd.clone()
-        }));
+        pipe.add(
+            "counter",
+            Box::new(move |pd| {
+                cc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                pd.clone()
+            }),
+        );
 
         // First call: evaluates
         pipe.output();
@@ -237,7 +253,12 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let pd2 = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [2.0, 2.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [2.0, 2.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
 
@@ -257,7 +278,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let mut pipe = Pipeline::new(pd);
-        pipe.add("normals", Box::new(|pd| crate::filters::core::normals::compute_normals(pd)));
+        pipe.add(
+            "normals",
+            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+        );
         pipe.add("copy", Box::new(|pd| pd.clone()));
 
         assert_eq!(pipe.num_stages(), 2);
@@ -272,7 +296,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let mut pipe = Pipeline::new(pd);
-        pipe.add("normals", Box::new(|pd| crate::filters::core::normals::compute_normals(pd)));
+        pipe.add(
+            "normals",
+            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+        );
         pipe.add("copy", Box::new(|pd| pd.clone()));
 
         let normals_out = pipe.stage_output("normals").unwrap();
@@ -285,9 +312,7 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let mut pipe = Pipeline::new(pd)
-            .with_normals()
-            .with_elevation_z();
+        let mut pipe = Pipeline::new(pd).with_normals().with_elevation_z();
 
         assert_eq!(pipe.num_stages(), 2);
         assert_eq!(pipe.stage_names(), vec!["normals", "elevation"]);
@@ -306,9 +331,10 @@ mod tests {
         pipe.output(); // populate cache
 
         assert!(!pipe.is_dirty());
-        pipe.replace_filter("id", Box::new(|pd| {
-            crate::filters::core::normals::compute_normals(pd)
-        }));
+        pipe.replace_filter(
+            "id",
+            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+        );
         assert!(pipe.is_dirty());
         let out = pipe.output();
         assert!(out.point_data().normals().is_some());

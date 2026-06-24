@@ -6,14 +6,16 @@ use crate::data::PolyData;
 pub fn signed_volume(mesh: &PolyData) -> f64 {
     let mut vol = 0.0;
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
             let c = mesh.points.get(cell[i + 1] as usize);
             vol += a[0] * (b[1] * c[2] - b[2] * c[1])
-                 + a[1] * (b[2] * c[0] - b[0] * c[2])
-                 + a[2] * (b[0] * c[1] - b[1] * c[0]);
+                + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
         }
     }
     vol / 6.0
@@ -36,21 +38,25 @@ pub fn volume_centroid(mesh: &PolyData) -> [f64; 3] {
     let mut cz = 0.0;
     let mut vol = 0.0;
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
             let c = mesh.points.get(cell[i + 1] as usize);
             let v = a[0] * (b[1] * c[2] - b[2] * c[1])
-                  + a[1] * (b[2] * c[0] - b[0] * c[2])
-                  + a[2] * (b[0] * c[1] - b[1] * c[0]);
+                + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
             vol += v;
             cx += (a[0] + b[0] + c[0]) * v;
             cy += (a[1] + b[1] + c[1]) * v;
             cz += (a[2] + b[2] + c[2]) * v;
         }
     }
-    if vol.abs() < 1e-30 { return [0.0, 0.0, 0.0]; }
+    if vol.abs() < 1e-30 {
+        return [0.0, 0.0, 0.0];
+    }
     [cx / (4.0 * vol), cy / (4.0 * vol), cz / (4.0 * vol)]
 }
 
@@ -60,17 +66,27 @@ mod tests {
     #[test]
     fn test_tetra_volume() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],
-            vec![[0,2,1],[0,1,3],[1,2,3],[0,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
         );
         let v = volume(&mesh);
-        assert!((v - 1.0/6.0).abs() < 0.05, "volume = {v}");
+        assert!((v - 1.0 / 6.0).abs() < 0.05, "volume = {v}");
     }
     #[test]
     fn test_centroid() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]],
-            vec![[0,2,1],[0,1,3],[1,2,3],[0,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
         );
         let ctr = volume_centroid(&mesh);
         assert!(ctr[0] > -0.5 && ctr[0] < 0.5);

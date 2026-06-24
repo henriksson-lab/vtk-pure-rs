@@ -11,23 +11,35 @@ pub fn sextant(radius: f64) -> PolyData {
         let angle = -std::f64::consts::PI / 6.0 + std::f64::consts::PI / 3.0 * j as f64 / na as f64;
         pts.push([radius * angle.cos(), 0.0, radius * angle.sin()]);
     }
-    for j in 0..na { lines.push_cell(&[(arc_base+j) as i64, (arc_base+j+1) as i64]); }
+    for j in 0..na {
+        lines.push_cell(&[(arc_base + j) as i64, (arc_base + j + 1) as i64]);
+    }
     // Frame arms from center to arc endpoints
-    let center = pts.len(); pts.push([0.0, 0.0, 0.0]);
+    let center = pts.len();
+    pts.push([0.0, 0.0, 0.0]);
     lines.push_cell(&[center as i64, arc_base as i64]);
     lines.push_cell(&[center as i64, (arc_base + na) as i64]);
     // Index arm (movable arm)
     let idx_tip = pts.len();
     let mid_angle = std::f64::consts::PI / 6.0;
-    pts.push([radius * 0.95 * mid_angle.cos(), 0.0, radius * 0.95 * mid_angle.sin()]);
+    pts.push([
+        radius * 0.95 * mid_angle.cos(),
+        0.0,
+        radius * 0.95 * mid_angle.sin(),
+    ]);
     lines.push_cell(&[center as i64, idx_tip as i64]);
     // Telescope (short line from center)
-    let tel = pts.len(); pts.push([-radius * 0.4, 0.0, radius * 0.3]);
+    let tel = pts.len();
+    pts.push([-radius * 0.4, 0.0, radius * 0.3]);
     lines.push_cell(&[center as i64, tel as i64]);
     // Handle
-    let handle = pts.len(); pts.push([0.0, 0.0, -radius * 0.3]);
+    let handle = pts.len();
+    pts.push([0.0, 0.0, -radius * 0.3]);
     lines.push_cell(&[center as i64, handle as i64]);
-    let mut m = PolyData::new(); m.points = pts; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

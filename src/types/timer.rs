@@ -19,12 +19,18 @@ pub struct Timer {
 impl Timer {
     /// Start a new timer.
     pub fn start() -> Self {
-        Self { start: Instant::now(), label: String::new() }
+        Self {
+            start: Instant::now(),
+            label: String::new(),
+        }
     }
 
     /// Start a named timer.
     pub fn named(label: impl Into<String>) -> Self {
-        Self { start: Instant::now(), label: label.into() }
+        Self {
+            start: Instant::now(),
+            label: label.into(),
+        }
     }
 
     /// Elapsed time in seconds.

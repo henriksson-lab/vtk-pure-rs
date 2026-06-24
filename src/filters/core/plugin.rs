@@ -3,9 +3,9 @@
 //! Uses a simple in-process registry pattern (no dynamic loading) so that
 //! users can register custom filter and reader functions at runtime.
 
+use crate::data::PolyData;
 use std::collections::HashMap;
 use std::path::Path;
-use crate::data::PolyData;
 
 /// Registry of named filter functions that transform a `PolyData`.
 pub struct FilterRegistry {
@@ -15,7 +15,9 @@ pub struct FilterRegistry {
 impl FilterRegistry {
     /// Create an empty registry.
     pub fn new() -> Self {
-        Self { filters: HashMap::new() }
+        Self {
+            filters: HashMap::new(),
+        }
     }
 
     /// Register a filter function under the given name.
@@ -57,7 +59,9 @@ pub struct ReaderRegistry {
 impl ReaderRegistry {
     /// Create an empty reader registry.
     pub fn new() -> Self {
-        Self { readers: HashMap::new() }
+        Self {
+            readers: HashMap::new(),
+        }
     }
 
     /// Register a reader for files with the given extension (without the dot).
@@ -76,7 +80,9 @@ impl ReaderRegistry {
             .and_then(|e| e.to_str())
             .map(|s| s.to_lowercase())
             .ok_or_else(|| "no file extension".to_string())?;
-        let reader = self.readers.get(&ext)
+        let reader = self
+            .readers
+            .get(&ext)
             .ok_or_else(|| format!("no reader registered for extension '{ext}'"))?;
         reader(path)
     }

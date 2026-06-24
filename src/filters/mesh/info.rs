@@ -36,8 +36,9 @@ pub fn count_boundary_loops(input: &PolyData) -> usize {
     let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a = cell[i]; let b = cell[(i+1)%cell.len()];
-            let key = if a < b { (a,b) } else { (b,a) };
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
+            let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
         }
     }
@@ -51,14 +52,18 @@ pub fn count_boundary_loops(input: &PolyData) -> usize {
         }
     }
 
-    if boundary.is_empty() { return 0; }
+    if boundary.is_empty() {
+        return 0;
+    }
 
     // Count connected loops
     let mut visited: HashSet<i64> = HashSet::new();
     let mut loops = 0;
 
     for &start in boundary.keys() {
-        if visited.contains(&start) { continue; }
+        if visited.contains(&start) {
+            continue;
+        }
         let mut cur = start;
         loop {
             visited.insert(cur);

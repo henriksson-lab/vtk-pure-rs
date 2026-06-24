@@ -1,16 +1,12 @@
-use crate::data::{AnyDataArray, DataArray, DataSet, ImageData};
 use crate::data::PolyData;
+use crate::data::{AnyDataArray, DataArray, DataSet, ImageData};
 
 /// Convert a PolyData surface to a binary voxel volume (ImageData).
 ///
 /// Produces an ImageData where each voxel is 1.0 if its center is within
 /// `max_distance` of any triangle in the input, and 0.0 otherwise.
 /// This is a simple distance-based voxelization.
-pub fn voxel_modeller(
-    input: &PolyData,
-    dimensions: [usize; 3],
-    max_distance: f64,
-) -> ImageData {
+pub fn voxel_modeller(input: &PolyData, dimensions: [usize; 3], max_distance: f64) -> ImageData {
     let bb = input.points.bounds();
     let margin = max_distance * 2.0;
     let origin = [bb.x_min - margin, bb.y_min - margin, bb.z_min - margin];
@@ -107,7 +103,11 @@ fn point_triangle_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f
     let va = d3 * d6 - d5 * d4;
     if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
         let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-        let proj = [b[0] + w * (c[0] - b[0]), b[1] + w * (c[1] - b[1]), b[2] + w * (c[2] - b[2])];
+        let proj = [
+            b[0] + w * (c[0] - b[0]),
+            b[1] + w * (c[1] - b[1]),
+            b[2] + w * (c[2] - b[2]),
+        ];
         return dist2(p, proj);
     }
 
@@ -122,9 +122,16 @@ fn point_triangle_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f
     dist2(p, proj)
 }
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
-fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 { let d = sub(a, b); dot(d, d) }
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let d = sub(a, b);
+    dot(d, d)
+}
 
 #[cfg(test)]
 mod tests {
@@ -145,7 +152,10 @@ mod tests {
         let mut buf = [0.0f64];
         for i in 0..s.num_tuples() {
             s.tuple_as_f64(i, &mut buf);
-            if buf[0] > 0.5 { has_ones = true; break; }
+            if buf[0] > 0.5 {
+                has_ones = true;
+                break;
+            }
         }
         assert!(has_ones);
     }

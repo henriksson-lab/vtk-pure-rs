@@ -76,7 +76,7 @@ pub fn sector(params: &SectorParams) -> PolyData {
 
         // Quad strip between inner and outer arcs
         for i in 0..n {
-            let i0 = (i * 2) as i64;     // inner current
+            let i0 = (i * 2) as i64; // inner current
             let o0 = (i * 2 + 1) as i64; // outer current
             let i1 = (i * 2 + 2) as i64; // inner next
             let o1 = (i * 2 + 3) as i64; // outer next
@@ -137,7 +137,10 @@ mod tests {
 
     #[test]
     fn custom_z() {
-        let s = sector(&SectorParams { z: 5.0, ..Default::default() });
+        let s = sector(&SectorParams {
+            z: 5.0,
+            ..Default::default()
+        });
         let p = s.points.get(0);
         assert_eq!(p[2], 5.0);
     }

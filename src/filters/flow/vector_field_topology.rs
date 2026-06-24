@@ -3,7 +3,7 @@
 //! Detects critical points (sources, sinks, saddles, centers) in 2D/3D vector
 //! fields defined on ImageData. Analogous to VTK's vtkVectorFieldTopology.
 
-use crate::data::{AnyDataArray, DataArray, ImageData, PolyData, Points};
+use crate::data::{AnyDataArray, DataArray, ImageData, Points, PolyData};
 
 /// Type of critical point in a vector field.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -75,8 +75,18 @@ pub fn find_critical_points_2d(field: &ImageData) -> Vec<CriticalPoint> {
             let v11 = get_vec2(vectors, i11);
 
             // Check sign changes in both components
-            let signs_x = [v00[0].signum(), v10[0].signum(), v01[0].signum(), v11[0].signum()];
-            let signs_y = [v00[1].signum(), v10[1].signum(), v01[1].signum(), v11[1].signum()];
+            let signs_x = [
+                v00[0].signum(),
+                v10[0].signum(),
+                v01[0].signum(),
+                v11[0].signum(),
+            ];
+            let signs_y = [
+                v00[1].signum(),
+                v10[1].signum(),
+                v01[1].signum(),
+                v11[1].signum(),
+            ];
 
             let x_changes = signs_x.iter().any(|&s| s != signs_x[0]);
             let y_changes = signs_y.iter().any(|&s| s != signs_y[0]);
@@ -104,9 +114,13 @@ pub fn find_critical_points_2d(field: &ImageData) -> Vec<CriticalPoint> {
             let point_type = if discriminant >= -1e-10 && discriminant <= 1e-10 {
                 // Repeated real eigenvalues: both equal trace/2
                 let lambda = trace / 2.0;
-                if lambda > 1e-10 { CriticalPointType::Source }
-                else if lambda < -1e-10 { CriticalPointType::Sink }
-                else { CriticalPointType::Center }
+                if lambda > 1e-10 {
+                    CriticalPointType::Source
+                } else if lambda < -1e-10 {
+                    CriticalPointType::Sink
+                } else {
+                    CriticalPointType::Center
+                }
             } else if discriminant > 0.0 {
                 let sqrt_d = discriminant.sqrt();
                 let l1 = (trace + sqrt_d) / 2.0;
@@ -167,21 +181,38 @@ pub fn critical_points_to_poly_data(points: &[CriticalPoint]) -> PolyData {
             CriticalPointType::Center => 3.0,
             CriticalPointType::Degenerate => 4.0,
         });
-        ev1.push(if !cp.eigenvalues.is_empty() { cp.eigenvalues[0] } else { 0.0 });
-        ev2.push(if cp.eigenvalues.len() > 1 { cp.eigenvalues[1] } else { 0.0 });
+        ev1.push(if !cp.eigenvalues.is_empty() {
+            cp.eigenvalues[0]
+        } else {
+            0.0
+        });
+        ev2.push(if cp.eigenvalues.len() > 1 {
+            cp.eigenvalues[1]
+        } else {
+            0.0
+        });
     }
 
     let mut mesh = PolyData::new();
     mesh.points = pts;
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CriticalPointType", types, 1),
-    ));
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Eigenvalue1", ev1, 1),
-    ));
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Eigenvalue2", ev2, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CriticalPointType",
+            types,
+            1,
+        )));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Eigenvalue1",
+            ev1,
+            1,
+        )));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Eigenvalue2",
+            ev2,
+            1,
+        )));
     mesh
 }
 
@@ -235,9 +266,13 @@ pub fn compute_vorticity(field: &ImageData) -> ImageData {
     }
 
     let mut result = field.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Vorticity", vorticity, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Vorticity",
+            vorticity,
+            1,
+        )));
     result
 }
 
@@ -278,12 +313,19 @@ mod tests {
         }
 
         let mut field = ImageData::new();
-        field.set_extent([0, dims[0] as i64 - 1, 0, dims[1] as i64 - 1, 0, dims[2] as i64 - 1]);
+        field.set_extent([
+            0,
+            dims[0] as i64 - 1,
+            0,
+            dims[1] as i64 - 1,
+            0,
+            dims[2] as i64 - 1,
+        ]);
         field.set_spacing(spacing);
         field.set_origin(origin);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vdata, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vdata, 3)));
         field.point_data_mut().set_active_vectors("velocity");
         field
     }
@@ -294,9 +336,14 @@ mod tests {
         let cps = find_critical_points_2d(&field);
         assert!(!cps.is_empty());
         // Should find a source near (1.0, 1.0)
-        let source = cps.iter().find(|cp| cp.point_type == CriticalPointType::Source);
-        assert!(source.is_some(), "expected a source point, found: {:?}",
-            cps.iter().map(|cp| &cp.point_type).collect::<Vec<_>>());
+        let source = cps
+            .iter()
+            .find(|cp| cp.point_type == CriticalPointType::Source);
+        assert!(
+            source.is_some(),
+            "expected a source point, found: {:?}",
+            cps.iter().map(|cp| &cp.point_type).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -319,16 +366,25 @@ mod tests {
         }
 
         let mut field = ImageData::new();
-        field.set_extent([0, dims[0] as i64 - 1, 0, dims[1] as i64 - 1, 0, dims[2] as i64 - 1]);
+        field.set_extent([
+            0,
+            dims[0] as i64 - 1,
+            0,
+            dims[1] as i64 - 1,
+            0,
+            dims[2] as i64 - 1,
+        ]);
         field.set_spacing(spacing);
         field.set_origin(origin);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vdata, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vdata, 3)));
         field.point_data_mut().set_active_vectors("velocity");
 
         let cps = find_critical_points_2d(&field);
-        let sink = cps.iter().find(|cp| cp.point_type == CriticalPointType::Sink);
+        let sink = cps
+            .iter()
+            .find(|cp| cp.point_type == CriticalPointType::Sink);
         assert!(sink.is_some());
     }
 
@@ -363,12 +419,19 @@ mod tests {
         }
 
         let mut field = ImageData::new();
-        field.set_extent([0, dims[0] as i64 - 1, 0, dims[1] as i64 - 1, 0, dims[2] as i64 - 1]);
+        field.set_extent([
+            0,
+            dims[0] as i64 - 1,
+            0,
+            dims[1] as i64 - 1,
+            0,
+            dims[2] as i64 - 1,
+        ]);
         field.set_spacing(spacing);
         field.set_origin(origin);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vdata, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vdata, 3)));
         field.point_data_mut().set_active_vectors("velocity");
 
         let result = compute_vorticity(&field);
@@ -380,7 +443,11 @@ mod tests {
         // Check an interior point
         let idx = 5 + 5 * dims[0] + 5 * dims[0] * dims[1];
         vort.tuple_as_f64(idx, &mut buf);
-        assert!((buf[0] - 2.0).abs() < 0.5, "vorticity at interior: {}", buf[0]);
+        assert!(
+            (buf[0] - 2.0).abs() < 0.5,
+            "vorticity at interior: {}",
+            buf[0]
+        );
     }
 
     #[test]

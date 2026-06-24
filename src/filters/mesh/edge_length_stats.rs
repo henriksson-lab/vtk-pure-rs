@@ -1,5 +1,5 @@
-use std::collections::BTreeSet;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::BTreeSet;
 
 /// Edge length statistics for a mesh.
 #[derive(Debug, Clone)]
@@ -71,9 +71,12 @@ pub fn edge_length_stats(input: &PolyData) -> (EdgeLengthStats, PolyData) {
     let mut pd = PolyData::new();
     pd.points = points;
     pd.lines = lines;
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("EdgeLength", lengths, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "EdgeLength",
+            lengths,
+            1,
+        )));
 
     let stats = EdgeLengthStats {
         min: min_l,

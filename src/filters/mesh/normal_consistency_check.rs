@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Result of a normal consistency check.
 pub struct ConsistencyResult {
@@ -91,9 +91,12 @@ pub fn add_consistency_cell_data(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("IsConsistent", consistent, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "IsConsistent",
+            consistent,
+            1,
+        )));
     pd
 }
 

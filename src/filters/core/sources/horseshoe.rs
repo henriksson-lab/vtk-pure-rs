@@ -21,13 +21,23 @@ pub fn horseshoe(radius: f64, thickness: f64, na: usize) -> PolyData {
     for i in 0..na {
         let b = i * 4;
         // Top surface
-        polys.push_cell(&[(b+2) as i64, (b+3) as i64, (b+7) as i64, (b+6) as i64]);
+        polys.push_cell(&[
+            (b + 2) as i64,
+            (b + 3) as i64,
+            (b + 7) as i64,
+            (b + 6) as i64,
+        ]);
         // Outer wall
-        polys.push_cell(&[b as i64, (b+4) as i64, (b+6) as i64, (b+2) as i64]);
+        polys.push_cell(&[b as i64, (b + 4) as i64, (b + 6) as i64, (b + 2) as i64]);
         // Inner wall
-        polys.push_cell(&[(b+1) as i64, (b+3) as i64, (b+7) as i64, (b+5) as i64]);
+        polys.push_cell(&[
+            (b + 1) as i64,
+            (b + 3) as i64,
+            (b + 7) as i64,
+            (b + 5) as i64,
+        ]);
         // Bottom surface
-        polys.push_cell(&[b as i64, (b+1) as i64, (b+5) as i64, (b+4) as i64]);
+        polys.push_cell(&[b as i64, (b + 1) as i64, (b + 5) as i64, (b + 4) as i64]);
     }
     // Nail holes (small circles)
     let mut lines = CellArray::new();
@@ -37,12 +47,22 @@ pub fn horseshoe(radius: f64, thickness: f64, na: usize) -> PolyData {
         let hc = [(radius * a.cos()), (radius * a.sin())];
         let hb = pts.len();
         for j in 0..8 {
-            let ha = 2.0*std::f64::consts::PI*j as f64/8.0;
-            pts.push([hc[0]+hr*ha.cos(), hc[1]+hr*ha.sin(), thickness*0.51]);
+            let ha = 2.0 * std::f64::consts::PI * j as f64 / 8.0;
+            pts.push([
+                hc[0] + hr * ha.cos(),
+                hc[1] + hr * ha.sin(),
+                thickness * 0.51,
+            ]);
         }
-        for j in 0..8 { lines.push_cell(&[(hb+j) as i64, (hb+(j+1)%8) as i64]); }
+        for j in 0..8 {
+            lines.push_cell(&[(hb + j) as i64, (hb + (j + 1) % 8) as i64]);
+        }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

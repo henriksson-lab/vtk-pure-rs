@@ -72,15 +72,24 @@ mod tests {
     use super::*;
     #[test]
     fn test_append() {
-        let a = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], vec![[0,1,2]]);
-        let b = PolyData::from_triangles(vec![[5.0,5.0,5.0],[6.0,5.0,5.0],[5.5,6.0,5.0]], vec![[0,1,2]]);
+        let a = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let b = PolyData::from_triangles(
+            vec![[5.0, 5.0, 5.0], [6.0, 5.0, 5.0], [5.5, 6.0, 5.0]],
+            vec![[0, 1, 2]],
+        );
         let r = append_meshes(&[&a, &b]);
         assert_eq!(r.points.len(), 6);
         assert_eq!(r.polys.num_cells(), 2);
     }
     #[test]
     fn test_duplicate() {
-        let mesh = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], vec![[0,1,2]]);
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let r = duplicate_mesh(&mesh, 3, [2.0, 0.0, 0.0]);
         assert_eq!(r.points.len(), 9);
         assert_eq!(r.polys.num_cells(), 3);

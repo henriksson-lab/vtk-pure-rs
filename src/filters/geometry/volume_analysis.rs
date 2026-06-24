@@ -13,7 +13,9 @@ pub fn volume_histogram(image: &ImageData, array_name: &str, n_bins: usize) -> V
     };
 
     let n = arr.num_tuples();
-    if n == 0 || n_bins == 0 { return Vec::new(); }
+    if n == 0 || n_bins == 0 {
+        return Vec::new();
+    }
 
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
@@ -23,7 +25,9 @@ pub fn volume_histogram(image: &ImageData, array_name: &str, n_bins: usize) -> V
         min_v = min_v.min(buf[0]);
         max_v = max_v.max(buf[0]);
     }
-    if (max_v - min_v).abs() < 1e-15 { max_v = min_v + 1.0; }
+    if (max_v - min_v).abs() < 1e-15 {
+        max_v = min_v + 1.0;
+    }
 
     let bin_width = (max_v - min_v) / n_bins as f64;
     let mut counts = vec![0usize; n_bins];
@@ -34,7 +38,9 @@ pub fn volume_histogram(image: &ImageData, array_name: &str, n_bins: usize) -> V
         counts[bin.min(n_bins - 1)] += 1;
     }
 
-    (0..n_bins).map(|i| (min_v + (i as f64 + 0.5) * bin_width, counts[i])).collect()
+    (0..n_bins)
+        .map(|i| (min_v + (i as f64 + 0.5) * bin_width, counts[i]))
+        .collect()
 }
 
 /// Compute the volume (number of voxels × voxel volume) above a threshold.
@@ -50,7 +56,9 @@ pub fn volume_above_threshold(image: &ImageData, array_name: &str, threshold: f6
     let mut buf = [0.0f64];
     for i in 0..arr.num_tuples() {
         arr.tuple_as_f64(i, &mut buf);
-        if buf[0] >= threshold { count += 1; }
+        if buf[0] >= threshold {
+            count += 1;
+        }
     }
     count as f64 * voxel_vol
 }
@@ -75,7 +83,9 @@ pub fn volume_centroid(image: &ImageData, array_name: &str, threshold: f64) -> O
         for iy in 0..dims[1] {
             for ix in 0..dims[0] {
                 let idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
-                if idx >= arr.num_tuples() { continue; }
+                if idx >= arr.num_tuples() {
+                    continue;
+                }
                 arr.tuple_as_f64(idx, &mut buf);
                 if buf[0] >= threshold {
                     let w = buf[0];
@@ -88,7 +98,11 @@ pub fn volume_centroid(image: &ImageData, array_name: &str, threshold: f64) -> O
         }
     }
 
-    if total > 1e-15 { Some([cx/total, cy/total, cz/total]) } else { None }
+    if total > 1e-15 {
+        Some([cx / total, cy / total, cz / total])
+    } else {
+        None
+    }
 }
 
 /// Compute scalar field integral over the volume.
@@ -116,7 +130,9 @@ pub fn volume_statistics(image: &ImageData, array_name: &str) -> Option<(f64, f6
         _ => return None,
     };
     let n = arr.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
@@ -144,8 +160,11 @@ mod tests {
 
     fn make_image() -> ImageData {
         ImageData::from_function(
-            [10, 10, 10], [0.1, 0.1, 0.1], [0.0, 0.0, 0.0],
-            "density", |x, y, z| (x*x + y*y + z*z).sqrt(),
+            [10, 10, 10],
+            [0.1, 0.1, 0.1],
+            [0.0, 0.0, 0.0],
+            "density",
+            |x, y, z| (x * x + y * y + z * z).sqrt(),
         )
     }
 

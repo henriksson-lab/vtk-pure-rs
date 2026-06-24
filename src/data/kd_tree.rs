@@ -21,8 +21,8 @@ struct KdNode {
 impl KdTree {
     /// Build a k-d tree from a slice of 3D points.
     pub fn build(points: &[[f64; 3]]) -> Self {
-        let n = points.len();
         let pts: Vec<[f64; 3]> = points.to_vec();
+        let n = pts.len();
         let mut indices: Vec<usize> = (0..n).collect();
         let mut nodes = Vec::with_capacity(n);
 
@@ -49,7 +49,7 @@ impl KdTree {
             return None;
         }
         let mut best_idx = 0;
-        let mut best_dist2 = f64::MAX;
+        let mut best_dist2 = f64::INFINITY;
         self.search_nearest(0, &query, &mut best_idx, &mut best_dist2);
         Some((self.indices[best_idx], best_dist2))
     }
@@ -71,15 +71,21 @@ impl KdTree {
         }
         let mut heap: Vec<(usize, f64)> = Vec::with_capacity(k + 1);
         self.search_knn(0, &query, k, &mut heap);
-        heap.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        heap.sort_by(|a, b| a.1.total_cmp(&b.1));
         heap
     }
 
-    fn search_nearest(&self, node_idx: usize, query: &[f64; 3], best_idx: &mut usize, best_dist2: &mut f64) {
+    fn search_nearest(
+        &self,
+        node_idx: usize,
+        query: &[f64; 3],
+        best_idx: &mut usize,
+        best_dist2: &mut f64,
+    ) {
         let node = &self.nodes[node_idx];
         let pt = self.points[self.indices[node.point_idx]];
         let d2 = dist2(*query, pt);
-        if d2 < *best_dist2 {
+        if d2 <= *best_dist2 {
             *best_dist2 = d2;
             *best_idx = node.point_idx;
         }
@@ -102,7 +108,13 @@ impl KdTree {
         }
     }
 
-    fn search_radius(&self, node_idx: usize, query: &[f64; 3], r2: f64, results: &mut Vec<(usize, f64)>) {
+    fn search_radius(
+        &self,
+        node_idx: usize,
+        query: &[f64; 3],
+        r2: f64,
+        results: &mut Vec<(usize, f64)>,
+    ) {
         let node = &self.nodes[node_idx];
         let pt = self.points[self.indices[node.point_idx]];
         let d2 = dist2(*query, pt);
@@ -125,17 +137,23 @@ impl KdTree {
         }
     }
 
-    fn search_knn(&self, node_idx: usize, query: &[f64; 3], k: usize, heap: &mut Vec<(usize, f64)>) {
+    fn search_knn(
+        &self,
+        node_idx: usize,
+        query: &[f64; 3],
+        k: usize,
+        heap: &mut Vec<(usize, f64)>,
+    ) {
         let node = &self.nodes[node_idx];
         let pt = self.points[self.indices[node.point_idx]];
         let d2 = dist2(*query, pt);
 
         if heap.len() < k {
             heap.push((self.indices[node.point_idx], d2));
-            heap.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap()); // max-heap order
+            heap.sort_by(|a, b| b.1.total_cmp(&a.1)); // max-heap order
         } else if d2 < heap[0].1 {
             heap[0] = (self.indices[node.point_idx], d2);
-            heap.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            heap.sort_by(|a, b| b.1.total_cmp(&a.1));
         }
 
         let axis = node.axis as usize;
@@ -175,9 +193,7 @@ fn build_subtree(
 
     // Partial sort to find median
     indices[start..end].select_nth_unstable_by(mid - start, |&a, &b| {
-        points[a][axis as usize]
-            .partial_cmp(&points[b][axis as usize])
-            .unwrap()
+        points[a][axis as usize].total_cmp(&points[b][axis as usize])
     });
 
     let node_idx = nodes.len();
@@ -195,7 +211,14 @@ fn build_subtree(
     };
 
     let right = if mid + 1 < end {
-        Some(build_subtree(points, indices, mid + 1, end, depth + 1, nodes))
+        Some(build_subtree(
+            points,
+            indices,
+            mid + 1,
+            end,
+            depth + 1,
+            nodes,
+        ))
     } else {
         None
     };
@@ -247,14 +270,11 @@ mod tests {
 
     #[test]
     fn radius_search() {
-        let points = vec![
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [5.0, 0.0, 0.0],
-        ];
+        let points = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [5.0, 0.0, 0.0]];
         let tree = KdTree::build(&points);
         let results = tree.find_within_radius([0.0, 0.0, 0.0], 2.0);
         assert_eq!(results.len(), 2); // points 0 and 1
+        assert_eq!(tree.find_within_radius([0.0, 0.0, 0.0], -2.0).len(), 2);
     }
 
     #[test]
@@ -268,5 +288,18 @@ mod tests {
         let tree = KdTree::build(&[[1.0, 2.0, 3.0]]);
         let (idx, _) = tree.nearest([0.0, 0.0, 0.0]).unwrap();
         assert_eq!(idx, 0);
+    }
+
+    #[test]
+    fn nan_coordinate_does_not_panic_builder_or_knn_sort() {
+        let tree = KdTree::build(&[[f64::NAN, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        let _ = tree.k_nearest([0.0, 0.0, 0.0], 2);
+        assert!(tree.nearest([f64::NAN, 0.0, 0.0]).is_some());
+    }
+
+    #[test]
+    fn nearest_allows_infinite_squared_distance_from_overflow() {
+        let tree = KdTree::build(&[[f64::MAX, 0.0, 0.0]]);
+        assert_eq!(tree.nearest([0.0, 0.0, 0.0]), Some((0, f64::INFINITY)));
     }
 }

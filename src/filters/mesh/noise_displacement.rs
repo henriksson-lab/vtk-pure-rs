@@ -68,11 +68,7 @@ pub fn noise_displacement(input: &PolyData, amplitude: f64, seed: u64) -> PolyDa
             }
         }
 
-        let new_p: [f64; 3] = [
-            p[0] + noise * nx,
-            p[1] + noise * ny,
-            p[2] + noise * nz,
-        ];
+        let new_p: [f64; 3] = [p[0] + noise * nx, p[1] + noise * ny, p[2] + noise * nz];
         output.points.set(i, new_p);
     }
 
@@ -106,9 +102,12 @@ mod tests {
 
         // Add normals pointing in +Z
         let normals_data: Vec<f64> = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Normals", normals_data, 3),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals",
+                normals_data,
+                3,
+            )));
 
         let result = noise_displacement(&pd, 0.5, 42);
         // Points should only change in Z since normals are +Z

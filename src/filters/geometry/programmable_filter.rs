@@ -17,9 +17,8 @@ where
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(name, values, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(name, values, 1)));
     pd
 }
 
@@ -42,9 +41,8 @@ where
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(name, values, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(name, values, 3)));
     pd
 }
 
@@ -83,7 +81,7 @@ mod tests {
     fn scalar_function() {
         let pd = make_tri();
         let result = programmable_filter(&pd, "dist", |p| {
-            (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt()
+            (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt()
         });
         let arr = result.point_data().get_array("dist").unwrap();
         let mut buf = [0.0f64];
@@ -94,9 +92,8 @@ mod tests {
     #[test]
     fn vector_function() {
         let pd = make_tri();
-        let result = programmable_filter_vector(&pd, "doubled", |p| {
-            [p[0] * 2.0, p[1] * 2.0, p[2] * 2.0]
-        });
+        let result =
+            programmable_filter_vector(&pd, "doubled", |p| [p[0] * 2.0, p[1] * 2.0, p[2] * 2.0]);
         let arr = result.point_data().get_array("doubled").unwrap();
         let mut buf = [0.0f64; 3];
         arr.tuple_as_f64(0, &mut buf);
@@ -106,9 +103,7 @@ mod tests {
     #[test]
     fn transform_positions() {
         let pd = make_tri();
-        let result = programmable_transform(&pd, |p| {
-            [p[0] + 10.0, p[1], p[2]]
-        });
+        let result = programmable_transform(&pd, |p| [p[0] + 10.0, p[1], p[2]]);
         let p = result.points.get(0);
         assert_eq!(p[0], 11.0);
     }

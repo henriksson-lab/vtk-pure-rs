@@ -83,9 +83,18 @@ pub fn icp(
 
         // Compute translation
         let t = [
-            tgt_centroid[0] - (r[0][0] * src_centroid[0] + r[0][1] * src_centroid[1] + r[0][2] * src_centroid[2]),
-            tgt_centroid[1] - (r[1][0] * src_centroid[0] + r[1][1] * src_centroid[1] + r[1][2] * src_centroid[2]),
-            tgt_centroid[2] - (r[2][0] * src_centroid[0] + r[2][1] * src_centroid[1] + r[2][2] * src_centroid[2]),
+            tgt_centroid[0]
+                - (r[0][0] * src_centroid[0]
+                    + r[0][1] * src_centroid[1]
+                    + r[0][2] * src_centroid[2]),
+            tgt_centroid[1]
+                - (r[1][0] * src_centroid[0]
+                    + r[1][1] * src_centroid[1]
+                    + r[1][2] * src_centroid[2]),
+            tgt_centroid[2]
+                - (r[2][0] * src_centroid[0]
+                    + r[2][1] * src_centroid[1]
+                    + r[2][2] * src_centroid[2]),
         ];
 
         // Apply transform to source points
@@ -118,7 +127,11 @@ pub fn icp(
         let rms = (sum_d2 / n as f64).sqrt();
 
         if (prev_error - rms).abs() < tolerance {
-            return IcpResult { transform: total_transform, rms_error: rms, iterations: iter + 1 };
+            return IcpResult {
+                transform: total_transform,
+                rms_error: rms,
+                iterations: iter + 1,
+            };
         }
         prev_error = rms;
     }
@@ -135,7 +148,10 @@ fn nearest_point(query: &[f64; 3], points: &[[f64; 3]]) -> [f64; 3] {
     let mut best_d = f64::MAX;
     for p in points {
         let d = (query[0] - p[0]).powi(2) + (query[1] - p[1]).powi(2) + (query[2] - p[2]).powi(2);
-        if d < best_d { best_d = d; best = *p; }
+        if d < best_d {
+            best_d = d;
+            best = *p;
+        }
     }
     best
 }
@@ -143,31 +159,58 @@ fn nearest_point(query: &[f64; 3], points: &[[f64; 3]]) -> [f64; 3] {
 fn centroid(pts: &[[f64; 3]]) -> [f64; 3] {
     let n = pts.len() as f64;
     let mut c = [0.0; 3];
-    for p in pts { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; }
+    for p in pts {
+        c[0] += p[0];
+        c[1] += p[1];
+        c[2] += p[2];
+    }
     [c[0] / n, c[1] / n, c[2] / n]
 }
 
 fn identity_4x4() -> [[f64; 4]; 4] {
-    [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]]
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
 }
 
 fn mul_4x4(a: &[[f64; 4]; 4], b: &[[f64; 4]; 4]) -> [[f64; 4]; 4] {
     let mut r = [[0.0; 4]; 4];
-    for i in 0..4 { for j in 0..4 { for k in 0..4 { r[i][j] += a[i][k] * b[k][j]; } } }
+    for i in 0..4 {
+        for j in 0..4 {
+            for k in 0..4 {
+                r[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
     r
 }
 
 fn transpose_3x3(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    [[m[0][0],m[1][0],m[2][0]],[m[0][1],m[1][1],m[2][1]],[m[0][2],m[1][2],m[2][2]]]
+    [
+        [m[0][0], m[1][0], m[2][0]],
+        [m[0][1], m[1][1], m[2][1]],
+        [m[0][2], m[1][2], m[2][2]],
+    ]
 }
 
 fn det_3x3(m: &[[f64; 3]; 3]) -> f64 {
-    m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0])
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
 }
 
 fn mat_mul_3x3(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
     let mut r = [[0.0; 3]; 3];
-    for i in 0..3 { for j in 0..3 { for k in 0..3 { r[i][j] += a[i][k] * b[k][j]; } } }
+    for i in 0..3 {
+        for j in 0..3 {
+            for k in 0..3 {
+                r[i][j] += a[i][k] * b[k][j];
+            }
+        }
+    }
     r
 }
 
@@ -195,17 +238,27 @@ fn svd_3x3_approx(m: &[[f64; 3]; 3]) -> ([[f64; 3]; 3], [[f64; 3]; 3]) {
 fn gram_schmidt(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
     let mut u = *m;
     // Normalize first column
-    let l0 = (u[0][0]*u[0][0] + u[1][0]*u[1][0] + u[2][0]*u[2][0]).sqrt();
-    if l0 > 1e-20 { for row in &mut u { row[0] /= l0; } }
+    let l0 = (u[0][0] * u[0][0] + u[1][0] * u[1][0] + u[2][0] * u[2][0]).sqrt();
+    if l0 > 1e-20 {
+        for row in &mut u {
+            row[0] /= l0;
+        }
+    }
     // Orthogonalize and normalize second column
     let d01: f64 = (0..3).map(|i| u[i][0] * u[i][1]).sum();
-    for row in &mut u { row[1] -= d01 * row[0]; }
-    let l1 = (u[0][1]*u[0][1] + u[1][1]*u[1][1] + u[2][1]*u[2][1]).sqrt();
-    if l1 > 1e-20 { for row in &mut u { row[1] /= l1; } }
+    for row in &mut u {
+        row[1] -= d01 * row[0];
+    }
+    let l1 = (u[0][1] * u[0][1] + u[1][1] * u[1][1] + u[2][1] * u[2][1]).sqrt();
+    if l1 > 1e-20 {
+        for row in &mut u {
+            row[1] /= l1;
+        }
+    }
     // Third column = cross product
-    u[0][2] = u[1][0]*u[2][1] - u[2][0]*u[1][1];
-    u[1][2] = u[2][0]*u[0][1] - u[0][0]*u[2][1];
-    u[2][2] = u[0][0]*u[1][1] - u[1][0]*u[0][1];
+    u[0][2] = u[1][0] * u[2][1] - u[2][0] * u[1][1];
+    u[1][2] = u[2][0] * u[0][1] - u[0][0] * u[2][1];
+    u[2][2] = u[0][0] * u[1][1] - u[1][0] * u[0][1];
     u
 }
 
@@ -242,6 +295,10 @@ mod tests {
         let result = icp(&source, &target, 50, 1e-10);
         assert!(result.rms_error < 0.1, "rms = {}", result.rms_error);
         // Translation should be approximately [1, 0, 0]
-        assert!((result.transform[0][3] - 1.0).abs() < 0.2, "tx = {}", result.transform[0][3]);
+        assert!(
+            (result.transform[0][3] - 1.0).abs() < 0.2,
+            "tx = {}",
+            result.transform[0][3]
+        );
     }
 }

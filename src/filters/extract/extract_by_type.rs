@@ -2,18 +2,12 @@ use crate::data::{Points, UnstructuredGrid};
 use crate::types::CellType;
 
 /// Extract cells of a specific type from an UnstructuredGrid.
-pub fn extract_cells_by_type(
-    input: &UnstructuredGrid,
-    cell_type: CellType,
-) -> UnstructuredGrid {
+pub fn extract_cells_by_type(input: &UnstructuredGrid, cell_type: CellType) -> UnstructuredGrid {
     extract_cells_by_types(input, &[cell_type])
 }
 
 /// Extract cells of any of the given types.
-pub fn extract_cells_by_types(
-    input: &UnstructuredGrid,
-    types: &[CellType],
-) -> UnstructuredGrid {
+pub fn extract_cells_by_types(input: &UnstructuredGrid, types: &[CellType]) -> UnstructuredGrid {
     let mut used_points = vec![false; input.points.len()];
     let mut selected_cells = Vec::new();
 
@@ -40,7 +34,9 @@ pub fn extract_cells_by_types(
     let mut result = UnstructuredGrid::new();
     result.points = new_points;
     for &ci in &selected_cells {
-        let pts: Vec<i64> = input.cell_points(ci).iter()
+        let pts: Vec<i64> = input
+            .cell_points(ci)
+            .iter()
             .map(|&pid| old_to_new[pid as usize] as i64)
             .collect();
         result.push_cell(input.cell_type(ci), &pts);

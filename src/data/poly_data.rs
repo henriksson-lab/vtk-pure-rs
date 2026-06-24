@@ -1,7 +1,7 @@
 use crate::types::BoundingBox;
 
-use crate::data::{CellArray, DataSetAttributes, FieldData, Points};
 use crate::data::traits::{DataObject, DataSet};
+use crate::data::{CellArray, DataSetAttributes, FieldData, Points};
 
 /// Polygonal mesh consisting of vertices, lines, polygons, and triangle strips.
 ///
@@ -11,7 +11,7 @@ use crate::data::traits::{DataObject, DataSet};
 /// # Examples
 ///
 /// ```
-/// use crate::data::PolyData;
+/// use vtk_pure_rs::data::PolyData;
 ///
 /// // Create a triangle mesh
 /// let pd = PolyData::from_triangles(
@@ -64,7 +64,11 @@ impl PolyData {
         for cell in &cells {
             polys.push_cell(cell);
         }
-        Self { points: pts, polys, ..Default::default() }
+        Self {
+            points: pts,
+            polys,
+            ..Default::default()
+        }
     }
 
     /// Create a PolyData from points and quad connectivity.
@@ -76,7 +80,11 @@ impl PolyData {
         for q in &quads {
             polys.push_cell(&[q[0], q[1], q[2], q[3]]);
         }
-        Self { points: pts, polys, ..Default::default() }
+        Self {
+            points: pts,
+            polys,
+            ..Default::default()
+        }
     }
 
     /// Create a PolyData with line cells.
@@ -88,7 +96,11 @@ impl PolyData {
         for seg in &segments {
             lines.push_cell(&[seg[0], seg[1]]);
         }
-        Self { points: pts, lines, ..Default::default() }
+        Self {
+            points: pts,
+            lines,
+            ..Default::default()
+        }
     }
 
     /// Create a PolyData from flat coordinate and index arrays.
@@ -100,7 +112,7 @@ impl PolyData {
     /// GPU buffers, or numpy arrays.
     ///
     /// ```
-    /// use crate::data::PolyData;
+    /// use vtk_pure_rs::data::PolyData;
     ///
     /// let pd = PolyData::from_flat_arrays(
     ///     &[0.0,0.0,0.0, 1.0,0.0,0.0, 0.0,1.0,0.0],
@@ -110,13 +122,18 @@ impl PolyData {
     /// assert_eq!(pd.polys.num_cells(), 1);
     /// ```
     pub fn from_flat_arrays(coords: &[f64], indices: &[i64]) -> Self {
-        assert!(coords.len() % 3 == 0, "coords length must be divisible by 3");
-        assert!(indices.len() % 3 == 0, "indices length must be divisible by 3");
+        assert!(
+            coords.len() % 3 == 0,
+            "coords length must be divisible by 3"
+        );
+        assert!(
+            indices.len() % 3 == 0,
+            "indices length must be divisible by 3"
+        );
 
-        let pts: Vec<[f64; 3]> = coords.chunks_exact(3)
-            .map(|c| [c[0], c[1], c[2]])
-            .collect();
-        let tris: Vec<[i64; 3]> = indices.chunks_exact(3)
+        let pts: Vec<[f64; 3]> = coords.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
+        let tris: Vec<[i64; 3]> = indices
+            .chunks_exact(3)
             .map(|c| [c[0], c[1], c[2]])
             .collect();
         Self::from_triangles(pts, tris)
@@ -126,7 +143,10 @@ impl PolyData {
     ///
     /// Useful for point clouds that will later have cells added.
     pub fn from_points(points: Vec<[f64; 3]>) -> Self {
-        Self { points: Points::from_vec(points), ..Default::default() }
+        Self {
+            points: Points::from_vec(points),
+            ..Default::default()
+        }
     }
 
     /// Create a PolyData with vertex cells (one vertex per point).
@@ -137,7 +157,11 @@ impl PolyData {
         for i in 0..n {
             verts.push_cell(&[i as i64]);
         }
-        Self { points: pts, verts, ..Default::default() }
+        Self {
+            points: pts,
+            verts,
+            ..Default::default()
+        }
     }
 
     /// Create a PolyData with a single polyline through all points.
@@ -147,7 +171,11 @@ impl PolyData {
         let mut lines = CellArray::new();
         let ids: Vec<i64> = (0..n as i64).collect();
         lines.push_cell(&ids);
-        Self { points: pts, lines, ..Default::default() }
+        Self {
+            points: pts,
+            lines,
+            ..Default::default()
+        }
     }
 
     /// Push a single point and return its index.
@@ -241,13 +269,13 @@ impl PolyData {
     }
 
     /// Create from separate X, Y, Z coordinate arrays and triangle indices.
-    pub fn from_xyz_arrays(
-        x: &[f64], y: &[f64], z: &[f64],
-        triangles: &[[i64; 3]],
-    ) -> Self {
+    pub fn from_xyz_arrays(x: &[f64], y: &[f64], z: &[f64], triangles: &[[i64; 3]]) -> Self {
         assert_eq!(x.len(), y.len());
         assert_eq!(x.len(), z.len());
-        let pts: Vec<[f64; 3]> = x.iter().zip(y.iter()).zip(z.iter())
+        let pts: Vec<[f64; 3]> = x
+            .iter()
+            .zip(y.iter())
+            .zip(z.iter())
             .map(|((&xi, &yi), &zi)| [xi, yi, zi])
             .collect();
         Self::from_triangles(pts, triangles.to_vec())
@@ -300,7 +328,7 @@ impl PolyData {
             let dx = p[0] - center[0];
             let dy = p[1] - center[1];
             let dz = p[2] - center[2];
-            max_r2 = max_r2.max(dx*dx + dy*dy + dz*dz);
+            max_r2 = max_r2.max(dx * dx + dy * dy + dz * dz);
         }
         (center, max_r2.sqrt())
     }
@@ -337,7 +365,7 @@ impl PolyData {
     /// Add a scalar (1-component f64) point data array and set it as active scalars.
     ///
     /// ```
-    /// use crate::data::PolyData;
+    /// use vtk_pure_rs::data::PolyData;
     ///
     /// let mut pd = PolyData::from_triangles(
     ///     vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
@@ -348,7 +376,8 @@ impl PolyData {
     /// ```
     pub fn add_scalars(&mut self, name: &str, values: Vec<f64>) {
         let arr = crate::data::DataArray::from_vec(name, values, 1);
-        self.point_data.add_array(crate::data::AnyDataArray::F64(arr));
+        self.point_data
+            .add_array(crate::data::AnyDataArray::F64(arr));
         self.point_data.set_active_scalars(name);
     }
 
@@ -356,7 +385,8 @@ impl PolyData {
     pub fn add_vectors(&mut self, name: &str, values: Vec<[f64; 3]>) {
         let flat: Vec<f64> = values.into_iter().flat_map(|v| v).collect();
         let arr = crate::data::DataArray::from_vec(name, flat, 3);
-        self.point_data.add_array(crate::data::AnyDataArray::F64(arr));
+        self.point_data
+            .add_array(crate::data::AnyDataArray::F64(arr));
         self.point_data.set_active_vectors(name);
     }
 
@@ -368,7 +398,9 @@ impl PolyData {
     /// Get vector values by name. Returns None if array not found.
     pub fn get_vectors(&self, name: &str) -> Option<Vec<[f64; 3]>> {
         let arr = self.point_data.get_array(name)?;
-        if arr.num_components() != 3 { return None; }
+        if arr.num_components() != 3 {
+            return None;
+        }
         let mut result = Vec::with_capacity(arr.num_tuples());
         let mut buf = [0.0f64; 3];
         for i in 0..arr.num_tuples() {
@@ -406,9 +438,15 @@ impl PolyData {
             z.push(p[2]);
         }
         let mut table = crate::data::Table::new();
-        table.add_column(crate::data::AnyDataArray::F64(crate::data::DataArray::from_vec("x", x, 1)));
-        table.add_column(crate::data::AnyDataArray::F64(crate::data::DataArray::from_vec("y", y, 1)));
-        table.add_column(crate::data::AnyDataArray::F64(crate::data::DataArray::from_vec("z", z, 1)));
+        table.add_column(crate::data::AnyDataArray::F64(
+            crate::data::DataArray::from_vec("x", x, 1),
+        ));
+        table.add_column(crate::data::AnyDataArray::F64(
+            crate::data::DataArray::from_vec("y", y, 1),
+        ));
+        table.add_column(crate::data::AnyDataArray::F64(
+            crate::data::DataArray::from_vec("z", z, 1),
+        ));
 
         for i in 0..self.point_data.num_arrays() {
             if let Some(arr) = self.point_data.get_array_by_index(i) {
@@ -420,17 +458,26 @@ impl PolyData {
 
     /// Check approximate equality with another PolyData (for testing).
     pub fn approx_eq(&self, other: &PolyData, tolerance: f64) -> bool {
-        if self.points.len() != other.points.len() { return false; }
-        if self.polys.num_cells() != other.polys.num_cells() { return false; }
+        if self.points.len() != other.points.len() {
+            return false;
+        }
+        if self.polys.num_cells() != other.polys.num_cells() {
+            return false;
+        }
         for i in 0..self.points.len() {
             let a = self.points.get(i);
             let b = other.points.get(i);
-            if (a[0]-b[0]).abs() > tolerance || (a[1]-b[1]).abs() > tolerance || (a[2]-b[2]).abs() > tolerance {
+            if (a[0] - b[0]).abs() > tolerance
+                || (a[1] - b[1]).abs() > tolerance
+                || (a[2] - b[2]).abs() > tolerance
+            {
                 return false;
             }
         }
         for (ca, cb) in self.polys.iter().zip(other.polys.iter()) {
-            if ca != cb { return false; }
+            if ca != cb {
+                return false;
+            }
         }
         true
     }
@@ -524,7 +571,12 @@ mod tests {
     #[test]
     fn from_quads() {
         let pd = PolyData::from_quads(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2, 3]],
         );
         assert_eq!(pd.num_points(), 4);
@@ -551,9 +603,7 @@ mod tests {
 
     #[test]
     fn from_polyline() {
-        let pd = PolyData::from_polyline(vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 1.0, 0.0],
-        ]);
+        let pd = PolyData::from_polyline(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 1.0, 0.0]]);
         assert_eq!(pd.num_points(), 3);
         assert_eq!(pd.lines.num_cells(), 1);
         assert_eq!(pd.lines.cell(0).len(), 3);
@@ -643,7 +693,8 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let s = crate::data::DataArray::from_vec("temp", vec![10.0f64, 20.0, 30.0], 1);
-        pd.point_data_mut().add_array(crate::data::AnyDataArray::F64(s));
+        pd.point_data_mut()
+            .add_array(crate::data::AnyDataArray::F64(s));
 
         let table = pd.to_table();
         assert_eq!(table.num_rows(), 3);
@@ -664,7 +715,13 @@ mod tests {
     #[test]
     fn from_polygons_mixed() {
         let pd = PolyData::from_polygons(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0],[2.0,0.0,0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ],
             vec![vec![0, 1, 2], vec![0, 2, 3], vec![1, 4, 2]],
         );
         assert_eq!(pd.points.len(), 5);
@@ -674,15 +731,20 @@ mod tests {
     #[test]
     fn triangle_counting() {
         let pd = PolyData::from_polygons(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0]],
-            vec![vec![0,1,2], vec![0,1,2,3]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![vec![0, 1, 2], vec![0, 1, 2, 3]],
         );
         assert_eq!(pd.num_triangles(), 1);
         assert!(!pd.is_all_triangles());
 
         let tri = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         assert!(tri.is_all_triangles());
     }
@@ -705,7 +767,10 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        pd.add_vectors("velocity", vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+        pd.add_vectors(
+            "velocity",
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        );
         let vecs = pd.get_vectors("velocity").unwrap();
         assert_eq!(vecs.len(), 3);
         assert_eq!(vecs[0], [1.0, 0.0, 0.0]);
@@ -742,9 +807,10 @@ mod tests {
     fn field_data_access() {
         let mut pd = PolyData::new();
         assert!(pd.field_data().is_empty());
-        pd.field_data_mut().add_array(crate::data::AnyDataArray::F64(
-            crate::data::DataArray::from_vec("meta", vec![42.0], 1),
-        ));
+        pd.field_data_mut()
+            .add_array(crate::data::AnyDataArray::F64(
+                crate::data::DataArray::from_vec("meta", vec![42.0], 1),
+            ));
         assert!(pd.field_data().has_array("meta"));
     }
 }

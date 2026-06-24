@@ -10,9 +10,17 @@ pub fn poly_line_to_strip(input: &PolyData) -> PolyData {
 
     // Build adjacency from line endpoints
     let mut adj: HashMap<i64, Vec<(usize, i64)>> = HashMap::new(); // point -> [(cell_idx, other_point)]
-    let segments: Vec<(i64, i64)> = input.lines.iter().filter_map(|cell| {
-        if cell.len() == 2 { Some((cell[0], cell[1])) } else { None }
-    }).collect();
+    let segments: Vec<(i64, i64)> = input
+        .lines
+        .iter()
+        .filter_map(|cell| {
+            if cell.len() == 2 {
+                Some((cell[0], cell[1]))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     for (ci, &(a, b)) in segments.iter().enumerate() {
         adj.entry(a).or_default().push((ci, b));
@@ -31,7 +39,9 @@ pub fn poly_line_to_strip(input: &PolyData) -> PolyData {
 
     // Trace connected chains
     for start_ci in 0..segments.len() {
-        if used[start_ci] { continue; }
+        if used[start_ci] {
+            continue;
+        }
 
         // Find one end of the chain (a point with degree 1 or start)
         let (mut cur, mut prev) = (segments[start_ci].0, -1i64);
@@ -39,7 +49,9 @@ pub fn poly_line_to_strip(input: &PolyData) -> PolyData {
         // Walk backward to find chain start
         loop {
             let neighbors = adj.get(&cur).map(|v| v.as_slice()).unwrap_or(&[]);
-            let next = neighbors.iter().find(|&&(ci, other)| !used[ci] && other != prev);
+            let next = neighbors
+                .iter()
+                .find(|&&(ci, other)| !used[ci] && other != prev);
             match next {
                 Some(&(_, other)) if other != segments[start_ci].0 => {
                     prev = cur;
@@ -54,7 +66,9 @@ pub fn poly_line_to_strip(input: &PolyData) -> PolyData {
         prev = -1;
         loop {
             let neighbors = adj.get(&cur).map(|v| v.as_slice()).unwrap_or(&[]);
-            let next = neighbors.iter().find(|&&(ci, other)| !used[ci] && other != prev);
+            let next = neighbors
+                .iter()
+                .find(|&&(ci, other)| !used[ci] && other != prev);
             match next {
                 Some(&(ci, other)) => {
                     used[ci] = true;

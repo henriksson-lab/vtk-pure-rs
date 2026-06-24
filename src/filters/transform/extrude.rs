@@ -16,7 +16,11 @@ pub fn extrude(input: &PolyData, direction: [f64; 3], capping: bool) -> PolyData
     // Extruded points
     for i in 0..n {
         let p = input.points.get(i);
-        out_points.push([p[0] + direction[0], p[1] + direction[1], p[2] + direction[2]]);
+        out_points.push([
+            p[0] + direction[0],
+            p[1] + direction[1],
+            p[2] + direction[2],
+        ]);
     }
 
     let offset = n as i64;
@@ -70,7 +74,7 @@ mod tests {
         );
         let result = extrude(&pd, [0.0, 0.0, 1.0], true);
         assert_eq!(result.points.len(), 6); // 3 original + 3 extruded
-        // 3 side quads + 1 bottom cap + 1 top cap = 5
+                                            // 3 side quads + 1 bottom cap + 1 top cap = 5
         assert_eq!(result.polys.num_cells(), 5);
     }
 

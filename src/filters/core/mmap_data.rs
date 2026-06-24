@@ -22,10 +22,10 @@ pub fn estimate_file_info(path: &Path) -> Option<MmapInfo> {
     let ext = path.extension()?.to_str()?.to_lowercase();
     let estimated_points = match ext.as_str() {
         "stl" => (size as usize - 84) / 50, // binary STL: 50 bytes per triangle
-        "ply" => size as usize / 40,          // rough estimate
+        "ply" => size as usize / 40,        // rough estimate
         "obj" => size as usize / 30,
         "vtk" => size as usize / 40,
-        "las" => (size as usize - 227) / 20,  // LAS format 0
+        "las" => (size as usize - 227) / 20, // LAS format 0
         _ => size as usize / 30,
     };
 
@@ -39,19 +39,19 @@ pub fn estimate_file_info(path: &Path) -> Option<MmapInfo> {
 /// Process a PolyData in chunks of `chunk_size` points.
 ///
 /// Calls `process` for each chunk. Returns the number of chunks.
-pub fn process_points_chunked<F>(
-    mesh: &PolyData,
-    chunk_size: usize,
-    mut process: F,
-) -> usize
-where F: FnMut(usize, &PolyData) {
+pub fn process_points_chunked<F>(mesh: &PolyData, chunk_size: usize, mut process: F) -> usize
+where
+    F: FnMut(usize, &PolyData),
+{
     let n = mesh.points.len();
     let mut chunk_count = 0;
 
     for start in (0..n).step_by(chunk_size) {
         let end = (start + chunk_size).min(n);
         let mut pts = Points::<f64>::new();
-        for i in start..end { pts.push(mesh.points.get(i)); }
+        for i in start..end {
+            pts.push(mesh.points.get(i));
+        }
         let mut chunk = PolyData::new();
         chunk.points = pts;
         process(chunk_count, &chunk);
@@ -64,7 +64,9 @@ where F: FnMut(usize, &PolyData) {
 /// Merge multiple PolyData chunks into one.
 pub fn merge_chunks(points: &[PolyData]) -> PolyData {
     let refs: Vec<&PolyData> = points.iter().collect();
-    if refs.is_empty() { return PolyData::new(); }
+    if refs.is_empty() {
+        return PolyData::new();
+    }
     crate::filters::core::append::append(&refs)
 }
 
@@ -92,8 +94,8 @@ mod tests {
     #[test]
     fn memory_estimate() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let bytes = estimate_memory_bytes(&mesh);
         assert!(bytes > 0);
@@ -109,9 +111,8 @@ mod tests {
     #[test]
     fn chunked_read_count() {
         // Test the chunk counting logic with in-memory data
-        let mesh = PolyData::from_points(
-            (0..100).map(|i| [i as f64, 0.0, 0.0]).collect::<Vec<_>>()
-        );
+        let mesh =
+            PolyData::from_points((0..100).map(|i| [i as f64, 0.0, 0.0]).collect::<Vec<_>>());
         let mut count = 0;
         let n = mesh.points.len();
         for start in (0..n).step_by(30) {

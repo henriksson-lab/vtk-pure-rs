@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
+use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 
 /// Compute local point density for each point in a point cloud.
 ///
@@ -15,7 +15,11 @@ pub fn point_cloud_density(input: &PolyData, radius: f64) -> PolyData {
     let tree = KdTree::build(&pts);
 
     let sphere_vol = (4.0 / 3.0) * std::f64::consts::PI * radius * radius * radius;
-    let inv_vol = if sphere_vol > 1e-15 { 1.0 / sphere_vol } else { 0.0 };
+    let inv_vol = if sphere_vol > 1e-15 {
+        1.0 / sphere_vol
+    } else {
+        0.0
+    };
     let mut counts = Vec::with_capacity(n);
     let mut densities = Vec::with_capacity(n);
 
@@ -26,12 +30,16 @@ pub fn point_cloud_density(input: &PolyData, radius: f64) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("NeighborCount", counts, 1),
-    ));
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Density", densities, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "NeighborCount",
+            counts,
+            1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Density", densities, 1,
+        )));
     pd
 }
 

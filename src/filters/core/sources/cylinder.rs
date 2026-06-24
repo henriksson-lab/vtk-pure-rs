@@ -56,12 +56,7 @@ pub fn cylinder(params: &CylinderParams) -> PolyData {
     // Side quads
     for i in 0..n {
         let next = (i + 1) % n;
-        polys.push_cell(&[
-            i as i64,
-            next as i64,
-            (n + next) as i64,
-            (n + i) as i64,
-        ]);
+        polys.push_cell(&[i as i64, next as i64, (n + next) as i64, (n + i) as i64]);
     }
 
     // Caps

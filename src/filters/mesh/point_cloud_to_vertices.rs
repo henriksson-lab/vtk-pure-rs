@@ -36,11 +36,7 @@ mod tests {
 
     #[test]
     fn roundtrip_points() {
-        let input: Vec<[f64; 3]> = vec![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0],
-            [7.0, 8.0, 9.0],
-        ];
+        let input: Vec<[f64; 3]> = vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
         let pd = points_to_vertices(&input);
         assert_eq!(pd.points.len(), 3);
         assert_eq!(pd.verts.num_cells(), 3);

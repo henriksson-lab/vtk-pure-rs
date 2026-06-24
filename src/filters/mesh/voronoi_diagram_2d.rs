@@ -6,11 +6,7 @@ use crate::data::{CellArray, Points, PolyData};
 /// assigns each grid cell to its nearest seed using brute force, then
 /// extracts boundary edges between differently-labeled cells as line
 /// segments.
-pub fn voronoi_diagram(
-    seeds: &[[f64; 2]],
-    bounds: [[f64; 2]; 2],
-    resolution: usize,
-) -> PolyData {
+pub fn voronoi_diagram(seeds: &[[f64; 2]], bounds: [[f64; 2]; 2], resolution: usize) -> PolyData {
     if seeds.is_empty() || resolution < 2 {
         return PolyData::new();
     }

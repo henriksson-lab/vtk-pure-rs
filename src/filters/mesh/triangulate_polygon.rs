@@ -44,14 +44,27 @@ pub fn triangulate_ear_clip(mesh: &PolyData) -> PolyData {
 
 fn ear_clip_2d(pts: &[[f64; 3]], indices: &[i64]) -> Vec<[i64; 3]> {
     let n = pts.len();
-    if n < 3 { return vec![]; }
-    if n == 3 { return vec![[indices[0], indices[1], indices[2]]]; }
+    if n < 3 {
+        return vec![];
+    }
+    if n == 3 {
+        return vec![[indices[0], indices[1], indices[2]]];
+    }
 
     // Project to 2D using dominant normal axis
     let normal = polygon_normal(pts);
-    let axis = if normal[0].abs() > normal[1].abs() && normal[0].abs() > normal[2].abs() { 0 }
-        else if normal[1].abs() > normal[2].abs() { 1 } else { 2 };
-    let (u_axis, v_axis) = match axis { 0 => (1, 2), 1 => (0, 2), _ => (0, 1) };
+    let axis = if normal[0].abs() > normal[1].abs() && normal[0].abs() > normal[2].abs() {
+        0
+    } else if normal[1].abs() > normal[2].abs() {
+        1
+    } else {
+        2
+    };
+    let (u_axis, v_axis) = match axis {
+        0 => (1, 2),
+        1 => (0, 2),
+        _ => (0, 1),
+    };
     let pts2d: Vec<[f64; 2]> = pts.iter().map(|p| [p[u_axis], p[v_axis]]).collect();
 
     let mut remaining: Vec<usize> = (0..n).collect();
@@ -73,21 +86,35 @@ fn ear_clip_2d(pts: &[[f64; 3]], indices: &[i64]) -> Vec<[i64; 3]> {
                 break;
             }
         }
-        if !found { break; }
+        if !found {
+            break;
+        }
     }
     if remaining.len() == 3 {
-        result.push([indices[remaining[0]], indices[remaining[1]], indices[remaining[2]]]);
+        result.push([
+            indices[remaining[0]],
+            indices[remaining[1]],
+            indices[remaining[2]],
+        ]);
     }
     result
 }
 
 fn is_ear(pts: &[[f64; 2]], remaining: &[usize], prev: usize, curr: usize, next: usize) -> bool {
-    let a = pts[prev]; let b = pts[curr]; let c = pts[next];
-    let cross = (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]);
-    if cross <= 0.0 { return false; } // not convex vertex
+    let a = pts[prev];
+    let b = pts[curr];
+    let c = pts[next];
+    let cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    if cross <= 0.0 {
+        return false;
+    } // not convex vertex
     for &idx in remaining {
-        if idx == prev || idx == curr || idx == next { continue; }
-        if point_in_triangle(pts[idx], a, b, c) { return false; }
+        if idx == prev || idx == curr || idx == next {
+            continue;
+        }
+        if point_in_triangle(pts[idx], a, b, c) {
+            return false;
+        }
     }
     true
 }
@@ -102,7 +129,7 @@ fn point_in_triangle(p: [f64; 2], a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> bool
 }
 
 fn sign(p1: [f64; 2], p2: [f64; 2], p3: [f64; 2]) -> f64 {
-    (p1[0]-p3[0])*(p2[1]-p3[1]) - (p2[0]-p3[0])*(p1[1]-p3[1])
+    (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
 }
 
 fn polygon_normal(pts: &[[f64; 3]]) -> [f64; 3] {
@@ -121,21 +148,40 @@ mod tests {
     use super::*;
     #[test]
     fn test_fan() {
-        let mut mesh = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0]], vec![]);
+        let mut mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![],
+        );
         mesh.polys.push_cell(&[0, 1, 2, 3]);
         let r = triangulate_polygons(&mesh);
         assert_eq!(r.polys.num_cells(), 2);
     }
     #[test]
     fn test_ear_clip() {
-        let mut mesh = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0]], vec![]);
+        let mut mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![],
+        );
         mesh.polys.push_cell(&[0, 1, 2, 3]);
         let r = triangulate_ear_clip(&mesh);
         assert_eq!(r.polys.num_cells(), 2);
     }
     #[test]
     fn test_triangle_passthrough() {
-        let mesh = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]], vec![[0,1,2]]);
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let r = triangulate_polygons(&mesh);
         assert_eq!(r.polys.num_cells(), 1);
     }

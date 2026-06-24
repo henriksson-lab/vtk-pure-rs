@@ -94,7 +94,7 @@ pub fn transform(input: &PolyData, matrix: &Matrix4) -> PolyData {
     for i in 0..n {
         let base = i * 3;
         let (x, y, z) = (pts[base], pts[base + 1], pts[base + 2]);
-        pts[base]     = m[0][0] * x + m[1][0] * y + m[2][0] * z + m[3][0];
+        pts[base] = m[0][0] * x + m[1][0] * y + m[2][0] * z + m[3][0];
         pts[base + 1] = m[0][1] * x + m[1][1] * y + m[2][1] * z + m[3][1];
         pts[base + 2] = m[0][2] * x + m[1][2] * y + m[2][2] * z + m[3][2];
     }

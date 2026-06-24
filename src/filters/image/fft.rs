@@ -13,10 +13,17 @@ pub fn image_power_spectrum(input: &ImageData, scalars: &str) -> ImageData {
 
     let dims = input.dimensions();
     let n = dims[0] as usize;
-    if n < 2 { return input.clone(); }
+    if n < 2 {
+        return input.clone();
+    }
 
     let mut buf = [0.0f64];
-    let signal: Vec<f64> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let signal: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
 
     let n_out = n / 2 + 1;
     let mut power = vec![0.0f64; n_out];
@@ -35,11 +42,18 @@ pub fn image_power_spectrum(input: &ImageData, scalars: &str) -> ImageData {
     let mut img = ImageData::with_dimensions(n_out, 1, 1);
     let spacing = input.spacing();
     // Frequency spacing = 1 / (N * dx)
-    let freq_spacing = if spacing[0] > 1e-15 { 1.0 / (n as f64 * spacing[0]) } else { 1.0 };
+    let freq_spacing = if spacing[0] > 1e-15 {
+        1.0 / (n as f64 * spacing[0])
+    } else {
+        1.0
+    };
     img.set_spacing([freq_spacing, 1.0, 1.0]);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("PowerSpectrum", power, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "PowerSpectrum",
+            power,
+            1,
+        )));
     img
 }
 
@@ -50,9 +64,8 @@ mod tests {
     #[test]
     fn dc_signal() {
         let mut img = ImageData::with_dimensions(8, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![5.0; 8], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![5.0; 8], 1)));
 
         let result = image_power_spectrum(&img, "v");
         let arr = result.point_data().get_array("PowerSpectrum").unwrap();
@@ -69,12 +82,11 @@ mod tests {
     fn pure_sine() {
         let n = 16;
         let mut img = ImageData::with_dimensions(n, 1, 1);
-        let values: Vec<f64> = (0..n).map(|i| {
-            (2.0 * std::f64::consts::PI * 2.0 * i as f64 / n as f64).sin()
-        }).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        let values: Vec<f64> = (0..n)
+            .map(|i| (2.0 * std::f64::consts::PI * 2.0 * i as f64 / n as f64).sin())
+            .collect();
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_power_spectrum(&img, "v");
         let arr = result.point_data().get_array("PowerSpectrum").unwrap();

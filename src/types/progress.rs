@@ -1,7 +1,7 @@
 //! Progress reporting for long-running operations.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// A progress reporter that filters can update during execution.
 ///
@@ -57,7 +57,9 @@ impl Progress {
     /// Get current progress as a fraction [0, 1].
     pub fn fraction(&self) -> f64 {
         let total = self.inner.total.load(Ordering::Relaxed);
-        if total == 0 { return 0.0; }
+        if total == 0 {
+            return 0.0;
+        }
         let current = self.inner.current.load(Ordering::Relaxed);
         current as f64 / total as f64
     }
@@ -102,7 +104,9 @@ impl Progress {
 }
 
 impl Default for Progress {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl std::fmt::Display for Progress {
@@ -136,7 +140,7 @@ mod tests {
         p.set_total(3);
         p.increment();
         p.increment();
-        assert!((p.fraction() - 2.0/3.0).abs() < 1e-10);
+        assert!((p.fraction() - 2.0 / 3.0).abs() < 1e-10);
     }
 
     #[test]
@@ -172,7 +176,9 @@ mod tests {
             for _ in 0..500 {
                 p2.increment();
             }
-        }).join().unwrap();
+        })
+        .join()
+        .unwrap();
         assert!(p.fraction() > 0.0);
     }
 }

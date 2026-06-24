@@ -9,8 +9,12 @@ use crate::data::*;
 ///
 /// All point data arrays present in every mesh are concatenated.
 pub fn aggregate_poly_data(meshes: &[&PolyData]) -> PolyData {
-    if meshes.is_empty() { return PolyData::new(); }
-    if meshes.len() == 1 { return meshes[0].clone(); }
+    if meshes.is_empty() {
+        return PolyData::new();
+    }
+    if meshes.len() == 1 {
+        return meshes[0].clone();
+    }
     crate::filters::core::append::append(meshes)
 }
 
@@ -31,13 +35,17 @@ pub fn aggregate_multi_block_poly_data(mb: &MultiBlockDataSet) -> PolyData {
 /// Computes combined min, max, mean, count for each column that
 /// appears in all tables.
 pub fn aggregate_table_stats(tables: &[&Table]) -> Table {
-    if tables.is_empty() { return Table::new(); }
+    if tables.is_empty() {
+        return Table::new();
+    }
 
     // Find common column names
     let first_names: Vec<&str> = tables[0].column_names();
-    let common_names: Vec<&str> = first_names.iter().filter(|&&name| {
-        tables.iter().all(|t| t.column_by_name(name).is_some())
-    }).cloned().collect();
+    let common_names: Vec<&str> = first_names
+        .iter()
+        .filter(|&&name| tables.iter().all(|t| t.column_by_name(name).is_some()))
+        .cloned()
+        .collect();
 
     let mut result = Table::new();
 
@@ -59,16 +67,32 @@ pub fn aggregate_table_stats(tables: &[&Table]) -> Table {
             }
         }
 
-        let mean = if total_count > 0 { total_sum / total_count as f64 } else { 0.0 };
+        let mean = if total_count > 0 {
+            total_sum / total_count as f64
+        } else {
+            0.0
+        };
 
         result.add_column(AnyDataArray::F64(DataArray::from_vec(
-            &format!("{name}_count"), vec![total_count as f64], 1)));
+            &format!("{name}_count"),
+            vec![total_count as f64],
+            1,
+        )));
         result.add_column(AnyDataArray::F64(DataArray::from_vec(
-            &format!("{name}_min"), vec![global_min], 1)));
+            &format!("{name}_min"),
+            vec![global_min],
+            1,
+        )));
         result.add_column(AnyDataArray::F64(DataArray::from_vec(
-            &format!("{name}_max"), vec![global_max], 1)));
+            &format!("{name}_max"),
+            vec![global_max],
+            1,
+        )));
         result.add_column(AnyDataArray::F64(DataArray::from_vec(
-            &format!("{name}_mean"), vec![mean], 1)));
+            &format!("{name}_mean"),
+            vec![mean],
+            1,
+        )));
     }
 
     result
@@ -76,8 +100,12 @@ pub fn aggregate_table_stats(tables: &[&Table]) -> Table {
 
 /// Concatenate multiple Tables vertically (row-wise).
 pub fn aggregate_tables_vertical(tables: &[&Table]) -> Table {
-    if tables.is_empty() { return Table::new(); }
-    if tables.len() == 1 { return tables[0].clone(); }
+    if tables.is_empty() {
+        return Table::new();
+    }
+    if tables.len() == 1 {
+        return tables[0].clone();
+    }
 
     let names = tables[0].column_names();
     let mut columns: Vec<Vec<f64>> = vec![Vec::new(); names.len()];
@@ -96,9 +124,11 @@ pub fn aggregate_tables_vertical(tables: &[&Table]) -> Table {
 
     let mut result = Table::new();
     for (ci, name) in names.iter().enumerate() {
-        result.add_column(AnyDataArray::F64(
-            DataArray::from_vec(&name.to_string(), columns[ci].clone(), 1),
-        ));
+        result.add_column(AnyDataArray::F64(DataArray::from_vec(
+            &name.to_string(),
+            columns[ci].clone(),
+            1,
+        )));
     }
     result
 }
@@ -110,9 +140,13 @@ mod tests {
     #[test]
     fn aggregate_two_meshes() {
         let a = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let b = PolyData::from_triangles(
-            vec![[2.0,0.0,0.0],[3.0,0.0,0.0],[2.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let result = aggregate_poly_data(&[&a, &b]);
         assert_eq!(result.points.len(), 6);
         assert_eq!(result.polys.num_cells(), 2);
@@ -121,18 +155,30 @@ mod tests {
     #[test]
     fn aggregate_from_multiblock() {
         let mut mb = MultiBlockDataSet::new();
-        mb.add_block("a", Block::PolyData(PolyData::from_points(vec![[0.0,0.0,0.0]])));
-        mb.add_block("b", Block::PolyData(PolyData::from_points(vec![[1.0,0.0,0.0]])));
+        mb.add_block(
+            "a",
+            Block::PolyData(PolyData::from_points(vec![[0.0, 0.0, 0.0]])),
+        );
+        mb.add_block(
+            "b",
+            Block::PolyData(PolyData::from_points(vec![[1.0, 0.0, 0.0]])),
+        );
         let result = aggregate_multi_block_poly_data(&mb);
         assert_eq!(result.points.len(), 2);
     }
 
     #[test]
     fn table_stats() {
-        let t1 = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0], 1)));
-        let t2 = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![3.0, 4.0], 1)));
+        let t1 = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0],
+            1,
+        )));
+        let t2 = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![3.0, 4.0],
+            1,
+        )));
         let stats = aggregate_table_stats(&[&t1, &t2]);
         assert!(stats.column_by_name("x_mean").is_some());
         assert_eq!(stats.value_f64(0, "x_mean"), Some(2.5));
@@ -140,10 +186,13 @@ mod tests {
 
     #[test]
     fn vertical_concat() {
-        let t1 = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0], 1)));
-        let t2 = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![3.0], 1)));
+        let t1 = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0],
+            1,
+        )));
+        let t2 =
+            Table::new().with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![3.0], 1)));
         let result = aggregate_tables_vertical(&[&t1, &t2]);
         assert_eq!(result.num_rows(), 3);
     }

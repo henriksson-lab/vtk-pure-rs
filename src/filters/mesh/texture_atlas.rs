@@ -6,12 +6,16 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Useful for baking procedural textures or lightmaps. Adds "AtlasUV"
 /// 2-component array. Vertices are duplicated so each triangle has unique UVs.
 pub fn texture_atlas(input: &PolyData) -> PolyData {
-    let tris: Vec<Vec<i64>> = input.polys.iter()
+    let tris: Vec<Vec<i64>> = input
+        .polys
+        .iter()
         .filter(|c| c.len() >= 3)
         .map(|c| c.to_vec())
         .collect();
     let n_tris = tris.len();
-    if n_tris == 0 { return input.clone(); }
+    if n_tris == 0 {
+        return input.clone();
+    }
 
     // Grid layout: ceil(sqrt(n_tris)) x ceil(sqrt(n_tris))
     let grid = (n_tris as f64).sqrt().ceil() as usize;
@@ -45,7 +49,8 @@ pub fn texture_atlas(input: &PolyData) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("AtlasUV", uvs, 2)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("AtlasUV", uvs, 2)));
     pd.point_data_mut().set_active_tcoords("AtlasUV");
     pd
 }
@@ -57,10 +62,12 @@ mod tests {
     #[test]
     fn atlas_basic() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.0,1.0,0.0]); pd.points.push([0.0,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
-        pd.polys.push_cell(&[0,2,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
 
         let result = texture_atlas(&pd);
         assert_eq!(result.points.len(), 6); // 2 * 3
@@ -72,8 +79,10 @@ mod tests {
     #[test]
     fn uvs_in_range() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = texture_atlas(&pd);
         let arr = result.point_data().get_array("AtlasUV").unwrap();

@@ -44,9 +44,7 @@ fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageD
     let mut labels: Vec<i64> = vec![0; n];
     let mut current_label: i64 = 0;
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     for k in 0..nz {
         for j in 0..ny {
@@ -67,12 +65,24 @@ fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageD
                     labels[ci_idx] = current_label;
 
                     // 6-connected neighbors
-                    if ci > 0 { stack.push((ci - 1, cj, ck)); }
-                    if ci + 1 < nx { stack.push((ci + 1, cj, ck)); }
-                    if cj > 0 { stack.push((ci, cj - 1, ck)); }
-                    if cj + 1 < ny { stack.push((ci, cj + 1, ck)); }
-                    if ck > 0 { stack.push((ci, cj, ck - 1)); }
-                    if ck + 1 < nz { stack.push((ci, cj, ck + 1)); }
+                    if ci > 0 {
+                        stack.push((ci - 1, cj, ck));
+                    }
+                    if ci + 1 < nx {
+                        stack.push((ci + 1, cj, ck));
+                    }
+                    if cj > 0 {
+                        stack.push((ci, cj - 1, ck));
+                    }
+                    if cj + 1 < ny {
+                        stack.push((ci, cj + 1, ck));
+                    }
+                    if ck > 0 {
+                        stack.push((ci, cj, ck - 1));
+                    }
+                    if ck + 1 < nz {
+                        stack.push((ci, cj, ck + 1));
+                    }
                 }
             }
         }
@@ -80,9 +90,12 @@ fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageD
 
     let label_f64: Vec<f64> = labels.iter().map(|&l| l as f64).collect();
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ComponentLabel", label_f64, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ComponentLabel",
+            label_f64,
+            1,
+        )));
 
     (img, current_label as usize)
 }
@@ -93,9 +106,8 @@ mod tests {
 
     fn make_image(nx: usize, ny: usize, nz: usize, vals: Vec<f64>) -> ImageData {
         let mut img = ImageData::with_dimensions(nx, ny, nz);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", vals, 1)));
         img
     }
 

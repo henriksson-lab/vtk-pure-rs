@@ -49,35 +49,49 @@ pub fn chamfer_distance_transform(input: &ImageData, scalars: &str) -> ImageData
                 // Face neighbors (weight 3)
                 if x > 0 {
                     let v: i64 = dist[idx(x - 1, y, z)] + 3;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if y > 0 {
                     let v: i64 = dist[idx(x, y - 1, z)] + 3;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if z > 0 {
                     let v: i64 = dist[idx(x, y, z - 1)] + 3;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
 
                 // Edge-diagonal neighbors (weight 4)
                 if x > 0 && y > 0 {
                     let v: i64 = dist[idx(x - 1, y - 1, z)] + 4;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if x > 0 && z > 0 {
                     let v: i64 = dist[idx(x - 1, y, z - 1)] + 4;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if y > 0 && z > 0 {
                     let v: i64 = dist[idx(x, y - 1, z - 1)] + 4;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
 
                 // Corner-diagonal neighbors (weight 5)
                 if x > 0 && y > 0 && z > 0 {
                     let v: i64 = dist[idx(x - 1, y - 1, z - 1)] + 5;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
             }
         }
@@ -95,35 +109,49 @@ pub fn chamfer_distance_transform(input: &ImageData, scalars: &str) -> ImageData
                 // Face neighbors (weight 3)
                 if x + 1 < nx {
                     let v: i64 = dist[idx(x + 1, y, z)] + 3;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if y + 1 < ny {
                     let v: i64 = dist[idx(x, y + 1, z)] + 3;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if z + 1 < nz {
                     let v: i64 = dist[idx(x, y, z + 1)] + 3;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
 
                 // Edge-diagonal neighbors (weight 4)
                 if x + 1 < nx && y + 1 < ny {
                     let v: i64 = dist[idx(x + 1, y + 1, z)] + 4;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if x + 1 < nx && z + 1 < nz {
                     let v: i64 = dist[idx(x + 1, y, z + 1)] + 4;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
                 if y + 1 < ny && z + 1 < nz {
                     let v: i64 = dist[idx(x, y + 1, z + 1)] + 4;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
 
                 // Corner-diagonal neighbors (weight 5)
                 if x + 1 < nx && y + 1 < ny && z + 1 < nz {
                     let v: i64 = dist[idx(x + 1, y + 1, z + 1)] + 5;
-                    if v < dist[cur] { dist[cur] = v; }
+                    if v < dist[cur] {
+                        dist[cur] = v;
+                    }
                 }
             }
         }
@@ -134,9 +162,12 @@ pub fn chamfer_distance_transform(input: &ImageData, scalars: &str) -> ImageData
     let result: Vec<f64> = dist.iter().map(|&d| d as f64 * scale).collect();
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ChamferDistance", result, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ChamferDistance",
+            result,
+            1,
+        )));
     img
 }
 
@@ -150,9 +181,8 @@ mod tests {
         img.set_spacing([1.0, 1.0, 1.0]);
         let mut values: Vec<f64> = vec![0.0; 7];
         values[3] = 1.0; // seed at center
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
 
         let result = chamfer_distance_transform(&img, "mask");
         let arr = result.point_data().get_array("ChamferDistance").unwrap();
@@ -180,9 +210,8 @@ mod tests {
     fn all_foreground_zero_distance() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         let values: Vec<f64> = vec![1.0; 9];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
 
         let result = chamfer_distance_transform(&img, "mask");
         let arr = result.point_data().get_array("ChamferDistance").unwrap();

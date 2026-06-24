@@ -38,12 +38,12 @@ pub fn measure_mesh(input: &PolyData) -> MeshMeasurements {
             let v0 = input.points.get(cell[0] as usize);
             for i in 1..cell.len() - 1 {
                 let v1 = input.points.get(cell[i] as usize);
-                let v2 = input.points.get(cell[i+1] as usize);
+                let v2 = input.points.get(cell[i + 1] as usize);
                 total_area += tri_area(v0, v1, v2);
             }
             for i in 0..cell.len() {
                 let a = input.points.get(cell[i] as usize);
-                let b = input.points.get(cell[(i+1)%cell.len()] as usize);
+                let b = input.points.get(cell[(i + 1) % cell.len()] as usize);
                 let d = dist(a, b);
                 min_edge = min_edge.min(d);
                 max_edge = max_edge.max(d);
@@ -57,15 +57,17 @@ pub fn measure_mesh(input: &PolyData) -> MeshMeasurements {
     let mut num_lines = 0;
     for cell in input.lines.iter() {
         num_lines += 1;
-        for i in 0..cell.len()-1 {
+        for i in 0..cell.len() - 1 {
             total_line_len += dist(
                 input.points.get(cell[i] as usize),
-                input.points.get(cell[i+1] as usize),
+                input.points.get(cell[i + 1] as usize),
             );
         }
     }
 
-    if min_edge == f64::MAX { min_edge = 0.0; }
+    if min_edge == f64::MAX {
+        min_edge = 0.0;
+    }
 
     MeshMeasurements {
         num_points: input.points.len(),
@@ -77,19 +79,27 @@ pub fn measure_mesh(input: &PolyData) -> MeshMeasurements {
         total_edge_length: sum_edge + total_line_len,
         min_edge_length: min_edge,
         max_edge_length: max_edge,
-        avg_edge_length: if edge_count > 0 { sum_edge / edge_count as f64 } else { 0.0 },
+        avg_edge_length: if edge_count > 0 {
+            sum_edge / edge_count as f64
+        } else {
+            0.0
+        },
     }
 }
 
 fn tri_area(v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> f64 {
-    let e1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
-    let e2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
-    let c = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-    0.5*(c[0]*c[0]+c[1]*c[1]+c[2]*c[2]).sqrt()
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let c = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    0.5 * (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt()
 }
 
 fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0]-b[0]).powi(2)+(a[1]-b[1]).powi(2)+(a[2]-b[2]).powi(2)).sqrt()
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
 #[cfg(test)]

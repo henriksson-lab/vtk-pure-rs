@@ -22,23 +22,24 @@ pub fn topology_check(input: &PolyData) -> TopologyReport {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
     let n_faces = cells.len();
 
-    let mut edge_count: HashMap<(i64,i64),usize> = HashMap::new();
-    let mut directed_edges: HashMap<(i64,i64),usize> = HashMap::new();
+    let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
+    let mut directed_edges: HashMap<(i64, i64), usize> = HashMap::new();
     let mut vertex_used = vec![false; n_verts];
 
     for c in &cells {
         for i in 0..c.len() {
-            let a=c[i]; let b=c[(i+1)%c.len()];
+            let a = c[i];
+            let b = c[(i + 1) % c.len()];
             vertex_used[a as usize] = true;
-            let key=if a<b{(a,b)}else{(b,a)};
+            let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
-            *directed_edges.entry((a,b)).or_insert(0) += 1;
+            *directed_edges.entry((a, b)).or_insert(0) += 1;
         }
     }
 
     let n_edges = edge_count.len();
-    let n_boundary = edge_count.values().filter(|&&c| c==1).count();
-    let n_non_manifold = edge_count.values().filter(|&&c| c>2).count();
+    let n_boundary = edge_count.values().filter(|&&c| c == 1).count();
+    let n_non_manifold = edge_count.values().filter(|&&c| c > 2).count();
     let n_isolated = vertex_used.iter().filter(|&&u| !u).count();
 
     // Check orientation: each directed edge should appear at most once
@@ -65,10 +66,14 @@ mod tests {
     #[test]
     fn tetrahedron() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([0.5,1.0,0.0]); pd.points.push([0.5,0.5,1.0]);
-        pd.polys.push_cell(&[0,1,2]); pd.polys.push_cell(&[0,3,1]);
-        pd.polys.push_cell(&[1,3,2]); pd.polys.push_cell(&[0,2,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.points.push([0.5, 0.5, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 3, 1]);
+        pd.polys.push_cell(&[1, 3, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
 
         let r = topology_check(&pd);
         assert_eq!(r.num_vertices, 4);
@@ -81,8 +86,10 @@ mod tests {
     #[test]
     fn open_mesh() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let r = topology_check(&pd);
         assert!(!r.is_closed);
@@ -92,9 +99,14 @@ mod tests {
     #[test]
     fn non_manifold() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([0.5,1.0,0.0]); pd.points.push([0.5,-1.0,0.0]); pd.points.push([0.5,0.0,1.0]);
-        pd.polys.push_cell(&[0,1,2]); pd.polys.push_cell(&[0,1,3]); pd.polys.push_cell(&[0,1,4]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.points.push([0.5, -1.0, 0.0]);
+        pd.points.push([0.5, 0.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 3]);
+        pd.polys.push_cell(&[0, 1, 4]);
 
         let r = topology_check(&pd);
         assert!(!r.is_manifold);
@@ -104,9 +116,11 @@ mod tests {
     #[test]
     fn isolated_vertex() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([0.5,1.0,0.0]); pd.points.push([10.0,10.0,10.0]); // isolated
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.points.push([10.0, 10.0, 10.0]); // isolated
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let r = topology_check(&pd);
         assert_eq!(r.num_isolated_vertices, 1);

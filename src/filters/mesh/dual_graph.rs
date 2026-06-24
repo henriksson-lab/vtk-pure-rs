@@ -14,20 +14,32 @@ pub fn dual_graph(input: &PolyData) -> PolyData {
     let mut out_points = Points::<f64>::new();
     let mut face_ids = Vec::with_capacity(n_cells);
     for (fi, cell) in cells.iter().enumerate() {
-        if cell.is_empty() { out_points.push([0.0;3]); face_ids.push(fi as f64); continue; }
-        let mut cx=0.0; let mut cy=0.0; let mut cz=0.0;
-        for &id in cell { let p=input.points.get(id as usize); cx+=p[0]; cy+=p[1]; cz+=p[2]; }
+        if cell.is_empty() {
+            out_points.push([0.0; 3]);
+            face_ids.push(fi as f64);
+            continue;
+        }
+        let mut cx = 0.0;
+        let mut cy = 0.0;
+        let mut cz = 0.0;
+        for &id in cell {
+            let p = input.points.get(id as usize);
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
+        }
         let n = cell.len() as f64;
-        out_points.push([cx/n, cy/n, cz/n]);
+        out_points.push([cx / n, cy / n, cz / n]);
         face_ids.push(fi as f64);
     }
 
     // Edge adjacency
-    let mut edge_faces: HashMap<(i64,i64), Vec<usize>> = HashMap::new();
+    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, cell) in cells.iter().enumerate() {
         for i in 0..cell.len() {
-            let a=cell[i]; let b=cell[(i+1)%cell.len()];
-            let key = if a<b { (a,b) } else { (b,a) };
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
+            let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
     }
@@ -42,7 +54,12 @@ pub fn dual_graph(input: &PolyData) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.lines = out_lines;
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("FaceIndex", face_ids, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FaceIndex",
+            face_ids,
+            1,
+        )));
     pd
 }
 
@@ -53,10 +70,12 @@ mod tests {
     #[test]
     fn dual_of_two_tris() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.0,1.0,0.0]); pd.points.push([0.0,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
-        pd.polys.push_cell(&[0,2,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
 
         let result = dual_graph(&pd);
         assert_eq!(result.points.len(), 2);
@@ -66,8 +85,10 @@ mod tests {
     #[test]
     fn single_triangle() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = dual_graph(&pd);
         assert_eq!(result.points.len(), 1);
@@ -77,8 +98,10 @@ mod tests {
     #[test]
     fn has_face_index() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = dual_graph(&pd);
         assert!(result.point_data().get_array("FaceIndex").is_some());

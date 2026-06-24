@@ -1,4 +1,3 @@
-
 use crate::data::PolyData;
 
 /// Fill holes (open boundary loops) in a triangle mesh.
@@ -21,11 +20,17 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
         let n = end - start;
-        if n < 3 { continue; }
+        if n < 3 {
+            continue;
+        }
         for i in 0..n {
             let a = conn[start + i];
             let b = conn[start + if i + 1 < n { i + 1 } else { 0 }];
-            let key = if a < b { (a as u64) << 32 | b as u64 } else { (b as u64) << 32 | a as u64 };
+            let key = if a < b {
+                (a as u64) << 32 | b as u64
+            } else {
+                (b as u64) << 32 | a as u64
+            };
             edges.push((key, a, b));
         }
     }
@@ -41,7 +46,10 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
         let key = edges[i].0;
         let mut count = 0usize;
         let start_i = i;
-        while i < ne && edges[i].0 == key { count += 1; i += 1; }
+        while i < ne && edges[i].0 == key {
+            count += 1;
+            i += 1;
+        }
         if count == 1 {
             // Boundary edge: set directed next
             let (_, a, b) = edges[start_i];
@@ -59,15 +67,21 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
     let mut loops: Vec<Vec<i64>> = Vec::new();
 
     for start_v in 0..np {
-        if next_vertex[start_v] < 0 || visited[start_v] { continue; }
+        if next_vertex[start_v] < 0 || visited[start_v] {
+            continue;
+        }
         let mut loop_pts = Vec::new();
         let mut current = start_v;
         loop {
-            if visited[current] { break; }
+            if visited[current] {
+                break;
+            }
             visited[current] = true;
             loop_pts.push(current as i64);
             let nxt = next_vertex[current];
-            if nxt < 0 { break; }
+            if nxt < 0 {
+                break;
+            }
             current = nxt as usize;
         }
         if loop_pts.len() >= 3 && current == start_v {
@@ -126,8 +140,10 @@ mod tests {
     fn closed_mesh_unchanged() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0], [0.5, 0.5, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, 0.5, 1.0],
             ],
             vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
         );

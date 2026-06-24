@@ -7,10 +7,7 @@ pub enum Skybox {
     /// Solid color background (default behavior).
     Solid([f32; 4]),
     /// Vertical gradient from bottom color to top color.
-    Gradient {
-        bottom: [f32; 3],
-        top: [f32; 3],
-    },
+    Gradient { bottom: [f32; 3], top: [f32; 3] },
     /// Three-stop gradient (bottom, horizon, top).
     ThreeStop {
         bottom: [f32; 3],
@@ -65,7 +62,11 @@ impl Skybox {
                     bottom[2] + t * (top[2] - bottom[2]),
                 ]
             }
-            Skybox::ThreeStop { bottom, horizon, top } => {
+            Skybox::ThreeStop {
+                bottom,
+                horizon,
+                top,
+            } => {
                 let t = y.clamp(0.0, 1.0);
                 if t < 0.5 {
                     let s = t * 2.0;

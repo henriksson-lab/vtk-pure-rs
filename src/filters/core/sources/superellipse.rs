@@ -54,8 +54,10 @@ pub fn superellipsoid(a: f64, b: f64, c: f64, e1: f64, e2: f64, resolution: usiz
             let cos_u = u.cos();
             let sin_u = u.sin();
 
-            let x = a * cos_v.abs().powf(e2) * cos_v.signum() * cos_u.abs().powf(e1) * cos_u.signum();
-            let y = b * cos_v.abs().powf(e2) * cos_v.signum() * sin_u.abs().powf(e1) * sin_u.signum();
+            let x =
+                a * cos_v.abs().powf(e2) * cos_v.signum() * cos_u.abs().powf(e1) * cos_u.signum();
+            let y =
+                b * cos_v.abs().powf(e2) * cos_v.signum() * sin_u.abs().powf(e1) * sin_u.signum();
             let z = c * sin_v.abs().powf(e2) * sin_v.signum();
 
             points.push([x, y, z]);

@@ -16,16 +16,20 @@ pub fn zigzag_bridge(total_length: f64, width: f64, n_segments: usize) -> PolyDa
     }
     for s in 0..ns {
         let b = s * 2;
-        polys.push_cell(&[b as i64, (b+2) as i64, (b+3) as i64, (b+1) as i64]);
+        polys.push_cell(&[b as i64, (b + 2) as i64, (b + 3) as i64, (b + 1) as i64]);
     }
     // Railings
     let mut lines = CellArray::new();
     for s in 0..ns {
         let b = s * 2;
-        lines.push_cell(&[b as i64, (b+2) as i64]); // left rail
-        lines.push_cell(&[(b+1) as i64, (b+3) as i64]); // right rail
+        lines.push_cell(&[b as i64, (b + 2) as i64]); // left rail
+        lines.push_cell(&[(b + 1) as i64, (b + 3) as i64]); // right rail
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

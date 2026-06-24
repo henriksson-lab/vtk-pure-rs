@@ -5,7 +5,14 @@ use crate::data::{CellArray, Points, PolyData};
 /// Create a supertoroid with exponents n1 and n2.
 /// n1 controls the cross-section shape, n2 controls the ring shape.
 /// n1=n2=1.0 gives a regular torus. n1=0.5 gives a square cross-section.
-pub fn supertoroid(major_radius: f64, minor_radius: f64, n1: f64, n2: f64, u_res: usize, v_res: usize) -> PolyData {
+pub fn supertoroid(
+    major_radius: f64,
+    minor_radius: f64,
+    n1: f64,
+    n2: f64,
+    u_res: usize,
+    v_res: usize,
+) -> PolyData {
     let ures = u_res.max(3);
     let vres = v_res.max(3);
     let mut pts = Points::<f64>::new();

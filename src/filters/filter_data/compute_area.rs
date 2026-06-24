@@ -4,7 +4,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn compute_area(input: &PolyData) -> f64 {
     let mut total = 0.0;
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let v1 = input.points.get(cell[i] as usize);
@@ -35,9 +37,8 @@ pub fn cell_areas(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Area", areas, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Area", areas, 1)));
     pd
 }
 
@@ -48,20 +49,22 @@ pub fn compute_length(input: &PolyData) -> f64 {
         for i in 0..cell.len() - 1 {
             let a = input.points.get(cell[i] as usize);
             let b = input.points.get(cell[i + 1] as usize);
-            let dx = b[0]-a[0]; let dy = b[1]-a[1]; let dz = b[2]-a[2];
-            total += (dx*dx + dy*dy + dz*dz).sqrt();
+            let dx = b[0] - a[0];
+            let dy = b[1] - a[1];
+            let dz = b[2] - a[2];
+            total += (dx * dx + dy * dy + dz * dz).sqrt();
         }
     }
     total
 }
 
 fn triangle_area(v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> f64 {
-    let e1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
-    let e2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
-    let cx = e1[1]*e2[2] - e1[2]*e2[1];
-    let cy = e1[2]*e2[0] - e1[0]*e2[2];
-    let cz = e1[0]*e2[1] - e1[1]*e2[0];
-    0.5 * (cx*cx + cy*cy + cz*cz).sqrt()
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let cx = e1[1] * e2[2] - e1[2] * e2[1];
+    let cy = e1[2] * e2[0] - e1[0] * e2[2];
+    let cz = e1[0] * e2[1] - e1[1] * e2[0];
+    0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
 }
 
 #[cfg(test)]

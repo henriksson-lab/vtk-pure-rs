@@ -3,7 +3,7 @@
 //! Provides utilities to extract individual blocks by index, name, or type
 //! from a MultiBlockDataSet.
 
-use crate::data::{Block, MultiBlockDataSet, PolyData, ImageData, UnstructuredGrid};
+use crate::data::{Block, ImageData, MultiBlockDataSet, PolyData, UnstructuredGrid};
 
 /// Extract a block by index, returning a clone of the block.
 pub fn extract_block(mb: &MultiBlockDataSet, index: usize) -> Option<Block> {
@@ -77,8 +77,11 @@ pub fn flatten_multi_block(mb: &MultiBlockDataSet) -> MultiBlockDataSet {
 fn flatten_recursive(mb: &MultiBlockDataSet, result: &mut MultiBlockDataSet, prefix: &str) {
     for i in 0..mb.num_blocks() {
         let name = mb.block_name(i).map(|n| {
-            if prefix.is_empty() { n.to_string() }
-            else { format!("{prefix}/{n}") }
+            if prefix.is_empty() {
+                n.to_string()
+            } else {
+                format!("{prefix}/{n}")
+            }
         });
 
         match mb.block(i) {
@@ -120,14 +123,30 @@ pub fn multi_block_summary(mb: &MultiBlockDataSet) -> String {
     }
 
     let mut parts = Vec::new();
-    if poly > 0 { parts.push(format!("{poly} PolyData")); }
-    if image > 0 { parts.push(format!("{image} ImageData")); }
-    if unstruct > 0 { parts.push(format!("{unstruct} UnstructuredGrid")); }
-    if recti > 0 { parts.push(format!("{recti} RectilinearGrid")); }
-    if struc > 0 { parts.push(format!("{struc} StructuredGrid")); }
-    if nested > 0 { parts.push(format!("{nested} nested MultiBlock")); }
+    if poly > 0 {
+        parts.push(format!("{poly} PolyData"));
+    }
+    if image > 0 {
+        parts.push(format!("{image} ImageData"));
+    }
+    if unstruct > 0 {
+        parts.push(format!("{unstruct} UnstructuredGrid"));
+    }
+    if recti > 0 {
+        parts.push(format!("{recti} RectilinearGrid"));
+    }
+    if struc > 0 {
+        parts.push(format!("{struc} StructuredGrid"));
+    }
+    if nested > 0 {
+        parts.push(format!("{nested} nested MultiBlock"));
+    }
 
-    format!("MultiBlock: {} blocks [{}]", mb.num_blocks(), parts.join(", "))
+    format!(
+        "MultiBlock: {} blocks [{}]",
+        mb.num_blocks(),
+        parts.join(", ")
+    )
 }
 
 #[cfg(test)]
@@ -136,21 +155,24 @@ mod tests {
 
     fn make_multi_block() -> MultiBlockDataSet {
         let mut mb = MultiBlockDataSet::new();
-        mb.add_block("sphere", Block::PolyData(
-            PolyData::from_triangles(
+        mb.add_block(
+            "sphere",
+            Block::PolyData(PolyData::from_triangles(
                 vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
                 vec![[0, 1, 2]],
-            ),
-        ));
-        mb.add_block("cube", Block::PolyData(
-            PolyData::from_triangles(
+            )),
+        );
+        mb.add_block(
+            "cube",
+            Block::PolyData(PolyData::from_triangles(
                 vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
                 vec![[0, 1, 2]],
-            ),
-        ));
-        mb.add_block("grid", Block::ImageData(
-            ImageData::with_dimensions(5, 5, 5),
-        ));
+            )),
+        );
+        mb.add_block(
+            "grid",
+            Block::ImageData(ImageData::with_dimensions(5, 5, 5)),
+        );
         mb
     }
 

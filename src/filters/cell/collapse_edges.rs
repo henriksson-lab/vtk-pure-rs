@@ -8,11 +8,11 @@ use std::collections::HashMap;
 /// triangles. Runs up to `max_passes` iterations.
 pub fn collapse_edges(input: &PolyData, min_length: f64, max_passes: usize) -> PolyData {
     let mut points = input.points.clone();
-    let mut tris: Vec<[i64; 3]> = input.polys.iter()
+    let mut tris: Vec<[i64; 3]> = input
+        .polys
+        .iter()
         .filter(|c| c.len() >= 3)
-        .flat_map(|c| {
-            (1..c.len()-1).map(move |i| [c[0], c[i], c[i+1]])
-        })
+        .flat_map(|c| (1..c.len() - 1).map(move |i| [c[0], c[i], c[i + 1]]))
         .collect();
 
     let min_len2 = min_length * min_length;
@@ -25,12 +25,15 @@ pub fn collapse_edges(input: &PolyData, min_length: f64, max_passes: usize) -> P
         for tri in &tris {
             for k in 0..3 {
                 let a = resolve(&merge_map, tri[k]);
-                let b = resolve(&merge_map, tri[(k+1)%3]);
-                if a == b { continue; }
+                let b = resolve(&merge_map, tri[(k + 1) % 3]);
+                if a == b {
+                    continue;
+                }
 
                 let pa = points.get(a as usize);
                 let pb = points.get(b as usize);
-                let d2 = (pa[0]-pb[0]).powi(2) + (pa[1]-pb[1]).powi(2) + (pa[2]-pb[2]).powi(2);
+                let d2 =
+                    (pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2);
 
                 if d2 < min_len2 {
                     // Merge b into a (or a into b, pick lower index)
@@ -38,7 +41,11 @@ pub fn collapse_edges(input: &PolyData, min_length: f64, max_passes: usize) -> P
                     let pk = points.get(keep as usize);
                     let pr = points.get(remove as usize);
                     // Move kept point to midpoint
-                    let mid = [(pk[0]+pr[0])*0.5, (pk[1]+pr[1])*0.5, (pk[2]+pr[2])*0.5];
+                    let mid = [
+                        (pk[0] + pr[0]) * 0.5,
+                        (pk[1] + pr[1]) * 0.5,
+                        (pk[2] + pr[2]) * 0.5,
+                    ];
                     // We can't easily modify points in-place with the Points API,
                     // so we'll add a new point and map both to it
                     let new_id = points.len() as i64;
@@ -50,19 +57,24 @@ pub fn collapse_edges(input: &PolyData, min_length: f64, max_passes: usize) -> P
             }
         }
 
-        if !any_collapsed { break; }
+        if !any_collapsed {
+            break;
+        }
 
         // Remap and remove degenerates
-        tris = tris.iter().filter_map(|tri| {
-            let a = resolve(&merge_map, tri[0]);
-            let b = resolve(&merge_map, tri[1]);
-            let c = resolve(&merge_map, tri[2]);
-            if a == b || b == c || a == c {
-                None
-            } else {
-                Some([a, b, c])
-            }
-        }).collect();
+        tris = tris
+            .iter()
+            .filter_map(|tri| {
+                let a = resolve(&merge_map, tri[0]);
+                let b = resolve(&merge_map, tri[1]);
+                let c = resolve(&merge_map, tri[2]);
+                if a == b || b == c || a == c {
+                    None
+                } else {
+                    Some([a, b, c])
+                }
+            })
+            .collect();
     }
 
     // Compact: only keep used points
@@ -71,13 +83,16 @@ pub fn collapse_edges(input: &PolyData, min_length: f64, max_passes: usize) -> P
 
     let mut out_polys = CellArray::new();
     for tri in &tris {
-        let mapped: Vec<i64> = tri.iter().map(|&id| {
-            *used.entry(id).or_insert_with(|| {
-                let idx = out_points.len() as i64;
-                out_points.push(points.get(id as usize));
-                idx
+        let mapped: Vec<i64> = tri
+            .iter()
+            .map(|&id| {
+                *used.entry(id).or_insert_with(|| {
+                    let idx = out_points.len() as i64;
+                    out_points.push(points.get(id as usize));
+                    idx
+                })
             })
-        }).collect();
+            .collect();
         out_polys.push_cell(&mapped);
     }
 
@@ -90,10 +105,14 @@ pub fn collapse_edges(input: &PolyData, min_length: f64, max_passes: usize) -> P
 fn resolve(map: &HashMap<i64, i64>, mut id: i64) -> i64 {
     let mut seen = 0;
     while let Some(&target) = map.get(&id) {
-        if target == id { break; }
+        if target == id {
+            break;
+        }
         id = target;
         seen += 1;
-        if seen > 100 { break; } // safety
+        if seen > 100 {
+            break;
+        } // safety
     }
     id
 }

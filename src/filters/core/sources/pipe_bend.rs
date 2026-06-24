@@ -3,7 +3,13 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create a pipe bend (elbow) with given bend angle and radii.
-pub fn pipe_bend(bend_radius: f64, pipe_radius: f64, angle_degrees: f64, bend_res: usize, tube_res: usize) -> PolyData {
+pub fn pipe_bend(
+    bend_radius: f64,
+    pipe_radius: f64,
+    angle_degrees: f64,
+    bend_res: usize,
+    tube_res: usize,
+) -> PolyData {
     let bres = bend_res.max(2);
     let tres = tube_res.max(3);
     let angle = angle_degrees.to_radians();
@@ -48,8 +54,10 @@ pub fn pipe_bend(bend_radius: f64, pipe_radius: f64, angle_degrees: f64, bend_re
         for it in 0..tres {
             let it1 = (it + 1) % tres;
             polys.push_cell(&[
-                (r0 + it) as i64, (r0 + it1) as i64,
-                (r1 + it1) as i64, (r1 + it) as i64,
+                (r0 + it) as i64,
+                (r0 + it1) as i64,
+                (r1 + it1) as i64,
+                (r1 + it) as i64,
             ]);
         }
     }

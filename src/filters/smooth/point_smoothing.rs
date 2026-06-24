@@ -16,7 +16,9 @@ pub fn smooth_point_positions(
     iterations: usize,
 ) -> PolyData {
     let n = mesh.points.len();
-    if n < 2 || k == 0 { return mesh.clone(); }
+    if n < 2 || k == 0 {
+        return mesh.clone();
+    }
 
     let mut positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
 
@@ -26,7 +28,9 @@ pub fn smooth_point_positions(
             let neighbors = find_knn(&positions, i, k);
             let mut avg = [0.0; 3];
             for &ni in &neighbors {
-                for c in 0..3 { avg[c] += positions[ni][c]; }
+                for c in 0..3 {
+                    avg[c] += positions[ni][c];
+                }
             }
             let nk = neighbors.len() as f64;
             if nk > 0.0 {
@@ -71,7 +75,9 @@ pub fn smooth_point_scalars(
         for i in 0..n {
             let neighbors = find_knn(&positions, i, k);
             let mut avg = 0.0;
-            for &ni in &neighbors { avg += values[ni]; }
+            for &ni in &neighbors {
+                avg += values[ni];
+            }
             let nk = neighbors.len() as f64;
             if nk > 0.0 {
                 new_vals[i] = values[i] * (1.0 - factor) + (avg / nk) * factor;
@@ -81,18 +87,22 @@ pub fn smooth_point_scalars(
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, values, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, values, 1,
+        )));
     result
 }
 
 fn find_knn(points: &[[f64; 3]], query_idx: usize, k: usize) -> Vec<usize> {
     let q = points[query_idx];
-    let mut dists: Vec<(usize, f64)> = points.iter().enumerate()
+    let mut dists: Vec<(usize, f64)> = points
+        .iter()
+        .enumerate()
         .filter(|(i, _)| *i != query_idx)
         .map(|(i, p)| {
-            let d = (p[0]-q[0]).powi(2) + (p[1]-q[1]).powi(2) + (p[2]-q[2]).powi(2);
+            let d = (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2);
             (i, d)
         })
         .collect();
@@ -108,8 +118,11 @@ mod tests {
     fn smooth_positions() {
         let mut mesh = PolyData::new();
         mesh.points = Points::from(vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 0.1, 0.0],
-            [0.5, -0.1, 0.0], [2.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 0.1, 0.0],
+            [0.5, -0.1, 0.0],
+            [2.0, 0.0, 0.0],
         ]);
         let result = smooth_point_positions(&mesh, 3, 0.5, 2);
         assert_eq!(result.points.len(), 5);
@@ -119,12 +132,13 @@ mod tests {
     #[test]
     fn smooth_scalars() {
         let mut mesh = PolyData::new();
-        mesh.points = Points::from(vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0],
-        ]);
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 100.0, 0.0], 1),
-        ));
+        mesh.points = Points::from(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 100.0, 0.0],
+                1,
+            )));
 
         let result = smooth_point_scalars(&mesh, "val", 2, 0.5, 1);
         let arr = result.point_data().get_array("val").unwrap();

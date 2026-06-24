@@ -37,10 +37,7 @@ impl Default for EvenSpacedStreamParams {
 /// Uses a simplified Jobard-Lefer approach: integrates from a seed,
 /// then seeds new streamlines at the separation distance perpendicular
 /// to existing ones.
-pub fn even_spaced_streamlines_2d(
-    field: &ImageData,
-    params: &EvenSpacedStreamParams,
-) -> PolyData {
+pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamParams) -> PolyData {
     let vectors = match field.point_data().vectors() {
         Some(v) if v.num_components() >= 2 => v,
         _ => return PolyData::new(),
@@ -80,17 +77,21 @@ pub fn even_spaced_streamlines_2d(
         }
 
         // Check if seed is too close to existing streamlines
-        if is_too_close(seed, &occupied, origin, cell_size, grid_nx, grid_ny, params.separation) {
+        if is_too_close(
+            seed,
+            &occupied,
+            origin,
+            cell_size,
+            grid_nx,
+            grid_ny,
+            params.separation,
+        ) {
             continue;
         }
 
         // Integrate streamline in both directions
-        let forward = integrate_2d(
-            vectors, seed, params, origin, spacing, dims, 1.0,
-        );
-        let backward = integrate_2d(
-            vectors, seed, params, origin, spacing, dims, -1.0,
-        );
+        let forward = integrate_2d(vectors, seed, params, origin, spacing, dims, 1.0);
+        let backward = integrate_2d(vectors, seed, params, origin, spacing, dims, -1.0);
 
         // Combine: backward (reversed) + forward
         let mut line_points: Vec<[f64; 2]> = Vec::new();
@@ -133,11 +134,29 @@ pub fn even_spaced_streamlines_2d(
                     let s2 = [pt[0] - nx, pt[1] - ny];
 
                     if in_domain(s1, origin, domain_w, domain_h)
-                        && !is_too_close(s1, &occupied, origin, cell_size, grid_nx, grid_ny, params.separation * 0.8) {
+                        && !is_too_close(
+                            s1,
+                            &occupied,
+                            origin,
+                            cell_size,
+                            grid_nx,
+                            grid_ny,
+                            params.separation * 0.8,
+                        )
+                    {
                         seed_queue.push(s1);
                     }
                     if in_domain(s2, origin, domain_w, domain_h)
-                        && !is_too_close(s2, &occupied, origin, cell_size, grid_nx, grid_ny, params.separation * 0.8) {
+                        && !is_too_close(
+                            s2,
+                            &occupied,
+                            origin,
+                            cell_size,
+                            grid_nx,
+                            grid_ny,
+                            params.separation * 0.8,
+                        )
+                    {
                         seed_queue.push(s2);
                     }
                 }
@@ -151,9 +170,13 @@ pub fn even_spaced_streamlines_2d(
     let mut result = PolyData::new();
     result.points = out_points;
     result.lines = out_lines;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("StreamlineId", line_id_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "StreamlineId",
+            line_id_data,
+            1,
+        )));
     result
 }
 
@@ -230,7 +253,13 @@ fn interp_vec2(
     result
 }
 
-fn grid_idx(pt: [f64; 2], origin: [f64; 3], cell_size: f64, grid_nx: usize, grid_ny: usize) -> Option<usize> {
+fn grid_idx(
+    pt: [f64; 2],
+    origin: [f64; 3],
+    cell_size: f64,
+    grid_nx: usize,
+    grid_ny: usize,
+) -> Option<usize> {
     let gx = ((pt[0] - origin[0]) / cell_size) as usize;
     let gy = ((pt[1] - origin[1]) / cell_size) as usize;
     if gx < grid_nx && gy < grid_ny {
@@ -281,8 +310,7 @@ fn mark_occupied(
 }
 
 fn in_domain(pt: [f64; 2], origin: [f64; 3], w: f64, h: f64) -> bool {
-    pt[0] >= origin[0] && pt[0] <= origin[0] + w &&
-    pt[1] >= origin[1] && pt[1] <= origin[1] + h
+    pt[0] >= origin[0] && pt[0] <= origin[0] + w && pt[1] >= origin[1] && pt[1] <= origin[1] + h
 }
 
 #[cfg(test)]
@@ -305,9 +333,9 @@ mod tests {
         let mut field = ImageData::with_dimensions(dims[0], dims[1], dims[2]);
         field.set_spacing(spacing);
         field.set_origin(origin);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vdata, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vdata, 3)));
         field.point_data_mut().set_active_vectors("velocity");
         field
     }
@@ -323,7 +351,10 @@ mod tests {
             ..Default::default()
         };
         let result = even_spaced_streamlines_2d(&field, &params);
-        assert!(result.lines.num_cells() >= 1, "should produce at least one streamline");
+        assert!(
+            result.lines.num_cells() >= 1,
+            "should produce at least one streamline"
+        );
         assert!(result.points.len() > 2);
     }
 
@@ -350,9 +381,9 @@ mod tests {
         let mut field = ImageData::with_dimensions(dims[0], dims[1], dims[2]);
         field.set_spacing(spacing);
         field.set_origin(origin);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vdata, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vdata, 3)));
         field.point_data_mut().set_active_vectors("velocity");
 
         let params = EvenSpacedStreamParams {

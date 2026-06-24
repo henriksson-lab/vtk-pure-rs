@@ -22,13 +22,18 @@ impl VtiBinaryWriter {
         let origin = data.origin();
 
         writeln!(w, "<?xml version=\"1.0\"?>")?;
-        writeln!(w, "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">")?;
+        writeln!(
+            w,
+            "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">"
+        )?;
         writeln!(w, "  <ImageData WholeExtent=\"{} {} {} {} {} {}\" Origin=\"{} {} {}\" Spacing=\"{} {} {}\">",
             ext[0], ext[1], ext[2], ext[3], ext[4], ext[5],
             origin[0], origin[1], origin[2],
             spacing[0], spacing[1], spacing[2],
         )?;
-        writeln!(w, "    <Piece Extent=\"{} {} {} {} {} {}\">",
+        writeln!(
+            w,
+            "    <Piece Extent=\"{} {} {} {} {} {}\">",
             ext[0], ext[1], ext[2], ext[3], ext[4], ext[5],
         )?;
 

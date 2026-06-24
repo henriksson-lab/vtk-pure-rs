@@ -3,7 +3,7 @@
 //! Each test writes a PolyData to a format and reads it back,
 //! verifying that the geometry is preserved.
 
-use vtk_data::{DataArray, AnyDataArray, PolyData};
+use vtk_data::{AnyDataArray, DataArray, PolyData};
 
 fn make_triangle() -> PolyData {
     PolyData::from_triangles(
@@ -15,7 +15,10 @@ fn make_triangle() -> PolyData {
 fn make_two_triangles() -> PolyData {
     PolyData::from_triangles(
         vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
         ],
         vec![[0, 1, 2], [1, 3, 2]],
     )
@@ -57,7 +60,9 @@ fn obj_roundtrip_two_triangles() {
 fn stl_ascii_roundtrip() {
     let pd = make_two_triangles();
     let mut buf = Vec::new();
-    vtk_io_stl::StlWriter::ascii().write_to(&mut buf, &pd).unwrap();
+    vtk_io_stl::StlWriter::ascii()
+        .write_to(&mut buf, &pd)
+        .unwrap();
     let result = vtk_io_stl::StlReader::read_from(&buf).unwrap();
     // STL duplicates vertices per triangle
     assert_eq!(result.polys.num_cells(), 2);
@@ -67,7 +72,9 @@ fn stl_ascii_roundtrip() {
 fn stl_binary_roundtrip() {
     let pd = make_two_triangles();
     let mut buf = Vec::new();
-    vtk_io_stl::StlWriter::binary().write_to(&mut buf, &pd).unwrap();
+    vtk_io_stl::StlWriter::binary()
+        .write_to(&mut buf, &pd)
+        .unwrap();
     let result = vtk_io_stl::StlReader::read_from(&buf).unwrap();
     assert_eq!(result.polys.num_cells(), 2);
 }
@@ -78,8 +85,12 @@ fn stl_binary_roundtrip() {
 fn legacy_ascii_roundtrip() {
     let pd = make_triangle();
     let mut buf = Vec::new();
-    vtk_io_legacy::LegacyWriter::ascii().write_poly_data_to(&mut buf, &pd).unwrap();
-    let result = vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..])).unwrap();
+    vtk_io_legacy::LegacyWriter::ascii()
+        .write_poly_data_to(&mut buf, &pd)
+        .unwrap();
+    let result =
+        vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..]))
+            .unwrap();
     assert_eq!(result.points.len(), 3);
     assert_eq!(result.polys.num_cells(), 1);
 }
@@ -88,8 +99,12 @@ fn legacy_ascii_roundtrip() {
 fn legacy_binary_roundtrip() {
     let pd = make_two_triangles();
     let mut buf = Vec::new();
-    vtk_io_legacy::LegacyWriter::binary().write_poly_data_to(&mut buf, &pd).unwrap();
-    let result = vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..])).unwrap();
+    vtk_io_legacy::LegacyWriter::binary()
+        .write_poly_data_to(&mut buf, &pd)
+        .unwrap();
+    let result =
+        vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..]))
+            .unwrap();
     assert_eq!(result.points.len(), 4);
     assert_eq!(result.polys.num_cells(), 2);
 }
@@ -98,8 +113,12 @@ fn legacy_binary_roundtrip() {
 fn legacy_with_scalars() {
     let pd = make_triangle_with_scalars();
     let mut buf = Vec::new();
-    vtk_io_legacy::LegacyWriter::ascii().write_poly_data_to(&mut buf, &pd).unwrap();
-    let result = vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..])).unwrap();
+    vtk_io_legacy::LegacyWriter::ascii()
+        .write_poly_data_to(&mut buf, &pd)
+        .unwrap();
+    let result =
+        vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..]))
+            .unwrap();
     assert!(result.point_data().scalars().is_some());
 }
 
@@ -168,8 +187,11 @@ fn cross_format_point_preservation() {
 
     // VTK Legacy
     let mut buf = Vec::new();
-    vtk_io_legacy::LegacyWriter::ascii().write_poly_data_to(&mut buf, &pd).unwrap();
-    let r = vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..])).unwrap();
+    vtk_io_legacy::LegacyWriter::ascii()
+        .write_poly_data_to(&mut buf, &pd)
+        .unwrap();
+    let r = vtk_io_legacy::LegacyReader::read_poly_data_from(std::io::BufReader::new(&buf[..]))
+        .unwrap();
     assert_eq!(r.points.len(), n, "VTK Legacy");
 
     // OBJ

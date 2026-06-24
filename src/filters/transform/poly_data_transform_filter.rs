@@ -6,7 +6,7 @@ pub fn translate(input: &PolyData, delta: [f64; 3]) -> PolyData {
     let mut points = Points::<f64>::new();
     for i in 0..n {
         let p = input.points.get(i);
-        points.push([p[0]+delta[0], p[1]+delta[1], p[2]+delta[2]]);
+        points.push([p[0] + delta[0], p[1] + delta[1], p[2] + delta[2]]);
     }
     let mut pd = input.clone();
     pd.points = points;
@@ -20,9 +20,9 @@ pub fn scale(input: &PolyData, factors: [f64; 3], center: [f64; 3]) -> PolyData 
     for i in 0..n {
         let p = input.points.get(i);
         points.push([
-            center[0] + (p[0]-center[0]) * factors[0],
-            center[1] + (p[1]-center[1]) * factors[1],
-            center[2] + (p[2]-center[2]) * factors[2],
+            center[0] + (p[0] - center[0]) * factors[0],
+            center[1] + (p[1] - center[1]) * factors[1],
+            center[2] + (p[2] - center[2]) * factors[2],
         ]);
     }
     let mut pd = input.clone();
@@ -35,26 +35,44 @@ pub fn rotate(input: &PolyData, axis: [f64; 3], angle_deg: f64, center: [f64; 3]
     let angle = angle_deg.to_radians();
     let c = angle.cos();
     let s = angle.sin();
-    let len = (axis[0]*axis[0]+axis[1]*axis[1]+axis[2]*axis[2]).sqrt();
-    if len < 1e-15 { return input.clone(); }
-    let ux = axis[0]/len; let uy = axis[1]/len; let uz = axis[2]/len;
+    let len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+    if len < 1e-15 {
+        return input.clone();
+    }
+    let ux = axis[0] / len;
+    let uy = axis[1] / len;
+    let uz = axis[2] / len;
 
     // Rodrigues' rotation formula as matrix
     let r = [
-        [c + ux*ux*(1.0-c),       ux*uy*(1.0-c) - uz*s,   ux*uz*(1.0-c) + uy*s],
-        [uy*ux*(1.0-c) + uz*s,    c + uy*uy*(1.0-c),       uy*uz*(1.0-c) - ux*s],
-        [uz*ux*(1.0-c) - uy*s,    uz*uy*(1.0-c) + ux*s,    c + uz*uz*(1.0-c)],
+        [
+            c + ux * ux * (1.0 - c),
+            ux * uy * (1.0 - c) - uz * s,
+            ux * uz * (1.0 - c) + uy * s,
+        ],
+        [
+            uy * ux * (1.0 - c) + uz * s,
+            c + uy * uy * (1.0 - c),
+            uy * uz * (1.0 - c) - ux * s,
+        ],
+        [
+            uz * ux * (1.0 - c) - uy * s,
+            uz * uy * (1.0 - c) + ux * s,
+            c + uz * uz * (1.0 - c),
+        ],
     ];
 
     let n = input.points.len();
     let mut points = Points::<f64>::new();
     for i in 0..n {
         let p = input.points.get(i);
-        let dx = p[0]-center[0]; let dy = p[1]-center[1]; let dz = p[2]-center[2];
+        let dx = p[0] - center[0];
+        let dy = p[1] - center[1];
+        let dz = p[2] - center[2];
         points.push([
-            center[0] + r[0][0]*dx + r[0][1]*dy + r[0][2]*dz,
-            center[1] + r[1][0]*dx + r[1][1]*dy + r[1][2]*dz,
-            center[2] + r[2][0]*dx + r[2][1]*dy + r[2][2]*dz,
+            center[0] + r[0][0] * dx + r[0][1] * dy + r[0][2] * dz,
+            center[1] + r[1][0] * dx + r[1][1] * dy + r[1][2] * dz,
+            center[2] + r[2][0] * dx + r[2][1] * dy + r[2][2] * dz,
         ]);
     }
     let mut pd = input.clone();

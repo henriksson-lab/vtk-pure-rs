@@ -19,10 +19,18 @@ pub fn delaunay_2d_from_points(points: &[[f64; 2]]) -> PolyData {
     let mut max_x: f64 = f64::MIN;
     let mut max_y: f64 = f64::MIN;
     for p in points {
-        if p[0] < min_x { min_x = p[0]; }
-        if p[1] < min_y { min_y = p[1]; }
-        if p[0] > max_x { max_x = p[0]; }
-        if p[1] > max_y { max_y = p[1]; }
+        if p[0] < min_x {
+            min_x = p[0];
+        }
+        if p[1] < min_y {
+            min_y = p[1];
+        }
+        if p[0] > max_x {
+            max_x = p[0];
+        }
+        if p[1] > max_y {
+            max_y = p[1];
+        }
     }
 
     let dx: f64 = max_x - min_x;
@@ -69,15 +77,11 @@ pub fn delaunay_2d_from_points(points: &[[f64; 2]]) -> PolyData {
         let mut polygon: Vec<[usize; 2]> = Vec::new();
         for &ti in &bad_triangles {
             let tri = triangles[ti];
-            let edges: [[usize; 2]; 3] = [
-                [tri[0], tri[1]],
-                [tri[1], tri[2]],
-                [tri[2], tri[0]],
-            ];
+            let edges: [[usize; 2]; 3] = [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]];
             for edge in &edges {
-                let shared: bool = bad_triangles.iter().any(|&oi| {
-                    oi != ti && triangle_has_edge(&triangles[oi], edge)
-                });
+                let shared: bool = bad_triangles
+                    .iter()
+                    .any(|&oi| oi != ti && triangle_has_edge(&triangles[oi], edge));
                 if !shared {
                     polygon.push(*edge);
                 }
@@ -97,9 +101,7 @@ pub fn delaunay_2d_from_points(points: &[[f64; 2]]) -> PolyData {
     }
 
     // Remove triangles that share vertices with the super-triangle
-    triangles.retain(|tri| {
-        tri[0] >= 3 && tri[1] >= 3 && tri[2] >= 3
-    });
+    triangles.retain(|tri| tri[0] >= 3 && tri[1] >= 3 && tri[2] >= 3);
 
     // Build output PolyData (remap indices: subtract 3 for super-triangle offset)
     let mut out_points = Points::<f64>::new();
@@ -157,11 +159,7 @@ fn in_circumcircle(pts: &[[f64; 2]], tri: &[usize; 3], px: f64, py: f64) -> bool
 
 /// Check if a triangle contains a given edge (unordered).
 fn triangle_has_edge(tri: &[usize; 3], edge: &[usize; 2]) -> bool {
-    let edges: [[usize; 2]; 3] = [
-        [tri[0], tri[1]],
-        [tri[1], tri[2]],
-        [tri[2], tri[0]],
-    ];
+    let edges: [[usize; 2]; 3] = [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]];
     for e in &edges {
         if (e[0] == edge[0] && e[1] == edge[1]) || (e[0] == edge[1] && e[1] == edge[0]) {
             return true;
@@ -184,12 +182,7 @@ mod tests {
 
     #[test]
     fn square_produces_two_triangles() {
-        let pts: Vec<[f64; 2]> = vec![
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0],
-        ];
+        let pts: Vec<[f64; 2]> = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         let result = delaunay_2d_from_points(&pts);
         assert_eq!(result.points.len(), 4);
         assert_eq!(result.polys.num_cells(), 2);

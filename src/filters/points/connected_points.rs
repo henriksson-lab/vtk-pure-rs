@@ -1,5 +1,5 @@
-use std::collections::VecDeque;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::VecDeque;
 
 /// Connected components for point clouds using epsilon-distance.
 ///
@@ -60,9 +60,12 @@ pub fn connected_points(input: &PolyData, epsilon: f64) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.verts = out_verts;
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ComponentId", comp_f64, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ComponentId",
+            comp_f64,
+            1,
+        )));
     pd
 }
 

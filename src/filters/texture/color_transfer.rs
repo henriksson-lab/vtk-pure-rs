@@ -72,11 +72,11 @@ impl ColorTransferFunction {
     /// Create a rainbow colormap.
     pub fn rainbow() -> Self {
         let mut ctf = Self::new();
-        ctf.add_point(0.0, 1.0, 0.0, 0.0);   // red
-        ctf.add_point(0.25, 1.0, 1.0, 0.0);  // yellow
-        ctf.add_point(0.5, 0.0, 1.0, 0.0);   // green
-        ctf.add_point(0.75, 0.0, 1.0, 1.0);  // cyan
-        ctf.add_point(1.0, 0.0, 0.0, 1.0);   // blue
+        ctf.add_point(0.0, 1.0, 0.0, 0.0); // red
+        ctf.add_point(0.25, 1.0, 1.0, 0.0); // yellow
+        ctf.add_point(0.5, 0.0, 1.0, 0.0); // green
+        ctf.add_point(0.75, 0.0, 1.0, 1.0); // cyan
+        ctf.add_point(1.0, 0.0, 0.0, 1.0); // blue
         ctf
     }
 

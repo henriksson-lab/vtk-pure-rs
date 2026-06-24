@@ -17,15 +17,20 @@ pub struct Quartiles {
 
 impl std::fmt::Display for Quartiles {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "min={:.4} Q1={:.4} median={:.4} Q3={:.4} max={:.4} IQR={:.4}",
-            self.min, self.q1, self.median, self.q3, self.max, self.iqr)
+        write!(
+            f,
+            "min={:.4} Q1={:.4} median={:.4} Q3={:.4} max={:.4} IQR={:.4}",
+            self.min, self.q1, self.median, self.q3, self.max, self.iqr
+        )
     }
 }
 
 /// Compute quartiles for a data array.
 pub fn compute_quartiles_array(array: &AnyDataArray) -> Option<Quartiles> {
     let n = array.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -42,7 +47,9 @@ pub fn compute_quartiles_array(array: &AnyDataArray) -> Option<Quartiles> {
 
     Some(Quartiles {
         min: values[0],
-        q1, median, q3,
+        q1,
+        median,
+        q3,
         max: values[n - 1],
         iqr,
         lower_fence: q1 - 1.5 * iqr,
@@ -82,7 +89,9 @@ pub fn five_number_summary(table: &Table) -> Table {
     let mut max_col = Vec::new();
 
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         if let Some(q) = compute_quartiles_array(col) {
             names_col.push(col.name().to_string());
             min_col.push(q.min);
@@ -104,7 +113,9 @@ pub fn five_number_summary(table: &Table) -> Table {
 
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     let n = sorted.len();
-    if n == 1 { return sorted[0]; }
+    if n == 1 {
+        return sorted[0];
+    }
     let idx = p * (n - 1) as f64;
     let lo = idx.floor() as usize;
     let hi = idx.ceil() as usize;
@@ -118,8 +129,11 @@ mod tests {
 
     #[test]
     fn basic_quartiles() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("x",
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], 1));
+        let arr = AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            1,
+        ));
         let q = compute_quartiles_array(&arr).unwrap();
         assert_eq!(q.min, 1.0);
         assert_eq!(q.max, 8.0);
@@ -131,8 +145,7 @@ mod tests {
 
     #[test]
     fn fences() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("x",
-            vec![1.0, 2.0, 3.0, 4.0, 5.0], 1));
+        let arr = AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1));
         let q = compute_quartiles_array(&arr).unwrap();
         assert!(q.lower_fence < q.q1);
         assert!(q.upper_fence > q.q3);
@@ -141,8 +154,16 @@ mod tests {
     #[test]
     fn five_number() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0, 2.0, 3.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("b", vec![10.0, 20.0, 30.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "a",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "b",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
         let summary = five_number_summary(&table);
         assert_eq!(summary.num_rows(), 2);
         assert_eq!(summary.num_columns(), 5);

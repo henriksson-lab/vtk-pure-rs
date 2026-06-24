@@ -7,13 +7,11 @@
 use crate::data::{Points, PolyData};
 
 /// Smooth with boundary vertices fixed (cannot move).
-pub fn smooth_constrained_boundary(
-    mesh: &PolyData,
-    iterations: usize,
-    factor: f64,
-) -> PolyData {
+pub fn smooth_constrained_boundary(mesh: &PolyData, iterations: usize, factor: f64) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     let boundary = find_boundary_vertices(mesh);
     let adj = build_adjacency(mesh, n);
@@ -23,10 +21,14 @@ pub fn smooth_constrained_boundary(
     for _ in 0..iterations {
         let mut new_pos = positions.clone();
         for i in 0..n {
-            if boundary[i] || adj[i].is_empty() { continue; }
+            if boundary[i] || adj[i].is_empty() {
+                continue;
+            }
             let mut avg = [0.0; 3];
             for &ni in &adj[i] {
-                for c in 0..3 { avg[c] += positions[ni][c]; }
+                for c in 0..3 {
+                    avg[c] += positions[ni][c];
+                }
             }
             let k = adj[i].len() as f64;
             for c in 0..3 {
@@ -51,7 +53,9 @@ pub fn smooth_constrained_displacement(
     max_displacement: f64,
 ) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     let original: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
     let adj = build_adjacency(mesh, n);
@@ -62,10 +66,14 @@ pub fn smooth_constrained_displacement(
     for _ in 0..iterations {
         let mut new_pos = positions.clone();
         for i in 0..n {
-            if adj[i].is_empty() { continue; }
+            if adj[i].is_empty() {
+                continue;
+            }
             let mut avg = [0.0; 3];
             for &ni in &adj[i] {
-                for c in 0..3 { avg[c] += positions[ni][c]; }
+                for c in 0..3 {
+                    avg[c] += positions[ni][c];
+                }
             }
             let k = adj[i].len() as f64;
             for c in 0..3 {
@@ -76,7 +84,7 @@ pub fn smooth_constrained_displacement(
             let dx = new_pos[i][0] - original[i][0];
             let dy = new_pos[i][1] - original[i][1];
             let dz = new_pos[i][2] - original[i][2];
-            let d2 = dx*dx + dy*dy + dz*dz;
+            let d2 = dx * dx + dy * dy + dz * dz;
             if d2 > max_d2 {
                 let scale = max_displacement / d2.sqrt();
                 for c in 0..3 {
@@ -93,13 +101,11 @@ pub fn smooth_constrained_displacement(
 }
 
 /// Smooth along normal direction only (tangential smoothing preserved).
-pub fn smooth_constrained_normal(
-    mesh: &PolyData,
-    iterations: usize,
-    factor: f64,
-) -> PolyData {
+pub fn smooth_constrained_normal(mesh: &PolyData, iterations: usize, factor: f64) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     let adj = build_adjacency(mesh, n);
     let normals = compute_vertex_normals(mesh);
@@ -108,13 +114,17 @@ pub fn smooth_constrained_normal(
     for _ in 0..iterations {
         let mut new_pos = positions.clone();
         for i in 0..n {
-            if adj[i].is_empty() { continue; }
+            if adj[i].is_empty() {
+                continue;
+            }
             let mut avg = [0.0; 3];
             for &ni in &adj[i] {
-                for c in 0..3 { avg[c] += positions[ni][c]; }
+                for c in 0..3 {
+                    avg[c] += positions[ni][c];
+                }
             }
             let k = adj[i].len() as f64;
-            let target = [avg[0]/k, avg[1]/k, avg[2]/k];
+            let target = [avg[0] / k, avg[1] / k, avg[2] / k];
 
             // Project displacement onto normal
             let disp = [
@@ -123,7 +133,7 @@ pub fn smooth_constrained_normal(
                 target[2] - positions[i][2],
             ];
             let n_dir = &normals[i];
-            let proj = disp[0]*n_dir[0] + disp[1]*n_dir[1] + disp[2]*n_dir[2];
+            let proj = disp[0] * n_dir[0] + disp[1] * n_dir[1] + disp[2] * n_dir[2];
             for c in 0..3 {
                 new_pos[i][c] = positions[i][c] + factor * proj * n_dir[c];
             }
@@ -142,7 +152,7 @@ fn build_adjacency(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
-            let b = cell[(i+1) % nc] as usize;
+            let b = cell[(i + 1) % nc] as usize;
             adj[a].insert(b);
             adj[b].insert(a);
         }
@@ -152,12 +162,13 @@ fn build_adjacency(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
 
 fn find_boundary_vertices(mesh: &PolyData) -> Vec<bool> {
     let n = mesh.points.len();
-    let mut edge_count: std::collections::HashMap<(usize,usize), usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
-            let b = cell[(i+1) % nc] as usize;
+            let b = cell[(i + 1) % nc] as usize;
             *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
@@ -175,23 +186,31 @@ fn compute_vertex_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
     let n = mesh.points.len();
     let mut normals = vec![[0.0; 3]; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         let b = mesh.points.get(cell[1] as usize);
         let c = mesh.points.get(cell[2] as usize);
         let fn_ = [
-            (b[1]-a[1])*(c[2]-a[2]) - (b[2]-a[2])*(c[1]-a[1]),
-            (b[2]-a[2])*(c[0]-a[0]) - (b[0]-a[0])*(c[2]-a[2]),
-            (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]),
+            (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
+            (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
+            (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
         ];
         for &pid in cell {
             let idx = pid as usize;
-            for c in 0..3 { normals[idx][c] += fn_[c]; }
+            for c in 0..3 {
+                normals[idx][c] += fn_[c];
+            }
         }
     }
     for n in &mut normals {
-        let len = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
-        if len > 1e-15 { for c in 0..3 { n[c] /= len; } }
+        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if len > 1e-15 {
+            for c in 0..3 {
+                n[c] /= len;
+            }
+        }
     }
     normals
 }
@@ -212,8 +231,8 @@ mod tests {
         for y in 0..4 {
             for x in 0..4 {
                 let bl = y * 5 + x;
-                tris.push([bl, bl+1, bl+6]);
-                tris.push([bl, bl+6, bl+5]);
+                tris.push([bl, bl + 1, bl + 6]);
+                tris.push([bl, bl + 6, bl + 5]);
             }
         }
         PolyData::from_triangles(pts, tris)
@@ -239,7 +258,10 @@ mod tests {
         for i in 0..mesh.points.len() {
             let orig = mesh.points.get(i);
             let new_ = result.points.get(i);
-            let d = ((new_[0]-orig[0]).powi(2) + (new_[1]-orig[1]).powi(2) + (new_[2]-orig[2]).powi(2)).sqrt();
+            let d = ((new_[0] - orig[0]).powi(2)
+                + (new_[1] - orig[1]).powi(2)
+                + (new_[2] - orig[2]).powi(2))
+            .sqrt();
             assert!(d <= 0.201, "point {i} moved {d}");
         }
     }

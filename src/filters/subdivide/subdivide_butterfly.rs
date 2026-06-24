@@ -13,9 +13,17 @@ pub fn subdivide_butterfly(input: &PolyData) -> PolyData {
 
     // Build edge-to-face adjacency
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    let tris: Vec<[i64; 3]> = input.polys.iter().filter_map(|cell| {
-        if cell.len() >= 3 { Some([cell[0], cell[1], cell[2]]) } else { None }
-    }).collect();
+    let tris: Vec<[i64; 3]> = input
+        .polys
+        .iter()
+        .filter_map(|cell| {
+            if cell.len() >= 3 {
+                Some([cell[0], cell[1], cell[2]])
+            } else {
+                None
+            }
+        })
+        .collect();
 
     for (fi, tri) in tris.iter().enumerate() {
         for k in 0..3 {
@@ -76,7 +84,11 @@ fn get_butterfly_midpoint(
 
     let mid_pt = if is_boundary {
         // Simple midpoint for boundary edges
-        [(pa[0]+pb[0])*0.5, (pa[1]+pb[1])*0.5, (pa[2]+pb[2])*0.5]
+        [
+            (pa[0] + pb[0]) * 0.5,
+            (pa[1] + pb[1]) * 0.5,
+            (pa[2] + pb[2]) * 0.5,
+        ]
     } else {
         // Butterfly: midpoint + correction from opposite vertices
         // Standard butterfly weight: w = 1/2 for edge vertices, w = 1/8 for wing vertices
@@ -99,12 +111,16 @@ fn get_butterfly_midpoint(
             // But standard is: midpoint + 1/8*(c+d) - 1/16*(further neighbors)
             // Simplified version:
             [
-                (pa[0]+pb[0])*0.5 + (pc[0]+pd_pt[0]-pa[0]-pb[0])*0.125,
-                (pa[1]+pb[1])*0.5 + (pc[1]+pd_pt[1]-pa[1]-pb[1])*0.125,
-                (pa[2]+pb[2])*0.5 + (pc[2]+pd_pt[2]-pa[2]-pb[2])*0.125,
+                (pa[0] + pb[0]) * 0.5 + (pc[0] + pd_pt[0] - pa[0] - pb[0]) * 0.125,
+                (pa[1] + pb[1]) * 0.5 + (pc[1] + pd_pt[1] - pa[1] - pb[1]) * 0.125,
+                (pa[2] + pb[2]) * 0.5 + (pc[2] + pd_pt[2] - pa[2] - pb[2]) * 0.125,
             ]
         } else {
-            [(pa[0]+pb[0])*0.5, (pa[1]+pb[1])*0.5, (pa[2]+pb[2])*0.5]
+            [
+                (pa[0] + pb[0]) * 0.5,
+                (pa[1] + pb[1]) * 0.5,
+                (pa[2] + pb[2]) * 0.5,
+            ]
         }
     };
 
@@ -143,7 +159,7 @@ mod tests {
 
         let result = subdivide_butterfly(&pd);
         assert_eq!(result.polys.num_cells(), 8); // 2 -> 8
-        // Shared edge midpoint should be reused
+                                                 // Shared edge midpoint should be reused
         assert!(result.points.len() < 12); // would be 12 if no sharing
     }
 

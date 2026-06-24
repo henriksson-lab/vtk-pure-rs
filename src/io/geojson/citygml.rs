@@ -78,9 +78,7 @@ fn parse_pos_list(text: &str) -> Vec<[f64; 3]> {
         .split_whitespace()
         .filter_map(|s| s.parse::<f64>().ok())
         .collect();
-    nums.chunks_exact(3)
-        .map(|c| [c[0], c[1], c[2]])
-        .collect()
+    nums.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect()
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 use crate::data::{CellArray, Points, PolyData};
-use std::collections::{BinaryHeap, HashSet};
 use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashSet};
 
 /// Simplify a triangle mesh using quadric error metrics (Garland-Heckbert).
 ///
@@ -8,12 +8,15 @@ use std::cmp::Reverse;
 /// `target_ratio` of the original face count remains (0.0-1.0).
 /// More accurate than `quadric_clustering` for preserving shape.
 pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
-    let target = ((input.polys.num_cells() as f64 * target_ratio.clamp(0.01, 1.0)).ceil() as usize).max(1);
+    let target =
+        ((input.polys.num_cells() as f64 * target_ratio.clamp(0.01, 1.0)).ceil() as usize).max(1);
 
     let n = input.points.len();
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
-    let mut tris: Vec<[usize; 3]> = input.polys.iter()
+    let mut tris: Vec<[usize; 3]> = input
+        .polys
+        .iter()
         .filter(|c| c.len() >= 3)
         .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
         .collect();
@@ -27,7 +30,9 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
     let mut quadrics = vec![[0.0f64; 10]; n];
     for tri in &tris {
         let q = face_quadric(&pts[tri[0]], &pts[tri[1]], &pts[tri[2]]);
-        for &v in tri { add_quadric(&mut quadrics[v], &q); }
+        for &v in tri {
+            add_quadric(&mut quadrics[v], &q);
+        }
     }
 
     // Build per-vertex adjacency: vertex -> set of triangle indices
@@ -58,7 +63,13 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
                 if seen.insert(edge) {
                     let cost = edge_cost(&quadrics[a], &quadrics[b], &pts[a], &pts[b]);
                     let cost_bits = cost.to_bits();
-                    heap.push((Reverse(cost_bits), version[edge.0], version[edge.1], edge.0, edge.1));
+                    heap.push((
+                        Reverse(cost_bits),
+                        version[edge.0],
+                        version[edge.1],
+                        edge.0,
+                        edge.1,
+                    ));
                 }
             }
         }
@@ -116,7 +127,9 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
         // Update triangles that reference b to reference a instead
         let b_tris: Vec<usize> = adj[b].iter().copied().collect();
         for ti in b_tris {
-            if dead[ti] { continue; }
+            if dead[ti] {
+                continue;
+            }
             let tri = &mut tris[ti];
             for v in tri.iter_mut() {
                 if *v == b {
@@ -143,7 +156,9 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
         let neighbors: Vec<usize> = {
             let mut nbrs = HashSet::new();
             for &ti in &adj[a] {
-                if dead[ti] { continue; }
+                if dead[ti] {
+                    continue;
+                }
                 for &v in &tris[ti] {
                     if v != a {
                         nbrs.insert(v);
@@ -166,7 +181,9 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
     let mut out_polys = CellArray::new();
 
     for (ti, tri) in tris.iter().enumerate() {
-        if dead[ti] { continue; }
+        if dead[ti] {
+            continue;
+        }
         let mapped: [i64; 3] = std::array::from_fn(|k| {
             let v = tri[k];
             if pt_map[v] == usize::MAX {
@@ -186,33 +203,67 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
 }
 
 fn face_quadric(v0: &[f64; 3], v1: &[f64; 3], v2: &[f64; 3]) -> [f64; 10] {
-    let e1 = [v1[0]-v0[0], v1[1]-v0[1], v1[2]-v0[2]];
-    let e2 = [v2[0]-v0[0], v2[1]-v0[1], v2[2]-v0[2]];
-    let mut n = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-    let len = (n[0]*n[0]+n[1]*n[1]+n[2]*n[2]).sqrt();
-    if len > 1e-15 { n[0] /= len; n[1] /= len; n[2] /= len; }
-    let d = -(n[0]*v0[0] + n[1]*v0[1] + n[2]*v0[2]);
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let mut n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len > 1e-15 {
+        n[0] /= len;
+        n[1] /= len;
+        n[2] /= len;
+    }
+    let d = -(n[0] * v0[0] + n[1] * v0[1] + n[2] * v0[2]);
     // Q = [a b c d]^T * [a b c d] stored as upper triangle
     let (a, b, c) = (n[0], n[1], n[2]);
-    [a*a, a*b, a*c, a*d, b*b, b*c, b*d, c*c, c*d, d*d]
+    [
+        a * a,
+        a * b,
+        a * c,
+        a * d,
+        b * b,
+        b * c,
+        b * d,
+        c * c,
+        c * d,
+        d * d,
+    ]
 }
 
 fn add_quadric(dest: &mut [f64; 10], src: &[f64; 10]) {
-    for i in 0..10 { dest[i] += src[i]; }
+    for i in 0..10 {
+        dest[i] += src[i];
+    }
 }
 
 fn edge_cost(qa: &[f64; 10], qb: &[f64; 10], pa: &[f64; 3], pb: &[f64; 3]) -> f64 {
-    let mid = [(pa[0]+pb[0])*0.5, (pa[1]+pb[1])*0.5, (pa[2]+pb[2])*0.5];
+    let mid = [
+        (pa[0] + pb[0]) * 0.5,
+        (pa[1] + pb[1]) * 0.5,
+        (pa[2] + pb[2]) * 0.5,
+    ];
     let mut q = [0.0f64; 10];
-    for i in 0..10 { q[i] = qa[i] + qb[i]; }
+    for i in 0..10 {
+        q[i] = qa[i] + qb[i];
+    }
     eval_quadric(&q, &mid)
 }
 
 fn eval_quadric(q: &[f64; 10], v: &[f64; 3]) -> f64 {
     let (x, y, z) = (v[0], v[1], v[2]);
-    q[0]*x*x + 2.0*q[1]*x*y + 2.0*q[2]*x*z + 2.0*q[3]*x
-        + q[4]*y*y + 2.0*q[5]*y*z + 2.0*q[6]*y
-        + q[7]*z*z + 2.0*q[8]*z + q[9]
+    q[0] * x * x
+        + 2.0 * q[1] * x * y
+        + 2.0 * q[2] * x * z
+        + 2.0 * q[3] * x
+        + q[4] * y * y
+        + 2.0 * q[5] * y * z
+        + 2.0 * q[6] * y
+        + q[7] * z * z
+        + 2.0 * q[8] * z
+        + q[9]
 }
 
 #[cfg(test)]
@@ -229,9 +280,9 @@ mod tests {
         }
         for j in 0..4 {
             for i in 0..4 {
-                let a = (j*5+i) as i64;
-                pd.polys.push_cell(&[a, a+1, a+6]);
-                pd.polys.push_cell(&[a, a+6, a+5]);
+                let a = (j * 5 + i) as i64;
+                pd.polys.push_cell(&[a, a + 1, a + 6]);
+                pd.polys.push_cell(&[a, a + 6, a + 5]);
             }
         }
 

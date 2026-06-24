@@ -1,7 +1,7 @@
 //! ContourLoopExtraction — extract closed loops from line cells.
 
-use std::collections::HashMap;
 use crate::data::{CellArray, PolyData};
+use std::collections::HashMap;
 
 /// Extract closed loops from the line cells of a PolyData.
 ///

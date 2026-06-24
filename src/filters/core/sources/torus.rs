@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{CellArray, DataArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a torus.
 pub struct TorusParams {
@@ -85,7 +85,8 @@ pub fn torus(params: &TorusParams) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = points;
     pd.polys = polys;
-    pd.point_data_mut().add_array(crate::data::AnyDataArray::F64(normals));
+    pd.point_data_mut()
+        .add_array(crate::data::AnyDataArray::F64(normals));
     pd.point_data_mut().set_active_normals("Normals");
     pd
 }

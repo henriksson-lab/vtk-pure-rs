@@ -17,13 +17,13 @@ use crate::data::{CellArray, Points, PolyData};
 /// * `input` - Triangle mesh PolyData
 /// * `origin` - A point on the clipping plane
 /// * `normal` - Normal vector of the clipping plane (pointing toward the kept side)
-pub fn clip_closed_surface(
-    input: &PolyData,
-    origin: [f64; 3],
-    normal: [f64; 3],
-) -> PolyData {
+pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
     let norm_len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-    let normal = [normal[0] / norm_len, normal[1] / norm_len, normal[2] / norm_len];
+    let normal = [
+        normal[0] / norm_len,
+        normal[1] / norm_len,
+        normal[2] / norm_len,
+    ];
 
     let mut out_points = input.points.clone();
     let mut out_polys = CellArray::new();

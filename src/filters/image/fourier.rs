@@ -17,11 +17,13 @@ pub fn fft_magnitude_1d(image: &ImageData, array_name: &str) -> ImageData {
 
     for row in 0..ny {
         // Extract row values
-        let row_vals: Vec<f64> = (0..nx).map(|x| {
-            let idx = x + row * nx;
-            arr.tuple_as_f64(idx, &mut buf);
-            buf[0]
-        }).collect();
+        let row_vals: Vec<f64> = (0..nx)
+            .map(|x| {
+                let idx = x + row * nx;
+                arr.tuple_as_f64(idx, &mut buf);
+                buf[0]
+            })
+            .collect();
 
         // DFT for this row
         for k in 0..nx {
@@ -37,9 +39,13 @@ pub fn fft_magnitude_1d(image: &ImageData, array_name: &str) -> ImageData {
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("FFTMagnitude", magnitude, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FFTMagnitude",
+            magnitude,
+            1,
+        )));
     result
 }
 
@@ -55,7 +61,12 @@ pub fn fft_magnitude_2d(image: &ImageData, array_name: &str) -> ImageData {
     let n = nx * ny;
 
     let mut buf = [0.0f64];
-    let values: Vec<f64> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let values: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
 
     let mut magnitude = vec![0.0f64; n];
 
@@ -65,7 +76,8 @@ pub fn fft_magnitude_2d(image: &ImageData, array_name: &str) -> ImageData {
             let mut im = 0.0;
             for y in 0..ny {
                 for x in 0..nx {
-                    let angle = -2.0 * std::f64::consts::PI
+                    let angle = -2.0
+                        * std::f64::consts::PI
                         * (kx as f64 * x as f64 / nx as f64 + ky as f64 * y as f64 / ny as f64);
                     let val = values[x + y * nx];
                     re += val * angle.cos();
@@ -77,9 +89,13 @@ pub fn fft_magnitude_2d(image: &ImageData, array_name: &str) -> ImageData {
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("FFTMagnitude2D", magnitude, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FFTMagnitude2D",
+            magnitude,
+            1,
+        )));
     result
 }
 
@@ -95,7 +111,12 @@ pub fn low_pass_filter(image: &ImageData, array_name: &str, cutoff_fraction: f64
     let n = nx * ny;
 
     let mut buf = [0.0f64];
-    let values: Vec<f64> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let values: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
 
     // Forward DFT
     let mut re_f = vec![0.0; n];
@@ -104,7 +125,8 @@ pub fn low_pass_filter(image: &ImageData, array_name: &str, cutoff_fraction: f64
         for kx in 0..nx {
             for y in 0..ny {
                 for x in 0..nx {
-                    let angle = -2.0 * std::f64::consts::PI
+                    let angle = -2.0
+                        * std::f64::consts::PI
                         * (kx as f64 * x as f64 / nx as f64 + ky as f64 * y as f64 / ny as f64);
                     let idx = kx + ky * nx;
                     re_f[idx] += values[x + y * nx] * angle.cos();
@@ -137,7 +159,8 @@ pub fn low_pass_filter(image: &ImageData, array_name: &str, cutoff_fraction: f64
             let mut val = 0.0;
             for ky in 0..ny {
                 for kx in 0..nx {
-                    let angle = 2.0 * std::f64::consts::PI
+                    let angle = 2.0
+                        * std::f64::consts::PI
                         * (kx as f64 * x as f64 / nx as f64 + ky as f64 * y as f64 / ny as f64);
                     let idx = kx + ky * nx;
                     val += re_f[idx] * angle.cos() - im_f[idx] * angle.sin();
@@ -148,9 +171,11 @@ pub fn low_pass_filter(image: &ImageData, array_name: &str, cutoff_fraction: f64
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, filtered, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, filtered, 1,
+        )));
     result
 }
 
@@ -160,7 +185,13 @@ mod tests {
 
     #[test]
     fn fft_1d_constant() {
-        let img = ImageData::from_function([8,1,1],[1.0,1.0,1.0],[0.0,0.0,0.0], "val", |_,_,_| 1.0);
+        let img = ImageData::from_function(
+            [8, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "val",
+            |_, _, _| 1.0,
+        );
         let result = fft_magnitude_1d(&img, "val");
         let arr = result.point_data().get_array("FFTMagnitude").unwrap();
         let mut buf = [0.0f64];
@@ -170,16 +201,26 @@ mod tests {
 
     #[test]
     fn fft_2d() {
-        let img = ImageData::from_function([8,8,1],[1.0,1.0,1.0],[0.0,0.0,0.0],
-            "val", |x,y,_| (x*0.5).sin());
+        let img = ImageData::from_function(
+            [8, 8, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "val",
+            |x, y, _| (x * 0.5).sin(),
+        );
         let result = fft_magnitude_2d(&img, "val");
         assert!(result.point_data().get_array("FFTMagnitude2D").is_some());
     }
 
     #[test]
     fn low_pass() {
-        let img = ImageData::from_function([16,16,1],[1.0,1.0,1.0],[0.0,0.0,0.0],
-            "val", |x,y,_| (x*2.0).sin() + (y*8.0).sin()); // low + high freq
+        let img = ImageData::from_function(
+            [16, 16, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "val",
+            |x, y, _| (x * 2.0).sin() + (y * 8.0).sin(),
+        ); // low + high freq
         let filtered = low_pass_filter(&img, "val", 0.3);
         assert!(filtered.point_data().get_array("val").is_some());
     }

@@ -47,9 +47,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.0, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![1.0, 2.0, 3.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )));
 
         let result = deep_copy(&pd, true);
         assert_eq!(result.points.len(), 3);
@@ -61,9 +64,8 @@ mod tests {
     fn full_copy_keeps_data() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![42.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", vec![42.0], 1)));
 
         let result = deep_copy(&pd, false);
         assert!(result.point_data().get_array("val").is_some());
@@ -74,9 +76,12 @@ mod tests {
         let mut src = PolyData::new();
         src.points.push([0.0, 0.0, 0.0]);
         src.points.push([1.0, 0.0, 0.0]);
-        src.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![100.0, 200.0], 1),
-        ));
+        src.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![100.0, 200.0],
+                1,
+            )));
 
         let mut tgt = PolyData::new();
         tgt.points.push([0.0, 0.0, 0.0]);
@@ -90,9 +95,12 @@ mod tests {
     fn copy_attributes_mismatch() {
         let mut src = PolyData::new();
         src.points.push([0.0, 0.0, 0.0]);
-        src.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![100.0], 1),
-        ));
+        src.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![100.0],
+                1,
+            )));
 
         let mut tgt = PolyData::new();
         tgt.points.push([0.0, 0.0, 0.0]);

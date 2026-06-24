@@ -1,7 +1,7 @@
 //! StaticCleanPolyData — remove degenerate cells and duplicate points using spatial hashing.
 
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 fn remap_and_filter_cells(
     ca: &CellArray,
@@ -50,7 +50,11 @@ pub fn static_clean_poly_data(input: &PolyData, tolerance: f64) -> PolyData {
     }
 
     // --- Phase 1: merge duplicate points via spatial hashing ---
-    let inv_cell = if tolerance > 0.0 { 1.0 / tolerance } else { 1.0e10 };
+    let inv_cell = if tolerance > 0.0 {
+        1.0 / tolerance
+    } else {
+        1.0e10
+    };
     let mut grid: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
     let mut remap = vec![0usize; n];
     let mut new_pts = Points::<f64>::new();

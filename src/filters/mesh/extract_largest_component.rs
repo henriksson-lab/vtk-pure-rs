@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extract the largest connected component from a triangle mesh.
 ///
@@ -122,11 +122,7 @@ mod tests {
         // Actually both triangles share point index 3 which == point 1 position but
         // we test single-connected-component by sharing vertex indices.
         let pd2 = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
         let result = extract_largest_component(&pd2);
@@ -140,10 +136,10 @@ mod tests {
         // Component B: 1 triangle (disconnected vertices)
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], // 0 - comp A
-                [1.0, 0.0, 0.0], // 1 - comp A
-                [0.5, 1.0, 0.0], // 2 - comp A
-                [1.5, 1.0, 0.0], // 3 - comp A
+                [0.0, 0.0, 0.0],    // 0 - comp A
+                [1.0, 0.0, 0.0],    // 1 - comp A
+                [0.5, 1.0, 0.0],    // 2 - comp A
+                [1.5, 1.0, 0.0],    // 3 - comp A
                 [10.0, 10.0, 10.0], // 4 - comp B
                 [11.0, 10.0, 10.0], // 5 - comp B
                 [10.5, 11.0, 10.0], // 6 - comp B

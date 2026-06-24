@@ -20,9 +20,13 @@ pub fn partition_structured_grid(grid: &StructuredGrid, n_partitions: usize) -> 
     let n_cells = cdims[0] * cdims[1] * cdims[2];
 
     // Partition along longest cell dimension
-    let longest = if cdims[0] >= cdims[1] && cdims[0] >= cdims[2] { 0 }
-        else if cdims[1] >= cdims[2] { 1 }
-        else { 2 };
+    let longest = if cdims[0] >= cdims[1] && cdims[0] >= cdims[2] {
+        0
+    } else if cdims[1] >= cdims[2] {
+        1
+    } else {
+        2
+    };
 
     let mut partition_ids = Vec::with_capacity(n_cells);
     for iz in 0..cdims[2] {
@@ -36,9 +40,13 @@ pub fn partition_structured_grid(grid: &StructuredGrid, n_partitions: usize) -> 
     }
 
     let mut result = grid.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("PartitionId", partition_ids, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "PartitionId",
+            partition_ids,
+            1,
+        )));
     result
 }
 
@@ -56,10 +64,16 @@ pub fn partition_balance(grid: &StructuredGrid) -> f64 {
         *counts.entry(buf[0] as i64).or_insert(0) += 1;
     }
 
-    if counts.is_empty() { return 1.0; }
+    if counts.is_empty() {
+        return 1.0;
+    }
     let min = *counts.values().min().unwrap() as f64;
     let max = *counts.values().max().unwrap() as f64;
-    if max < 1e-15 { 1.0 } else { min / max }
+    if max < 1e-15 {
+        1.0
+    } else {
+        min / max
+    }
 }
 
 #[cfg(test)]
@@ -69,12 +83,14 @@ mod tests {
     fn make_grid() -> StructuredGrid {
         StructuredGrid::from_dimensions_and_points(
             [4, 3, 2],
-            (0..24).map(|i| {
-                let ix = i % 4;
-                let iy = (i / 4) % 3;
-                let iz = i / 12;
-                [ix as f64, iy as f64, iz as f64]
-            }).collect(),
+            (0..24)
+                .map(|i| {
+                    let ix = i % 4;
+                    let iy = (i / 4) % 3;
+                    let iz = i / 12;
+                    [ix as f64, iy as f64, iz as f64]
+                })
+                .collect(),
         )
     }
 

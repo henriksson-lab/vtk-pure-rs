@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::data::{AnyDataArray, DataArray, PolyData, Points, CellArray};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 use crate::types::VtkError;
 
 /// Reader for EnSight Gold format (ASCII).
@@ -52,7 +52,9 @@ fn parse_case_geo(content: &str) -> Result<String, VtkError> {
             }
         }
     }
-    Err(VtkError::Parse("no geometry model found in case file".into()))
+    Err(VtkError::Parse(
+        "no geometry model found in case file".into(),
+    ))
 }
 
 fn parse_case_variables(content: &str) -> Vec<(String, String, String)> {
@@ -60,11 +62,19 @@ fn parse_case_variables(content: &str) -> Vec<(String, String, String)> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("scalar per node:") || trimmed.starts_with("vector per node:") {
-            let var_type = if trimmed.starts_with("scalar") { "scalar" } else { "vector" };
+            let var_type = if trimmed.starts_with("scalar") {
+                "scalar"
+            } else {
+                "vector"
+            };
             let after_colon = trimmed.splitn(2, ':').nth(1).unwrap_or("").trim();
             let parts: Vec<&str> = after_colon.split_whitespace().collect();
             if parts.len() >= 2 {
-                vars.push((var_type.to_string(), parts[0].to_string(), parts[1].to_string()));
+                vars.push((
+                    var_type.to_string(),
+                    parts[0].to_string(),
+                    parts[1].to_string(),
+                ));
             }
         }
     }
@@ -88,7 +98,8 @@ fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
     i += 1;
 
     // Number of points
-    let n_pts: usize = lines.get(i)
+    let n_pts: usize = lines
+        .get(i)
         .ok_or_else(|| VtkError::Parse("missing point count".into()))?
         .trim()
         .parse()
@@ -131,7 +142,9 @@ fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
             i += 1;
             let mut polys = CellArray::new();
             for _ in 0..n_cells {
-                let parts: Vec<i64> = lines.get(i).unwrap_or(&"")
+                let parts: Vec<i64> = lines
+                    .get(i)
+                    .unwrap_or(&"")
                     .split_whitespace()
                     .filter_map(|s| s.parse::<i64>().ok())
                     .collect();
@@ -186,15 +199,36 @@ fn read_vector_variable(path: &Path, name: &str, n_pts: usize) -> Result<AnyData
     let mut zs = Vec::with_capacity(n_pts);
 
     for _ in 0..n_pts {
-        xs.push(lines.get(i).unwrap_or(&"0").trim().parse::<f64>().unwrap_or(0.0));
+        xs.push(
+            lines
+                .get(i)
+                .unwrap_or(&"0")
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(0.0),
+        );
         i += 1;
     }
     for _ in 0..n_pts {
-        ys.push(lines.get(i).unwrap_or(&"0").trim().parse::<f64>().unwrap_or(0.0));
+        ys.push(
+            lines
+                .get(i)
+                .unwrap_or(&"0")
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(0.0),
+        );
         i += 1;
     }
     for _ in 0..n_pts {
-        zs.push(lines.get(i).unwrap_or(&"0").trim().parse::<f64>().unwrap_or(0.0));
+        zs.push(
+            lines
+                .get(i)
+                .unwrap_or(&"0")
+                .trim()
+                .parse::<f64>()
+                .unwrap_or(0.0),
+        );
         i += 1;
     }
 
@@ -211,8 +245,8 @@ fn read_vector_variable(path: &Path, name: &str, n_pts: usize) -> Result<AnyData
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::ensight::EnSightWriter;
     use crate::data::DataArray as DA;
+    use crate::io::ensight::EnSightWriter;
 
     #[test]
     fn roundtrip_triangle() {

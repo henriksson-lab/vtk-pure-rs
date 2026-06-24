@@ -12,9 +12,7 @@ pub struct ValidationReport {
 
 impl ValidationReport {
     pub fn is_valid(&self) -> bool {
-        self.degenerate_cells == 0
-            && self.out_of_range_indices == 0
-            && self.empty_cells == 0
+        self.degenerate_cells == 0 && self.out_of_range_indices == 0 && self.empty_cells == 0
     }
 }
 
@@ -23,8 +21,11 @@ impl std::fmt::Display for ValidationReport {
         if self.is_valid() {
             write!(f, "Valid")
         } else {
-            write!(f, "Invalid: {} degenerate, {} OOB, {} empty",
-                self.degenerate_cells, self.out_of_range_indices, self.empty_cells)
+            write!(
+                f,
+                "Invalid: {} degenerate, {} OOB, {} empty",
+                self.degenerate_cells, self.out_of_range_indices, self.empty_cells
+            )
         }
     }
 }
@@ -95,7 +96,10 @@ pub fn validate(pd: &PolyData) -> ValidationReport {
     }
 
     if report.duplicate_points > 0 {
-        report.warnings.push(format!("{} duplicate points detected", report.duplicate_points));
+        report.warnings.push(format!(
+            "{} duplicate points detected",
+            report.duplicate_points
+        ));
     }
 
     report

@@ -34,9 +34,7 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
         vz[idx] = buf[2];
     }
 
-    let index = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let index = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let mut divergence: Vec<f64> = vec![0.0; n];
 
@@ -76,9 +74,12 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Divergence", divergence, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Divergence",
+            divergence,
+            1,
+        )));
     img
 }
 
@@ -99,9 +100,8 @@ mod tests {
             data.push(2.0);
             data.push(3.0);
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Velocity", data, 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Velocity", data, 3)));
 
         let result = compute_divergence(&img, "Velocity");
         let div_arr = result.point_data().get_array("Divergence").unwrap();
@@ -130,9 +130,8 @@ mod tests {
             data.push(0.0);
             data.push(0.0);
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("V", data, 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("V", data, 3)));
 
         let result = compute_divergence(&img, "V");
         let div_arr = result.point_data().get_array("Divergence").unwrap();

@@ -59,9 +59,11 @@ pub fn heat_diffuse(input: &PolyData, array_name: &str, dt: f64, iterations: usi
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == array_name {
-            attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(array_name, values.clone(), 1),
-            ));
+            attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                array_name,
+                values.clone(),
+                1,
+            )));
         } else {
             attrs.add_array(a.clone());
         }
@@ -83,9 +85,12 @@ mod tests {
         pd.polys.push_cell(&[0, 1, 2]);
 
         let initial: Vec<f64> = vec![100.0, 0.0, 0.0];
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Temperature", initial, 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Temperature",
+                initial,
+                1,
+            )));
 
         let result = heat_diffuse(&pd, "Temperature", 0.5, 10);
         let out_arr = result.point_data().get_array("Temperature").unwrap();
@@ -111,9 +116,8 @@ mod tests {
         pd.polys.push_cell(&[0, 1, 2]);
 
         let initial: Vec<f64> = vec![90.0, 0.0, 0.0];
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("T", initial, 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("T", initial, 1)));
 
         let result = heat_diffuse(&pd, "T", 0.5, 2000);
         let out_arr = result.point_data().get_array("T").unwrap();

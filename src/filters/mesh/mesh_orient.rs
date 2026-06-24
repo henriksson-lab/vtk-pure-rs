@@ -6,10 +6,13 @@ use crate::data::{CellArray, PolyData};
 pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
-    if nc == 0 { return mesh.clone(); }
+    if nc == 0 {
+        return mesh.clone();
+    }
 
     // Build edge-face adjacency
-    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> = std::collections::HashMap::new();
+    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
+        std::collections::HashMap::new();
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
@@ -34,7 +37,9 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
             let key = (a.min(b), a.max(b));
             if let Some(neighbors) = edge_faces.get(&key) {
                 for &ni in neighbors {
-                    if oriented[ni] { continue; }
+                    if oriented[ni] {
+                        continue;
+                    }
                     oriented[ni] = true;
                     // Check if neighbor has same edge direction (needs flip)
                     let ncell = &cells[ni];
@@ -68,7 +73,9 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
 fn has_same_edge_direction(cell: &[i64], a: usize, b: usize) -> bool {
     let n = cell.len();
     for i in 0..n {
-        if cell[i] as usize == a && cell[(i + 1) % n] as usize == b { return true; }
+        if cell[i] as usize == a && cell[(i + 1) % n] as usize == b {
+            return true;
+        }
     }
     false
 }
@@ -76,7 +83,8 @@ fn has_same_edge_direction(cell: &[i64], a: usize, b: usize) -> bool {
 /// Check if all faces have consistent winding.
 pub fn is_consistently_oriented(mesh: &PolyData) -> bool {
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let mut edge_dirs: std::collections::HashMap<(usize, usize), Vec<bool>> = std::collections::HashMap::new();
+    let mut edge_dirs: std::collections::HashMap<(usize, usize), Vec<bool>> =
+        std::collections::HashMap::new();
     for cell in &cells {
         let n = cell.len();
         for i in 0..n {
@@ -89,8 +97,13 @@ pub fn is_consistently_oriented(mesh: &PolyData) -> bool {
     }
     // For consistent orientation, shared edges should have opposite directions
     edge_dirs.values().all(|dirs| {
-        if dirs.len() != 2 { true } // boundary or non-manifold
-        else { dirs[0] != dirs[1] }
+        if dirs.len() != 2 {
+            true
+        }
+        // boundary or non-manifold
+        else {
+            dirs[0] != dirs[1]
+        }
     })
 }
 
@@ -101,18 +114,25 @@ mod tests {
     fn test_orient() {
         // Two triangles with inconsistent winding
         let mut mesh = PolyData::new();
-        mesh.points.push([0.0,0.0,0.0]); mesh.points.push([1.0,0.0,0.0]);
-        mesh.points.push([0.5,1.0,0.0]); mesh.points.push([1.5,1.0,0.0]);
-        mesh.polys.push_cell(&[0,1,2]);
-        mesh.polys.push_cell(&[1,2,3]); // same edge direction as first -> inconsistent
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.5, 1.0, 0.0]);
+        mesh.points.push([1.5, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[1, 2, 3]); // same edge direction as first -> inconsistent
         let r = orient_faces_consistent(&mesh);
         assert!(is_consistently_oriented(&r));
     }
     #[test]
     fn test_already_consistent() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2],[1,3,2]], // edge 1-2 in opposite dirs -> consistent
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]], // edge 1-2 in opposite dirs -> consistent
         );
         assert!(is_consistently_oriented(&mesh));
     }

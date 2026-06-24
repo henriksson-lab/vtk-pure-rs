@@ -3,8 +3,8 @@
 //! Computes a signed distance field on an ImageData grid from an oriented
 //! point cloud using rayon for parallelization.
 
-use rayon::prelude::*;
 use crate::data::{AnyDataArray, DataArray, ImageData, PolyData};
+use rayon::prelude::*;
 
 /// Compute a signed distance field from a point cloud with normals.
 ///
@@ -32,7 +32,12 @@ pub fn signed_distance_field_from_points(
     let src_normals: Vec<[f64; 3]> = if has_normals {
         let n_arr = normals.unwrap();
         let mut buf = [0.0f64; 3];
-        (0..n_pts).map(|i| { n_arr.tuple_as_f64(i, &mut buf); buf }).collect()
+        (0..n_pts)
+            .map(|i| {
+                n_arr.tuple_as_f64(i, &mut buf);
+                buf
+            })
+            .collect()
     } else {
         vec![[0.0, 0.0, 1.0]; n_pts]
     };
@@ -40,49 +45,58 @@ pub fn signed_distance_field_from_points(
     let total = dims[0] * dims[1] * dims[2];
 
     // Parallel SDF computation
-    let sdf: Vec<f64> = (0..total).into_par_iter().map(|idx| {
-        let iz = idx / (dims[0] * dims[1]);
-        let rem = idx % (dims[0] * dims[1]);
-        let iy = rem / dims[0];
-        let ix = rem % dims[0];
+    let sdf: Vec<f64> = (0..total)
+        .into_par_iter()
+        .map(|idx| {
+            let iz = idx / (dims[0] * dims[1]);
+            let rem = idx % (dims[0] * dims[1]);
+            let iy = rem / dims[0];
+            let ix = rem % dims[0];
 
-        let gx = origin[0] + ix as f64 * spacing[0];
-        let gy = origin[1] + iy as f64 * spacing[1];
-        let gz = origin[2] + iz as f64 * spacing[2];
+            let gx = origin[0] + ix as f64 * spacing[0];
+            let gy = origin[1] + iy as f64 * spacing[1];
+            let gz = origin[2] + iz as f64 * spacing[2];
 
-        // Find closest point
-        let mut best_dist2 = f64::MAX;
-        let mut best_idx = 0;
-        for (pi, sp) in src_pts.iter().enumerate() {
+            // Find closest point
+            let mut best_dist2 = f64::MAX;
+            let mut best_idx = 0;
+            for (pi, sp) in src_pts.iter().enumerate() {
+                let dx = gx - sp[0];
+                let dy = gy - sp[1];
+                let dz = gz - sp[2];
+                let d2 = dx * dx + dy * dy + dz * dz;
+                if d2 < best_dist2 {
+                    best_dist2 = d2;
+                    best_idx = pi;
+                }
+            }
+
+            let dist = best_dist2.sqrt();
+
+            // Sign from normal
+            let sp = &src_pts[best_idx];
+            let sn = &src_normals[best_idx];
             let dx = gx - sp[0];
             let dy = gy - sp[1];
             let dz = gz - sp[2];
-            let d2 = dx * dx + dy * dy + dz * dz;
-            if d2 < best_dist2 {
-                best_dist2 = d2;
-                best_idx = pi;
+            let dot = dx * sn[0] + dy * sn[1] + dz * sn[2];
+
+            if dot >= 0.0 {
+                dist
+            } else {
+                -dist
             }
-        }
-
-        let dist = best_dist2.sqrt();
-
-        // Sign from normal
-        let sp = &src_pts[best_idx];
-        let sn = &src_normals[best_idx];
-        let dx = gx - sp[0];
-        let dy = gy - sp[1];
-        let dz = gz - sp[2];
-        let dot = dx * sn[0] + dy * sn[1] + dz * sn[2];
-
-        if dot >= 0.0 { dist } else { -dist }
-    }).collect();
+        })
+        .collect();
 
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(spacing)
         .with_origin(origin)
-        .with_point_array(AnyDataArray::F64(
-            DataArray::from_vec("SignedDistance", sdf, 1),
-        ))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+            "SignedDistance",
+            sdf,
+            1,
+        )))
 }
 
 #[cfg(test)]
@@ -111,13 +125,17 @@ mod tests {
             }
         }
         mesh.points = Points::from(pts);
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Normals", normals, 3),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals", normals, 3,
+            )));
         mesh.point_data_mut().set_active_normals("Normals");
 
         let sdf = signed_distance_field_from_points(
-            &mesh, [10, 10, 10], [0.3, 0.3, 0.3], [-1.5, -1.5, -1.5],
+            &mesh,
+            [10, 10, 10],
+            [0.3, 0.3, 0.3],
+            [-1.5, -1.5, -1.5],
         );
         let arr = sdf.point_data().get_array("SignedDistance").unwrap();
 
@@ -125,19 +143,26 @@ mod tests {
         let center_idx = 5 + 5 * 10 + 5 * 100;
         let mut buf = [0.0f64];
         arr.tuple_as_f64(center_idx, &mut buf);
-        assert!(buf[0] < 0.0, "center SDF should be negative, got {}", buf[0]);
+        assert!(
+            buf[0] < 0.0,
+            "center SDF should be negative, got {}",
+            buf[0]
+        );
 
         // Corner should be positive (outside)
         arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] > 0.0, "corner SDF should be positive, got {}", buf[0]);
+        assert!(
+            buf[0] > 0.0,
+            "corner SDF should be positive, got {}",
+            buf[0]
+        );
     }
 
     #[test]
     fn empty_points() {
         let mesh = PolyData::new();
-        let sdf = signed_distance_field_from_points(
-            &mesh, [5, 5, 5], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0],
-        );
+        let sdf =
+            signed_distance_field_from_points(&mesh, [5, 5, 5], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]);
         assert_eq!(sdf.dimensions(), [5, 5, 5]);
     }
 }

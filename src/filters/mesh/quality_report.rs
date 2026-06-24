@@ -29,18 +29,36 @@ pub struct MeshQualityReport {
 impl std::fmt::Display for MeshQualityReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "=== Mesh Quality Report ===")?;
-        writeln!(f, "Points: {}, Cells: {} (tri={}, quad={}, other={})",
-            self.num_points, self.num_cells, self.num_triangles, self.num_quads, self.num_other)?;
-        writeln!(f, "Closed: {}, Manifold: {}, All triangles: {}",
-            self.is_closed, self.is_manifold, self.is_all_triangles)?;
-        writeln!(f, "Boundary edges: {}, Non-manifold edges: {}",
-            self.num_boundary_edges, self.num_non_manifold_edges)?;
-        writeln!(f, "Area: min={:.6}, max={:.6}, mean={:.6}, total={:.6}",
-            self.min_area, self.max_area, self.mean_area, self.surface_area)?;
-        writeln!(f, "Aspect ratio: min={:.4}, max={:.4}, mean={:.4}",
-            self.min_aspect_ratio, self.max_aspect_ratio, self.mean_aspect_ratio)?;
-        write!(f, "Edge length: min={:.6}, max={:.6}",
-            self.min_edge_length, self.max_edge_length)
+        writeln!(
+            f,
+            "Points: {}, Cells: {} (tri={}, quad={}, other={})",
+            self.num_points, self.num_cells, self.num_triangles, self.num_quads, self.num_other
+        )?;
+        writeln!(
+            f,
+            "Closed: {}, Manifold: {}, All triangles: {}",
+            self.is_closed, self.is_manifold, self.is_all_triangles
+        )?;
+        writeln!(
+            f,
+            "Boundary edges: {}, Non-manifold edges: {}",
+            self.num_boundary_edges, self.num_non_manifold_edges
+        )?;
+        writeln!(
+            f,
+            "Area: min={:.6}, max={:.6}, mean={:.6}, total={:.6}",
+            self.min_area, self.max_area, self.mean_area, self.surface_area
+        )?;
+        writeln!(
+            f,
+            "Aspect ratio: min={:.4}, max={:.4}, mean={:.4}",
+            self.min_aspect_ratio, self.max_aspect_ratio, self.mean_aspect_ratio
+        )?;
+        write!(
+            f,
+            "Edge length: min={:.6}, max={:.6}",
+            self.min_edge_length, self.max_edge_length
+        )
     }
 }
 
@@ -53,7 +71,8 @@ pub fn mesh_quality_report(mesh: &PolyData) -> MeshQualityReport {
 
     let mut areas: Vec<f64> = Vec::new();
     let mut aspect_ratios: Vec<f64> = Vec::new();
-    let mut edge_set: std::collections::HashMap<(usize,usize), usize> = std::collections::HashMap::new();
+    let mut edge_set: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     let mut min_edge = f64::MAX;
     let mut max_edge = 0.0f64;
 
@@ -70,12 +89,12 @@ pub fn mesh_quality_report(mesh: &PolyData) -> MeshQualityReport {
             let a = mesh.points.get(cell[0] as usize);
             let b = mesh.points.get(cell[1] as usize);
             let c = mesh.points.get(cell[2] as usize);
-            let e1 = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
-            let e2 = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
-            let nx = e1[1]*e2[2] - e1[2]*e2[1];
-            let ny = e1[2]*e2[0] - e1[0]*e2[2];
-            let nz = e1[0]*e2[1] - e1[1]*e2[0];
-            let area = 0.5 * (nx*nx + ny*ny + nz*nz).sqrt();
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let nx = e1[1] * e2[2] - e1[2] * e2[1];
+            let ny = e1[2] * e2[0] - e1[0] * e2[2];
+            let nz = e1[0] * e2[1] - e1[1] * e2[0];
+            let area = 0.5 * (nx * nx + ny * ny + nz * nz).sqrt();
             areas.push(area);
         }
 
@@ -84,12 +103,15 @@ pub fn mesh_quality_report(mesh: &PolyData) -> MeshQualityReport {
         let mut edge_lengths = Vec::new();
         for i in 0..nc {
             let pa = mesh.points.get(cell[i] as usize);
-            let pb = mesh.points.get(cell[(i+1)%nc] as usize);
+            let pb = mesh.points.get(cell[(i + 1) % nc] as usize);
             let a_idx = cell[i] as usize;
-            let b_idx = cell[(i+1)%nc] as usize;
-            *edge_set.entry((a_idx.min(b_idx), a_idx.max(b_idx))).or_insert(0) += 1;
+            let b_idx = cell[(i + 1) % nc] as usize;
+            *edge_set
+                .entry((a_idx.min(b_idx), a_idx.max(b_idx)))
+                .or_insert(0) += 1;
 
-            let el = ((pa[0]-pb[0]).powi(2) + (pa[1]-pb[1]).powi(2) + (pa[2]-pb[2]).powi(2)).sqrt();
+            let el = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                .sqrt();
             edge_lengths.push(el);
             min_edge = min_edge.min(el);
             max_edge = max_edge.max(el);
@@ -98,7 +120,11 @@ pub fn mesh_quality_report(mesh: &PolyData) -> MeshQualityReport {
         if !edge_lengths.is_empty() {
             let min_e = edge_lengths.iter().cloned().fold(f64::MAX, f64::min);
             let max_e = edge_lengths.iter().cloned().fold(0.0f64, f64::max);
-            let ar = if min_e > 1e-15 { max_e / min_e } else { f64::MAX };
+            let ar = if min_e > 1e-15 {
+                max_e / min_e
+            } else {
+                f64::MAX
+            };
             aspect_ratios.push(ar);
         }
     }
@@ -108,11 +134,17 @@ pub fn mesh_quality_report(mesh: &PolyData) -> MeshQualityReport {
     let n_non_manifold = edge_set.values().filter(|&&c| c > 2).count();
 
     let total_area: f64 = areas.iter().sum();
-    let mean_area = if !areas.is_empty() { total_area / areas.len() as f64 } else { 0.0 };
+    let mean_area = if !areas.is_empty() {
+        total_area / areas.len() as f64
+    } else {
+        0.0
+    };
 
     let mean_ar = if !aspect_ratios.is_empty() {
         aspect_ratios.iter().sum::<f64>() / aspect_ratios.len() as f64
-    } else { 0.0 };
+    } else {
+        0.0
+    };
 
     MeshQualityReport {
         num_points: n_pts,
@@ -144,7 +176,9 @@ mod tests {
     #[test]
     fn triangle_report() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let report = mesh_quality_report(&mesh);
         assert_eq!(report.num_points, 3);
         assert_eq!(report.num_triangles, 1);
@@ -156,8 +190,13 @@ mod tests {
     #[test]
     fn closed_tet() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[0.5,0.5,1.0]],
-            vec![[0,1,2],[0,1,3],[1,2,3],[0,2,3]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, 0.5, 1.0],
+            ],
+            vec![[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]],
         );
         let report = mesh_quality_report(&mesh);
         assert!(report.is_closed);
@@ -167,7 +206,9 @@ mod tests {
     #[test]
     fn display() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let report = mesh_quality_report(&mesh);
         let s = format!("{report}");
         assert!(s.contains("Mesh Quality Report"));

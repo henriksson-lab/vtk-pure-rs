@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
+use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 
 /// Estimate the local feature size at each vertex.
 ///
@@ -7,7 +7,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
 /// to the second-nearest point. Adds "FeatureSize" scalar.
 pub fn local_feature_size(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    if n < 2 { return input.clone(); }
+    if n < 2 {
+        return input.clone();
+    }
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
     let tree = KdTree::build(&pts);
@@ -21,14 +23,21 @@ pub fn local_feature_size(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("FeatureSize", sizes, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FeatureSize",
+            sizes,
+            1,
+        )));
     pd
 }
 
 /// Compute the average inter-point spacing of a point set.
 pub fn average_spacing(input: &PolyData, k: usize) -> f64 {
     let n = input.points.len();
-    if n < 2 { return 0.0; }
+    if n < 2 {
+        return 0.0;
+    }
     let k = k.max(1).min(n - 1);
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
@@ -50,7 +59,9 @@ mod tests {
     #[test]
     fn feature_size_uniform() {
         let mut pd = PolyData::new();
-        for i in 0..5 { pd.points.push([i as f64, 0.0, 0.0]); }
+        for i in 0..5 {
+            pd.points.push([i as f64, 0.0, 0.0]);
+        }
 
         let result = local_feature_size(&pd);
         let arr = result.point_data().get_array("FeatureSize").unwrap();
@@ -62,7 +73,9 @@ mod tests {
     #[test]
     fn avg_spacing() {
         let mut pd = PolyData::new();
-        for i in 0..5 { pd.points.push([i as f64 * 2.0, 0.0, 0.0]); }
+        for i in 0..5 {
+            pd.points.push([i as f64 * 2.0, 0.0, 0.0]);
+        }
 
         let s = average_spacing(&pd, 1);
         assert!((s - 2.0).abs() < 1e-10); // spacing = 2

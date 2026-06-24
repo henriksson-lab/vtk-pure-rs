@@ -7,11 +7,7 @@ use crate::data::{CellArray, Points, PolyData};
 /// An angle of 360.0 creates a closed surface of revolution.
 ///
 /// The profile should be in the X≥0 half-plane for correct geometry.
-pub fn rotation_extrude(
-    input: &PolyData,
-    angle: f64,
-    resolution: usize,
-) -> PolyData {
+pub fn rotation_extrude(input: &PolyData, angle: f64, resolution: usize) -> PolyData {
     let resolution = resolution.max(3);
     let angle_rad = angle.to_radians();
     let closed = (angle - 360.0).abs() < 1e-6;

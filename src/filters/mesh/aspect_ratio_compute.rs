@@ -23,7 +23,9 @@ pub fn compute_aspect_ratio(input: &PolyData) -> PolyData {
         let c_len: f64 = dist(a_pt, b_pt);
 
         let s: f64 = (a_len + b_len + c_len) * 0.5;
-        let area: f64 = (s * (s - a_len) * (s - b_len) * (s - c_len)).max(0.0).sqrt();
+        let area: f64 = (s * (s - a_len) * (s - b_len) * (s - c_len))
+            .max(0.0)
+            .sqrt();
 
         if area < 1e-30 {
             ratios.push(f64::MAX);
@@ -38,9 +40,12 @@ pub fn compute_aspect_ratio(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("AspectRatio", ratios, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "AspectRatio",
+            ratios,
+            1,
+        )));
     pd
 }
 
@@ -58,11 +63,7 @@ mod tests {
     fn make_equilateral() -> PolyData {
         let h: f64 = (3.0_f64).sqrt() / 2.0;
         PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, h, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, h, 0.0]],
             vec![[0, 1, 2]],
         )
     }
@@ -74,24 +75,28 @@ mod tests {
         let arr = result.cell_data().get_array("AspectRatio").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert!((buf[0] - 1.0).abs() < 1e-10, "expected ~1.0, got {}", buf[0]);
+        assert!(
+            (buf[0] - 1.0).abs() < 1e-10,
+            "expected ~1.0, got {}",
+            buf[0]
+        );
     }
 
     #[test]
     fn degenerate_triangle_large_ratio() {
         let pd = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [10.0, 0.0, 0.0],
-                [5.0, 0.001, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 0.001, 0.0]],
             vec![[0, 1, 2]],
         );
         let result = compute_aspect_ratio(&pd);
         let arr = result.cell_data().get_array("AspectRatio").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] > 10.0, "degenerate triangle should have large ratio, got {}", buf[0]);
+        assert!(
+            buf[0] > 10.0,
+            "degenerate triangle should have large ratio, got {}",
+            buf[0]
+        );
     }
 
     #[test]

@@ -49,15 +49,21 @@ fn main() {
     let pd64 = make_sphere(64);
 
     bench("normals (sphere 16)", 100, || {
-        black_box(vtk_pure_rs::filters::normals::normals::compute_normals(&pd16));
+        black_box(vtk_pure_rs::filters::normals::normals::compute_normals(
+            &pd16,
+        ));
     });
 
     bench("normals (sphere 64)", 10, || {
-        black_box(vtk_pure_rs::filters::normals::normals::compute_normals(&pd64));
+        black_box(vtk_pure_rs::filters::normals::normals::compute_normals(
+            &pd64,
+        ));
     });
 
     bench("normals_par (sphere 64)", 10, || {
-        black_box(vtk_pure_rs::filters::normals::normals::compute_normals_par(&pd64));
+        black_box(vtk_pure_rs::filters::normals::normals::compute_normals_par(
+            &pd64,
+        ));
     });
 
     bench("elevation (sphere 64)", 20, || {
@@ -79,14 +85,14 @@ fn main() {
     let (img32, scalars32) = make_image_data(32);
     bench("marching_cubes (32^3)", 10, || {
         black_box(vtk_pure_rs::filters::core::marching_cubes::marching_cubes(
-            &img32,
-            &scalars32,
-            0.0,
+            &img32, &scalars32, 0.0,
         ));
     });
 
     bench("triangulate (sphere 32)", 50, || {
-        black_box(vtk_pure_rs::filters::geometry::triangulate::triangulate(&pd32));
+        black_box(vtk_pure_rs::filters::geometry::triangulate::triangulate(
+            &pd32,
+        ));
     });
 
     bench("clean (sphere 32)", 20, || {
@@ -98,7 +104,9 @@ fn main() {
     });
 
     bench("smooth 20 iters (sphere 32)", 10, || {
-        black_box(vtk_pure_rs::filters::smooth::smooth::smooth(&pd32, 20, 1.0, true));
+        black_box(vtk_pure_rs::filters::smooth::smooth::smooth(
+            &pd32, 20, 1.0, true,
+        ));
     });
 }
 

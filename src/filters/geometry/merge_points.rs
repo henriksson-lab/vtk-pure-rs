@@ -1,5 +1,3 @@
-
-
 use crate::data::{CellArray, Points, PolyData};
 
 /// Merge coincident points in a PolyData within a given tolerance.

@@ -38,7 +38,13 @@ impl EnSightWriter {
         }
 
         // Write case file
-        write_case(&case_path, &geo_name, base_name, &scalar_names, &vector_names)?;
+        write_case(
+            &case_path,
+            &geo_name,
+            base_name,
+            &scalar_names,
+            &vector_names,
+        )?;
 
         // Write geometry file
         write_geometry(&geo_path, poly_data)?;
@@ -138,7 +144,9 @@ fn write_geometry(path: &Path, pd: &PolyData) -> Result<(), VtkError> {
 }
 
 fn write_scalar_variable(path: &Path, pd: &PolyData, name: &str) -> Result<(), VtkError> {
-    let arr = pd.point_data().get_array(name)
+    let arr = pd
+        .point_data()
+        .get_array(name)
         .ok_or_else(|| VtkError::InvalidData(format!("array '{name}' not found")))?;
 
     let mut f = std::fs::File::create(path)?;
@@ -157,7 +165,9 @@ fn write_scalar_variable(path: &Path, pd: &PolyData, name: &str) -> Result<(), V
 }
 
 fn write_vector_variable(path: &Path, pd: &PolyData, name: &str) -> Result<(), VtkError> {
-    let arr = pd.point_data().get_array(name)
+    let arr = pd
+        .point_data()
+        .get_array(name)
         .ok_or_else(|| VtkError::InvalidData(format!("array '{name}' not found")))?;
 
     let mut f = std::fs::File::create(path)?;

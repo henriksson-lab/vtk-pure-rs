@@ -10,11 +10,7 @@ use crate::data::PolyData;
 /// than standard Laplacian smoothing, with less volume shrinkage.
 ///
 /// `lambda` controls the step size (0.0 = no movement, 1.0 = full step).
-pub fn smooth_bilaplacian(
-    input: &PolyData,
-    iterations: usize,
-    lambda: f64,
-) -> PolyData {
+pub fn smooth_bilaplacian(input: &PolyData, iterations: usize, lambda: f64) -> PolyData {
     let mut output = input.clone();
     let n: usize = output.points.len();
     if n == 0 || iterations == 0 {
@@ -46,11 +42,14 @@ pub fn smooth_bilaplacian(
         // Update positions: x' = x - lambda * L(L(x))
         for i in 0..n {
             let p = output.points.get(i);
-            output.points.set(i, [
-                p[0] - factor * lap2[i][0],
-                p[1] - factor * lap2[i][1],
-                p[2] - factor * lap2[i][2],
-            ]);
+            output.points.set(
+                i,
+                [
+                    p[0] - factor * lap2[i][0],
+                    p[1] - factor * lap2[i][1],
+                    p[2] - factor * lap2[i][2],
+                ],
+            );
         }
     }
 
@@ -58,11 +57,7 @@ pub fn smooth_bilaplacian(
 }
 
 /// Compute Laplacian displacement for each vertex: L(p_i) = avg(neighbors) - p_i
-fn compute_laplacian(
-    pd: &PolyData,
-    neighbors: &[HashSet<usize>],
-    n: usize,
-) -> Vec<[f64; 3]> {
+fn compute_laplacian(pd: &PolyData, neighbors: &[HashSet<usize>], n: usize) -> Vec<[f64; 3]> {
     let mut lap: Vec<[f64; 3]> = vec![[0.0, 0.0, 0.0]; n];
 
     for i in 0..n {
@@ -171,6 +166,9 @@ mod tests {
         let center_z: f64 = result.points.get(0)[2];
 
         // After bilaplacian smoothing, center should have moved toward the plane
-        assert!(center_z.abs() < 1.0, "center_z = {center_z}, expected closer to 0");
+        assert!(
+            center_z.abs() < 1.0,
+            "center_z = {center_z}, expected closer to 0"
+        );
     }
 }

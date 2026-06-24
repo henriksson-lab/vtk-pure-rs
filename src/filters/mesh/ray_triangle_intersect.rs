@@ -77,11 +77,7 @@ fn ray_triangle(
 ///
 /// Uses the Moller-Trumbore algorithm. Only triangular cells in `polys`
 /// are tested. Results are sorted by increasing `t`.
-pub fn ray_intersect_mesh(
-    origin: [f64; 3],
-    direction: [f64; 3],
-    mesh: &PolyData,
-) -> Vec<RayHit> {
+pub fn ray_intersect_mesh(origin: [f64; 3], direction: [f64; 3], mesh: &PolyData) -> Vec<RayHit> {
     let mut hits: Vec<RayHit> = Vec::new();
     let dir = normalize(direction);
 
@@ -123,11 +119,7 @@ mod tests {
 
     fn make_triangle() -> PolyData {
         PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [2.0, 0.0, 0.0],
-                [0.0, 2.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
             vec![[0, 1, 2]],
         )
     }

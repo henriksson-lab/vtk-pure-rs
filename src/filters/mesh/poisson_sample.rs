@@ -132,7 +132,9 @@ fn triangle_area(tri: &[[f64; 3]; 3]) -> f64 {
 
 /// Simple LCG pseudo-random number generator returning [0, 1).
 fn lcg_next_f64(state: &mut u64) -> f64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     // Take upper bits for better quality
     let val: u64 = (*state >> 11) & 0x001F_FFFF_FFFF_FFFF;
     val as f64 / (1u64 << 53) as f64
@@ -159,7 +161,10 @@ mod tests {
         let pd = make_quad();
         let min_dist: f64 = 2.0;
         let result = poisson_sample_surface(&pd, min_dist, 42);
-        assert!(result.points.len() > 0, "should generate at least one point");
+        assert!(
+            result.points.len() > 0,
+            "should generate at least one point"
+        );
 
         // Verify minimum distance property
         let n: usize = result.points.len();

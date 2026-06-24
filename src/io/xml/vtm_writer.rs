@@ -51,13 +51,16 @@ impl VtmWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{PolyData, ImageData};
+    use crate::data::{ImageData, PolyData};
 
     #[test]
     fn write_vtm_index() {
         let mut mb = MultiBlockDataSet::new();
         mb.add_block("mesh", Block::PolyData(PolyData::new()));
-        mb.add_block("volume", Block::ImageData(ImageData::with_dimensions(2, 2, 2)));
+        mb.add_block(
+            "volume",
+            Block::ImageData(ImageData::with_dimensions(2, 2, 2)),
+        );
 
         let mut buf = Vec::new();
         VtmWriter::write_index_to(&mut buf, &mb).unwrap();

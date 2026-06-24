@@ -75,9 +75,12 @@ pub fn scalar_gradient_on_mesh(input: &PolyData, array_name: &str) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ScalarGradient", grad_data, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ScalarGradient",
+            grad_data,
+            3,
+        )));
     pd
 }
 

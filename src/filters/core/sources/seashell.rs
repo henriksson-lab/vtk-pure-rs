@@ -6,9 +6,13 @@ use crate::data::{CellArray, Points, PolyData};
 ///
 /// Based on the logarithmic spiral shell model with expanding aperture.
 pub fn seashell(
-    turns: f64, aperture_growth: f64, shell_radius: f64,
-    tube_radius_start: f64, tube_radius_growth: f64,
-    resolution_u: usize, resolution_v: usize,
+    turns: f64,
+    aperture_growth: f64,
+    shell_radius: f64,
+    tube_radius_start: f64,
+    tube_radius_growth: f64,
+    resolution_u: usize,
+    resolution_v: usize,
 ) -> PolyData {
     let nu = resolution_u.max(8);
     let nv = resolution_v.max(8);
@@ -16,9 +20,9 @@ pub fn seashell(
     let mut polys = CellArray::new();
 
     for j in 0..=nv {
-        let v = 2.0*std::f64::consts::PI*j as f64/nv as f64; // around tube
+        let v = 2.0 * std::f64::consts::PI * j as f64 / nv as f64; // around tube
         for i in 0..=nu {
-            let u = turns*2.0*std::f64::consts::PI*i as f64/nu as f64; // along spiral
+            let u = turns * 2.0 * std::f64::consts::PI * i as f64 / nu as f64; // along spiral
             let r = shell_radius * (aperture_growth * u).exp();
             let tube_r = tube_radius_start * (tube_radius_growth * u).exp();
 
@@ -41,13 +45,18 @@ pub fn seashell(
     }
 
     let row = nu + 1;
-    for j in 0..nv { for i in 0..nu {
-        let p0 = (j*row+i) as i64;
-        polys.push_cell(&[p0, p0+1, p0+row as i64+1]);
-        polys.push_cell(&[p0, p0+row as i64+1, p0+row as i64]);
-    }}
+    for j in 0..nv {
+        for i in 0..nu {
+            let p0 = (j * row + i) as i64;
+            polys.push_cell(&[p0, p0 + 1, p0 + row as i64 + 1]);
+            polys.push_cell(&[p0, p0 + row as i64 + 1, p0 + row as i64]);
+        }
+    }
 
-    let mut mesh = PolyData::new(); mesh.points = pts; mesh.polys = polys; mesh
+    let mut mesh = PolyData::new();
+    mesh.points = pts;
+    mesh.polys = polys;
+    mesh
 }
 
 /// Generate a simplified nautilus shell.

@@ -12,8 +12,13 @@ pub fn fibonacci_spiral(turns: f64, n_pts: usize) -> PolyData {
         let r = phi.powf(t * 2.0 / std::f64::consts::PI);
         pts.push([r * angle.cos(), r * angle.sin(), t * 0.5]);
     }
-    for i in 0..n { lines.push_cell(&[i as i64, (i+1) as i64]); }
-    let mut m = PolyData::new(); m.points = pts; m.lines = lines; m
+    for i in 0..n {
+        lines.push_cell(&[i as i64, (i + 1) as i64]);
+    }
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

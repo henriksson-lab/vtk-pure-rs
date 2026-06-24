@@ -1,5 +1,5 @@
-use std::io::Write;
 use crate::data::PolyData;
+use std::io::Write;
 
 /// Writer for AutoCAD DXF format.
 pub struct DxfWriter<W: Write> {

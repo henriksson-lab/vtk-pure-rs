@@ -20,10 +20,9 @@ pub fn trimmed_extrusion(
         return PolyData::new();
     }
 
-    let dir_len = (direction[0] * direction[0]
-        + direction[1] * direction[1]
-        + direction[2] * direction[2])
-    .sqrt();
+    let dir_len =
+        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
+            .sqrt();
     if dir_len < 1e-15 || max_distance <= 0.0 {
         return PolyData::new();
     }
@@ -47,11 +46,7 @@ pub fn trimmed_extrusion(
     for i in 0..n {
         let p = input.points.get(i);
         let t = clamp_distance_to_bounds(p, dir, max_distance, bounds);
-        out_points.push([
-            p[0] + dir[0] * t,
-            p[1] + dir[1] * t,
-            p[2] + dir[2] * t,
-        ]);
+        out_points.push([p[0] + dir[0] * t, p[1] + dir[1] * t, p[2] + dir[2] * t]);
     }
 
     let offset = n as i64;

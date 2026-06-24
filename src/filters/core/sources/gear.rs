@@ -181,9 +181,7 @@ mod tests {
             thickness: 1.0,
             ..Default::default()
         });
-        let zs: Vec<f64> = (0..pd.points.len())
-            .map(|i| pd.points.get(i)[2])
-            .collect();
+        let zs: Vec<f64> = (0..pd.points.len()).map(|i| pd.points.get(i)[2]).collect();
         let zmin = zs.iter().cloned().fold(f64::INFINITY, f64::min);
         let zmax = zs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         assert!((zmax - zmin - 1.0).abs() < 1e-10);

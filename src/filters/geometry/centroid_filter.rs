@@ -9,17 +9,21 @@ pub fn centroid_filter(input: &PolyData) -> PolyData {
     let mut out_verts = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.is_empty() { continue; }
+        if cell.is_empty() {
+            continue;
+        }
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
         for &id in cell.iter() {
             let p = input.points.get(id as usize);
-            cx += p[0]; cy += p[1]; cz += p[2];
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
         }
         let n = cell.len() as f64;
         let idx = out_points.len() as i64;
-        out_points.push([cx/n, cy/n, cz/n]);
+        out_points.push([cx / n, cy / n, cz / n]);
         out_verts.push_cell(&[idx]);
     }
 
@@ -41,12 +45,19 @@ pub fn centroid_filter(input: &PolyData) -> PolyData {
 /// Otherwise uses uniform weighting. Returns the centroid position.
 pub fn weighted_centroid(input: &PolyData, weight_array: Option<&str>) -> [f64; 3] {
     let n = input.points.len();
-    if n == 0 { return [0.0, 0.0, 0.0]; }
+    if n == 0 {
+        return [0.0, 0.0, 0.0];
+    }
 
     let weights: Vec<f64> = if let Some(name) = weight_array {
         if let Some(arr) = input.point_data().get_array(name) {
             let mut buf = [0.0f64];
-            (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect()
+            (0..n)
+                .map(|i| {
+                    arr.tuple_as_f64(i, &mut buf);
+                    buf[0]
+                })
+                .collect()
         } else {
             vec![1.0; n]
         }
@@ -66,7 +77,7 @@ pub fn weighted_centroid(input: &PolyData, weight_array: Option<&str>) -> [f64; 
     }
 
     if total_w > 1e-15 {
-        [sum[0]/total_w, sum[1]/total_w, sum[2]/total_w]
+        [sum[0] / total_w, sum[1] / total_w, sum[2] / total_w]
     } else {
         [0.0, 0.0, 0.0]
     }
@@ -75,6 +86,7 @@ pub fn weighted_centroid(input: &PolyData, weight_array: Option<&str>) -> [f64; 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn cell_centroids() {
@@ -109,9 +121,12 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([10.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("w", vec![9.0, 1.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "w",
+                vec![9.0, 1.0],
+                1,
+            )));
 
         let c = weighted_centroid(&pd, Some("w"));
         assert!((c[0] - 1.0).abs() < 1e-10); // weighted toward 0

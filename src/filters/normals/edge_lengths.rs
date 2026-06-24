@@ -25,7 +25,10 @@ pub fn compute_edge_lengths(input: &PolyData) -> PolyData {
         for i in 0..n {
             let a = input.points.get(cell[i] as usize);
             let b = input.points.get(cell[(i + 1) % n] as usize);
-            let d = ((a[0]-b[0])*(a[0]-b[0]) + (a[1]-b[1])*(a[1]-b[1]) + (a[2]-b[2])*(a[2]-b[2])).sqrt();
+            let d = ((a[0] - b[0]) * (a[0] - b[0])
+                + (a[1] - b[1]) * (a[1] - b[1])
+                + (a[2] - b[2]) * (a[2] - b[2]))
+                .sqrt();
             min_l = min_l.min(d);
             max_l = max_l.max(d);
             sum_l += d;
@@ -37,9 +40,24 @@ pub fn compute_edge_lengths(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("MinEdgeLength", min_lengths, 1)));
-    pd.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("MaxEdgeLength", max_lengths, 1)));
-    pd.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("MeanEdgeLength", mean_lengths, 1)));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MinEdgeLength",
+            min_lengths,
+            1,
+        )));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MaxEdgeLength",
+            max_lengths,
+            1,
+        )));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MeanEdgeLength",
+            mean_lengths,
+            1,
+        )));
     pd
 }
 
@@ -51,7 +69,7 @@ mod tests {
     fn equilateral_triangle() {
         let s = 3.0f64.sqrt();
         let pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, s/2.0, 0.0]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, s / 2.0, 0.0]],
             vec![[0, 1, 2]],
         );
         let result = compute_edge_lengths(&pd);

@@ -7,11 +7,7 @@ use crate::data::PolyData;
 ///
 /// `pass_band` controls the cutoff frequency (0.0–2.0). Smaller values
 /// result in more smoothing. Typical range: 0.01–0.1.
-pub fn windowed_sinc_smooth(
-    input: &PolyData,
-    iterations: usize,
-    pass_band: f64,
-) -> PolyData {
+pub fn windowed_sinc_smooth(input: &PolyData, iterations: usize, pass_band: f64) -> PolyData {
     let n = input.points.len();
     if n == 0 || iterations == 0 {
         return input.clone();
@@ -33,7 +29,9 @@ pub fn windowed_sinc_smooth(
     }
     // Build offsets
     let mut adj_off = vec![0u32; n + 1];
-    for i in 0..n { adj_off[i + 1] = adj_off[i] + adj_count[i]; }
+    for i in 0..n {
+        adj_off[i + 1] = adj_off[i] + adj_count[i];
+    }
     let total_adj = adj_off[n] as usize;
     let mut adj_data = vec![0u32; total_adj];
     let mut adj_pos = adj_off[..n].to_vec(); // write cursors
@@ -72,7 +70,10 @@ pub fn windowed_sinc_smooth(
         while i < end {
             let nb = adj_data[i];
             let mut count = 0u32;
-            while i < end && adj_data[i] == nb { count += 1; i += 1; }
+            while i < end && adj_data[i] == nb {
+                count += 1;
+                i += 1;
+            }
             nbr_data.push(nb);
             if count == 1 {
                 is_boundary[v] = true;
@@ -95,7 +96,9 @@ pub fn windowed_sinc_smooth(
         }
     }
     let sum: f64 = w.iter().sum();
-    for wk in &mut w { *wk /= sum; }
+    for wk in &mut w {
+        *wk /= sum;
+    }
 
     let lambda = pb;
     let mu = -pb / (1.0 - 0.1 * pb);
@@ -216,7 +219,9 @@ mod tests {
     fn smoothing_preserves_topology() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
                 [1.5, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [1, 3, 2]],

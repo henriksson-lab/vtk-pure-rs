@@ -18,8 +18,8 @@ mod tests {
     #[test]
     fn test_flip() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let r = flip_normals(&mesh);
         let cell: Vec<i64> = r.polys.iter().next().unwrap().to_vec();

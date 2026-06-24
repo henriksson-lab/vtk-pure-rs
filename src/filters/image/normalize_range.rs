@@ -44,9 +44,13 @@ pub fn normalize_to_unit(input: &ImageData, scalars: &str) -> ImageData {
     };
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Normalized", normalized, nc),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Normalized",
+            normalized,
+            nc,
+        )));
     result
 }
 

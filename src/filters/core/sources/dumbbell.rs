@@ -8,24 +8,26 @@ pub fn dumbbell(bar_length: f64, weight_radius: f64, bar_radius: f64, na: usize)
     // Bar (cylinder along X axis)
     let bar_segs = 4;
     for s in 0..=bar_segs {
-        let x = -bar_length/2.0 + bar_length * s as f64 / bar_segs as f64;
+        let x = -bar_length / 2.0 + bar_length * s as f64 / bar_segs as f64;
         for j in 0..na {
             let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
             pts.push([x, bar_radius * a.cos(), bar_radius * a.sin()]);
         }
     }
     for s in 0..bar_segs {
-        let b0 = s * na; let b1 = (s+1) * na;
+        let b0 = s * na;
+        let b1 = (s + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
     // Two weight spheres
-    for &cx in &[-bar_length/2.0, bar_length/2.0] {
+    for &cx in &[-bar_length / 2.0, bar_length / 2.0] {
         let np = 4;
-        let _top = pts.len(); pts.push([cx, 0.0, weight_radius]);
+        let _top = pts.len();
+        pts.push([cx, 0.0, weight_radius]);
         for p in 1..np {
             let phi = std::f64::consts::PI * p as f64 / np as f64;
             let r = weight_radius * phi.sin();
@@ -47,23 +49,35 @@ pub fn dumbbell(bar_length: f64, weight_radius: f64, bar_radius: f64, na: usize)
             let phi = std::f64::consts::PI * p as f64 / np as f64;
             for j in 0..na {
                 let theta = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
-                pts.push([cx + weight_radius * phi.sin() * theta.cos(),
-                           weight_radius * phi.sin() * theta.sin(),
-                           weight_radius * phi.cos()]);
+                pts.push([
+                    cx + weight_radius * phi.sin() * theta.cos(),
+                    weight_radius * phi.sin() * theta.sin(),
+                    weight_radius * phi.cos(),
+                ]);
             }
         }
         // Top cap
-        for j in 0..na { polys.push_cell(&[sphere_base as i64, (sphere_base+1+j) as i64, (sphere_base+1+(j+1)%na) as i64]); }
-        for p in 0..(np-1) {
-            let r0 = sphere_base + 1 + p * na; let r1 = sphere_base + 1 + (p+1) * na;
+        for j in 0..na {
+            polys.push_cell(&[
+                sphere_base as i64,
+                (sphere_base + 1 + j) as i64,
+                (sphere_base + 1 + (j + 1) % na) as i64,
+            ]);
+        }
+        for p in 0..(np - 1) {
+            let r0 = sphere_base + 1 + p * na;
+            let r1 = sphere_base + 1 + (p + 1) * na;
             for j in 0..na {
-                let j1 = (j+1)%na;
-                polys.push_cell(&[(r0+j) as i64, (r1+j) as i64, (r1+j1) as i64]);
-                polys.push_cell(&[(r0+j) as i64, (r1+j1) as i64, (r0+j1) as i64]);
+                let j1 = (j + 1) % na;
+                polys.push_cell(&[(r0 + j) as i64, (r1 + j) as i64, (r1 + j1) as i64]);
+                polys.push_cell(&[(r0 + j) as i64, (r1 + j1) as i64, (r0 + j1) as i64]);
             }
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

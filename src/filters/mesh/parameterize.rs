@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, DataSet};
+use crate::data::{AnyDataArray, DataArray, DataSet, PolyData};
 
 /// Simple planar UV parameterization.
 ///
@@ -7,7 +7,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData, DataSet};
 /// in [0, 1] range. Adds "UV" 2-component point data.
 pub fn planar_parameterize(input: &PolyData, axis_u: usize, axis_v: usize) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let bb = input.bounds();
     let bounds = [bb.x_min, bb.x_max, bb.y_min, bb.y_max, bb.z_min, bb.z_max];
@@ -23,11 +25,13 @@ pub fn planar_parameterize(input: &PolyData, axis_u: usize, axis_v: usize) -> Po
         let p = input.points.get(i);
         let u = (p[axis_u.min(2)] - u_min) / u_range;
         let v = (p[axis_v.min(2)] - v_min) / v_range;
-        uv.push(u); uv.push(v);
+        uv.push(u);
+        uv.push(v);
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("UV", uv, 2)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uv, 2)));
     pd.point_data_mut().set_active_tcoords("UV");
     pd
 }
@@ -37,7 +41,9 @@ pub fn planar_parameterize(input: &PolyData, axis_u: usize, axis_v: usize) -> Po
 /// U = atan2(z, x) / (2π) + 0.5, V = (y - y_min) / (y_max - y_min).
 pub fn cylindrical_parameterize(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let bb = input.bounds();
     let y_range = (bb.y_max - bb.y_min).max(1e-15);
@@ -47,11 +53,13 @@ pub fn cylindrical_parameterize(input: &PolyData) -> PolyData {
         let p = input.points.get(i);
         let u = p[2].atan2(p[0]) / (2.0 * std::f64::consts::PI) + 0.5;
         let v = (p[1] - bb.y_min) / y_range;
-        uv.push(u); uv.push(v);
+        uv.push(u);
+        uv.push(v);
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("UV", uv, 2)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uv, 2)));
     pd.point_data_mut().set_active_tcoords("UV");
     pd
 }
@@ -70,8 +78,10 @@ mod tests {
         let result = planar_parameterize(&pd, 0, 1); // X->U, Y->V
         let arr = result.point_data().get_array("UV").unwrap();
         let mut buf = [0.0f64; 2];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf, [0.0, 0.0]);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf, [1.0, 1.0]);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [0.0, 0.0]);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf, [1.0, 1.0]);
     }
 
     #[test]

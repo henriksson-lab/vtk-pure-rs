@@ -33,7 +33,11 @@ pub fn texture_map_to_cylinder(
 
     // Build local coordinate frame
     // Find a vector not parallel to axis
-    let up = if axis_norm[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let up = if axis_norm[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let u_dir = cross(axis_norm, up);
     let u_len = (u_dir[0] * u_dir[0] + u_dir[1] * u_dir[1] + u_dir[2] * u_dir[2]).sqrt();
     let u_dir = [u_dir[0] / u_len, u_dir[1] / u_len, u_dir[2] / u_len];
@@ -64,7 +68,9 @@ pub fn texture_map_to_cylinder(
     }
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(tcoords));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(tcoords));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
@@ -90,11 +96,19 @@ pub fn texture_map_to_cylinder_auto(input: &PolyData) -> PolyData {
     }
 
     let extents = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
-    let longest = if extents[0] >= extents[1] && extents[0] >= extents[2] { 0 }
-        else if extents[1] >= extents[2] { 1 }
-        else { 2 };
+    let longest = if extents[0] >= extents[1] && extents[0] >= extents[2] {
+        0
+    } else if extents[1] >= extents[2] {
+        1
+    } else {
+        2
+    };
 
-    let center = [(min[0] + max[0]) / 2.0, (min[1] + max[1]) / 2.0, (min[2] + max[2]) / 2.0];
+    let center = [
+        (min[0] + max[0]) / 2.0,
+        (min[1] + max[1]) / 2.0,
+        (min[2] + max[2]) / 2.0,
+    ];
     let mut p1 = center;
     let mut p2 = center;
     p1[longest] = min[longest];
@@ -130,11 +144,7 @@ mod tests {
         }
         let mesh = PolyData::from_points(pts);
 
-        let result = texture_map_to_cylinder(
-            &mesh,
-            [0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let result = texture_map_to_cylinder(&mesh, [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
 
         let tc = result.point_data().tcoords().unwrap();
         assert_eq!(tc.num_tuples(), mesh.points.len());
@@ -150,9 +160,7 @@ mod tests {
 
     #[test]
     fn auto_cylinder() {
-        let mesh = PolyData::from_points(vec![
-            [0.0, 0.0, 0.0], [0.0, 5.0, 0.0], [1.0, 2.5, 0.0],
-        ]);
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [0.0, 5.0, 0.0], [1.0, 2.5, 0.0]]);
         let result = texture_map_to_cylinder_auto(&mesh);
         assert!(result.point_data().tcoords().is_some());
     }

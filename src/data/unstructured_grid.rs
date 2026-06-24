@@ -1,7 +1,7 @@
 use crate::types::{BoundingBox, CellType};
 
-use crate::data::{CellArray, DataSetAttributes, FieldData, Points};
 use crate::data::traits::{DataObject, DataSet};
+use crate::data::{CellArray, DataSetAttributes, FieldData, Points};
 
 /// Arbitrary mixed-cell mesh with explicit point coordinates and cell connectivity.
 ///
@@ -148,8 +148,13 @@ impl DataSet for UnstructuredGrid {
 
 impl std::fmt::Display for UnstructuredGrid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "UnstructuredGrid: {} points, {} cells, {} point arrays",
-            self.points.len(), self.cells.num_cells(), self.point_data.num_arrays())
+        write!(
+            f,
+            "UnstructuredGrid: {} points, {} cells, {} point arrays",
+            self.points.len(),
+            self.cells.num_cells(),
+            self.point_data.num_arrays()
+        )
     }
 }
 

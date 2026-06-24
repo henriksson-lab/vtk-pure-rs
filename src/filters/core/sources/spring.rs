@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a spring (coil/tube helix).
 pub struct SpringParams {

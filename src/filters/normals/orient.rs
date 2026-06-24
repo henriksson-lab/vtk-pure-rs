@@ -28,12 +28,19 @@ pub fn orient(input: &PolyData) -> PolyData {
         for i in 0..n {
             let a = conn[start + i];
             let b = conn[start + if i + 1 < n { i + 1 } else { 0 }];
-            let key = if a < b { (a as u64) << 32 | b as u64 } else { (b as u64) << 32 | a as u64 };
+            let key = if a < b {
+                (a as u64) << 32 | b as u64
+            } else {
+                (b as u64) << 32 | a as u64
+            };
             let forward = a < b;
             let val = ((ci as u64) << 1) | (forward as u64);
             let entry = edge_adj.entry(key).or_insert([u64::MAX, u64::MAX]);
-            if entry[0] == u64::MAX { entry[0] = val; }
-            else if entry[1] == u64::MAX { entry[1] = val; }
+            if entry[0] == u64::MAX {
+                entry[0] = val;
+            } else if entry[1] == u64::MAX {
+                entry[1] = val;
+            }
         }
     }
 
@@ -43,7 +50,9 @@ pub fn orient(input: &PolyData) -> PolyData {
     let mut queue = std::collections::VecDeque::with_capacity(nc);
 
     for start_ci in 0..nc {
-        if state[start_ci] != 0 { continue; }
+        if state[start_ci] != 0 {
+            continue;
+        }
         state[start_ci] = 1; // keep
         queue.push_back(start_ci);
 
@@ -56,16 +65,24 @@ pub fn orient(input: &PolyData) -> PolyData {
             for i in 0..n {
                 let a = conn[s + i];
                 let b = conn[s + if i + 1 < n { i + 1 } else { 0 }];
-                let key = if a < b { (a as u64) << 32 | b as u64 } else { (b as u64) << 32 | a as u64 };
+                let key = if a < b {
+                    (a as u64) << 32 | b as u64
+                } else {
+                    (b as u64) << 32 | a as u64
+                };
                 let ci_forward = a < b;
                 let ci_actual_forward = ci_forward ^ ci_flipped;
 
                 if let Some(pair) = edge_adj.get(&key) {
                     for &packed in pair {
-                        if packed == u64::MAX { break; }
+                        if packed == u64::MAX {
+                            break;
+                        }
                         let ni = (packed >> 1) as usize;
                         let ni_forward = (packed & 1) != 0;
-                        if ni == ci || state[ni] != 0 { continue; }
+                        if ni == ci || state[ni] != 0 {
+                            continue;
+                        }
                         let should_flip = ci_actual_forward == ni_forward;
                         state[ni] = if should_flip { 2 } else { 1 };
                         queue.push_back(ni);

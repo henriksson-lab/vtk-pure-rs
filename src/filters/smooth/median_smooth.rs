@@ -75,9 +75,12 @@ mod tests {
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
         // Point 2 has an outlier value
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![1.0, 1.0, 100.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 1.0, 100.0],
+                1,
+            )));
 
         let result = median_smooth(&pd, "val", 1);
         let arr = result.point_data().get_array("val").unwrap();
@@ -94,9 +97,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![5.0, 5.0, 5.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![5.0, 5.0, 5.0],
+                1,
+            )));
 
         let result = median_smooth(&pd, "val", 3);
         let arr = result.point_data().get_array("val").unwrap();

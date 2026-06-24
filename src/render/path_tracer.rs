@@ -16,7 +16,12 @@ pub struct PathTracer {
 impl PathTracer {
     /// Create a new path tracer.
     pub fn new(width: u32, height: u32, samples_per_pixel: u32, max_bounces: u32) -> Self {
-        Self { width, height, samples_per_pixel, max_bounces }
+        Self {
+            width,
+            height,
+            samples_per_pixel,
+            max_bounces,
+        }
     }
 
     /// Render the scene and return RGBA pixel data.
@@ -28,7 +33,11 @@ impl PathTracer {
         // Extract triangles from scene (reuse logic similar to ray_tracer)
         let triangles = extract_triangles(scene);
 
-        let cam_pos = [scene.camera.position.x, scene.camera.position.y, scene.camera.position.z];
+        let cam_pos = [
+            scene.camera.position.x,
+            scene.camera.position.y,
+            scene.camera.position.z,
+        ];
         let cam_fwd = scene.camera.direction();
         let cam_up = scene.camera.view_up.normalize();
         let cam_right = cam_fwd.cross(cam_up).normalize();
@@ -60,8 +69,12 @@ impl PathTracer {
                     ]);
 
                     let color = trace_path(
-                        cam_pos, dir, &triangles, &scene.background,
-                        self.max_bounces, &mut rng_state,
+                        cam_pos,
+                        dir,
+                        &triangles,
+                        &scene.background,
+                        self.max_bounces,
+                        &mut rng_state,
                     );
                     accum[0] += color[0];
                     accum[1] += color[1];
@@ -69,11 +82,7 @@ impl PathTracer {
                 }
 
                 let inv_spp = 1.0 / self.samples_per_pixel as f64;
-                let mut hdr = [
-                    accum[0] * inv_spp,
-                    accum[1] * inv_spp,
-                    accum[2] * inv_spp,
-                ];
+                let mut hdr = [accum[0] * inv_spp, accum[1] * inv_spp, accum[2] * inv_spp];
 
                 // Reinhard tone mapping
                 hdr[0] = hdr[0] / (1.0 + hdr[0]);
@@ -83,7 +92,7 @@ impl PathTracer {
                 // Gamma correction (gamma 2.2)
                 let gamma = 1.0 / 2.2;
                 let idx = (y * w + x) * 4;
-                pixels[idx]     = (hdr[0].powf(gamma).clamp(0.0, 1.0) * 255.0) as u8;
+                pixels[idx] = (hdr[0].powf(gamma).clamp(0.0, 1.0) * 255.0) as u8;
                 pixels[idx + 1] = (hdr[1].powf(gamma).clamp(0.0, 1.0) * 255.0) as u8;
                 pixels[idx + 2] = (hdr[2].powf(gamma).clamp(0.0, 1.0) * 255.0) as u8;
                 pixels[idx + 3] = 255;
@@ -105,7 +114,9 @@ struct Triangle {
 fn extract_triangles(scene: &Scene) -> Vec<Triangle> {
     let mut tris = Vec::new();
     for actor in &scene.actors {
-        if !actor.visible { continue; }
+        if !actor.visible {
+            continue;
+        }
         let color = match &actor.coloring {
             crate::render::Coloring::Solid(c) => [c[0] as f64, c[1] as f64, c[2] as f64],
             _ => [0.8, 0.8, 0.8],
@@ -115,16 +126,22 @@ fn extract_triangles(scene: &Scene) -> Vec<Triangle> {
         for cell in actor.data.polys.iter() {
             if cell.len() >= 3 {
                 let p0 = actor.data.points.get(cell[0] as usize);
-                let v0 = [p0[0]*s+pos[0], p0[1]*s+pos[1], p0[2]*s+pos[2]];
-                for i in 1..cell.len()-1 {
+                let v0 = [p0[0] * s + pos[0], p0[1] * s + pos[1], p0[2] * s + pos[2]];
+                for i in 1..cell.len() - 1 {
                     let p1 = actor.data.points.get(cell[i] as usize);
-                    let p2 = actor.data.points.get(cell[i+1] as usize);
-                    let v1 = [p1[0]*s+pos[0], p1[1]*s+pos[1], p1[2]*s+pos[2]];
-                    let v2 = [p2[0]*s+pos[0], p2[1]*s+pos[1], p2[2]*s+pos[2]];
+                    let p2 = actor.data.points.get(cell[i + 1] as usize);
+                    let v1 = [p1[0] * s + pos[0], p1[1] * s + pos[1], p1[2] * s + pos[2]];
+                    let v2 = [p2[0] * s + pos[0], p2[1] * s + pos[1], p2[2] * s + pos[2]];
                     let e1 = sub(v1, v0);
                     let e2 = sub(v2, v0);
                     let n = normalize(cross(e1, e2));
-                    tris.push(Triangle { v0, v1, v2, normal: n, color });
+                    tris.push(Triangle {
+                        v0,
+                        v1,
+                        v2,
+                        normal: n,
+                        color,
+                    });
                 }
             }
         }
@@ -133,9 +150,12 @@ fn extract_triangles(scene: &Scene) -> Vec<Triangle> {
 }
 
 fn trace_path(
-    origin: [f64; 3], direction: [f64; 3],
-    triangles: &[Triangle], bg: &[f32; 4],
-    max_bounces: u32, rng: &mut u64,
+    origin: [f64; 3],
+    direction: [f64; 3],
+    triangles: &[Triangle],
+    bg: &[f32; 4],
+    max_bounces: u32,
+    rng: &mut u64,
 ) -> [f64; 3] {
     let mut throughput = [1.0f64; 3];
     let mut radiance = [0.0f64; 3];
@@ -145,7 +165,7 @@ fn trace_path(
     for _bounce in 0..=max_bounces {
         if let Some((t, tri_idx)) = closest_hit(o, d, triangles) {
             let tri = &triangles[tri_idx];
-            let hit_pt = [o[0]+t*d[0], o[1]+t*d[1], o[2]+t*d[2]];
+            let hit_pt = [o[0] + t * d[0], o[1] + t * d[1], o[2] + t * d[2]];
             let mut normal = tri.normal;
 
             // Ensure normal faces the ray
@@ -168,7 +188,11 @@ fn trace_path(
 
             let _ = cos_theta;
 
-            o = [hit_pt[0] + normal[0]*1e-4, hit_pt[1] + normal[1]*1e-4, hit_pt[2] + normal[2]*1e-4];
+            o = [
+                hit_pt[0] + normal[0] * 1e-4,
+                hit_pt[1] + normal[1] * 1e-4,
+                hit_pt[2] + normal[2] * 1e-4,
+            ];
             d = new_dir;
         } else {
             // Hit background (sky light)
@@ -202,16 +226,26 @@ fn moller_trumbore(o: [f64; 3], d: [f64; 3], tri: &Triangle) -> Option<f64> {
     let e2 = sub(tri.v2, tri.v0);
     let h = cross(d, e2);
     let a = dot(e1, h);
-    if a.abs() < 1e-12 { return None; }
+    if a.abs() < 1e-12 {
+        return None;
+    }
     let f = 1.0 / a;
     let s = sub(o, tri.v0);
     let u = f * dot(s, h);
-    if !(0.0..=1.0).contains(&u) { return None; }
+    if !(0.0..=1.0).contains(&u) {
+        return None;
+    }
     let q = cross(s, e1);
     let v = f * dot(d, q);
-    if v < 0.0 || u + v > 1.0 { return None; }
+    if v < 0.0 || u + v > 1.0 {
+        return None;
+    }
     let t = f * dot(e2, q);
-    if t > 1e-6 { Some(t) } else { None }
+    if t > 1e-6 {
+        Some(t)
+    } else {
+        None
+    }
 }
 
 fn cosine_hemisphere(normal: [f64; 3], rng: &mut u64) -> ([f64; 3], f64) {
@@ -223,7 +257,11 @@ fn cosine_hemisphere(normal: [f64; 3], rng: &mut u64) -> ([f64; 3], f64) {
 
     // Build local coordinate frame
     let w = normal;
-    let a = if w[0].abs() > 0.9 { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] };
+    let a = if w[0].abs() > 0.9 {
+        [0.0, 1.0, 0.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
     let u = normalize(cross(a, w));
     let v = cross(w, u);
 
@@ -251,15 +289,29 @@ fn next_f64(state: &mut u64) -> f64 {
 }
 
 // Vector math helpers
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0]*b[0] + a[1]*b[1] + a[2]*b[2] }
-fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0]-b[0], a[1]-b[1], a[2]-b[2]] }
-fn neg(a: [f64; 3]) -> [f64; 3] { [-a[0], -a[1], -a[2]] }
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn neg(a: [f64; 3]) -> [f64; 3] {
+    [-a[0], -a[1], -a[2]]
+}
 fn normalize(a: [f64; 3]) -> [f64; 3] {
     let l = dot(a, a).sqrt();
-    if l < 1e-12 { [0.0, 0.0, 1.0] } else { [a[0]/l, a[1]/l, a[2]/l] }
+    if l < 1e-12 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [a[0] / l, a[1] / l, a[2] / l]
+    }
 }
 
 #[cfg(test)]
@@ -285,7 +337,10 @@ mod tests {
         assert_eq!(pixels.len(), 8 * 8 * 4);
 
         // With a bright background, most pixels should be non-black
-        let non_black = pixels.chunks(4).filter(|px| px[0] > 0 || px[1] > 0 || px[2] > 0).count();
+        let non_black = pixels
+            .chunks(4)
+            .filter(|px| px[0] > 0 || px[1] > 0 || px[2] > 0)
+            .count();
         assert!(non_black > 0, "Should have some non-black pixels");
     }
 }

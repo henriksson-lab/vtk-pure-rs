@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
+use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 
 /// Find nearest-point correspondences between two point sets.
 ///
@@ -8,7 +8,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData, KdTree};
 pub fn find_correspondences(source: &PolyData, target: &PolyData) -> PolyData {
     let n_src = source.points.len();
     let n_tgt = target.points.len();
-    if n_src == 0 || n_tgt == 0 { return source.clone(); }
+    if n_src == 0 || n_tgt == 0 {
+        return source.clone();
+    }
 
     let tgt_pts: Vec<[f64; 3]> = (0..n_tgt).map(|i| target.points.get(i)).collect();
     let tree = KdTree::build(&tgt_pts);
@@ -27,20 +29,33 @@ pub fn find_correspondences(source: &PolyData, target: &PolyData) -> PolyData {
     }
 
     let mut pd = source.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("CorrespondenceIndex", indices, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("CorrespondenceDistance", distances, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CorrespondenceIndex",
+            indices,
+            1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CorrespondenceDistance",
+            distances,
+            1,
+        )));
     pd
 }
 
 /// Transfer a scalar array from target to source using nearest-point correspondences.
 pub fn transfer_attribute(source: &PolyData, target: &PolyData, array_name: &str) -> PolyData {
     let arr = match target.point_data().get_array(array_name) {
-        Some(a) => a, None => return source.clone(),
+        Some(a) => a,
+        None => return source.clone(),
     };
 
     let n_src = source.points.len();
     let n_tgt = target.points.len();
-    if n_src == 0 || n_tgt == 0 { return source.clone(); }
+    if n_src == 0 || n_tgt == 0 {
+        return source.clone();
+    }
 
     let tgt_pts: Vec<[f64; 3]> = (0..n_tgt).map(|i| target.points.get(i)).collect();
     let tree = KdTree::build(&tgt_pts);
@@ -54,12 +69,17 @@ pub fn transfer_attribute(source: &PolyData, target: &PolyData, array_name: &str
             arr.tuple_as_f64(idx, &mut buf);
             values.extend_from_slice(&buf);
         } else {
-            for _ in 0..nc { values.push(0.0); }
+            for _ in 0..nc {
+                values.push(0.0);
+            }
         }
     }
 
     let mut pd = source.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(array_name, values, nc)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, values, nc,
+        )));
     pd
 }
 
@@ -78,10 +98,15 @@ mod tests {
         tgt.points.push([4.9, 0.0, 0.0]);
 
         let result = find_correspondences(&src, &tgt);
-        let idx = result.point_data().get_array("CorrespondenceIndex").unwrap();
+        let idx = result
+            .point_data()
+            .get_array("CorrespondenceIndex")
+            .unwrap();
         let mut buf = [0.0f64];
-        idx.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0); // nearest to tgt[0]
-        idx.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 1.0); // nearest to tgt[1]
+        idx.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0); // nearest to tgt[0]
+        idx.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0); // nearest to tgt[1]
     }
 
     #[test]
@@ -91,7 +116,12 @@ mod tests {
 
         let mut tgt = PolyData::new();
         tgt.points.push([0.1, 0.0, 0.0]);
-        tgt.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("temp", vec![42.0], 1)));
+        tgt.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![42.0],
+                1,
+            )));
 
         let result = transfer_attribute(&src, &tgt, "temp");
         let arr = result.point_data().get_array("temp").unwrap();

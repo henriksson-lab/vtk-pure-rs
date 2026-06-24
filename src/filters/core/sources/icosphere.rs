@@ -189,7 +189,11 @@ mod tests {
         for i in 0..pd.points.len() {
             let p = pd.points.get(i);
             let dist = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
-            assert!((dist - 2.0).abs() < 1e-10, "Point not on sphere: dist={}", dist);
+            assert!(
+                (dist - 2.0).abs() < 1e-10,
+                "Point not on sphere: dist={}",
+                dist
+            );
         }
     }
 }

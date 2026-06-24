@@ -12,7 +12,11 @@ pub struct NoiseFieldParams {
 
 impl Default for NoiseFieldParams {
     fn default() -> Self {
-        Self { dimensions: [32, 32, 32], frequency: 4.0, seed: 42 }
+        Self {
+            dimensions: [32, 32, 32],
+            frequency: 4.0,
+            seed: 42,
+        }
     }
 }
 
@@ -46,9 +50,8 @@ pub fn noise_field(params: &NoiseFieldParams) -> ImageData {
         }
     }
 
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Noise", values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Noise", values, 1)));
     img.point_data_mut().set_active_scalars("Noise");
     img
 }
@@ -82,7 +85,9 @@ fn value_noise_3d(x: f64, y: f64, z: f64, seed: u64) -> f64 {
 }
 
 fn hash3(x: i64, y: i64, z: i64, seed: u64) -> f64 {
-    let mut h = seed.wrapping_add(x as u64).wrapping_mul(6364136223846793005);
+    let mut h = seed
+        .wrapping_add(x as u64)
+        .wrapping_mul(6364136223846793005);
     h = h.wrapping_add(y as u64).wrapping_mul(6364136223846793005);
     h = h.wrapping_add(z as u64).wrapping_mul(6364136223846793005);
     h ^= h >> 33;
@@ -104,7 +109,10 @@ mod tests {
 
     #[test]
     fn has_variation() {
-        let img = noise_field(&NoiseFieldParams { dimensions: [8, 8, 8], ..Default::default() });
+        let img = noise_field(&NoiseFieldParams {
+            dimensions: [8, 8, 8],
+            ..Default::default()
+        });
         let arr = img.point_data().get_array("Noise").unwrap();
         let mut buf = [0.0f64];
         let mut min_v = f64::MAX;
@@ -119,11 +127,20 @@ mod tests {
 
     #[test]
     fn reproducible() {
-        let a = noise_field(&NoiseFieldParams { dimensions: [4, 4, 4], seed: 123, ..Default::default() });
-        let b = noise_field(&NoiseFieldParams { dimensions: [4, 4, 4], seed: 123, ..Default::default() });
+        let a = noise_field(&NoiseFieldParams {
+            dimensions: [4, 4, 4],
+            seed: 123,
+            ..Default::default()
+        });
+        let b = noise_field(&NoiseFieldParams {
+            dimensions: [4, 4, 4],
+            seed: 123,
+            ..Default::default()
+        });
         let aa = a.point_data().get_array("Noise").unwrap();
         let ba = b.point_data().get_array("Noise").unwrap();
-        let mut ba1 = [0.0f64]; let mut bb1 = [0.0f64];
+        let mut ba1 = [0.0f64];
+        let mut bb1 = [0.0f64];
         for i in 0..64 {
             aa.tuple_as_f64(i, &mut ba1);
             ba.tuple_as_f64(i, &mut bb1);

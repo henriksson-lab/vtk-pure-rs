@@ -130,10 +130,17 @@ impl Material {
 impl std::fmt::Display for Material {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.pbr {
-            write!(f, "Material(PBR: metallic={:.1}, roughness={:.1})", self.metallic, self.roughness)
+            write!(
+                f,
+                "Material(PBR: metallic={:.1}, roughness={:.1})",
+                self.metallic, self.roughness
+            )
         } else {
-            write!(f, "Material(Phong: ambient={:.1}, diffuse={:.1}, specular={:.1})",
-                self.ambient, self.diffuse, self.specular)
+            write!(
+                f,
+                "Material(Phong: ambient={:.1}, diffuse={:.1}, specular={:.1})",
+                self.ambient, self.diffuse, self.specular
+            )
         }
     }
 }

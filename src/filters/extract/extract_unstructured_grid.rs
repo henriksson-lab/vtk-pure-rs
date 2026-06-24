@@ -1,6 +1,6 @@
 //! Cell and point extraction from UnstructuredGrid.
 
-use crate::data::{AnyDataArray, DataArray, UnstructuredGrid, Points};
+use crate::data::{AnyDataArray, DataArray, Points, UnstructuredGrid};
 use crate::types::CellType;
 
 /// Extract cells from an UnstructuredGrid by cell type.
@@ -23,8 +23,14 @@ pub fn extract_cells_by_predicate(
     let mut selected: Vec<(CellType, Vec<i64>)> = Vec::new();
 
     for (ci, cell) in cells.iter().enumerate() {
-        let ct = if ci < types.len() { types[ci] } else { CellType::Triangle };
-        if !predicate(ct, ci) { continue; }
+        let ct = if ci < types.len() {
+            types[ci]
+        } else {
+            CellType::Triangle
+        };
+        if !predicate(ct, ci) {
+            continue;
+        }
 
         let mut new_ids = Vec::with_capacity(cell.len());
         for &pid in cell {
@@ -53,15 +59,16 @@ pub fn extract_cells_by_predicate(
             let name = arr.name().to_string();
             let mut data = Vec::new();
             let mut buf = vec![0.0f64; nc];
-            let mut sorted_map: Vec<(usize, usize)> = point_map.iter().map(|(&o, &n)| (n, o)).collect();
+            let mut sorted_map: Vec<(usize, usize)> =
+                point_map.iter().map(|(&o, &n)| (n, o)).collect();
             sorted_map.sort_by_key(|&(new, _)| new);
             for &(_, old) in &sorted_map {
                 arr.tuple_as_f64(old, &mut buf);
                 data.extend_from_slice(&buf);
             }
-            result.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec(&name, data, nc),
-            ));
+            result
+                .point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
         }
     }
 
@@ -90,8 +97,13 @@ mod tests {
     fn make_mixed_grid() -> UnstructuredGrid {
         let mut grid = UnstructuredGrid::new();
         grid.points = Points::from(vec![
-            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], // triangle
-            [2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 1.0, 0.0], [2.0, 1.0, 0.0], // quad
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, 1.0, 0.0], // triangle
+            [2.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [3.0, 1.0, 0.0],
+            [2.0, 1.0, 0.0], // quad
         ]);
         grid.push_cell(CellType::Triangle, &[0, 1, 2]);
         grid.push_cell(CellType::Quad, &[3, 4, 5, 6]);

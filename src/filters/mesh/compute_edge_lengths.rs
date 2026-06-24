@@ -23,19 +23,34 @@ pub fn edge_length_stats(mesh: &PolyData) -> EdgeLengthStats {
         }
     }
     if edges.is_empty() {
-        return EdgeLengthStats { min: 0.0, max: 0.0, mean: 0.0, std_dev: 0.0, total_edges: 0 };
+        return EdgeLengthStats {
+            min: 0.0,
+            max: 0.0,
+            mean: 0.0,
+            std_dev: 0.0,
+            total_edges: 0,
+        };
     }
-    let lengths: Vec<f64> = edges.iter().map(|&(a, b)| {
-        let pa = mesh.points.get(a);
-        let pb = mesh.points.get(b);
-        ((pa[0]-pb[0]).powi(2) + (pa[1]-pb[1]).powi(2) + (pa[2]-pb[2]).powi(2)).sqrt()
-    }).collect();
+    let lengths: Vec<f64> = edges
+        .iter()
+        .map(|&(a, b)| {
+            let pa = mesh.points.get(a);
+            let pb = mesh.points.get(b);
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt()
+        })
+        .collect();
     let n = lengths.len() as f64;
     let mn = lengths.iter().cloned().fold(f64::INFINITY, f64::min);
     let mx = lengths.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let mean = lengths.iter().sum::<f64>() / n;
     let variance = lengths.iter().map(|&l| (l - mean).powi(2)).sum::<f64>() / n;
-    EdgeLengthStats { min: mn, max: mx, mean, std_dev: variance.sqrt(), total_edges: lengths.len() }
+    EdgeLengthStats {
+        min: mn,
+        max: mx,
+        mean,
+        std_dev: variance.sqrt(),
+        total_edges: lengths.len(),
+    }
 }
 
 /// Get shortest edge.
@@ -51,8 +66,12 @@ pub fn shortest_edge(mesh: &PolyData) -> (usize, usize, f64) {
             if seen.insert(key) {
                 let pa = mesh.points.get(a);
                 let pb = mesh.points.get(b);
-                let d = ((pa[0]-pb[0]).powi(2) + (pa[1]-pb[1]).powi(2) + (pa[2]-pb[2]).powi(2)).sqrt();
-                if d < best.2 { best = (a, b, d); }
+                let d =
+                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                        .sqrt();
+                if d < best.2 {
+                    best = (a, b, d);
+                }
             }
         }
     }
@@ -72,8 +91,12 @@ pub fn longest_edge(mesh: &PolyData) -> (usize, usize, f64) {
             if seen.insert(key) {
                 let pa = mesh.points.get(a);
                 let pb = mesh.points.get(b);
-                let d = ((pa[0]-pb[0]).powi(2) + (pa[1]-pb[1]).powi(2) + (pa[2]-pb[2]).powi(2)).sqrt();
-                if d > best.2 { best = (a, b, d); }
+                let d =
+                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                        .sqrt();
+                if d > best.2 {
+                    best = (a, b, d);
+                }
             }
         }
     }
@@ -86,8 +109,8 @@ mod tests {
     #[test]
     fn test_stats() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let stats = edge_length_stats(&mesh);
         assert_eq!(stats.total_edges, 3);
@@ -97,8 +120,8 @@ mod tests {
     #[test]
     fn test_shortest_longest() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[3.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let (_, _, short) = shortest_edge(&mesh);
         let (_, _, long) = longest_edge(&mesh);

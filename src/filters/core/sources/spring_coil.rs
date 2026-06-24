@@ -3,7 +3,14 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create a helical spring (tube around a helix).
-pub fn spring_coil(coil_radius: f64, wire_radius: f64, height: f64, turns: f64, tube_res: usize, helix_res: usize) -> PolyData {
+pub fn spring_coil(
+    coil_radius: f64,
+    wire_radius: f64,
+    height: f64,
+    turns: f64,
+    tube_res: usize,
+    helix_res: usize,
+) -> PolyData {
     let tres = tube_res.max(3);
     let hres = (helix_res as f64 * turns).ceil() as usize;
     let hres = hres.max(4);
@@ -21,8 +28,10 @@ pub fn spring_coil(coil_radius: f64, wire_radius: f64, height: f64, turns: f64, 
         let tx = -coil_radius * angle.sin() * 2.0 * std::f64::consts::PI * turns;
         let ty = coil_radius * angle.cos() * 2.0 * std::f64::consts::PI * turns;
         let tz = height;
-        let tlen = (tx*tx+ty*ty+tz*tz).sqrt();
-        let tx = tx/tlen; let ty = ty/tlen; let tz = tz/tlen;
+        let tlen = (tx * tx + ty * ty + tz * tz).sqrt();
+        let tx = tx / tlen;
+        let ty = ty / tlen;
+        let tz = tz / tlen;
 
         // Normal frame
         let (n1, n2) = perp_frame([tx, ty, tz]);
@@ -45,8 +54,10 @@ pub fn spring_coil(coil_radius: f64, wire_radius: f64, height: f64, turns: f64, 
         for it in 0..tres {
             let it1 = (it + 1) % tres;
             polys.push_cell(&[
-                (r0 + it) as i64, (r0 + it1) as i64,
-                (r1 + it1) as i64, (r1 + it) as i64,
+                (r0 + it) as i64,
+                (r0 + it1) as i64,
+                (r1 + it1) as i64,
+                (r1 + it) as i64,
             ]);
         }
     }
@@ -58,17 +69,29 @@ pub fn spring_coil(coil_radius: f64, wire_radius: f64, height: f64, turns: f64, 
 }
 
 fn perp_frame(t: [f64; 3]) -> ([f64; 3], [f64; 3]) {
-    let up = if t[0].abs() < 0.9 { [1.0,0.0,0.0] } else { [0.0,1.0,0.0] };
+    let up = if t[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let n1 = normalize(cross(t, up));
     let n2 = cross(t, n1);
     (n1, n2)
 }
-fn cross(a: [f64;3], b: [f64;3]) -> [f64;3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
-fn normalize(v: [f64;3]) -> [f64;3] {
-    let l = (v[0]*v[0]+v[1]*v[1]+v[2]*v[2]).sqrt();
-    if l < 1e-15 { [0.0,0.0,1.0] } else { [v[0]/l, v[1]/l, v[2]/l] }
+fn normalize(v: [f64; 3]) -> [f64; 3] {
+    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if l < 1e-15 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [v[0] / l, v[1] / l, v[2] / l]
+    }
 }
 
 #[cfg(test)]

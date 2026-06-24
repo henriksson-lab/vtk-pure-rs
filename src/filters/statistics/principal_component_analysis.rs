@@ -30,7 +30,9 @@ pub fn pca(table: &Table, max_components: usize) -> Option<PcaResult> {
     let mut names: Vec<String> = Vec::new();
 
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
@@ -43,12 +45,19 @@ pub fn pca(table: &Table, max_components: usize) -> Option<PcaResult> {
     }
 
     let p = cols.len(); // number of features
-    if p == 0 { return None; }
+    if p == 0 {
+        return None;
+    }
     let n = cols[0].len(); // number of samples
-    if n < 2 { return None; }
+    if n < 2 {
+        return None;
+    }
 
     // Compute means
-    let means: Vec<f64> = cols.iter().map(|c| c.iter().sum::<f64>() / n as f64).collect();
+    let means: Vec<f64> = cols
+        .iter()
+        .map(|c| c.iter().sum::<f64>() / n as f64)
+        .collect();
 
     // Compute covariance matrix (p x p)
     let mut cov = vec![vec![0.0; p]; p];
@@ -71,7 +80,9 @@ pub fn pca(table: &Table, max_components: usize) -> Option<PcaResult> {
 
     for _ in 0..num_components {
         let (eval, evec) = power_iteration(&deflated, 200);
-        if eval.abs() < 1e-15 { break; }
+        if eval.abs() < 1e-15 {
+            break;
+        }
         eigenvalues.push(eval);
         eigenvectors.push(evec.clone());
 
@@ -122,9 +133,11 @@ pub fn pca_project(table: &Table, pca_result: &PcaResult) -> Table {
 
     let mut result = Table::new();
     for (ci, data) in projected.into_iter().enumerate() {
-        result.add_column(AnyDataArray::F64(
-            DataArray::from_vec(&format!("PC{}", ci + 1), data, 1),
-        ));
+        result.add_column(AnyDataArray::F64(DataArray::from_vec(
+            &format!("PC{}", ci + 1),
+            data,
+            1,
+        )));
     }
     result
 }
@@ -132,7 +145,9 @@ pub fn pca_project(table: &Table, pca_result: &PcaResult) -> Table {
 fn extract_scalar_columns(table: &Table) -> Vec<Vec<f64>> {
     let mut cols = Vec::new();
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
@@ -147,7 +162,9 @@ fn extract_scalar_columns(table: &Table) -> Vec<Vec<f64>> {
 
 fn power_iteration(matrix: &[Vec<f64>], max_iter: usize) -> (f64, Vec<f64>) {
     let p = matrix.len();
-    if p == 0 { return (0.0, Vec::new()); }
+    if p == 0 {
+        return (0.0, Vec::new());
+    }
 
     let mut v = vec![1.0 / (p as f64).sqrt(); p];
 
@@ -165,7 +182,9 @@ fn power_iteration(matrix: &[Vec<f64>], max_iter: usize) -> (f64, Vec<f64>) {
 
         // Normalize w
         let norm = w.iter().map(|x| x * x).sum::<f64>().sqrt();
-        if norm < 1e-15 { break; }
+        if norm < 1e-15 {
+            break;
+        }
         for x in &mut w {
             *x /= norm;
         }
@@ -173,7 +192,9 @@ fn power_iteration(matrix: &[Vec<f64>], max_iter: usize) -> (f64, Vec<f64>) {
         // Check convergence
         let diff: f64 = v.iter().zip(w.iter()).map(|(a, b)| (a - b).abs()).sum();
         v = w;
-        if diff < 1e-12 { break; }
+        if diff < 1e-12 {
+            break;
+        }
     }
 
     let mut eigenvalue = 0.0;
@@ -196,8 +217,16 @@ mod tests {
     fn basic_pca() {
         // Correlated data: y ≈ 2x
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![2.1, 3.9, 6.0, 8.1, 9.9], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![2.1, 3.9, 6.0, 8.1, 9.9],
+                1,
+            )));
 
         let result = pca(&table, 2).unwrap();
         assert_eq!(result.eigenvalues.len(), 2);
@@ -208,8 +237,16 @@ mod tests {
     #[test]
     fn pca_projection() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![2.0, 4.0, 6.0, 8.0, 10.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![2.0, 4.0, 6.0, 8.0, 10.0],
+                1,
+            )));
 
         let result = pca(&table, 2).unwrap();
         let projected = pca_project(&table, &result);
@@ -221,10 +258,16 @@ mod tests {
     #[test]
     fn uncorrelated_data() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x",
-                vec![1.0, 0.0, -1.0, 0.0, 2.0, -2.0, 0.5, -0.5], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y",
-                vec![0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 1.5, -1.5], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 0.0, -1.0, 0.0, 2.0, -2.0, 0.5, -0.5],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 1.5, -1.5],
+                1,
+            )));
 
         let result = pca(&table, 2).unwrap();
         assert!(result.eigenvalues.len() >= 1);
@@ -234,8 +277,11 @@ mod tests {
 
     #[test]
     fn single_column() {
-        let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0], 1)));
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0],
+            1,
+        )));
         let result = pca(&table, 1).unwrap();
         assert_eq!(result.eigenvalues.len(), 1);
     }

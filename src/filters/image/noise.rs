@@ -11,10 +11,12 @@ pub fn add_uniform_noise(input: &ImageData, scalars: &str, amplitude: f64, seed:
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
     let mut rng = SimpleRng(seed);
-    let data: Vec<f64> = (0..n).map(|i| {
-        arr.tuple_as_f64(i, &mut buf);
-        buf[0] + amplitude * (rng.next_f64() * 2.0 - 1.0)
-    }).collect();
+    let data: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0] + amplitude * (rng.next_f64() * 2.0 - 1.0)
+        })
+        .collect();
     let dims = input.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
@@ -30,16 +32,28 @@ pub fn salt_and_pepper(input: &ImageData, scalars: &str, density: f64, seed: u64
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let vals: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
     let mn = vals.iter().cloned().fold(f64::INFINITY, f64::min);
     let mx = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
     let mut rng = SimpleRng(seed);
-    let data: Vec<f64> = vals.iter().map(|&v| {
-        let r = rng.next_f64();
-        if r < density / 2.0 { mn }
-        else if r < density { mx }
-        else { v }
-    }).collect();
+    let data: Vec<f64> = vals
+        .iter()
+        .map(|&v| {
+            let r = rng.next_f64();
+            if r < density / 2.0 {
+                mn
+            } else if r < density {
+                mx
+            } else {
+                v
+            }
+        })
+        .collect();
     let dims = input.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
@@ -60,7 +74,10 @@ pub fn noise_image(nx: usize, ny: usize, seed: u64) -> ImageData {
 struct SimpleRng(u64);
 impl SimpleRng {
     fn next_f64(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 33) as f64) / (u32::MAX as f64)
     }
 }
@@ -70,7 +87,13 @@ mod tests {
     use super::*;
     #[test]
     fn test_uniform_noise() {
-        let img = ImageData::from_function([10, 10, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |_, _, _| 50.0);
+        let img = ImageData::from_function(
+            [10, 10, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 50.0,
+        );
         let noisy = add_uniform_noise(&img, "v", 10.0, 42);
         let arr = noisy.point_data().get_array("v").unwrap();
         let mut buf = [0.0];
@@ -79,7 +102,13 @@ mod tests {
     }
     #[test]
     fn test_salt_pepper() {
-        let img = ImageData::from_function([20, 20, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |_, _, _| 128.0);
+        let img = ImageData::from_function(
+            [20, 20, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 128.0,
+        );
         let noisy = salt_and_pepper(&img, "v", 0.1, 42);
         assert_eq!(noisy.dimensions(), [20, 20, 1]);
     }

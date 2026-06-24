@@ -1,4 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Compute the intersection lines between two triangle meshes.
 ///
@@ -11,16 +12,18 @@ pub fn intersection_poly_data(a: &PolyData, b: &PolyData) -> PolyData {
 
     let mut points = Points::<f64>::new();
     let mut lines = CellArray::new();
+    let mut point_map: HashMap<PointKey, i64> = HashMap::new();
 
     // Brute force: test all pairs (works for moderate meshes)
     for ta in &tris_a {
         for tb in &tris_b {
             if let Some((p1, p2)) = triangle_triangle_intersection(ta, tb) {
                 if dist2(p1, p2) > 1e-20 {
-                    let i0 = points.len() as i64;
-                    points.push(p1);
-                    points.push(p2);
-                    lines.push_cell(&[i0, i0 + 1]);
+                    let i0 = insert_unique_point(&mut points, &mut point_map, p1);
+                    let i1 = insert_unique_point(&mut points, &mut point_map, p2);
+                    if i0 != i1 {
+                        lines.push_cell(&[i0, i1]);
+                    }
                 }
             }
         }
@@ -111,9 +114,7 @@ fn triangle_normal(t: &Tri) -> [f64; 3] {
     cross(e1, e2)
 }
 
-fn edge_plane_intersection(
-    a: [f64; 3], b: [f64; 3], normal: [f64; 3], d: f64,
-) -> Option<[f64; 3]> {
+fn edge_plane_intersection(a: [f64; 3], b: [f64; 3], normal: [f64; 3], d: f64) -> Option<[f64; 3]> {
     let da = dot(normal, a) - d;
     let db = dot(normal, b) - d;
 
@@ -180,6 +181,30 @@ fn lerp3(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
 fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
     let d = sub(a, b);
     dot(d, d)
+}
+
+type PointKey = (i64, i64, i64);
+
+fn insert_unique_point(
+    points: &mut Points<f64>,
+    point_map: &mut HashMap<PointKey, i64>,
+    point: [f64; 3],
+) -> i64 {
+    let key = point_key(point);
+    *point_map.entry(key).or_insert_with(|| {
+        let idx = points.len() as i64;
+        points.push(point);
+        idx
+    })
+}
+
+fn point_key(point: [f64; 3]) -> PointKey {
+    const SCALE: f64 = 1.0e9;
+    (
+        (point[0] * SCALE).round() as i64,
+        (point[1] * SCALE).round() as i64,
+        (point[2] * SCALE).round() as i64,
+    )
 }
 
 #[cfg(test)]

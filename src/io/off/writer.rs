@@ -1,5 +1,5 @@
-use std::io::Write;
 use crate::data::PolyData;
+use std::io::Write;
 
 /// Writer for Object File Format (OFF).
 pub struct OffWriter<W: Write> {
@@ -47,8 +47,16 @@ impl<W: Write> OffWriter<W> {
                 let r = (buf[0].clamp(0.0, 1.0) * 255.0) as u8;
                 let g = (buf[1].clamp(0.0, 1.0) * 255.0) as u8;
                 let b = (buf[2].clamp(0.0, 1.0) * 255.0) as u8;
-                let a = if nc >= 4 { (buf[3].clamp(0.0, 1.0) * 255.0) as u8 } else { 255 };
-                writeln!(self.writer, "{} {} {} {} {} {} {}", p[0], p[1], p[2], r, g, b, a)?;
+                let a = if nc >= 4 {
+                    (buf[3].clamp(0.0, 1.0) * 255.0) as u8
+                } else {
+                    255
+                };
+                writeln!(
+                    self.writer,
+                    "{} {} {} {} {} {} {}",
+                    p[0], p[1], p[2], r, g, b, a
+                )?;
             } else {
                 writeln!(self.writer, "{} {} {}", p[0], p[1], p[2])?;
             }
@@ -80,9 +88,17 @@ fn collect_faces(mesh: &PolyData) -> Vec<Vec<usize>> {
         if cell.len() >= 3 {
             for i in 2..cell.len() {
                 if i % 2 == 0 {
-                    faces.push(vec![cell[i - 2] as usize, cell[i - 1] as usize, cell[i] as usize]);
+                    faces.push(vec![
+                        cell[i - 2] as usize,
+                        cell[i - 1] as usize,
+                        cell[i] as usize,
+                    ]);
                 } else {
-                    faces.push(vec![cell[i - 1] as usize, cell[i - 2] as usize, cell[i] as usize]);
+                    faces.push(vec![
+                        cell[i - 1] as usize,
+                        cell[i - 2] as usize,
+                        cell[i] as usize,
+                    ]);
                 }
             }
         }
@@ -111,7 +127,12 @@ mod tests {
     #[test]
     fn write_quad() {
         let mesh = PolyData::from_quads(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2, 3]],
         );
         let mut buf = Vec::new();

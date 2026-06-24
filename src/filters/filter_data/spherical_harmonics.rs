@@ -56,9 +56,9 @@ pub fn spherical_harmonics(input: &PolyData, l: i32, m: i32) -> PolyData {
 
     let name = format!("Y_{}_{}", l, m);
     let mut output = input.clone();
-    output.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&name, values, 1),
-    ));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(&name, values, 1)));
     output
 }
 
@@ -102,11 +102,7 @@ mod tests {
     fn y00_is_constant() {
         // Y_0^0 = 1/(2*sqrt(pi)), should be constant on all points
         let pd = PolyData::from_triangles(
-            vec![
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0],
-            ],
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
             vec![[0, 1, 2]],
         );
         let result = spherical_harmonics(&pd, 0, 0);
@@ -130,8 +126,8 @@ mod tests {
         // Y_1^0 = sqrt(3/(4*pi)) * cos(theta), so it should vary with z
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 1.0],   // north pole relative to centroid
-                [0.0, 0.0, -1.0],  // south pole
+                [0.0, 0.0, 1.0],  // north pole relative to centroid
+                [0.0, 0.0, -1.0], // south pole
                 [1.0, 0.0, 0.0],
             ],
             vec![[0, 1, 2]],

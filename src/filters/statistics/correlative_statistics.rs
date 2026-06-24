@@ -7,11 +7,18 @@ use crate::data::{AnyDataArray, DataArray, Table};
 pub fn covariance_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     let (names, cols) = extract_columns(table);
     let p = cols.len();
-    if p == 0 { return (names, Vec::new()); }
+    if p == 0 {
+        return (names, Vec::new());
+    }
     let n = cols[0].len();
-    if n < 2 { return (names, vec![vec![0.0; p]; p]); }
+    if n < 2 {
+        return (names, vec![vec![0.0; p]; p]);
+    }
 
-    let means: Vec<f64> = cols.iter().map(|c| c.iter().sum::<f64>() / n as f64).collect();
+    let means: Vec<f64> = cols
+        .iter()
+        .map(|c| c.iter().sum::<f64>() / n as f64)
+        .collect();
     let mut cov = vec![vec![0.0; p]; p];
     for i in 0..p {
         for j in i..p {
@@ -30,13 +37,19 @@ pub fn covariance_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
 pub fn correlation_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     let (names, cov) = covariance_matrix(table);
     let p = cov.len();
-    if p == 0 { return (names, cov); }
+    if p == 0 {
+        return (names, cov);
+    }
 
     let mut corr = vec![vec![0.0; p]; p];
     for i in 0..p {
         for j in 0..p {
             let denom = (cov[i][i] * cov[j][j]).sqrt();
-            corr[i][j] = if denom > 1e-15 { cov[i][j] / denom } else { 0.0 };
+            corr[i][j] = if denom > 1e-15 {
+                cov[i][j] / denom
+            } else {
+                0.0
+            };
         }
     }
     (names, corr)
@@ -46,15 +59,22 @@ pub fn correlation_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
 pub fn spearman_correlation(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     let (names, cols) = extract_columns(table);
     let p = cols.len();
-    if p == 0 { return (names, Vec::new()); }
+    if p == 0 {
+        return (names, Vec::new());
+    }
     let n = cols[0].len();
-    if n < 2 { return (names, vec![vec![0.0; p]; p]); }
+    if n < 2 {
+        return (names, vec![vec![0.0; p]; p]);
+    }
 
     // Convert each column to ranks
     let ranked: Vec<Vec<f64>> = cols.iter().map(|c| rank_values(c)).collect();
 
     // Compute Pearson correlation on ranks
-    let means: Vec<f64> = ranked.iter().map(|r| r.iter().sum::<f64>() / n as f64).collect();
+    let means: Vec<f64> = ranked
+        .iter()
+        .map(|r| r.iter().sum::<f64>() / n as f64)
+        .collect();
     let mut corr = vec![vec![0.0; p]; p];
     for i in 0..p {
         for j in i..p {
@@ -90,7 +110,9 @@ fn extract_columns(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     let mut names = Vec::new();
     let mut cols = Vec::new();
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
@@ -112,9 +134,13 @@ fn rank_values(values: &[f64]) -> Vec<f64> {
     let mut i = 0;
     while i < n {
         let mut j = i;
-        while j < n && (indexed[j].1 - indexed[i].1).abs() < 1e-15 { j += 1; }
+        while j < n && (indexed[j].1 - indexed[i].1).abs() < 1e-15 {
+            j += 1;
+        }
         let avg = (i + j + 1) as f64 / 2.0;
-        for k in i..j { ranks[indexed[k].0] = avg; }
+        for k in i..j {
+            ranks[indexed[k].0] = avg;
+        }
         i = j;
     }
     ranks
@@ -127,16 +153,27 @@ mod tests {
     #[test]
     fn perfect_correlation() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![2.0, 4.0, 6.0, 8.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![2.0, 4.0, 6.0, 8.0],
+                1,
+            )));
         let (_, corr) = correlation_matrix(&t);
         assert!((corr[0][1] - 1.0).abs() < 1e-10);
     }
 
     #[test]
     fn covariance() {
-        let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0], 1)));
+        let t = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0],
+            1,
+        )));
         let (_, cov) = covariance_matrix(&t);
         assert!((cov[0][0] - 1.0).abs() < 1e-10); // var of [1,2,3] = 1
     }
@@ -144,8 +181,16 @@ mod tests {
     #[test]
     fn spearman() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![10.0, 20.0, 30.0, 40.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![10.0, 20.0, 30.0, 40.0],
+                1,
+            )));
         let (_, corr) = spearman_correlation(&t);
         assert!((corr[0][1] - 1.0).abs() < 1e-10); // monotonic
     }
@@ -153,8 +198,16 @@ mod tests {
     #[test]
     fn to_table() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0, 2.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("b", vec![3.0, 4.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "a",
+                vec![1.0, 2.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "b",
+                vec![3.0, 4.0],
+                1,
+            )));
         let (names, matrix) = correlation_matrix(&t);
         let result = correlation_matrix_to_table(&names, &matrix);
         assert_eq!(result.num_rows(), 2);

@@ -136,7 +136,13 @@ impl VolumePass {
             ..Default::default()
         });
 
-        Self { pipeline, bind_group_layout, uniform_buffer, sampler, lut_sampler }
+        Self {
+            pipeline,
+            bind_group_layout,
+            uniform_buffer,
+            sampler,
+            lut_sampler,
+        }
     }
 
     /// Render a volume actor.
@@ -155,7 +161,11 @@ impl VolumePass {
         // Create 3D texture
         let volume_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("volume 3d"),
-            size: wgpu::Extent3d { width: nx as u32, height: ny as u32, depth_or_array_layers: nz as u32 },
+            size: wgpu::Extent3d {
+                width: nx as u32,
+                height: ny as u32,
+                depth_or_array_layers: nz as u32,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D3,
@@ -168,9 +178,17 @@ impl VolumePass {
         let smin = volume.scalar_range[0];
         let smax = volume.scalar_range[1];
         let srange = smax - smin;
-        let normalized: Vec<f32> = volume.scalars.iter().map(|&v| {
-            if srange.abs() > 1e-15 { ((v - smin) / srange) as f32 } else { 0.5 }
-        }).collect();
+        let normalized: Vec<f32> = volume
+            .scalars
+            .iter()
+            .map(|&v| {
+                if srange.abs() > 1e-15 {
+                    ((v - smin) / srange) as f32
+                } else {
+                    0.5
+                }
+            })
+            .collect();
 
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -185,7 +203,11 @@ impl VolumePass {
                 bytes_per_row: Some(nx as u32 * 4),
                 rows_per_image: Some(ny as u32),
             },
-            wgpu::Extent3d { width: nx as u32, height: ny as u32, depth_or_array_layers: nz as u32 },
+            wgpu::Extent3d {
+                width: nx as u32,
+                height: ny as u32,
+                depth_or_array_layers: nz as u32,
+            },
         );
 
         let volume_view = volume_texture.create_view(&Default::default());
@@ -196,7 +218,11 @@ impl VolumePass {
 
         let lut_texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("lut 1d"),
-            size: wgpu::Extent3d { width: 256, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 256,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D1,
@@ -218,7 +244,11 @@ impl VolumePass {
                 bytes_per_row: Some(256 * 16),
                 rows_per_image: Some(1),
             },
-            wgpu::Extent3d { width: 256, height: 1, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width: 256,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
         );
 
         let lut_view = lut_texture.create_view(&Default::default());
@@ -251,11 +281,26 @@ impl VolumePass {
             label: Some("volume bg"),
             layout: &self.bind_group_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: self.uniform_buffer.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&volume_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&lut_view) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&self.lut_sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.uniform_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&volume_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&lut_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(&self.lut_sampler),
+                },
             ],
         });
 

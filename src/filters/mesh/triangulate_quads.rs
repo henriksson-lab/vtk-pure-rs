@@ -101,7 +101,7 @@ mod tests {
         let mut pts = Points::<f64>::new();
         pts.push([0.0, 0.0, 0.0]);
         pts.push([2.0, 0.0, 0.0]);
-        pts.push([0.5, 0.5, 0.0]);  // close to vertex 0
+        pts.push([0.5, 0.5, 0.0]); // close to vertex 0
         pts.push([0.0, 2.0, 0.0]);
 
         let mut polys = CellArray::new();

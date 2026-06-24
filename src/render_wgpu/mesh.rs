@@ -1,6 +1,6 @@
-use bytemuck::{Pod, Zeroable};
 use crate::data::PolyData;
 use crate::render::Coloring;
+use bytemuck::{Pod, Zeroable};
 
 /// GPU-ready vertex with position, normal, and color.
 #[repr(C)]
@@ -63,7 +63,11 @@ pub fn poly_data_to_mesh(poly_data: &PolyData, coloring: &Coloring) -> (Vec<Vert
 
             // Use smooth normals if available, otherwise flat
             let (n0, n1, n2) = if let Some(ref pn) = point_normals {
-                (pn[cell[0] as usize], pn[cell[i] as usize], pn[cell[i + 1] as usize])
+                (
+                    pn[cell[0] as usize],
+                    pn[cell[i] as usize],
+                    pn[cell[i + 1] as usize],
+                )
             } else {
                 let e1 = sub(p1, p0);
                 let e2 = sub(p2, p0);
@@ -73,9 +77,21 @@ pub fn poly_data_to_mesh(poly_data: &PolyData, coloring: &Coloring) -> (Vec<Vert
 
             let base = vertices.len() as u32;
 
-            vertices.push(Vertex { position: p0, normal: n0, color: point_colors[cell[0] as usize] });
-            vertices.push(Vertex { position: p1, normal: n1, color: point_colors[cell[i] as usize] });
-            vertices.push(Vertex { position: p2, normal: n2, color: point_colors[cell[i + 1] as usize] });
+            vertices.push(Vertex {
+                position: p0,
+                normal: n0,
+                color: point_colors[cell[0] as usize],
+            });
+            vertices.push(Vertex {
+                position: p1,
+                normal: n1,
+                color: point_colors[cell[i] as usize],
+            });
+            vertices.push(Vertex {
+                position: p2,
+                normal: n2,
+                color: point_colors[cell[i + 1] as usize],
+            });
 
             indices.push(base);
             indices.push(base + 1);
@@ -125,7 +141,8 @@ fn resolve_colors(poly_data: &PolyData, coloring: &Coloring) -> Vec<[f32; 3]> {
                 let u = buf[0].clamp(0.0, 1.0);
                 let v = buf[1].clamp(0.0, 1.0);
                 let px = ((u * (texture.width as f64 - 1.0)) as u32).min(texture.width - 1);
-                let py = (((1.0 - v) * (texture.height as f64 - 1.0)) as u32).min(texture.height - 1);
+                let py =
+                    (((1.0 - v) * (texture.height as f64 - 1.0)) as u32).min(texture.height - 1);
                 let idx = ((py * texture.width + px) * 4) as usize;
                 if idx + 2 < texture.data.len() {
                     *color = [
@@ -219,7 +236,12 @@ mod tests {
     #[test]
     fn quad_fan_triangulation() {
         let pd = PolyData::from_quads(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2, 3]],
         );
         let (verts, idxs) = poly_data_to_mesh(&pd, &Coloring::Solid([1.0, 1.0, 1.0]));

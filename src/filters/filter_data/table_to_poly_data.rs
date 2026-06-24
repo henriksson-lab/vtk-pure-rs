@@ -21,7 +21,11 @@ pub fn table_to_poly_data(
     let z_arr = z_column.and_then(|name| input.column_by_name(name));
 
     let n = x_arr.num_tuples().min(y_arr.num_tuples());
-    let n = if let Some(z) = &z_arr { n.min(z.num_tuples()) } else { n };
+    let n = if let Some(z) = &z_arr {
+        n.min(z.num_tuples())
+    } else {
+        n
+    };
 
     let mut points = Points::<f64>::new();
     let mut verts = CellArray::new();
@@ -56,8 +60,16 @@ mod tests {
     #[test]
     fn basic_conversion() {
         let mut table = Table::new();
-        table.add_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0], 1)));
-        table.add_column(AnyDataArray::F64(DataArray::from_vec("y", vec![4.0, 5.0, 6.0], 1)));
+        table.add_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 3.0],
+            1,
+        )));
+        table.add_column(AnyDataArray::F64(DataArray::from_vec(
+            "y",
+            vec![4.0, 5.0, 6.0],
+            1,
+        )));
 
         let pd = table_to_poly_data(&table, "x", "y", None);
         assert_eq!(pd.points.len(), 3);

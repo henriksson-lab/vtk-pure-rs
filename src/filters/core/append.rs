@@ -2,8 +2,12 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Merge multiple PolyData into one. Bulk memcpy via flat slices for speed.
 pub fn append(inputs: &[&PolyData]) -> PolyData {
-    if inputs.is_empty() { return PolyData::new(); }
-    if inputs.len() == 1 { return inputs[0].clone(); }
+    if inputs.is_empty() {
+        return PolyData::new();
+    }
+    if inputs.len() == 1 {
+        return inputs[0].clone();
+    }
 
     let total_pts: usize = inputs.iter().map(|p| p.points.len()).sum();
 
@@ -28,7 +32,9 @@ pub fn append(inputs: &[&PolyData]) -> PolyData {
 
 fn merge_cells(inputs: &[&PolyData], get: impl Fn(&PolyData) -> &CellArray) -> CellArray {
     let total_cells: usize = inputs.iter().map(|p| get(p).num_cells()).sum();
-    if total_cells == 0 { return CellArray::new(); }
+    if total_cells == 0 {
+        return CellArray::new();
+    }
 
     let total_conn: usize = inputs.iter().map(|p| get(p).connectivity_len()).sum();
     let mut offsets = Vec::with_capacity(total_cells + 1);
@@ -70,8 +76,14 @@ mod tests {
     use super::*;
     #[test]
     fn append_two() {
-        let a = PolyData::from_triangles(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
-        let b = PolyData::from_triangles(vec![[2.0,0.0,0.0],[3.0,0.0,0.0],[2.0,1.0,0.0]], vec![[0,1,2]]);
+        let a = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let b = PolyData::from_triangles(
+            vec![[2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let r = append(&[&a, &b]);
         assert_eq!(r.points.len(), 6);
         assert_eq!(r.polys.num_cells(), 2);

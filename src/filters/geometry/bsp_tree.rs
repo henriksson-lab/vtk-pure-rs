@@ -7,9 +7,11 @@ use crate::data::PolyData;
 /// A BSP tree node.
 #[derive(Debug)]
 enum BspNode {
-    Leaf { cell_indices: Vec<usize> },
+    Leaf {
+        cell_indices: Vec<usize>,
+    },
     Interior {
-        axis: usize,       // 0=X, 1=Y, 2=Z
+        axis: usize, // 0=X, 1=Y, 2=Z
         split: f64,
         left: Box<BspNode>,
         right: Box<BspNode>,
@@ -29,19 +31,28 @@ impl BspTree {
         let indices: Vec<usize> = (0..n_cells).collect();
 
         // Precompute cell centroids
-        let centroids: Vec<[f64; 3]> = mesh.polys.iter().map(|cell| {
-            let mut c = [0.0; 3];
-            for &pid in cell {
-                let p = mesh.points.get(pid as usize);
-                for j in 0..3 { c[j] += p[j]; }
-            }
-            let n = cell.len() as f64;
-            [c[0]/n, c[1]/n, c[2]/n]
-        }).collect();
+        let centroids: Vec<[f64; 3]> = mesh
+            .polys
+            .iter()
+            .map(|cell| {
+                let mut c = [0.0; 3];
+                for &pid in cell {
+                    let p = mesh.points.get(pid as usize);
+                    for j in 0..3 {
+                        c[j] += p[j];
+                    }
+                }
+                let n = cell.len() as f64;
+                [c[0] / n, c[1] / n, c[2] / n]
+            })
+            .collect();
 
         let root = Self::build_recursive(&indices, &centroids, max_cells_per_leaf, 0);
 
-        Self { root, _max_cells_per_leaf: max_cells_per_leaf }
+        Self {
+            root,
+            _max_cells_per_leaf: max_cells_per_leaf,
+        }
     }
 
     /// Find cells near a query point.
@@ -68,7 +79,9 @@ impl BspTree {
         depth: usize,
     ) -> BspNode {
         if indices.len() <= max_per_leaf || depth > 30 {
-            return BspNode::Leaf { cell_indices: indices.to_vec() };
+            return BspNode::Leaf {
+                cell_indices: indices.to_vec(),
+            };
         }
 
         // Choose split axis (cycle through X, Y, Z)
@@ -91,21 +104,38 @@ impl BspTree {
 
         // Avoid infinite recursion if all centroids are at the same position
         if left_idx.is_empty() || right_idx.is_empty() {
-            return BspNode::Leaf { cell_indices: indices.to_vec() };
+            return BspNode::Leaf {
+                cell_indices: indices.to_vec(),
+            };
         }
 
         BspNode::Interior {
             axis,
             split,
-            left: Box::new(Self::build_recursive(&left_idx, centroids, max_per_leaf, depth + 1)),
-            right: Box::new(Self::build_recursive(&right_idx, centroids, max_per_leaf, depth + 1)),
+            left: Box::new(Self::build_recursive(
+                &left_idx,
+                centroids,
+                max_per_leaf,
+                depth + 1,
+            )),
+            right: Box::new(Self::build_recursive(
+                &right_idx,
+                centroids,
+                max_per_leaf,
+                depth + 1,
+            )),
         }
     }
 
     fn find_recursive(node: &BspNode, point: [f64; 3]) -> &[usize] {
         match node {
             BspNode::Leaf { cell_indices } => cell_indices,
-            BspNode::Interior { axis, split, left, right } => {
+            BspNode::Interior {
+                axis,
+                split,
+                left,
+                right,
+            } => {
                 if point[*axis] <= *split {
                     Self::find_recursive(left, point)
                 } else {
@@ -127,9 +157,7 @@ impl BspTree {
     fn depth(node: &BspNode) -> usize {
         match node {
             BspNode::Leaf { .. } => 0,
-            BspNode::Interior { left, right, .. } => {
-                1 + Self::depth(left).max(Self::depth(right))
-            }
+            BspNode::Interior { left, right, .. } => 1 + Self::depth(left).max(Self::depth(right)),
         }
     }
 }
@@ -140,13 +168,19 @@ mod tests {
 
     fn make_grid() -> PolyData {
         let mut pts = Vec::new();
-        for y in 0..5 { for x in 0..5 { pts.push([x as f64, y as f64, 0.0]); } }
+        for y in 0..5 {
+            for x in 0..5 {
+                pts.push([x as f64, y as f64, 0.0]);
+            }
+        }
         let mut tris = Vec::new();
-        for y in 0..4 { for x in 0..4 {
-            let bl = y * 5 + x;
-            tris.push([bl, bl+1, bl+6]);
-            tris.push([bl, bl+6, bl+5]);
-        }}
+        for y in 0..4 {
+            for x in 0..4 {
+                let bl = y * 5 + x;
+                tris.push([bl, bl + 1, bl + 6]);
+                tris.push([bl, bl + 6, bl + 5]);
+            }
+        }
         PolyData::from_triangles(pts, tris)
     }
 
@@ -169,7 +203,9 @@ mod tests {
     #[test]
     fn single_triangle() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let tree = BspTree::build(&mesh, 10);
         assert_eq!(tree.num_leaves(), 1);
         assert_eq!(tree.find_cells([0.3, 0.3, 0.0]).len(), 1);

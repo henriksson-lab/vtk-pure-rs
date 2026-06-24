@@ -29,7 +29,9 @@ pub fn snap_to_grid(input: &PolyData, spacing: [f64; 3]) -> PolyData {
 pub fn quantize_points(input: &PolyData, levels: usize) -> PolyData {
     use crate::data::DataSet;
     let n = input.points.len();
-    if n == 0 || levels < 2 { return input.clone(); }
+    if n == 0 || levels < 2 {
+        return input.clone();
+    }
 
     let bb = input.bounds();
     let dx = (bb.x_max - bb.x_min).max(1e-15);

@@ -11,10 +11,10 @@ use crate::types::VtkError;
 use crate::render_wgpu::bloom_pass::BloomPass;
 use crate::render_wgpu::dof_pass::DofPass;
 use crate::render_wgpu::mesh::{self, Vertex};
-use crate::render_wgpu::ssao_pass::SsaoPass;
 use crate::render_wgpu::overlay::OverlayPipeline;
 use crate::render_wgpu::shadow_pass::ShadowPass;
 use crate::render_wgpu::skybox_pass::SkyboxPass;
+use crate::render_wgpu::ssao_pass::SsaoPass;
 use crate::render_wgpu::volume_pass::VolumePass;
 use crate::render_wgpu::wireframe;
 
@@ -201,7 +201,11 @@ impl WgpuRenderer {
         // Create a dummy 1x1 shadow map for when shadows are disabled
         let dummy_shadow_tex = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("dummy shadow"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -243,22 +247,86 @@ impl WgpuRenderer {
             push_constant_ranges: &[],
         });
 
-        let pipeline_triangles =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::TriangleList, false, MSAA_SAMPLE_COUNT, None);
-        let pipeline_lines =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::LineList, false, MSAA_SAMPLE_COUNT, None);
-        let pipeline_points =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::PointList, false, MSAA_SAMPLE_COUNT, None);
-        let pipeline_triangles_blend =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::TriangleList, true, MSAA_SAMPLE_COUNT, None);
-        let pipeline_lines_blend =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::LineList, true, MSAA_SAMPLE_COUNT, None);
-        let pipeline_points_blend =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::PointList, true, MSAA_SAMPLE_COUNT, None);
-        let pipeline_triangles_cull =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::TriangleList, false, MSAA_SAMPLE_COUNT, Some(wgpu::Face::Back));
-        let pipeline_triangles_blend_cull =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::TriangleList, true, MSAA_SAMPLE_COUNT, Some(wgpu::Face::Back));
+        let pipeline_triangles = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::TriangleList,
+            false,
+            MSAA_SAMPLE_COUNT,
+            None,
+        );
+        let pipeline_lines = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::LineList,
+            false,
+            MSAA_SAMPLE_COUNT,
+            None,
+        );
+        let pipeline_points = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::PointList,
+            false,
+            MSAA_SAMPLE_COUNT,
+            None,
+        );
+        let pipeline_triangles_blend = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::TriangleList,
+            true,
+            MSAA_SAMPLE_COUNT,
+            None,
+        );
+        let pipeline_lines_blend = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::LineList,
+            true,
+            MSAA_SAMPLE_COUNT,
+            None,
+        );
+        let pipeline_points_blend = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::PointList,
+            true,
+            MSAA_SAMPLE_COUNT,
+            None,
+        );
+        let pipeline_triangles_cull = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::TriangleList,
+            false,
+            MSAA_SAMPLE_COUNT,
+            Some(wgpu::Face::Back),
+        );
+        let pipeline_triangles_blend_cull = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::TriangleList,
+            true,
+            MSAA_SAMPLE_COUNT,
+            Some(wgpu::Face::Back),
+        );
 
         let depth_texture = create_depth_texture(&device, width, height, MSAA_SAMPLE_COUNT);
         let msaa_texture = create_msaa_texture(&device, surface_format, width, height);
@@ -269,8 +337,16 @@ impl WgpuRenderer {
         let bloom_pass = BloomPass::new(&device, surface_format);
         let ssao_pass = SsaoPass::new(&device, surface_format);
         let dof_pass = DofPass::new(&device, surface_format);
-        let pipeline_lines_no_msaa =
-            create_pipeline_with_cull(&device, &pipeline_layout, &shader, surface_format, wgpu::PrimitiveTopology::LineList, false, 1, None);
+        let pipeline_lines_no_msaa = create_pipeline_with_cull(
+            &device,
+            &pipeline_layout,
+            &shader,
+            surface_format,
+            wgpu::PrimitiveTopology::LineList,
+            false,
+            1,
+            None,
+        );
 
         Ok(Self {
             device,
@@ -306,7 +382,12 @@ impl WgpuRenderer {
         })
     }
 
-    fn prepare_actor_mesh(&self, actor: &crate::render::Actor, camera_distance: f64, scene: &Scene) -> Option<GpuMesh> {
+    fn prepare_actor_mesh(
+        &self,
+        actor: &crate::render::Actor,
+        camera_distance: f64,
+        scene: &Scene,
+    ) -> Option<GpuMesh> {
         // Select LOD level if available
         let data = if let Some(ref lod) = actor.lod {
             lod.select(camera_distance)
@@ -320,7 +401,8 @@ impl WgpuRenderer {
                     let cam_dir = scene.camera.direction();
                     let cd = [cam_dir.x as f32, cam_dir.y as f32, cam_dir.z as f32];
                     // Convert pixel width to world units (approximate)
-                    let world_width = actor.material.line_width as f32 * camera_distance as f32 * 0.001;
+                    let world_width =
+                        actor.material.line_width as f32 * camera_distance as f32 * 0.001;
                     poly_data_to_wide_lines(data, &actor.coloring, world_width, cd)
                 } else {
                     wireframe::poly_data_to_wireframe(data, &actor.coloring)
@@ -332,7 +414,8 @@ impl WgpuRenderer {
                     let cam_up = scene.camera.up();
                     let cr = [cam_right.x as f32, cam_right.y as f32, cam_right.z as f32];
                     let cu = [cam_up.x as f32, cam_up.y as f32, cam_up.z as f32];
-                    let world_size = actor.material.point_size as f32 * camera_distance as f32 * 0.001;
+                    let world_size =
+                        actor.material.point_size as f32 * camera_distance as f32 * 0.001;
                     poly_data_to_point_sprites(data, &actor.coloring, world_size, cr, cu)
                 } else {
                     poly_data_to_points(data, &actor.coloring)
@@ -354,7 +437,12 @@ impl WgpuRenderer {
         Some(upload_mesh(&self.device, &vertices, &indices))
     }
 
-    fn select_pipeline(&self, repr: Representation, translucent: bool, backface_cull: bool) -> &wgpu::RenderPipeline {
+    fn select_pipeline(
+        &self,
+        repr: Representation,
+        translucent: bool,
+        backface_cull: bool,
+    ) -> &wgpu::RenderPipeline {
         match (repr, translucent, backface_cull) {
             (Representation::Surface, false, true) => &self.pipeline_triangles_cull,
             (Representation::Surface, true, true) => &self.pipeline_triangles_blend_cull,
@@ -424,7 +512,13 @@ impl WgpuRenderer {
             },
             clip_planes: {
                 let mut cp = [[0.0f32; 4]; 6];
-                for (i, plane) in scene.clip_planes.iter().filter(|c| c.enabled).take(6).enumerate() {
+                for (i, plane) in scene
+                    .clip_planes
+                    .iter()
+                    .filter(|c| c.enabled)
+                    .take(6)
+                    .enumerate()
+                {
                     cp[i] = [
                         plane.normal[0] as f32,
                         plane.normal[1] as f32,
@@ -449,14 +543,38 @@ impl WgpuRenderer {
                     if let Some(dl) = dir_light {
                         let center = scene.camera.focal_point;
                         let lvp = scene.shadows.light_vp_matrix(
-                            [dl.direction[0] as f64, dl.direction[1] as f64, dl.direction[2] as f64],
+                            [
+                                dl.direction[0] as f64,
+                                dl.direction[1] as f64,
+                                dl.direction[2] as f64,
+                            ],
                             [center.x, center.y, center.z],
                         );
                         [
-                            [lvp[0][0] as f32, lvp[0][1] as f32, lvp[0][2] as f32, lvp[0][3] as f32],
-                            [lvp[1][0] as f32, lvp[1][1] as f32, lvp[1][2] as f32, lvp[1][3] as f32],
-                            [lvp[2][0] as f32, lvp[2][1] as f32, lvp[2][2] as f32, lvp[2][3] as f32],
-                            [lvp[3][0] as f32, lvp[3][1] as f32, lvp[3][2] as f32, lvp[3][3] as f32],
+                            [
+                                lvp[0][0] as f32,
+                                lvp[0][1] as f32,
+                                lvp[0][2] as f32,
+                                lvp[0][3] as f32,
+                            ],
+                            [
+                                lvp[1][0] as f32,
+                                lvp[1][1] as f32,
+                                lvp[1][2] as f32,
+                                lvp[1][3] as f32,
+                            ],
+                            [
+                                lvp[2][0] as f32,
+                                lvp[2][1] as f32,
+                                lvp[2][2] as f32,
+                                lvp[2][3] as f32,
+                            ],
+                            [
+                                lvp[3][0] as f32,
+                                lvp[3][1] as f32,
+                                lvp[3][2] as f32,
+                                lvp[3][3] as f32,
+                            ],
                         ]
                     } else {
                         [[0.0; 4]; 4]
@@ -514,8 +632,12 @@ impl WgpuRenderer {
             };
             // If point sprites or wide lines are used, geometry is triangles
             let effective_repr = match actor.representation {
-                Representation::Points if actor.material.point_size > 1.5 => Representation::Surface,
-                Representation::Wireframe if actor.material.line_width > 1.5 => Representation::Surface,
+                Representation::Points if actor.material.point_size > 1.5 => {
+                    Representation::Surface
+                }
+                Representation::Wireframe if actor.material.line_width > 1.5 => {
+                    Representation::Surface
+                }
                 other => other,
             };
             let draw = ActorDraw {
@@ -564,7 +686,14 @@ impl WgpuRenderer {
             // Opaque pass
             for draw in &opaque_draws {
                 let use_lighting = draw.repr == Representation::Surface;
-                self.write_uniforms(scene, &draw.material, draw.opacity, use_lighting, draw.position, draw.scale);
+                self.write_uniforms(
+                    scene,
+                    &draw.material,
+                    draw.opacity,
+                    use_lighting,
+                    draw.position,
+                    draw.scale,
+                );
                 let cull = draw.material.backface_culling;
                 pass.set_pipeline(self.select_pipeline(draw.repr, false, cull));
                 pass.set_bind_group(0, &self.bind_group, &[]);
@@ -573,8 +702,19 @@ impl WgpuRenderer {
                 pass.draw_indexed(0..draw.mesh.num_indices, 0, 0..1);
 
                 if let Some(ref edge) = draw.edge_mesh {
-                    self.write_uniforms(scene, &draw.material, 1.0, false, draw.position, draw.scale);
-                    pass.set_pipeline(self.select_pipeline(Representation::Wireframe, false, false));
+                    self.write_uniforms(
+                        scene,
+                        &draw.material,
+                        1.0,
+                        false,
+                        draw.position,
+                        draw.scale,
+                    );
+                    pass.set_pipeline(self.select_pipeline(
+                        Representation::Wireframe,
+                        false,
+                        false,
+                    ));
                     pass.set_bind_group(0, &self.bind_group, &[]);
                     pass.set_vertex_buffer(0, edge.vertex_buffer.slice(..));
                     pass.set_index_buffer(edge.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -585,7 +725,14 @@ impl WgpuRenderer {
             // Translucent pass
             for draw in &translucent_draws {
                 let use_lighting = draw.repr == Representation::Surface;
-                self.write_uniforms(scene, &draw.material, draw.opacity, use_lighting, draw.position, draw.scale);
+                self.write_uniforms(
+                    scene,
+                    &draw.material,
+                    draw.opacity,
+                    use_lighting,
+                    draw.position,
+                    draw.scale,
+                );
                 let cull = draw.material.backface_culling;
                 pass.set_pipeline(self.select_pipeline(draw.repr, true, cull));
                 pass.set_bind_group(0, &self.bind_group, &[]);
@@ -594,7 +741,14 @@ impl WgpuRenderer {
                 pass.draw_indexed(0..draw.mesh.num_indices, 0, 0..1);
 
                 if let Some(ref edge) = draw.edge_mesh {
-                    self.write_uniforms(scene, &draw.material, draw.opacity, false, draw.position, draw.scale);
+                    self.write_uniforms(
+                        scene,
+                        &draw.material,
+                        draw.opacity,
+                        false,
+                        draw.position,
+                        draw.scale,
+                    );
                     pass.set_pipeline(self.select_pipeline(Representation::Wireframe, true, false));
                     pass.set_bind_group(0, &self.bind_group, &[]);
                     pass.set_vertex_buffer(0, edge.vertex_buffer.slice(..));
@@ -612,7 +766,11 @@ impl WgpuRenderer {
                 cap_material.diffuse = 0.7;
 
                 for clip in &active_clips {
-                    let normal = [clip.normal[0] as f32, clip.normal[1] as f32, clip.normal[2] as f32];
+                    let normal = [
+                        clip.normal[0] as f32,
+                        clip.normal[1] as f32,
+                        clip.normal[2] as f32,
+                    ];
                     let dist = clip.distance as f32;
                     let cap_color = [0.8f32, 0.8, 0.8]; // light gray cap
 
@@ -620,7 +778,8 @@ impl WgpuRenderer {
                         if !actor.visible || actor.representation != Representation::Surface {
                             continue;
                         }
-                        let (pts, tris) = crate::render_wgpu::clip_cap::extract_triangles(&actor.data);
+                        let (pts, tris) =
+                            crate::render_wgpu::clip_cap::extract_triangles(&actor.data);
                         if tris.is_empty() {
                             continue;
                         }
@@ -634,11 +793,25 @@ impl WgpuRenderer {
                         // Write uniforms with zero clip planes so cap isn't clipped
                         let mut no_clip_scene = scene.clone();
                         no_clip_scene.clip_planes.clear();
-                        self.write_uniforms(&no_clip_scene, &cap_material, 1.0, true, actor.position, actor.scale);
-                        pass.set_pipeline(self.select_pipeline(Representation::Surface, false, false));
+                        self.write_uniforms(
+                            &no_clip_scene,
+                            &cap_material,
+                            1.0,
+                            true,
+                            actor.position,
+                            actor.scale,
+                        );
+                        pass.set_pipeline(self.select_pipeline(
+                            Representation::Surface,
+                            false,
+                            false,
+                        ));
                         pass.set_bind_group(0, &self.bind_group, &[]);
                         pass.set_vertex_buffer(0, cap_mesh.vertex_buffer.slice(..));
-                        pass.set_index_buffer(cap_mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_index_buffer(
+                            cap_mesh.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
                         pass.draw_indexed(0..cap_mesh.num_indices, 0, 0..1);
                     }
                 }
@@ -653,9 +826,11 @@ impl WgpuRenderer {
         resolve_target: &wgpu::TextureView,
         depth_view: &wgpu::TextureView,
     ) -> Result<(), VtkError> {
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("render encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("render encoder"),
+            });
 
         // Shadow depth pass (before main 3D scene)
         if scene.shadows.enabled {
@@ -680,7 +855,11 @@ impl WgpuRenderer {
                 }
             }
             if let Some((shadow_view, _light_vp)) = self.shadow_pass.render(
-                &self.device, &self.queue, &mut encoder, scene, &shadow_meshes,
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                scene,
+                &shadow_meshes,
             ) {
                 // Rebuild bind group with actual shadow map
                 self.bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -726,7 +905,8 @@ impl WgpuRenderer {
 
         // Skybox (render gradient background before 3D scene)
         if !matches!(scene.skybox, crate::render::Skybox::Solid(_)) {
-            self.skybox_pass.render(&self.queue, &mut encoder, resolve_target, &scene.skybox);
+            self.skybox_pass
+                .render(&self.queue, &mut encoder, resolve_target, &scene.skybox);
         }
 
         // 3D scene with MSAA
@@ -788,8 +968,13 @@ impl WgpuRenderer {
 
             for volume in &scene.volumes {
                 self.volume_pass.render(
-                    &self.device, &self.queue, &mut encoder,
-                    resolve_target, volume, mvp, cam_pos,
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    resolve_target,
+                    volume,
+                    mvp,
+                    cam_pos,
                 );
             }
         }
@@ -799,12 +984,17 @@ impl WgpuRenderer {
             // Create non-MSAA depth for SSAO (re-render depth only at 1x sample)
             let ssao_depth_tex = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("ssao depth"),
-                size: wgpu::Extent3d { width: self.width, height: self.height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: self.width,
+                    height: self.height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Depth32Float,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
             let ssao_depth_view = ssao_depth_tex.create_view(&Default::default());
@@ -842,11 +1032,15 @@ impl WgpuRenderer {
             };
 
             self.ssao_pass.render(
-                &self.device, &self.queue, &mut encoder,
-                resolve_target, &ssao_depth_view,
+                &self.device,
+                &self.queue,
+                &mut encoder,
+                resolve_target,
+                &ssao_depth_view,
                 &ssao_config,
                 proj_f32,
-                self.width, self.height,
+                self.width,
+                self.height,
                 scene.camera.near_clip as f32,
                 scene.camera.far_clip as f32,
             );
@@ -854,9 +1048,14 @@ impl WgpuRenderer {
 
         // Bloom post-process (after 3D + volume, before overlays)
         self.bloom_pass.render(
-            &self.device, &self.queue, &mut encoder,
-            resolve_target, &scene.bloom,
-            self.width, self.height, self.surface_format,
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            resolve_target,
+            &scene.bloom,
+            self.width,
+            self.height,
+            self.surface_format,
         );
 
         // 2D overlay (scalar bars) — rendered after resolve, directly on resolve target
@@ -902,8 +1101,13 @@ impl WgpuRenderer {
                 if let Some((nx, ny)) = ndc {
                     let color = [label.color[0], label.color[1], label.color[2], 1.0];
                     crate::render_wgpu::bitmap_font::render_text(
-                        &mut vertices, &mut indices,
-                        &label.text, nx, ny, label.scale, color,
+                        &mut vertices,
+                        &mut indices,
+                        &label.text,
+                        nx,
+                        ny,
+                        label.scale,
+                        color,
                     );
                 }
             }
@@ -921,11 +1125,30 @@ impl WgpuRenderer {
                         let nx = -dy / len * 0.002;
                         let ny = dx / len * 0.002;
                         let base = vertices.len() as u32;
-                        vertices.push(crate::render_wgpu::overlay::OverlayVertex { position: [sx - nx, sy - ny], color });
-                        vertices.push(crate::render_wgpu::overlay::OverlayVertex { position: [sx + nx, sy + ny], color });
-                        vertices.push(crate::render_wgpu::overlay::OverlayVertex { position: [ex + nx, ey + ny], color });
-                        vertices.push(crate::render_wgpu::overlay::OverlayVertex { position: [ex - nx, ey - ny], color });
-                        indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+                        vertices.push(crate::render_wgpu::overlay::OverlayVertex {
+                            position: [sx - nx, sy - ny],
+                            color,
+                        });
+                        vertices.push(crate::render_wgpu::overlay::OverlayVertex {
+                            position: [sx + nx, sy + ny],
+                            color,
+                        });
+                        vertices.push(crate::render_wgpu::overlay::OverlayVertex {
+                            position: [ex + nx, ey + ny],
+                            color,
+                        });
+                        vertices.push(crate::render_wgpu::overlay::OverlayVertex {
+                            position: [ex - nx, ey - ny],
+                            color,
+                        });
+                        indices.extend_from_slice(&[
+                            base,
+                            base + 1,
+                            base + 2,
+                            base,
+                            base + 2,
+                            base + 3,
+                        ]);
                     }
 
                     if ruler.show_label {
@@ -933,8 +1156,13 @@ impl WgpuRenderer {
                         if let Some((mx, my)) = mid_ndc {
                             let text = format!("{:.2}", ruler.distance());
                             crate::render_wgpu::bitmap_font::render_text(
-                                &mut vertices, &mut indices,
-                                &text, mx + 0.01, my + 0.01, 0.012, color,
+                                &mut vertices,
+                                &mut indices,
+                                &text,
+                                mx + 0.01,
+                                my + 0.01,
+                                0.012,
+                                color,
                             );
                         }
                     }
@@ -943,16 +1171,20 @@ impl WgpuRenderer {
 
             if !vertices.is_empty() {
                 use wgpu::util::DeviceExt;
-                let vb = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("annotation vb"),
-                    contents: bytemuck::cast_slice(&vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
-                let ib = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("annotation ib"),
-                    contents: bytemuck::cast_slice(&indices),
-                    usage: wgpu::BufferUsages::INDEX,
-                });
+                let vb = self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("annotation vb"),
+                        contents: bytemuck::cast_slice(&vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                let ib = self
+                    .device
+                    .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("annotation ib"),
+                        contents: bytemuck::cast_slice(&indices),
+                        usage: wgpu::BufferUsages::INDEX,
+                    });
                 let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("annotation pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -992,7 +1224,9 @@ impl Renderer for WgpuRenderer {
             // Multi-viewport: render each viewport to its own region
             for (viewport, camera) in &scene.viewports {
                 let (px, py, pw, ph) = viewport.to_pixels(self.width, self.height);
-                if pw == 0 || ph == 0 { continue; }
+                if pw == 0 || ph == 0 {
+                    continue;
+                }
                 let vp_msaa = create_msaa_texture(&self.device, self.surface_format, pw, ph);
                 let vp_depth = create_depth_texture(&self.device, pw, ph, MSAA_SAMPLE_COUNT);
                 let mut vp_scene = scene.clone();
@@ -1005,7 +1239,11 @@ impl Renderer for WgpuRenderer {
 
                 let vp_tex = self.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("viewport color"),
-                    size: wgpu::Extent3d { width: pw, height: ph, depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d {
+                        width: pw,
+                        height: ph,
+                        depth_or_array_layers: 1,
+                    },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
@@ -1020,15 +1258,22 @@ impl Renderer for WgpuRenderer {
                 let mut enc = self.device.create_command_encoder(&Default::default());
                 enc.copy_texture_to_texture(
                     wgpu::TexelCopyTextureInfo {
-                        texture: &vp_tex, mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All,
+                        texture: &vp_tex,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
                     },
                     wgpu::TexelCopyTextureInfo {
-                        texture: &output.texture, mip_level: 0,
+                        texture: &output.texture,
+                        mip_level: 0,
                         origin: wgpu::Origin3d { x: px, y: py, z: 0 },
                         aspect: wgpu::TextureAspect::All,
                     },
-                    wgpu::Extent3d { width: pw, height: ph, depth_or_array_layers: 1 },
+                    wgpu::Extent3d {
+                        width: pw,
+                        height: ph,
+                        depth_or_array_layers: 1,
+                    },
                 );
                 self.queue.submit(std::iter::once(enc.finish()));
                 self.width = saved_w;
@@ -1038,26 +1283,42 @@ impl Renderer for WgpuRenderer {
             // Stereo: render left and right eye to separate halves
             let right = scene.camera.right();
             let right_arr = [right.x, right.y, right.z];
-            let cam_pos = [scene.camera.position.x, scene.camera.position.y, scene.camera.position.z];
+            let cam_pos = [
+                scene.camera.position.x,
+                scene.camera.position.y,
+                scene.camera.position.z,
+            ];
             let (left_pos, right_pos) = scene.stereo.eye_positions(cam_pos, right_arr);
 
             let mut left_scene = scene.clone();
             left_scene.camera.position = glam::DVec3::new(left_pos[0], left_pos[1], left_pos[2]);
             left_scene.stereo = crate::render::StereoConfig::default();
             let mut right_scene = scene.clone();
-            right_scene.camera.position = glam::DVec3::new(right_pos[0], right_pos[1], right_pos[2]);
+            right_scene.camera.position =
+                glam::DVec3::new(right_pos[0], right_pos[1], right_pos[2]);
             right_scene.stereo = crate::render::StereoConfig::default();
 
             let (lv, rv) = match scene.stereo.mode {
-                StereoMode::SideBySide => (crate::render::Viewport::left_half(), crate::render::Viewport::right_half()),
-                StereoMode::TopBottom => (crate::render::Viewport::top_half(), crate::render::Viewport::bottom_half()),
-                _ => (crate::render::Viewport::full(), crate::render::Viewport::full()),
+                StereoMode::SideBySide => (
+                    crate::render::Viewport::left_half(),
+                    crate::render::Viewport::right_half(),
+                ),
+                StereoMode::TopBottom => (
+                    crate::render::Viewport::top_half(),
+                    crate::render::Viewport::bottom_half(),
+                ),
+                _ => (
+                    crate::render::Viewport::full(),
+                    crate::render::Viewport::full(),
+                ),
             };
 
             // Render each eye as a viewport
             for (vp, eye_scene) in [(lv, &left_scene), (rv, &right_scene)] {
                 let (px, py, pw, ph) = vp.to_pixels(self.width, self.height);
-                if pw == 0 || ph == 0 { continue; }
+                if pw == 0 || ph == 0 {
+                    continue;
+                }
                 let eye_msaa = create_msaa_texture(&self.device, self.surface_format, pw, ph);
                 let eye_depth = create_depth_texture(&self.device, pw, ph, MSAA_SAMPLE_COUNT);
                 let saved_w = self.width;
@@ -1067,8 +1328,13 @@ impl Renderer for WgpuRenderer {
 
                 let eye_tex = self.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("stereo eye"),
-                    size: wgpu::Extent3d { width: pw, height: ph, depth_or_array_layers: 1 },
-                    mip_level_count: 1, sample_count: 1,
+                    size: wgpu::Extent3d {
+                        width: pw,
+                        height: ph,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format: self.surface_format,
                     usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
@@ -1079,9 +1345,23 @@ impl Renderer for WgpuRenderer {
 
                 let mut enc = self.device.create_command_encoder(&Default::default());
                 enc.copy_texture_to_texture(
-                    wgpu::TexelCopyTextureInfo { texture: &eye_tex, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
-                    wgpu::TexelCopyTextureInfo { texture: &output.texture, mip_level: 0, origin: wgpu::Origin3d { x: px, y: py, z: 0 }, aspect: wgpu::TextureAspect::All },
-                    wgpu::Extent3d { width: pw, height: ph, depth_or_array_layers: 1 },
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &eye_tex,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &output.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x: px, y: py, z: 0 },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: pw,
+                        height: ph,
+                        depth_or_array_layers: 1,
+                    },
                 );
                 self.queue.submit(std::iter::once(enc.finish()));
                 self.width = saved_w;
@@ -1089,8 +1369,10 @@ impl Renderer for WgpuRenderer {
             }
         } else {
             // Normal single-viewport rendering
-            let msaa = create_msaa_texture(&self.device, self.surface_format, self.width, self.height);
-            let depth = create_depth_texture(&self.device, self.width, self.height, MSAA_SAMPLE_COUNT);
+            let msaa =
+                create_msaa_texture(&self.device, self.surface_format, self.width, self.height);
+            let depth =
+                create_depth_texture(&self.device, self.width, self.height, MSAA_SAMPLE_COUNT);
             self.render_to_view(scene, &msaa, &resolve_view, &depth)?;
         }
 
@@ -1105,8 +1387,10 @@ impl Renderer for WgpuRenderer {
             self.surface_config.width = width;
             self.surface_config.height = height;
             self.surface.configure(&self.device, &self.surface_config);
-            self.depth_texture = create_depth_texture(&self.device, width, height, MSAA_SAMPLE_COUNT);
-            self.msaa_texture = create_msaa_texture(&self.device, self.surface_format, width, height);
+            self.depth_texture =
+                create_depth_texture(&self.device, width, height, MSAA_SAMPLE_COUNT);
+            self.msaa_texture =
+                create_msaa_texture(&self.device, self.surface_format, width, height);
         }
     }
 
@@ -1123,7 +1407,11 @@ impl Renderer for WgpuRenderer {
 
         let color_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("offscreen color"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -1148,9 +1436,11 @@ impl Renderer for WgpuRenderer {
             mapped_at_creation: false,
         });
 
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("copy encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("copy encoder"),
+            });
         encoder.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
                 texture: &color_texture,
@@ -1166,7 +1456,11 @@ impl Renderer for WgpuRenderer {
                     rows_per_image: Some(height),
                 },
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
         self.queue.submit(std::iter::once(encoder.finish()));
 
@@ -1202,7 +1496,10 @@ fn light_to_gpu(light: &Light) -> GpuLight {
     let (lt, cone_angle, exponent) = match light.light_type {
         LightType::Directional => (0.0, 0.0, 0.0),
         LightType::Point => (1.0, 0.0, 0.0),
-        LightType::Spot { cone_angle, exponent } => (2.0, cone_angle as f32, exponent as f32),
+        LightType::Spot {
+            cone_angle,
+            exponent,
+        } => (2.0, cone_angle as f32, exponent as f32),
         LightType::Ambient => (3.0, 0.0, 0.0),
     };
     GpuLight {
@@ -1210,9 +1507,17 @@ fn light_to_gpu(light: &Light) -> GpuLight {
         intensity: light.intensity as f32,
         cone_angle,
         exponent,
-        position: [light.position[0] as f32, light.position[1] as f32, light.position[2] as f32],
+        position: [
+            light.position[0] as f32,
+            light.position[1] as f32,
+            light.position[2] as f32,
+        ],
         _pad0: 0.0,
-        direction: [light.direction[0] as f32, light.direction[1] as f32, light.direction[2] as f32],
+        direction: [
+            light.direction[0] as f32,
+            light.direction[1] as f32,
+            light.direction[2] as f32,
+        ],
         _pad1: 0.0,
         color: light.color,
         _pad2: 0.0,
@@ -1264,7 +1569,11 @@ fn create_pipeline_with_cull(
         fragment: Some(wgpu::FragmentState {
             module: shader,
             entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState { format, blend, write_mask: wgpu::ColorWrites::ALL })],
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
             compilation_options: Default::default(),
         }),
         primitive: wgpu::PrimitiveState {
@@ -1290,10 +1599,19 @@ fn create_pipeline_with_cull(
     })
 }
 
-fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32, sample_count: u32) -> wgpu::TextureView {
+fn create_depth_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    sample_count: u32,
+) -> wgpu::TextureView {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("depth texture"),
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count,
         dimension: wgpu::TextureDimension::D2,
@@ -1304,10 +1622,19 @@ fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32, sample_c
     texture.create_view(&Default::default())
 }
 
-fn create_msaa_texture(device: &wgpu::Device, format: wgpu::TextureFormat, width: u32, height: u32) -> wgpu::TextureView {
+fn create_msaa_texture(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    width: u32,
+    height: u32,
+) -> wgpu::TextureView {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("msaa texture"),
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: MSAA_SAMPLE_COUNT,
         dimension: wgpu::TextureDimension::D2,
@@ -1353,8 +1680,16 @@ fn poly_data_to_point_sprites(
     let mut vertices = Vec::with_capacity(n * 4);
     let mut indices = Vec::with_capacity(n * 6);
 
-    let r = [camera_right[0] * half, camera_right[1] * half, camera_right[2] * half];
-    let u = [camera_up[0] * half, camera_up[1] * half, camera_up[2] * half];
+    let r = [
+        camera_right[0] * half,
+        camera_right[1] * half,
+        camera_right[2] * half,
+    ];
+    let u = [
+        camera_up[0] * half,
+        camera_up[1] * half,
+        camera_up[2] * half,
+    ];
     // Normal facing camera = cross(right, up)
     let norm = [
         camera_right[1] * camera_up[2] - camera_right[2] * camera_up[1],
@@ -1444,10 +1779,26 @@ fn poly_data_to_wide_lines(
             let c1 = point_colors[id1];
             let norm = [camera_dir[0], camera_dir[1], camera_dir[2]];
 
-            vertices.push(Vertex { position: [p0f[0] - ox, p0f[1] - oy, p0f[2] - oz], normal: norm, color: c0 });
-            vertices.push(Vertex { position: [p0f[0] + ox, p0f[1] + oy, p0f[2] + oz], normal: norm, color: c0 });
-            vertices.push(Vertex { position: [p1f[0] + ox, p1f[1] + oy, p1f[2] + oz], normal: norm, color: c1 });
-            vertices.push(Vertex { position: [p1f[0] - ox, p1f[1] - oy, p1f[2] - oz], normal: norm, color: c1 });
+            vertices.push(Vertex {
+                position: [p0f[0] - ox, p0f[1] - oy, p0f[2] - oz],
+                normal: norm,
+                color: c0,
+            });
+            vertices.push(Vertex {
+                position: [p0f[0] + ox, p0f[1] + oy, p0f[2] + oz],
+                normal: norm,
+                color: c0,
+            });
+            vertices.push(Vertex {
+                position: [p1f[0] + ox, p1f[1] + oy, p1f[2] + oz],
+                normal: norm,
+                color: c1,
+            });
+            vertices.push(Vertex {
+                position: [p1f[0] - ox, p1f[1] - oy, p1f[2] - oz],
+                normal: norm,
+                color: c1,
+            });
 
             indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
         }
@@ -1460,7 +1811,9 @@ fn poly_data_to_wide_lines(
 /// Returns None if behind camera.
 fn project_to_ndc(vp: &glam::DMat4, pos: [f64; 3]) -> Option<(f32, f32)> {
     let p = *vp * glam::DVec4::new(pos[0], pos[1], pos[2], 1.0);
-    if p.w.abs() < 1e-10 || p.z / p.w < -1.0 { return None; }
+    if p.w.abs() < 1e-10 || p.z / p.w < -1.0 {
+        return None;
+    }
     let nx = ((p.x / p.w + 1.0) * 0.5) as f32;
     let ny = ((p.y / p.w + 1.0) * 0.5) as f32;
     Some((nx, ny))

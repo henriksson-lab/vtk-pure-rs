@@ -2,7 +2,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute the range (min, max) of a scalar array.
 pub fn scalar_range(input: &PolyData, array_name: &str) -> Option<[f64; 2]> {
-    let arr = input.point_data().get_array(array_name)
+    let arr = input
+        .point_data()
+        .get_array(array_name)
         .or_else(|| input.cell_data().get_array(array_name))?;
 
     let n = arr.num_tuples();
@@ -52,9 +54,8 @@ pub fn normalize_array(input: &PolyData, array_name: &str) -> PolyData {
 
     let mut pd = input.clone();
     let name = format!("{}_normalized", array_name);
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&name, normalized, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(&name, normalized, 1)));
     pd
 }
 
@@ -80,7 +81,8 @@ pub fn rescale_array(input: &PolyData, array_name: &str, new_min: f64, new_max: 
 
     let range = (max_val - min_val).max(1e-15);
     let new_range = new_max - new_min;
-    let rescaled: Vec<f64> = values.iter()
+    let rescaled: Vec<f64> = values
+        .iter()
         .map(|v| new_min + new_range * (v - min_val) / range)
         .collect();
 
@@ -90,9 +92,11 @@ pub fn rescale_array(input: &PolyData, array_name: &str, new_min: f64, new_max: 
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == array_name {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(array_name, rescaled.clone(), 1),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                array_name,
+                rescaled.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -110,9 +114,12 @@ mod tests {
         for i in 0..5 {
             pd.points.push([i as f64, 0.0, 0.0]);
         }
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 25.0, 50.0, 75.0, 100.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 25.0, 50.0, 75.0, 100.0],
+                1,
+            )));
         pd
     }
 

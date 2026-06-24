@@ -1,4 +1,3 @@
-
 use crate::data::{CellArray, Points, PolyData};
 
 /// Parameters for cleaning PolyData.
@@ -103,9 +102,12 @@ fn morton_encode(x: i64, y: i64, z: i64) -> u64 {
     let uz = z as u64;
     // FNV-1a style mixing
     let mut h = 0xcbf29ce484222325u64;
-    h ^= ux; h = h.wrapping_mul(0x100000001b3);
-    h ^= uy; h = h.wrapping_mul(0x100000001b3);
-    h ^= uz; h = h.wrapping_mul(0x100000001b3);
+    h ^= ux;
+    h = h.wrapping_mul(0x100000001b3);
+    h ^= uy;
+    h = h.wrapping_mul(0x100000001b3);
+    h ^= uz;
+    h = h.wrapping_mul(0x100000001b3);
     h
 }
 
@@ -178,10 +180,7 @@ mod tests {
     #[test]
     fn remove_degenerate_cell() {
         let mut pd = PolyData::new();
-        pd.points = Points::from_vec(vec![
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-        ]);
+        pd.points = Points::from_vec(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
         // Degenerate triangle: only 2 unique points after collapse
         pd.polys.push_cell(&[0, 1, 0]);
 

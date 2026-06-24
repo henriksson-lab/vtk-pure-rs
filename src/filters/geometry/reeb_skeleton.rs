@@ -3,8 +3,8 @@
 //! The surface skeleton connects critical points with straight lines,
 //! while the volume skeleton adds midpoints along arcs using vertex_ids.
 
-use crate::data::DataArray;
 use crate::data::reeb_graph::ReebGraph;
+use crate::data::DataArray;
 use crate::data::{CellArray, Points, PolyData};
 
 /// Extract the surface skeleton from a ReebGraph as PolyData line cells.

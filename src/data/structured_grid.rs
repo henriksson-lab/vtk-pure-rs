@@ -1,7 +1,7 @@
 use crate::types::BoundingBox;
 
-use crate::data::{DataSetAttributes, FieldData, Points};
 use crate::data::traits::{DataObject, DataSet};
+use crate::data::{DataSetAttributes, FieldData, Points};
 
 /// Curvilinear grid with explicit point coordinates.
 ///
@@ -20,7 +20,7 @@ pub struct StructuredGrid {
 impl Default for StructuredGrid {
     fn default() -> Self {
         Self {
-            dimensions: [1, 1, 1],
+            dimensions: [0, 0, 0],
             points: Points::new(),
             point_data: DataSetAttributes::new(),
             cell_data: DataSetAttributes::new(),
@@ -36,10 +36,7 @@ impl StructuredGrid {
 
     /// Create a StructuredGrid with given dimensions and points.
     /// The number of points must equal `nx * ny * nz`.
-    pub fn from_dimensions_and_points(
-        dimensions: [usize; 3],
-        points: Points<f64>,
-    ) -> Self {
+    pub fn from_dimensions_and_points(dimensions: [usize; 3], points: Points<f64>) -> Self {
         assert_eq!(
             points.len(),
             dimensions[0] * dimensions[1] * dimensions[2],
@@ -91,10 +88,7 @@ impl StructuredGrid {
     }
 
     /// Create a structured grid from a function that maps (i,j,k) to position.
-    pub fn from_function(
-        dims: [usize; 3],
-        f: impl Fn(usize, usize, usize) -> [f64; 3],
-    ) -> Self {
+    pub fn from_function(dims: [usize; 3], f: impl Fn(usize, usize, usize) -> [f64; 3]) -> Self {
         let mut pts = Points::new();
         for k in 0..dims[2] {
             for j in 0..dims[1] {
@@ -108,11 +102,13 @@ impl StructuredGrid {
 
     /// Create a uniform structured grid (same as ImageData geometry but explicit).
     pub fn uniform(dims: [usize; 3], spacing: [f64; 3], origin: [f64; 3]) -> Self {
-        Self::from_function(dims, |i, j, k| [
-            origin[0] + i as f64 * spacing[0],
-            origin[1] + j as f64 * spacing[1],
-            origin[2] + k as f64 * spacing[2],
-        ])
+        Self::from_function(dims, |i, j, k| {
+            [
+                origin[0] + i as f64 * spacing[0],
+                origin[1] + j as f64 * spacing[1],
+                origin[2] + k as f64 * spacing[2],
+            ]
+        })
     }
 
     /// Builder: add point data.
@@ -129,8 +125,15 @@ impl StructuredGrid {
 impl std::fmt::Display for StructuredGrid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let d = self.dimensions;
-        write!(f, "StructuredGrid: {}x{}x{}, {} points, {} point arrays",
-            d[0], d[1], d[2], self.points.len(), self.point_data.num_arrays())
+        write!(
+            f,
+            "StructuredGrid: {}x{}x{}, {} points, {} point arrays",
+            d[0],
+            d[1],
+            d[2],
+            self.points.len(),
+            self.point_data.num_arrays()
+        )
     }
 }
 
@@ -146,15 +149,18 @@ impl DataObject for StructuredGrid {
 
 impl DataSet for StructuredGrid {
     fn num_points(&self) -> usize {
-        self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
+        self.points.len()
     }
 
     fn num_cells(&self) -> usize {
         let d = self.dimensions;
-        let cx = d[0].saturating_sub(1);
-        let cy = d[1].saturating_sub(1);
-        let cz = d[2].saturating_sub(1);
-        cx.max(1) * cy.max(1) * cz.max(1)
+        if d.contains(&0) {
+            return 0;
+        }
+        let cx = d[0].saturating_sub(1).max(1);
+        let cy = d[1].saturating_sub(1).max(1);
+        let cz = d[2].saturating_sub(1).max(1);
+        cx * cy * cz
     }
 
     fn point(&self, idx: usize) -> [f64; 3] {
@@ -206,7 +212,9 @@ mod tests {
     #[test]
     fn index_roundtrip() {
         let mut pts = Points::new();
-        for _ in 0..24 { pts.push([0.0, 0.0, 0.0]); }
+        for _ in 0..24 {
+            pts.push([0.0, 0.0, 0.0]);
+        }
         let grid = StructuredGrid::from_dimensions_and_points([4, 3, 2], pts);
         for idx in 0..24 {
             let (i, j, k) = grid.ijk_from_index(idx);
@@ -223,5 +231,21 @@ mod tests {
         let bb = grid.bounds();
         assert_eq!(bb.x_max, 10.0);
         assert_eq!(bb.y_max, 5.0);
+    }
+
+    #[test]
+    fn empty_grid_matches_vtk_defaults() {
+        let grid = StructuredGrid::new();
+        assert_eq!(grid.dimensions(), [0, 0, 0]);
+        assert_eq!(grid.num_points(), 0);
+        assert_eq!(grid.num_cells(), 0);
+    }
+
+    #[test]
+    fn num_points_uses_actual_points() {
+        let mut grid = StructuredGrid::new();
+        grid.set_dimensions([2, 2, 2]);
+        assert_eq!(grid.num_points(), 0);
+        assert_eq!(grid.num_cells(), 1);
     }
 }

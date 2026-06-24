@@ -18,7 +18,10 @@ pub fn table_to_structured_grid(
     let y_arr = input.column_by_name(y_col)?;
     let z_arr = input.column_by_name(z_col)?;
 
-    let n = x_arr.num_tuples().min(y_arr.num_tuples()).min(z_arr.num_tuples());
+    let n = x_arr
+        .num_tuples()
+        .min(y_arr.num_tuples())
+        .min(z_arr.num_tuples());
     let expected = dimensions[0] * dimensions[1] * dimensions[2];
     if n < expected {
         return None;
@@ -36,7 +39,9 @@ pub fn table_to_structured_grid(
         points.push([bx[0], by[0], bz[0]]);
     }
 
-    Some(StructuredGrid::from_dimensions_and_points(dimensions, points))
+    Some(StructuredGrid::from_dimensions_and_points(
+        dimensions, points,
+    ))
 }
 
 #[cfg(test)]

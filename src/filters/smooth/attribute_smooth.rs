@@ -71,11 +71,7 @@ pub fn attribute_smooth(input: &PolyData, array_name: &str, iterations: usize) -
     }
 
     let mut pd = input.clone();
-    let smoothed = AnyDataArray::F64(DataArray::from_vec(
-        array_name,
-        values,
-        num_comp,
-    ));
+    let smoothed = AnyDataArray::F64(DataArray::from_vec(array_name, values, num_comp));
 
     // Replace the array
     // Remove old and add new
@@ -104,9 +100,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![0.0, 0.0, 10.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![0.0, 0.0, 10.0],
+                1,
+            )));
 
         let result = attribute_smooth(&pd, "temp", 1);
         let arr = result.point_data().get_array("temp").unwrap();
@@ -125,9 +124,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![1.0, 2.0, 3.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )));
 
         let result = attribute_smooth(&pd, "val", 0);
         let arr = result.point_data().get_array("val").unwrap();
@@ -153,9 +155,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 0.0, 9.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 0.0, 9.0],
+                1,
+            )));
 
         // Many iterations should converge to the mean (3.0)
         let result = attribute_smooth(&pd, "v", 100);

@@ -24,8 +24,10 @@ pub fn write_ppm_sequence(seq: &FrameSequence, dir: &Path) -> Result<(), String>
 pub fn write_ppm(path: &Path, width: u32, height: u32, rgb: &[u8]) -> Result<(), String> {
     let mut file = std::fs::File::create(path).map_err(|e| format!("create file: {e}"))?;
     let header = format!("P6\n{width} {height}\n255\n");
-    file.write_all(header.as_bytes()).map_err(|e| format!("write header: {e}"))?;
-    file.write_all(rgb).map_err(|e| format!("write pixels: {e}"))?;
+    file.write_all(header.as_bytes())
+        .map_err(|e| format!("write header: {e}"))?;
+    file.write_all(rgb)
+        .map_err(|e| format!("write pixels: {e}"))?;
     Ok(())
 }
 
@@ -36,7 +38,9 @@ mod tests {
     #[test]
     fn write_ppm_sequence_roundtrip() {
         let mut seq = FrameSequence::new(2, 2);
-        seq.add_frame(vec![255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 128, 128, 128, 255]);
+        seq.add_frame(vec![
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 128, 128, 128, 255,
+        ]);
 
         let dir = std::env::temp_dir().join("vtk_ppm_test");
         let _ = std::fs::remove_dir_all(&dir);

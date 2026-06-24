@@ -15,6 +15,8 @@ pub struct ExplicitStructuredGrid {
     dimensions: [usize; 3],
     /// Explicit point coordinates.
     pub points: Points<f64>,
+    /// Explicit hexahedron connectivity. Length = (ni-1)*(nj-1)*(nk-1), 8 point ids per cell.
+    cell_points: Vec<[usize; 8]>,
     /// Cell blanking: true = visible, false = blanked. Length = (ni-1)*(nj-1)*(nk-1).
     cell_visibility: Vec<bool>,
     /// Point data attributes.
@@ -31,12 +33,12 @@ impl ExplicitStructuredGrid {
     /// `dims` is [ni, nj, nk] where ni, nj, nk >= 2.
     /// Points must be provided separately.
     pub fn new(dims: [usize; 3]) -> Self {
-        let num_cells = (dims[0].saturating_sub(1))
-            * (dims[1].saturating_sub(1))
-            * (dims[2].saturating_sub(1));
+        validate_dimensions(dims).expect("explicit structured grid dimensions must all be >= 2");
+        let num_cells = checked_num_cells(dims).expect("explicit structured grid is too large");
         Self {
             dimensions: dims,
             points: Points::new(),
+            cell_points: default_cell_points(dims),
             cell_visibility: vec![true; num_cells],
             point_data: DataSetAttributes::new(),
             cell_data: DataSetAttributes::new(),
@@ -46,11 +48,14 @@ impl ExplicitStructuredGrid {
 
     /// Create from dimensions and points.
     pub fn from_points(dims: [usize; 3], points: Points<f64>) -> Result<Self, VtkError> {
-        let expected = dims[0] * dims[1] * dims[2];
+        validate_dimensions(dims)?;
+        let expected = checked_num_points(dims)?;
         if points.len() != expected {
             return Err(VtkError::InvalidData(format!(
                 "expected {} points for {:?} grid, got {}",
-                expected, dims, points.len()
+                expected,
+                dims,
+                points.len()
             )));
         }
         let mut grid = Self::new(dims);
@@ -65,14 +70,12 @@ impl ExplicitStructuredGrid {
 
     /// Number of points.
     pub fn num_points(&self) -> usize {
-        self.dimensions[0] * self.dimensions[1] * self.dimensions[2]
+        checked_num_points(self.dimensions).expect("validated dimensions overflowed")
     }
 
     /// Number of cells (including blanked).
     pub fn num_cells(&self) -> usize {
-        (self.dimensions[0].saturating_sub(1))
-            * (self.dimensions[1].saturating_sub(1))
-            * (self.dimensions[2].saturating_sub(1))
+        checked_num_cells(self.dimensions).expect("validated dimensions overflowed")
     }
 
     /// Number of visible (non-blanked) cells.
@@ -82,24 +85,22 @@ impl ExplicitStructuredGrid {
 
     /// Blank (hide) a cell by its structured index (i, j, k).
     pub fn blank_cell(&mut self, i: usize, j: usize, k: usize) {
-        let idx = self.cell_index(i, j, k);
-        if idx < self.cell_visibility.len() {
+        if let Some(idx) = self.checked_cell_index(i, j, k) {
             self.cell_visibility[idx] = false;
         }
     }
 
     /// Unblank (show) a cell.
     pub fn unblank_cell(&mut self, i: usize, j: usize, k: usize) {
-        let idx = self.cell_index(i, j, k);
-        if idx < self.cell_visibility.len() {
+        if let Some(idx) = self.checked_cell_index(i, j, k) {
             self.cell_visibility[idx] = true;
         }
     }
 
     /// Check if a cell is visible.
     pub fn is_cell_visible(&self, i: usize, j: usize, k: usize) -> bool {
-        let idx = self.cell_index(i, j, k);
-        idx < self.cell_visibility.len() && self.cell_visibility[idx]
+        self.checked_cell_index(i, j, k)
+            .is_some_and(|idx| self.cell_visibility[idx])
     }
 
     /// Get cell visibility array.
@@ -107,13 +108,74 @@ impl ExplicitStructuredGrid {
         &self.cell_visibility
     }
 
+    /// Get the explicit connectivity array.
+    pub fn cell_points(&self) -> &[[usize; 8]] {
+        &self.cell_points
+    }
+
+    /// Replace all explicit cell connectivity.
+    pub fn set_cell_points(&mut self, cell_points: Vec<[usize; 8]>) -> Result<(), VtkError> {
+        if cell_points.len() != self.num_cells() {
+            return Err(VtkError::dim_mismatch(
+                self.num_cells().to_string(),
+                cell_points.len().to_string(),
+            ));
+        }
+        validate_cell_points(&cell_points, self.num_points())?;
+        self.cell_points = cell_points;
+        Ok(())
+    }
+
+    /// Set the 8 point ids for one cell by its structured index (i, j, k).
+    pub fn set_cell_point_ids(
+        &mut self,
+        i: usize,
+        j: usize,
+        k: usize,
+        point_ids: [usize; 8],
+    ) -> Result<(), VtkError> {
+        let idx = self.checked_cell_index(i, j, k).ok_or_else(|| {
+            VtkError::index_oob(self.linear_cell_offset(i, j, k), self.num_cells())
+        })?;
+        validate_cell_points(&[point_ids], self.num_points())?;
+        self.cell_points[idx] = point_ids;
+        Ok(())
+    }
+
     /// Set cell visibility array.
-    pub fn set_cell_visibility(&mut self, vis: Vec<bool>) {
+    pub fn set_cell_visibility(&mut self, vis: Vec<bool>) -> Result<(), VtkError> {
+        if vis.len() != self.num_cells() {
+            return Err(VtkError::dim_mismatch(
+                self.num_cells().to_string(),
+                vis.len().to_string(),
+            ));
+        }
         self.cell_visibility = vis;
+        Ok(())
+    }
+
+    fn checked_cell_index(&self, i: usize, j: usize, k: usize) -> Option<usize> {
+        let ni = self.dimensions[0].saturating_sub(1);
+        let nj = self.dimensions[1].saturating_sub(1);
+        let nk = self.dimensions[2].saturating_sub(1);
+        (i < ni && j < nj && k < nk).then(|| k * ni * nj + j * ni + i)
+    }
+
+    fn linear_cell_offset(&self, i: usize, j: usize, k: usize) -> usize {
+        let ni = self.dimensions[0].saturating_sub(1);
+        let nj = self.dimensions[1].saturating_sub(1);
+        k.saturating_mul(ni)
+            .saturating_mul(nj)
+            .saturating_add(j.saturating_mul(ni))
+            .saturating_add(i)
     }
 
     /// Convert structured cell (i,j,k) to flat cell index.
     pub fn cell_index(&self, i: usize, j: usize, k: usize) -> usize {
+        assert!(
+            self.checked_cell_index(i, j, k).is_some(),
+            "cell index out of range"
+        );
         let ni = self.dimensions[0].saturating_sub(1);
         let nj = self.dimensions[1].saturating_sub(1);
         k * ni * nj + j * ni + i
@@ -121,6 +183,10 @@ impl ExplicitStructuredGrid {
 
     /// Convert structured point (i,j,k) to flat point index.
     pub fn point_index(&self, i: usize, j: usize, k: usize) -> usize {
+        assert!(
+            i < self.dimensions[0] && j < self.dimensions[1] && k < self.dimensions[2],
+            "point index out of range"
+        );
         let ni = self.dimensions[0];
         let nj = self.dimensions[1];
         k * ni * nj + j * ni + i
@@ -128,16 +194,10 @@ impl ExplicitStructuredGrid {
 
     /// Get the 8 point indices for a hexahedral cell at (i,j,k).
     pub fn cell_point_ids(&self, i: usize, j: usize, k: usize) -> [usize; 8] {
-        [
-            self.point_index(i, j, k),
-            self.point_index(i + 1, j, k),
-            self.point_index(i + 1, j + 1, k),
-            self.point_index(i, j + 1, k),
-            self.point_index(i, j, k + 1),
-            self.point_index(i + 1, j, k + 1),
-            self.point_index(i + 1, j + 1, k + 1),
-            self.point_index(i, j + 1, k + 1),
-        ]
+        let idx = self
+            .checked_cell_index(i, j, k)
+            .expect("cell index out of range");
+        self.cell_points[idx]
     }
 
     /// Compute axis-aligned bounding box.
@@ -187,6 +247,44 @@ impl ExplicitStructuredGrid {
     }
 }
 
+fn validate_dimensions(dims: [usize; 3]) -> Result<(), VtkError> {
+    if dims.iter().all(|&d| d >= 2) {
+        Ok(())
+    } else {
+        Err(VtkError::InvalidData(format!(
+            "explicit structured grid dimensions must all be >= 2, got {dims:?}"
+        )))
+    }
+}
+
+fn checked_num_points(dims: [usize; 3]) -> Result<usize, VtkError> {
+    dims[0]
+        .checked_mul(dims[1])
+        .and_then(|n| n.checked_mul(dims[2]))
+        .ok_or_else(|| VtkError::InvalidData(format!("grid dimensions too large: {dims:?}")))
+}
+
+fn checked_num_cells(dims: [usize; 3]) -> Result<usize, VtkError> {
+    dims[0]
+        .checked_sub(1)
+        .and_then(|ni| dims[1].checked_sub(1).and_then(|nj| ni.checked_mul(nj)))
+        .and_then(|n| dims[2].checked_sub(1).and_then(|nk| n.checked_mul(nk)))
+        .ok_or_else(|| VtkError::InvalidData(format!("grid dimensions too large: {dims:?}")))
+}
+
+fn default_cell_points(dims: [usize; 3]) -> Vec<[usize; 8]> {
+    vec![[0; 8]; checked_num_cells(dims).unwrap_or(0)]
+}
+
+fn validate_cell_points(cell_points: &[[usize; 8]], num_points: usize) -> Result<(), VtkError> {
+    for point_id in cell_points.iter().flatten() {
+        if *point_id >= num_points {
+            return Err(VtkError::index_oob(*point_id, num_points));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,11 +324,45 @@ mod tests {
     }
 
     #[test]
+    fn out_of_range_blanking_does_not_alias_other_cells() {
+        let mut g = ExplicitStructuredGrid::new([3, 3, 3]);
+        g.blank_cell(2, 0, 0);
+        assert_eq!(g.num_visible_cells(), 8);
+        assert!(g.is_cell_visible(0, 1, 0));
+        assert!(!g.is_cell_visible(2, 0, 0));
+    }
+
+    #[test]
+    fn set_cell_visibility_rejects_wrong_length() {
+        let mut g = ExplicitStructuredGrid::new([3, 3, 3]);
+        assert!(g.set_cell_visibility(vec![true; 7]).is_err());
+    }
+
+    #[test]
     fn cell_point_ids() {
         let g = ExplicitStructuredGrid::new([3, 3, 2]);
         let ids = g.cell_point_ids(0, 0, 0);
         assert_eq!(ids[0], 0);
-        assert_eq!(ids[1], 1);
+        assert_eq!(ids[1], 0);
+        assert_eq!(ids, [0; 8]);
+    }
+
+    #[test]
+    fn cell_point_ids_are_explicit_connectivity() {
+        let mut g = ExplicitStructuredGrid::new([2, 2, 2]);
+        let ids = [7, 6, 5, 4, 3, 2, 1, 0];
+        g.set_cell_point_ids(0, 0, 0, ids).unwrap();
+        assert_eq!(g.cell_point_ids(0, 0, 0), ids);
+        assert_eq!(g.cell_points(), &[ids]);
+    }
+
+    #[test]
+    fn rejects_invalid_explicit_connectivity() {
+        let mut g = ExplicitStructuredGrid::new([2, 2, 2]);
+        assert!(g
+            .set_cell_point_ids(0, 0, 0, [0, 1, 2, 3, 4, 5, 6, 8])
+            .is_err());
+        assert!(g.set_cell_points(vec![[0; 8], [0; 8]]).is_err());
     }
 
     #[test]
@@ -238,6 +370,18 @@ mod tests {
         let pts = Points::new();
         let result = ExplicitStructuredGrid::from_points([3, 3, 3], pts);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn invalid_dimensions_rejected() {
+        assert!(ExplicitStructuredGrid::from_points([3, 3, 1], Points::new()).is_err());
+    }
+
+    #[test]
+    #[should_panic(expected = "cell index out of range")]
+    fn cell_index_rejects_out_of_range() {
+        let g = ExplicitStructuredGrid::new([3, 3, 3]);
+        g.cell_index(2, 0, 0);
     }
 
     #[test]

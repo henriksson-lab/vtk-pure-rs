@@ -2,7 +2,7 @@
 //!
 //! Partitions meshes and grids into pieces for MPI distribution.
 
-use crate::data::{AnyDataArray, DataArray, PolyData, ImageData};
+use crate::data::{AnyDataArray, DataArray, ImageData, PolyData};
 
 /// A partition of a distributed dataset.
 #[derive(Debug, Clone)]
@@ -41,7 +41,9 @@ pub fn decompose_poly_data(input: &PolyData, num_partitions: usize) -> Vec<Parti
         let mut cz = 0.0;
         for &vid in cell {
             let p = input.points.get(vid as usize);
-            cx += p[0]; cy += p[1]; cz += p[2];
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
         }
         let n = cell.len() as f64;
         centroids.push((ci, [cx / n, cy / n, cz / n]));
@@ -52,16 +54,28 @@ pub fn decompose_poly_data(input: &PolyData, num_partitions: usize) -> Vec<Parti
     let (mut ymin, mut ymax) = (f64::MAX, f64::MIN);
     let (mut zmin, mut zmax) = (f64::MAX, f64::MIN);
     for (_, c) in &centroids {
-        xmin = xmin.min(c[0]); xmax = xmax.max(c[0]);
-        ymin = ymin.min(c[1]); ymax = ymax.max(c[1]);
-        zmin = zmin.min(c[2]); zmax = zmax.max(c[2]);
+        xmin = xmin.min(c[0]);
+        xmax = xmax.max(c[0]);
+        ymin = ymin.min(c[1]);
+        ymax = ymax.max(c[1]);
+        zmin = zmin.min(c[2]);
+        zmax = zmax.max(c[2]);
     }
     let ranges = [xmax - xmin, ymax - ymin, zmax - zmin];
-    let axis = if ranges[0] >= ranges[1] && ranges[0] >= ranges[2] { 0 }
-        else if ranges[1] >= ranges[2] { 1 } else { 2 };
+    let axis = if ranges[0] >= ranges[1] && ranges[0] >= ranges[2] {
+        0
+    } else if ranges[1] >= ranges[2] {
+        1
+    } else {
+        2
+    };
 
     // Sort by chosen axis
-    centroids.sort_by(|a, b| a.1[axis].partial_cmp(&b.1[axis]).unwrap_or(std::cmp::Ordering::Equal));
+    centroids.sort_by(|a, b| {
+        a.1[axis]
+            .partial_cmp(&b.1[axis])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Split into num_partitions groups
     let chunk_size = (nc + num_partitions - 1) / num_partitions;
@@ -92,12 +106,18 @@ pub fn decompose_image_data(input: &ImageData, num_partitions: usize) -> Vec<Ima
     for p in 0..num_partitions {
         let z_start = p * slices_per_part;
         let z_end = ((p + 1) * slices_per_part).min(nz);
-        if z_start >= nz { break; }
+        if z_start >= nz {
+            break;
+        }
         let local_nz = z_end - z_start;
 
         let mut slab = ImageData::with_dimensions(dims[0], dims[1], local_nz);
         slab.set_spacing(spacing);
-        slab.set_origin([origin[0], origin[1], origin[2] + z_start as f64 * spacing[2]]);
+        slab.set_origin([
+            origin[0],
+            origin[1],
+            origin[2] + z_start as f64 * spacing[2],
+        ]);
 
         // Copy scalar data for this slab
         if let Some(arr) = input.point_data().get_array_by_index(0) {
@@ -112,9 +132,8 @@ pub fn decompose_image_data(input: &ImageData, num_partitions: usize) -> Vec<Ima
                     data.extend_from_slice(&vals);
                 }
             }
-            slab.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec(arr.name(), data, nc),
-            ));
+            slab.point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(arr.name(), data, nc)));
         }
 
         parts.push(slab);
@@ -162,9 +181,15 @@ mod tests {
     #[test]
     fn decompose_into_two() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],
-                 [2.0,0.0,0.0],[3.0,0.0,0.0],[2.0,1.0,0.0]],
-            vec![[0,1,2],[3,4,5]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [2.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
         );
         let parts = decompose_poly_data(&pd, 2);
         assert_eq!(parts.len(), 2);
@@ -177,8 +202,8 @@ mod tests {
     #[test]
     fn decompose_single() {
         let pd = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let parts = decompose_poly_data(&pd, 1);
         assert_eq!(parts.len(), 1);
@@ -189,7 +214,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(4, 4, 8);
         img.set_spacing([1.0, 1.0, 1.0]);
         let vals = vec![0.0f64; 4 * 4 * 8];
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("s", vals, 1)));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", vals, 1)));
 
         let slabs = decompose_image_data(&img, 4);
         assert_eq!(slabs.len(), 4);

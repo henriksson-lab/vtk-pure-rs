@@ -6,7 +6,9 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn surface_of_revolution(profile: &[[f64; 2]], resolution: usize) -> PolyData {
     let res = resolution.max(3);
     let n = profile.len();
-    if n < 2 { return PolyData::new(); }
+    if n < 2 {
+        return PolyData::new();
+    }
 
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -38,21 +40,29 @@ pub fn surface_of_revolution(profile: &[[f64; 2]], resolution: usize) -> PolyDat
 }
 
 /// Create a vase/goblet shape from a simple profile.
-pub fn vase(height: f64, base_radius: f64, rim_radius: f64, waist_radius: f64, resolution: usize) -> PolyData {
+pub fn vase(
+    height: f64,
+    base_radius: f64,
+    rim_radius: f64,
+    waist_radius: f64,
+    resolution: usize,
+) -> PolyData {
     let steps = 20;
-    let profile: Vec<[f64; 2]> = (0..=steps).map(|i| {
-        let t = i as f64 / steps as f64;
-        let z = t * height;
-        let r = if t < 0.3 {
-            base_radius + (waist_radius - base_radius) * (t / 0.3)
-        } else if t < 0.7 {
-            let s = (t - 0.3) / 0.4;
-            waist_radius + (rim_radius - waist_radius) * s * s
-        } else {
-            rim_radius
-        };
-        [r, z]
-    }).collect();
+    let profile: Vec<[f64; 2]> = (0..=steps)
+        .map(|i| {
+            let t = i as f64 / steps as f64;
+            let z = t * height;
+            let r = if t < 0.3 {
+                base_radius + (waist_radius - base_radius) * (t / 0.3)
+            } else if t < 0.7 {
+                let s = (t - 0.3) / 0.4;
+                waist_radius + (rim_radius - waist_radius) * s * s
+            } else {
+                rim_radius
+            };
+            [r, z]
+        })
+        .collect();
     surface_of_revolution(&profile, resolution)
 }
 

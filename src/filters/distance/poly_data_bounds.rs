@@ -18,9 +18,12 @@ pub fn add_coordinate_arrays(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("X", xs, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Y", ys, 1)));
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Z", zs, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("X", xs, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Y", ys, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Z", zs, 1)));
     pd
 }
 
@@ -36,13 +39,16 @@ pub fn distance_to_point(input: &PolyData, reference: [f64; 3]) -> PolyData {
         let dx = p[0] - reference[0];
         let dy = p[1] - reference[1];
         let dz = p[2] - reference[2];
-        dists.push((dx*dx + dy*dy + dz*dz).sqrt());
+        dists.push((dx * dx + dy * dy + dz * dz).sqrt());
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("DistanceTo", dists, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DistanceTo",
+            dists,
+            1,
+        )));
     pd
 }
 
@@ -61,9 +67,12 @@ mod tests {
         let y = result.point_data().get_array("Y").unwrap();
         let z = result.point_data().get_array("Z").unwrap();
         let mut buf = [0.0f64];
-        x.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 1.0);
-        y.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 2.0);
-        z.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 6.0);
+        x.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
+        y.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 2.0);
+        z.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 6.0);
     }
 
     #[test]

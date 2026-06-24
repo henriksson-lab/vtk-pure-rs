@@ -37,9 +37,12 @@ pub fn point_to_cell_average(input: &PolyData, array_name: &str) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, cell_values, num_comp),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name,
+            cell_values,
+            num_comp,
+        )));
     pd
 }
 
@@ -55,9 +58,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("height", vec![3.0, 6.0, 9.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "height",
+                vec![3.0, 6.0, 9.0],
+                1,
+            )));
 
         let result = point_to_cell_average(&pd, "height");
         let arr = result.cell_data().get_array("height").unwrap();
@@ -74,8 +80,8 @@ mod tests {
         pd.points.push([0.0, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
         // 3-component vector data
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec(
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
                 "vel",
                 vec![
                     1.0, 0.0, 0.0, // pt0
@@ -83,8 +89,7 @@ mod tests {
                     0.0, 0.0, 3.0, // pt2
                 ],
                 3,
-            ),
-        ));
+            )));
 
         let result = point_to_cell_average(&pd, "vel");
         let arr = result.cell_data().get_array("vel").unwrap();

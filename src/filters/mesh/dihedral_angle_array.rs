@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Compute dihedral angles for interior edges of a triangle mesh.
 ///
@@ -55,9 +55,12 @@ pub fn compute_dihedral_angles(input: &PolyData) -> PolyData {
     let mut pd = PolyData::default();
     pd.points = points;
     pd.lines = lines;
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("DihedralAngle", angles, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DihedralAngle",
+            angles,
+            1,
+        )));
     pd
 }
 

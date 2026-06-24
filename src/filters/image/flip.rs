@@ -3,7 +3,13 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Flip an ImageData along one or more axes.
 ///
 /// Reverses the order of voxels along the specified axes.
-pub fn image_flip(input: &ImageData, scalars: &str, flip_x: bool, flip_y: bool, flip_z: bool) -> ImageData {
+pub fn image_flip(
+    input: &ImageData,
+    scalars: &str,
+    flip_x: bool,
+    flip_y: bool,
+    flip_z: bool,
+) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -37,7 +43,11 @@ pub fn image_flip(input: &ImageData, scalars: &str, flip_x: bool, flip_y: bool, 
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values.clone(), 1)));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -53,37 +63,50 @@ mod tests {
     #[test]
     fn flip_x() {
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0, 2.0, 3.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )));
         let result = image_flip(&img, "v", true, false, false);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 3.0);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 3.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 
     #[test]
     fn flip_y() {
         let mut img = ImageData::with_dimensions(1, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![10.0, 20.0, 30.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
         let result = image_flip(&img, "v", false, true, false);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 30.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 30.0);
     }
 
     #[test]
     fn no_flip() {
         let mut img = ImageData::with_dimensions(2, 2, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0, 2.0, 3.0, 4.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
         let result = image_flip(&img, "v", false, false, false);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

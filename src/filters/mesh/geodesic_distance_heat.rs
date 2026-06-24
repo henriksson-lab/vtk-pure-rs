@@ -13,11 +13,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 ///
 /// The result is an approximate geodesic distance stored as "GeodesicDistance"
 /// point data on the returned PolyData.
-pub fn geodesic_distance_heat(
-    input: &PolyData,
-    source: usize,
-    heat_time: f64,
-) -> PolyData {
+pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -> PolyData {
     let n = input.points.len();
     let mut output = input.clone();
     if n == 0 || source >= n {
@@ -44,10 +40,9 @@ pub fn geodesic_distance_heat(
         for &nb in nbrs {
             if nb > i {
                 let pj = input.points.get(nb);
-                let d: f64 = ((pi[0] - pj[0]).powi(2)
-                    + (pi[1] - pj[1]).powi(2)
-                    + (pi[2] - pj[2]).powi(2))
-                .sqrt();
+                let d: f64 =
+                    ((pi[0] - pj[0]).powi(2) + (pi[1] - pj[1]).powi(2) + (pi[2] - pj[2]).powi(2))
+                        .sqrt();
                 avg_edge += d;
                 edge_count += 1.0;
             }
@@ -156,11 +151,7 @@ pub fn geodesic_distance_heat(
         if mag < 1e-15 {
             face_grad.push([0.0, 0.0, 0.0]);
         } else {
-            face_grad.push([
-                -grad[0] / mag,
-                -grad[1] / mag,
-                -grad[2] / mag,
-            ]);
+            face_grad.push([-grad[0] / mag, -grad[1] / mag, -grad[2] / mag]);
         }
     }
 

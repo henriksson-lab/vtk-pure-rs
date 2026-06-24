@@ -21,7 +21,9 @@ pub fn poisson_disk_sample(input: &PolyData, radius: f64, seed: u64) -> PolyData
     let mut rng_state = seed.wrapping_add(1);
     // Fisher-Yates shuffle
     for i in (1..n).rev() {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let j = (rng_state >> 33) as usize % (i + 1);
         indices.swap(i, j);
     }
@@ -83,7 +85,11 @@ mod tests {
                 let a = result.points.get(i);
                 let b = result.points.get(j);
                 let d2 = (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2);
-                assert!(d2 >= 0.25 * 0.25 - 1e-10, "points too close: d={}", d2.sqrt());
+                assert!(
+                    d2 >= 0.25 * 0.25 - 1e-10,
+                    "points too close: d={}",
+                    d2.sqrt()
+                );
             }
         }
     }

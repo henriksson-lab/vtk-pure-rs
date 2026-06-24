@@ -55,7 +55,11 @@ impl RayTracer {
         // Extract all triangles from scene actors
         let triangles = extract_triangles(scene);
 
-        let cam_pos = [scene.camera.position.x, scene.camera.position.y, scene.camera.position.z];
+        let cam_pos = [
+            scene.camera.position.x,
+            scene.camera.position.y,
+            scene.camera.position.z,
+        ];
         let cam_fwd = scene.camera.direction();
         let cam_up = scene.camera.view_up.normalize();
         let cam_right = cam_fwd.cross(cam_up).normalize();
@@ -79,7 +83,10 @@ impl RayTracer {
                 ];
                 let dir = normalize(dir);
 
-                let ray = Ray { origin: cam_pos, direction: dir };
+                let ray = Ray {
+                    origin: cam_pos,
+                    direction: dir,
+                };
                 let color = trace_ray(&ray, &triangles, &scene.lights, &scene.background, 1);
 
                 let idx = (y * w + x) * 4;
@@ -94,7 +101,13 @@ impl RayTracer {
     }
 }
 
-fn trace_ray(ray: &Ray, triangles: &[Triangle], lights: &[Light], bg: &[f32; 4], bounces: u32) -> [f32; 3] {
+fn trace_ray(
+    ray: &Ray,
+    triangles: &[Triangle],
+    lights: &[Light],
+    bg: &[f32; 4],
+    bounces: u32,
+) -> [f32; 3] {
     if let Some(hit) = closest_hit(ray, triangles) {
         let mut color = [0.0f32; 3];
 
@@ -109,7 +122,10 @@ fn trace_ray(ray: &Ray, triangles: &[Triangle], lights: &[Light], bg: &[f32; 4],
                     let light_dir = normalize(neg(light.direction));
                     // Shadow test
                     let shadow_origin = offset_point(hit.point, hit.normal);
-                    let shadow_ray = Ray { origin: shadow_origin, direction: light_dir };
+                    let shadow_ray = Ray {
+                        origin: shadow_origin,
+                        direction: light_dir,
+                    };
                     if closest_hit(&shadow_ray, triangles).is_some() {
                         continue;
                     }
@@ -135,7 +151,10 @@ fn trace_ray(ray: &Ray, triangles: &[Triangle], lights: &[Light], bg: &[f32; 4],
                     let light_dir = scale(to_light, 1.0 / dist);
 
                     let shadow_origin = offset_point(hit.point, hit.normal);
-                    let shadow_ray = Ray { origin: shadow_origin, direction: light_dir };
+                    let shadow_ray = Ray {
+                        origin: shadow_origin,
+                        direction: light_dir,
+                    };
                     if let Some(sh) = closest_hit(&shadow_ray, triangles) {
                         if sh.t < dist {
                             continue;
@@ -144,9 +163,12 @@ fn trace_ray(ray: &Ray, triangles: &[Triangle], lights: &[Light], bg: &[f32; 4],
 
                     let ndl = dot(hit.normal, light_dir).max(0.0) as f32;
                     let atten = (1.0 / (dist * dist)) as f32;
-                    color[0] += hit.color[0] * light.color[0] * ndl * atten * light.intensity as f32;
-                    color[1] += hit.color[1] * light.color[1] * ndl * atten * light.intensity as f32;
-                    color[2] += hit.color[2] * light.color[2] * ndl * atten * light.intensity as f32;
+                    color[0] +=
+                        hit.color[0] * light.color[0] * ndl * atten * light.intensity as f32;
+                    color[1] +=
+                        hit.color[1] * light.color[1] * ndl * atten * light.intensity as f32;
+                    color[2] +=
+                        hit.color[2] * light.color[2] * ndl * atten * light.intensity as f32;
                 }
                 _ => {}
             }
@@ -156,7 +178,10 @@ fn trace_ray(ray: &Ray, triangles: &[Triangle], lights: &[Light], bg: &[f32; 4],
         if bounces > 0 && hit.specular > 0.01 {
             let refl_dir = reflect(ray.direction, hit.normal);
             let refl_origin = offset_point(hit.point, hit.normal);
-            let refl_ray = Ray { origin: refl_origin, direction: refl_dir };
+            let refl_ray = Ray {
+                origin: refl_origin,
+                direction: refl_dir,
+            };
             let refl_color = trace_ray(&refl_ray, triangles, lights, bg, bounces - 1);
             let s = hit.specular as f32 * 0.3;
             color[0] += refl_color[0] * s;
@@ -268,7 +293,13 @@ fn extract_triangles(scene: &Scene) -> Vec<Triangle> {
                     let normal = normalize(cross(edge1, edge2));
 
                     triangles.push(Triangle {
-                        v0, v1, v2, normal, color, specular, specular_power,
+                        v0,
+                        v1,
+                        v2,
+                        normal,
+                        color,
+                        specular,
+                        specular_power,
                     });
                 }
             }
@@ -283,26 +314,32 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0]-b[0], a[1]-b[1], a[2]-b[2]]
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0]+b[0], a[1]+b[1], a[2]+b[2]]
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 fn neg(a: [f64; 3]) -> [f64; 3] {
     [-a[0], -a[1], -a[2]]
 }
 fn scale(a: [f64; 3], s: f64) -> [f64; 3] {
-    [a[0]*s, a[1]*s, a[2]*s]
+    [a[0] * s, a[1] * s, a[2] * s]
 }
 fn length(a: [f64; 3]) -> f64 {
     dot(a, a).sqrt()
 }
 fn normalize(a: [f64; 3]) -> [f64; 3] {
     let l = length(a);
-    if l < 1e-12 { return [0.0, 0.0, 1.0]; }
+    if l < 1e-12 {
+        return [0.0, 0.0, 1.0];
+    }
     scale(a, 1.0 / l)
 }
 fn reflect(v: [f64; 3], n: [f64; 3]) -> [f64; 3] {
@@ -324,8 +361,7 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        let mut scene = Scene::new()
-            .with_actor(Actor::new(mesh).with_color(0.8, 0.2, 0.2));
+        let mut scene = Scene::new().with_actor(Actor::new(mesh).with_color(0.8, 0.2, 0.2));
         scene.camera.position = glam::DVec3::new(0.5, 0.4, 2.0);
         scene.camera.focal_point = glam::DVec3::new(0.5, 0.4, 0.0);
         scene
@@ -339,7 +375,9 @@ mod tests {
         assert_eq!(pixels.len(), 16 * 16 * 4);
 
         // Check that at least some pixels are non-black (triangle is visible)
-        let non_black = pixels.chunks(4).any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0);
+        let non_black = pixels
+            .chunks(4)
+            .any(|px| px[0] > 0 || px[1] > 0 || px[2] > 0);
         assert!(non_black, "Should have non-black pixels from the triangle");
     }
 
@@ -357,6 +395,9 @@ mod tests {
         let g = pixels[idx + 1];
         let b = pixels[idx + 2];
         // The triangle is red-ish, so R should be > 0
-        assert!(r > 0 || g > 0 || b > 0, "Center pixel should be non-black (got {r},{g},{b})");
+        assert!(
+            r > 0 || g > 0 || b > 0,
+            "Center pixel should be non-black (got {r},{g},{b})"
+        );
     }
 }

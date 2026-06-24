@@ -32,10 +32,7 @@ pub fn depth_peel_layers(
 ///
 /// Returns a new PolyData with faces reordered front-to-back relative to
 /// the view direction, with a "Depth" cell data array.
-pub fn depth_sort_mesh(
-    mesh: &PolyData,
-    view_direction: [f64; 3],
-) -> PolyData {
+pub fn depth_sort_mesh(mesh: &PolyData, view_direction: [f64; 3]) -> PolyData {
     let nc = mesh.polys.num_cells();
     if nc == 0 {
         return mesh.clone();
@@ -79,9 +76,11 @@ pub fn depth_sort_mesh(
     let mut result = PolyData::new();
     result.points = Points::from_flat_vec(pts_flat);
     result.polys = CellArray::from_raw(new_off, new_conn);
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Depth", depth_arr, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Depth", depth_arr, 1,
+        )));
     result
 }
 
@@ -97,7 +96,9 @@ fn compute_cell_depths(mesh: &PolyData, view_direction: [f64; 3]) -> Vec<(usize,
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
         let n = (end - start) as f64;
-        if n < 1.0 { continue; }
+        if n < 1.0 {
+            continue;
+        }
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
@@ -155,8 +156,12 @@ mod tests {
     fn make_two_planes() -> PolyData {
         PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
-                [0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [0.5, 1.0, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [0.5, 1.0, 1.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         )

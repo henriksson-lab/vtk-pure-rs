@@ -9,9 +9,7 @@ pub fn translate_tcoords(input: &PolyData, du: f64, dv: f64) -> PolyData {
 
 /// Scale texture coordinates around (0.5, 0.5).
 pub fn scale_tcoords(input: &PolyData, su: f64, sv: f64) -> PolyData {
-    transform_tcoords_impl(input, |u, v| {
-        (0.5 + (u - 0.5) * su, 0.5 + (v - 0.5) * sv)
-    })
+    transform_tcoords_impl(input, |u, v| (0.5 + (u - 0.5) * su, 0.5 + (v - 0.5) * sv))
 }
 
 /// Rotate texture coordinates around (0.5, 0.5) by angle in radians.
@@ -68,9 +66,11 @@ fn transform_tcoords_impl(input: &PolyData, f: impl Fn(f64, f64) -> (f64, f64)) 
     }
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("TCoords", new_data, 2),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", new_data, 2,
+        )));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
@@ -84,9 +84,12 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("TCoords", vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0], 2),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "TCoords",
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                2,
+            )));
         mesh.point_data_mut().set_active_tcoords("TCoords");
         mesh
     }
@@ -137,9 +140,12 @@ mod tests {
     fn wrap() {
         let mut mesh = make_mesh_with_tcoords();
         // Set out-of-range tcoords
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("TCoords", vec![-0.5, 1.5, 2.3, -0.2, 0.5, 0.5], 2),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "TCoords",
+                vec![-0.5, 1.5, 2.3, -0.2, 0.5, 0.5],
+                2,
+            )));
         mesh.point_data_mut().set_active_tcoords("TCoords");
         let result = wrap_tcoords(&mesh);
         let tc = result.point_data().tcoords().unwrap();

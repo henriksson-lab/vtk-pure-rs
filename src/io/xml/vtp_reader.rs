@@ -1,7 +1,7 @@
 use std::io::BufRead;
 use std::path::Path;
 
-use crate::data::{AnyDataArray, CellArray, DataArray, PolyData, Points};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 use crate::types::VtkError;
 
 use crate::io::xml::binary;
@@ -33,31 +33,61 @@ impl VtpReader {
 
         // Extract Points
         if let Some(points_section) = extract_section(&content, "Points") {
-            pd.points = parse_points_section(&points_section, appended_raw.as_deref(), appended_b64.as_deref())?;
+            pd.points = parse_points_section(
+                &points_section,
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         // Extract cell sections
         if let Some(polys_section) = extract_section(&content, "Polys") {
-            pd.polys = parse_cell_section(&polys_section, appended_raw.as_deref(), appended_b64.as_deref())?;
+            pd.polys = parse_cell_section(
+                &polys_section,
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
         if let Some(lines_section) = extract_section(&content, "Lines") {
-            pd.lines = parse_cell_section(&lines_section, appended_raw.as_deref(), appended_b64.as_deref())?;
+            pd.lines = parse_cell_section(
+                &lines_section,
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
         if let Some(verts_section) = extract_section(&content, "Verts") {
-            pd.verts = parse_cell_section(&verts_section, appended_raw.as_deref(), appended_b64.as_deref())?;
+            pd.verts = parse_cell_section(
+                &verts_section,
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
         if let Some(strips_section) = extract_section(&content, "Strips") {
-            pd.strips = parse_cell_section(&strips_section, appended_raw.as_deref(), appended_b64.as_deref())?;
+            pd.strips = parse_cell_section(
+                &strips_section,
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         // Extract PointData
         if let Some(pd_section) = extract_section(&content, "PointData") {
-            parse_attribute_arrays(&pd_section, pd.point_data_mut(), appended_raw.as_deref(), appended_b64.as_deref())?;
+            parse_attribute_arrays(
+                &pd_section,
+                pd.point_data_mut(),
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         // Extract CellData
         if let Some(cd_section) = extract_section(&content, "CellData") {
-            parse_attribute_arrays(&cd_section, pd.cell_data_mut(), appended_raw.as_deref(), appended_b64.as_deref())?;
+            parse_attribute_arrays(
+                &cd_section,
+                pd.cell_data_mut(),
+                appended_raw.as_deref(),
+                appended_b64.as_deref(),
+            )?;
         }
 
         Ok(pd)
@@ -159,15 +189,18 @@ fn parse_points_section(
     appended_b64: Option<&str>,
 ) -> Result<Points<f64>, VtkError> {
     // Find the DataArray tag in the section
-    let da_start = section.find("<DataArray")
+    let da_start = section
+        .find("<DataArray")
         .ok_or_else(|| VtkError::Parse("no DataArray in Points".into()))?;
-    let tag_end = section[da_start..].find('>')
+    let tag_end = section[da_start..]
+        .find('>')
         .ok_or_else(|| VtkError::Parse("unclosed DataArray tag".into()))?;
     let tag = &section[da_start..da_start + tag_end + 1];
     let type_str = extract_attr(tag, "type").unwrap_or_else(|| "Float64".to_string());
 
     let content_start = da_start + tag_end + 1;
-    let content_end = section[content_start..].find("</DataArray>")
+    let content_end = section[content_start..]
+        .find("</DataArray>")
         .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
     let content = section[content_start..content_start + content_end].trim();
 
@@ -178,7 +211,8 @@ fn parse_points_section(
             data_array_to_points(&arr)
         }
         DataFormat::Appended(offset) => {
-            let arr = parse_from_appended(appended_raw, appended_b64, offset, "Points", &type_str, 3)?;
+            let arr =
+                parse_from_appended(appended_raw, appended_b64, offset, "Points", &type_str, 3)?;
             data_array_to_points(&arr)
         }
     }
@@ -235,15 +269,17 @@ fn parse_cell_section(
         let type_str = extract_attr(tag, "type").unwrap_or_else(|| "Int64".to_string());
 
         let values: Vec<i64> = match detect_format(tag) {
-            DataFormat::Ascii => {
-                content.split_whitespace().filter_map(|s| s.parse().ok()).collect()
-            }
+            DataFormat::Ascii => content
+                .split_whitespace()
+                .filter_map(|s| s.parse().ok())
+                .collect(),
             DataFormat::Binary => {
                 let arr = binary::parse_binary_data_array(content, &name, &type_str, 1)?;
                 any_data_array_to_i64(&arr)
             }
             DataFormat::Appended(offset) => {
-                let arr = parse_from_appended(appended_raw, appended_b64, offset, &name, &type_str, 1)?;
+                let arr =
+                    parse_from_appended(appended_raw, appended_b64, offset, &name, &type_str, 1)?;
                 any_data_array_to_i64(&arr)
             }
         };
@@ -299,7 +335,9 @@ pub(crate) fn parse_from_appended(
     if let Some(b64) = appended_b64 {
         return binary::parse_appended_base64_data_array(b64, offset, name, type_str, nc);
     }
-    Err(VtkError::Parse("appended format specified but no AppendedData section found".into()))
+    Err(VtkError::Parse(
+        "appended format specified but no AppendedData section found".into(),
+    ))
 }
 
 pub(crate) fn parse_attribute_arrays(
@@ -347,7 +385,12 @@ pub(crate) fn parse_attribute_arrays(
     Ok(())
 }
 
-pub(crate) fn parse_ascii_data_array(content: &str, name: &str, type_str: &str, nc: usize) -> AnyDataArray {
+pub(crate) fn parse_ascii_data_array(
+    content: &str,
+    name: &str,
+    type_str: &str,
+    nc: usize,
+) -> AnyDataArray {
     let values: Vec<f64> = content
         .split_whitespace()
         .filter_map(|s| s.parse().ok())
@@ -377,8 +420,8 @@ pub(crate) fn parse_ascii_data_array(content: &str, name: &str, type_str: &str, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::xml::VtpWriter;
     use crate::data::DataArray as DA;
+    use crate::io::xml::VtpWriter;
 
     #[test]
     fn roundtrip_vtp_triangle() {
@@ -509,10 +552,16 @@ mod tests {
             let triple = (b0 << 16) | (b1 << 8) | b2;
             result.push(CHARS[((triple >> 18) & 0x3F) as usize] as char);
             result.push(CHARS[((triple >> 12) & 0x3F) as usize] as char);
-            if chunk.len() > 1 { result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char); }
-            else { result.push('='); }
-            if chunk.len() > 2 { result.push(CHARS[(triple & 0x3F) as usize] as char); }
-            else { result.push('='); }
+            if chunk.len() > 1 {
+                result.push(CHARS[((triple >> 6) & 0x3F) as usize] as char);
+            } else {
+                result.push('=');
+            }
+            if chunk.len() > 2 {
+                result.push(CHARS[(triple & 0x3F) as usize] as char);
+            } else {
+                result.push('=');
+            }
         }
         result
     }

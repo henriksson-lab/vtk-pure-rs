@@ -3,9 +3,9 @@
 //! Reads block-structured AMR data from HDF5 files as used by
 //! BoxLib (AMReX) and Chombo frameworks.
 
-use std::path::Path;
 use crate::data::{AnyDataArray, DataArray, ImageData};
 use crate::types::VtkError;
+use std::path::Path;
 
 use crate::types::AmrLevelInfo;
 
@@ -26,14 +26,20 @@ pub struct AmrLevel {
 
 /// Read a BoxLib/AMReX plotfile from HDF5.
 pub fn read_amr(path: &Path) -> Result<AmrData, VtkError> {
-    let file = hdf5::File::open(path)
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))?;
+    let file = hdf5::File::open(path).map_err(|e| {
+        VtkError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{e}"),
+        ))
+    })?;
 
-    let num_levels = file.attr("num_levels")
+    let num_levels = file
+        .attr("num_levels")
         .and_then(|a| a.read_scalar::<i64>())
         .unwrap_or(1) as usize;
 
-    let num_components = file.attr("num_components")
+    let num_components = file
+        .attr("num_components")
         .and_then(|a| a.read_scalar::<i64>())
         .unwrap_or(1) as usize;
 
@@ -49,14 +55,17 @@ pub fn read_amr(path: &Path) -> Result<AmrData, VtkError> {
     let mut levels = Vec::with_capacity(num_levels);
 
     for lev in 0..num_levels {
-        let level_group = file.group(&format!("level_{lev}"))
+        let level_group = file
+            .group(&format!("level_{lev}"))
             .map_err(|e| VtkError::Parse(format!("level_{lev}: {e}")))?;
 
-        let ref_ratio = level_group.attr("ref_ratio")
+        let ref_ratio = level_group
+            .attr("ref_ratio")
             .and_then(|a| a.read_scalar::<i64>())
             .unwrap_or(2) as usize;
 
-        let dx: Vec<f64> = level_group.attr("dx")
+        let dx: Vec<f64> = level_group
+            .attr("dx")
             .and_then(|a| a.read_raw::<f64>())
             .unwrap_or_else(|_| vec![1.0; 3]);
         let dx_arr = [
@@ -73,7 +82,8 @@ pub fn read_amr(path: &Path) -> Result<AmrData, VtkError> {
         };
 
         // Read boxes (each box is stored as a dataset with box extent metadata)
-        let box_names: Vec<String> = level_group.member_names()
+        let box_names: Vec<String> = level_group
+            .member_names()
             .unwrap_or_default()
             .into_iter()
             .filter(|n| n.starts_with("data:"))
@@ -88,15 +98,15 @@ pub fn read_amr(path: &Path) -> Result<AmrData, VtkError> {
                     let ny = shape[1];
                     let nz = shape[2];
 
-                    let data: Vec<f64> = ds.read_raw()
+                    let data: Vec<f64> = ds
+                        .read_raw()
                         .map_err(|e| VtkError::Parse(format!("{bname}: {e}")))?;
 
                     let mut img = ImageData::with_dimensions(nx, ny, nz);
                     img.set_spacing(dx_arr);
                     if data.len() == nx * ny * nz {
-                        img.point_data_mut().add_array(AnyDataArray::F64(
-                            DataArray::from_vec("data", data, 1),
-                        ));
+                        img.point_data_mut()
+                            .add_array(AnyDataArray::F64(DataArray::from_vec("data", data, 1)));
                     }
                     boxes.push(img);
                 }
@@ -105,8 +115,15 @@ pub fn read_amr(path: &Path) -> Result<AmrData, VtkError> {
 
         let mut level_info = info;
         level_info.num_boxes = boxes.len();
-        levels.push(AmrLevel { info: level_info, boxes });
+        levels.push(AmrLevel {
+            info: level_info,
+            boxes,
+        });
     }
 
-    Ok(AmrData { levels, num_components, component_names })
+    Ok(AmrData {
+        levels,
+        num_components,
+        component_names,
+    })
 }

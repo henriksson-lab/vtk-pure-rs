@@ -10,10 +10,12 @@ pub fn rgb_to_grayscale(input: &ImageData, array_name: &str) -> ImageData {
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64; 3];
-    let data: Vec<f64> = (0..n).map(|i| {
-        arr.tuple_as_f64(i, &mut buf);
-        0.299 * buf[0] + 0.587 * buf[1] + 0.114 * buf[2]
-    }).collect();
+    let data: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            0.299 * buf[0] + 0.587 * buf[1] + 0.114 * buf[2]
+        })
+        .collect();
     let dims = input.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
@@ -77,12 +79,19 @@ pub fn hsv_to_rgb(input: &ImageData, array_name: &str) -> ImageData {
         let c = v * s;
         let x = c * (1.0 - ((h % 2.0) - 1.0).abs());
         let m = v - c;
-        let (r, g, b) = if h < 1.0 { (c, x, 0.0) }
-            else if h < 2.0 { (x, c, 0.0) }
-            else if h < 3.0 { (0.0, c, x) }
-            else if h < 4.0 { (0.0, x, c) }
-            else if h < 5.0 { (x, 0.0, c) }
-            else { (c, 0.0, x) };
+        let (r, g, b) = if h < 1.0 {
+            (c, x, 0.0)
+        } else if h < 2.0 {
+            (x, c, 0.0)
+        } else if h < 3.0 {
+            (0.0, c, x)
+        } else if h < 4.0 {
+            (0.0, x, c)
+        } else if h < 5.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
         data.push((r + m) * 255.0);
         data.push((g + m) * 255.0);
         data.push((b + m) * 255.0);
@@ -100,7 +109,9 @@ mod tests {
     #[test]
     fn test_rgb_gray() {
         let dims = [4, 4, 1];
-        let data: Vec<f64> = (0..16).flat_map(|i| vec![i as f64 * 16.0, i as f64 * 8.0, i as f64 * 4.0]).collect();
+        let data: Vec<f64> = (0..16)
+            .flat_map(|i| vec![i as f64 * 16.0, i as f64 * 8.0, i as f64 * 4.0])
+            .collect();
         let img = ImageData::with_dimensions(dims[0], dims[1], dims[2])
             .with_spacing([1.0, 1.0, 1.0])
             .with_origin([0.0, 0.0, 0.0])
@@ -112,11 +123,17 @@ mod tests {
     }
     #[test]
     fn test_rgb_hsv_roundtrip() {
-        let data: Vec<f64> = vec![255.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 255.0, 128.0, 128.0, 128.0];
+        let data: Vec<f64> = vec![
+            255.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 255.0, 128.0, 128.0, 128.0,
+        ];
         let img = ImageData::with_dimensions(4, 1, 1)
             .with_spacing([1.0, 1.0, 1.0])
             .with_origin([0.0, 0.0, 0.0])
-            .with_point_array(AnyDataArray::F64(DataArray::from_vec("RGB", data.clone(), 3)));
+            .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+                "RGB",
+                data.clone(),
+                3,
+            )));
         let hsv = rgb_to_hsv(&img, "RGB");
         let back = hsv_to_rgb(&hsv, "HSV");
         let arr = back.point_data().get_array("RGB").unwrap();

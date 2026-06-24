@@ -26,9 +26,7 @@ pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
         values[i] = buf[0];
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let mut mag = vec![0.0f64; n];
 
@@ -69,9 +67,12 @@ pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GradientMagnitude", mag, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientMagnitude",
+            mag,
+            1,
+        )));
     img
 }
 
@@ -84,9 +85,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         img.set_spacing([1.0, 1.0, 1.0]);
         let values: Vec<f64> = (0..5).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
 
         let result = image_gradient_magnitude(&img, "Scalars");
         let arr = result.point_data().get_array("GradientMagnitude").unwrap();
@@ -108,9 +108,8 @@ mod tests {
                 values.push(i as f64 + j as f64);
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("S", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("S", values, 1)));
 
         let result = image_gradient_magnitude(&img, "S");
         let arr = result.point_data().get_array("GradientMagnitude").unwrap();

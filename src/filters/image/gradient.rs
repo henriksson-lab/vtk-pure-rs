@@ -4,11 +4,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 ///
 /// Adds a "Gradient" 3-component point data array containing [dF/dx, dF/dy, dF/dz]
 /// at each grid point. Optionally also adds a "GradientMagnitude" scalar array.
-pub fn image_gradient(
-    input: &ImageData,
-    scalars: &str,
-    compute_magnitude: bool,
-) -> ImageData {
+pub fn image_gradient(input: &ImageData, scalars: &str, compute_magnitude: bool) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -28,12 +24,14 @@ pub fn image_gradient(
         values[i] = buf[0];
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let mut grad = vec![0.0f64; n * 3];
-    let mut mag = if compute_magnitude { vec![0.0f64; n] } else { vec![] };
+    let mut mag = if compute_magnitude {
+        vec![0.0f64; n]
+    } else {
+        vec![]
+    };
 
     for k in 0..nz {
         for j in 0..ny {
@@ -54,33 +52,41 @@ pub fn image_gradient(
 
                 let gx = if dx_span > 1e-15 {
                     (values[idx(ip, j, k)] - values[idx(im, j, k)]) / dx_span
-                } else { 0.0 };
+                } else {
+                    0.0
+                };
                 let gy = if dy_span > 1e-15 {
                     (values[idx(i, jp, k)] - values[idx(i, jm, k)]) / dy_span
-                } else { 0.0 };
+                } else {
+                    0.0
+                };
                 let gz = if dz_span > 1e-15 {
                     (values[idx(i, j, kp)] - values[idx(i, j, km)]) / dz_span
-                } else { 0.0 };
+                } else {
+                    0.0
+                };
 
                 grad[pi * 3] = gx;
                 grad[pi * 3 + 1] = gy;
                 grad[pi * 3 + 2] = gz;
 
                 if compute_magnitude {
-                    mag[pi] = (gx*gx + gy*gy + gz*gz).sqrt();
+                    mag[pi] = (gx * gx + gy * gy + gz * gz).sqrt();
                 }
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Gradient", grad, 3),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Gradient", grad, 3)));
     if compute_magnitude {
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("GradientMagnitude", mag, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "GradientMagnitude",
+                mag,
+                1,
+            )));
     }
     img
 }
@@ -95,9 +101,8 @@ mod tests {
         img.set_spacing([1.0, 1.0, 1.0]);
         // f(x) = x: gradient should be [1, 0, 0]
         let values: Vec<f64> = (0..5).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
 
         let result = image_gradient(&img, "val", true);
         let grad = result.point_data().get_array("Gradient").unwrap();
@@ -120,9 +125,8 @@ mod tests {
                 values.push(i as f64 + j as f64);
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
 
         let result = image_gradient(&img, "val", true);
         let mag = result.point_data().get_array("GradientMagnitude").unwrap();

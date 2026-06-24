@@ -31,30 +31,51 @@ fn morph_op(input: &ImageData, scalars: &str, radius: usize, dilate: bool) -> Im
     let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let vals: Vec<bool> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] > 0.5 }).collect();
+    let vals: Vec<bool> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0] > 0.5
+        })
+        .collect();
     let r = radius as isize;
 
-    let data: Vec<f64> = (0..n).map(|idx| {
-        let iz = idx / (nx * ny);
-        let rem = idx % (nx * ny);
-        let iy = rem / nx;
-        let ix = rem % nx;
-        for dz in -r..=r {
-            for dy in -r..=r {
-                for dx in -r..=r {
-                    let sx = ix as isize + dx;
-                    let sy = iy as isize + dy;
-                    let sz = iz as isize + dz;
-                    if sx >= 0 && sx < nx as isize && sy >= 0 && sy < ny as isize && sz >= 0 && sz < nz as isize {
-                        let v = vals[sx as usize + sy as usize * nx + sz as usize * nx * ny];
-                        if dilate && v { return 1.0; }
-                        if !dilate && !v { return 0.0; }
+    let data: Vec<f64> = (0..n)
+        .map(|idx| {
+            let iz = idx / (nx * ny);
+            let rem = idx % (nx * ny);
+            let iy = rem / nx;
+            let ix = rem % nx;
+            for dz in -r..=r {
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        let sx = ix as isize + dx;
+                        let sy = iy as isize + dy;
+                        let sz = iz as isize + dz;
+                        if sx >= 0
+                            && sx < nx as isize
+                            && sy >= 0
+                            && sy < ny as isize
+                            && sz >= 0
+                            && sz < nz as isize
+                        {
+                            let v = vals[sx as usize + sy as usize * nx + sz as usize * nx * ny];
+                            if dilate && v {
+                                return 1.0;
+                            }
+                            if !dilate && !v {
+                                return 0.0;
+                            }
+                        }
                     }
                 }
             }
-        }
-        if dilate { 0.0 } else { 1.0 }
-    }).collect();
+            if dilate {
+                0.0
+            } else {
+                1.0
+            }
+        })
+        .collect();
 
     ImageData::with_dimensions(nx, ny, nz)
         .with_spacing(input.spacing())
@@ -67,9 +88,19 @@ mod tests {
     use super::*;
     #[test]
     fn test_dilate() {
-        let img = ImageData::from_function([7, 7, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |x, y, _| {
-            if (x - 3.0).abs() < 0.5 && (y - 3.0).abs() < 0.5 { 1.0 } else { 0.0 }
-        });
+        let img = ImageData::from_function(
+            [7, 7, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, _| {
+                if (x - 3.0).abs() < 0.5 && (y - 3.0).abs() < 0.5 {
+                    1.0
+                } else {
+                    0.0
+                }
+            },
+        );
         let result = binary_dilate(&img, "v", 1);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0];
@@ -78,9 +109,19 @@ mod tests {
     }
     #[test]
     fn test_erode() {
-        let img = ImageData::from_function([7, 7, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |x, y, _| {
-            if (x - 3.0).abs() < 1.5 && (y - 3.0).abs() < 1.5 { 1.0 } else { 0.0 }
-        });
+        let img = ImageData::from_function(
+            [7, 7, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, _| {
+                if (x - 3.0).abs() < 1.5 && (y - 3.0).abs() < 1.5 {
+                    1.0
+                } else {
+                    0.0
+                }
+            },
+        );
         let result = binary_erode(&img, "v", 1);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0];
@@ -89,9 +130,19 @@ mod tests {
     }
     #[test]
     fn test_open_close() {
-        let img = ImageData::from_function([9, 9, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |x, y, _| {
-            if (x - 4.0).abs() < 2.5 && (y - 4.0).abs() < 2.5 { 1.0 } else { 0.0 }
-        });
+        let img = ImageData::from_function(
+            [9, 9, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, _| {
+                if (x - 4.0).abs() < 2.5 && (y - 4.0).abs() < 2.5 {
+                    1.0
+                } else {
+                    0.0
+                }
+            },
+        );
         let opened = binary_open(&img, "v", 1);
         let closed = binary_close(&img, "v", 1);
         assert_eq!(opened.dimensions(), [9, 9, 1]);

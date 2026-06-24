@@ -28,7 +28,9 @@ pub fn sph_interpolate(
 ) -> PolyData {
     let n_src = source.points.len();
     let n_tgt = target.points.len();
-    if n_src == 0 || n_tgt == 0 { return target.clone(); }
+    if n_src == 0 || n_tgt == 0 {
+        return target.clone();
+    }
 
     let arr = match source.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
@@ -55,11 +57,13 @@ pub fn sph_interpolate(
 
         for si in 0..n_src {
             let sp = &src_pts[si];
-            let dx = tp[0]-sp[0];
-            let dy = tp[1]-sp[1];
-            let dz = tp[2]-sp[2];
-            let r2 = dx*dx + dy*dy + dz*dz;
-            if r2 > support2 { continue; }
+            let dx = tp[0] - sp[0];
+            let dy = tp[1] - sp[1];
+            let dz = tp[2] - sp[2];
+            let r2 = dx * dx + dy * dy + dz * dz;
+            if r2 > support2 {
+                continue;
+            }
             let r = r2.sqrt();
             let w = eval_kernel(kernel, r, h);
             sum_wv += w * src_vals[si];
@@ -70,16 +74,22 @@ pub fn sph_interpolate(
     }
 
     let mut result = target.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, result_vals, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name,
+            result_vals,
+            1,
+        )));
     result
 }
 
 /// Compute SPH density estimate at each particle.
 pub fn sph_density(mesh: &PolyData, smoothing_length: f64, kernel: SphKernel) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     let h = smoothing_length;
     let support2 = (2.0 * h) * (2.0 * h);
@@ -89,10 +99,10 @@ pub fn sph_density(mesh: &PolyData, smoothing_length: f64, kernel: SphKernel) ->
     for i in 0..n {
         let mut sum = 0.0;
         for j in 0..n {
-            let dx = pts[i][0]-pts[j][0];
-            let dy = pts[i][1]-pts[j][1];
-            let dz = pts[i][2]-pts[j][2];
-            let r2 = dx*dx + dy*dy + dz*dz;
+            let dx = pts[i][0] - pts[j][0];
+            let dy = pts[i][1] - pts[j][1];
+            let dz = pts[i][2] - pts[j][2];
+            let r2 = dx * dx + dy * dy + dz * dz;
             if r2 <= support2 {
                 sum += eval_kernel(kernel, r2.sqrt(), h);
             }
@@ -101,9 +111,13 @@ pub fn sph_density(mesh: &PolyData, smoothing_length: f64, kernel: SphKernel) ->
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("SPHDensity", density, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SPHDensity",
+            density,
+            1,
+        )));
     result
 }
 
@@ -113,27 +127,33 @@ fn eval_kernel(kernel: SphKernel, r: f64, h: f64) -> f64 {
         SphKernel::CubicSpline => {
             let norm = 1.0 / (std::f64::consts::PI * h * h * h);
             if q < 1.0 {
-                norm * (1.0 - 1.5*q*q + 0.75*q*q*q)
+                norm * (1.0 - 1.5 * q * q + 0.75 * q * q * q)
             } else if q < 2.0 {
                 norm * 0.25 * (2.0 - q).powi(3)
-            } else { 0.0 }
+            } else {
+                0.0
+            }
         }
         SphKernel::WendlandC2 => {
             let norm = 21.0 / (16.0 * std::f64::consts::PI * h * h * h);
             if q < 2.0 {
                 let t = 1.0 - q * 0.5;
                 norm * t.powi(4) * (1.0 + 2.0 * q)
-            } else { 0.0 }
+            } else {
+                0.0
+            }
         }
         SphKernel::QuinticSpline => {
             let norm = 1.0 / (120.0 * std::f64::consts::PI * h * h * h);
             if q < 1.0 {
-                norm * ((3.0-q).powi(5) - 6.0*(2.0-q).powi(5) + 15.0*(1.0-q).powi(5))
+                norm * ((3.0 - q).powi(5) - 6.0 * (2.0 - q).powi(5) + 15.0 * (1.0 - q).powi(5))
             } else if q < 2.0 {
-                norm * ((3.0-q).powi(5) - 6.0*(2.0-q).powi(5))
+                norm * ((3.0 - q).powi(5) - 6.0 * (2.0 - q).powi(5))
             } else if q < 3.0 {
-                norm * (3.0-q).powi(5)
-            } else { 0.0 }
+                norm * (3.0 - q).powi(5)
+            } else {
+                0.0
+            }
         }
     }
 }
@@ -141,16 +161,22 @@ fn eval_kernel(kernel: SphKernel, r: f64, h: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::Points;
 
     #[test]
     fn cubic_spline_interpolation() {
         let mut source = PolyData::new();
-        source.points = Points::from(vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[2.0,0.0,0.0]]);
-        source.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![0.0, 100.0, 0.0], 1)));
+        source.points = Points::from(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
+        source
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![0.0, 100.0, 0.0],
+                1,
+            )));
 
         let mut target = PolyData::new();
-        target.points = Points::from(vec![[0.5,0.0,0.0]]);
+        target.points = Points::from(vec![[0.5, 0.0, 0.0]]);
 
         let result = sph_interpolate(&source, &target, "temp", 1.0, SphKernel::CubicSpline);
         let arr = result.point_data().get_array("temp").unwrap();
@@ -163,7 +189,10 @@ mod tests {
     fn wendland_density() {
         let mut mesh = PolyData::new();
         mesh.points = Points::from(vec![
-            [0.0,0.0,0.0],[0.1,0.0,0.0],[0.2,0.0,0.0],[5.0,0.0,0.0],
+            [0.0, 0.0, 0.0],
+            [0.1, 0.0, 0.0],
+            [0.2, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
         ]);
         let result = sph_density(&mesh, 0.5, SphKernel::WendlandC2);
         let arr = result.point_data().get_array("SPHDensity").unwrap();
@@ -177,7 +206,13 @@ mod tests {
 
     #[test]
     fn empty() {
-        let result = sph_interpolate(&PolyData::new(), &PolyData::new(), "x", 1.0, SphKernel::CubicSpline);
+        let result = sph_interpolate(
+            &PolyData::new(),
+            &PolyData::new(),
+            "x",
+            1.0,
+            SphKernel::CubicSpline,
+        );
         assert_eq!(result.points.len(), 0);
     }
 }

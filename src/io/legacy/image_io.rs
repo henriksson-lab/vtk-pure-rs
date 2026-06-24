@@ -81,7 +81,9 @@ pub fn read_image_data_from<R: BufRead>(reader: R) -> Result<ImageData, VtkError
     let _description = next_line(&mut lines)?;
     let file_type = next_line(&mut lines)?;
     if file_type.trim().to_uppercase() != "ASCII" {
-        return Err(VtkError::Unsupported("only ASCII ImageData supported".into()));
+        return Err(VtkError::Unsupported(
+            "only ASCII ImageData supported".into(),
+        ));
     }
     let dataset_line = next_line(&mut lines)?;
     let tokens: Vec<&str> = dataset_line.split_whitespace().collect();
@@ -174,8 +176,8 @@ pub fn read_image_data_from<R: BufRead>(reader: R) -> Result<ImageData, VtkError
                             idx += 1;
                         }
 
-                        let scalar_type = ScalarType::from_vtk_name(type_name)
-                            .unwrap_or(ScalarType::F64);
+                        let scalar_type =
+                            ScalarType::from_vtk_name(type_name).unwrap_or(ScalarType::F64);
                         let arr = match scalar_type {
                             ScalarType::F32 => {
                                 let data: Vec<f32> = values.iter().map(|&v| v as f32).collect();

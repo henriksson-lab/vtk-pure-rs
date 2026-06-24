@@ -223,6 +223,11 @@ mod tests {
         let (radius, _center) = inscribed_sphere(&pd);
         // Inscribed sphere of regular tetrahedron with edge 2*sqrt(2): r = edge/(2*sqrt(6)) ≈ 0.5774
         let expected: f64 = 2.0 * 2.0f64.sqrt() / (2.0 * 6.0f64.sqrt());
-        assert!((radius - expected).abs() < 0.1, "radius={}, expected={}", radius, expected);
+        assert!(
+            (radius - expected).abs() < 0.1,
+            "radius={}, expected={}",
+            radius,
+            expected
+        );
     }
 }

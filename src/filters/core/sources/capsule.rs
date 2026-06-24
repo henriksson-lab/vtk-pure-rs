@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a capsule (cylinder with hemispherical caps).
 pub struct CapsuleParams {
@@ -170,7 +170,11 @@ pub fn capsule(params: &CapsuleParams) -> PolyData {
     let last_bot = bot_hemi_start + (n_phi - 2) * n_theta;
     for i in 0..n_theta {
         let i_next = (i + 1) % n_theta;
-        polys.push_cell(&[(last_bot + i) as i64, bottom_pole, (last_bot + i_next) as i64]);
+        polys.push_cell(&[
+            (last_bot + i) as i64,
+            bottom_pole,
+            (last_bot + i_next) as i64,
+        ]);
     }
 
     let mut pd = PolyData::new();

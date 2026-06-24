@@ -50,7 +50,7 @@ impl SpatialHash {
                             let dx = p[0] - query[0];
                             let dy = p[1] - query[1];
                             let dz = p[2] - query[2];
-                            let d2 = dx*dx + dy*dy + dz*dz;
+                            let d2 = dx * dx + dy * dy + dz * dz;
                             if d2 <= r2 {
                                 results.push((idx, d2.sqrt()));
                             }
@@ -88,11 +88,7 @@ mod tests {
 
     #[test]
     fn basic_query() {
-        let points = vec![
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [5.0, 0.0, 0.0],
-        ];
+        let points = vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [5.0, 0.0, 0.0]];
         let hash = SpatialHash::build(&points, 2.0);
         let results = hash.find_within_radius([0.0, 0.0, 0.0], 1.5);
         assert_eq!(results.len(), 2); // points 0 and 1
@@ -108,11 +104,7 @@ mod tests {
 
     #[test]
     fn sorted_by_distance() {
-        let points = vec![
-            [3.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [2.0, 0.0, 0.0],
-        ];
+        let points = vec![[3.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]];
         let hash = SpatialHash::build(&points, 5.0);
         let results = hash.find_within_radius([0.0, 0.0, 0.0], 10.0);
         assert_eq!(results.len(), 3);

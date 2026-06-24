@@ -32,12 +32,24 @@ pub fn translate_to_origin(input: &PolyData) -> PolyData {
 
     for i in 0..input.points.len() {
         let p = input.points.get(i);
-        if p[0] < min_x { min_x = p[0]; }
-        if p[1] < min_y { min_y = p[1]; }
-        if p[2] < min_z { min_z = p[2]; }
-        if p[0] > max_x { max_x = p[0]; }
-        if p[1] > max_y { max_y = p[1]; }
-        if p[2] > max_z { max_z = p[2]; }
+        if p[0] < min_x {
+            min_x = p[0];
+        }
+        if p[1] < min_y {
+            min_y = p[1];
+        }
+        if p[2] < min_z {
+            min_z = p[2];
+        }
+        if p[0] > max_x {
+            max_x = p[0];
+        }
+        if p[1] > max_y {
+            max_y = p[1];
+        }
+        if p[2] > max_z {
+            max_z = p[2];
+        }
     }
 
     let cx: f64 = (min_x + max_x) * 0.5;
@@ -97,10 +109,18 @@ mod tests {
         let mut max_y: f64 = f64::MIN;
         for i in 0..result.points.len() {
             let p = result.points.get(i);
-            if p[0] < min_x { min_x = p[0]; }
-            if p[0] > max_x { max_x = p[0]; }
-            if p[1] < min_y { min_y = p[1]; }
-            if p[1] > max_y { max_y = p[1]; }
+            if p[0] < min_x {
+                min_x = p[0];
+            }
+            if p[0] > max_x {
+                max_x = p[0];
+            }
+            if p[1] < min_y {
+                min_y = p[1];
+            }
+            if p[1] > max_y {
+                max_y = p[1];
+            }
         }
         let cx: f64 = (min_x + max_x) * 0.5;
         let cy: f64 = (min_y + max_y) * 0.5;

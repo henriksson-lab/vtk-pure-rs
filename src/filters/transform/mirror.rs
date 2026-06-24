@@ -31,9 +31,13 @@ pub fn mirror(input: &PolyData, plane: usize, merge: bool) -> PolyData {
 
     if merge {
         let mut out_points = input.points.clone();
-        for i in 0..n { out_points.push(mirrored_points.get(i)); }
+        for i in 0..n {
+            out_points.push(mirrored_points.get(i));
+        }
         let mut out_polys = input.polys.clone();
-        for cell in mirrored_polys.iter() { out_polys.push_cell(cell); }
+        for cell in mirrored_polys.iter() {
+            out_polys.push_cell(cell);
+        }
 
         let mut pd = PolyData::new();
         pd.points = out_points;

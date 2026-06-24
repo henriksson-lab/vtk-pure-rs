@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData, KdTree};
+use crate::data::{AnyDataArray, CellArray, DataArray, KdTree, Points, PolyData};
 
 /// Sample a scalar field onto a spherical probe.
 ///
@@ -18,7 +18,9 @@ pub fn sample_on_sphere(
     };
 
     let n = input.points.len();
-    if n == 0 { return PolyData::new(); }
+    if n == 0 {
+        return PolyData::new();
+    }
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
     let tree = KdTree::build(&pts);
@@ -63,9 +65,10 @@ pub fn sample_on_sphere(
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.verts = out_verts;
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, values, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, values, 1,
+        )));
     pd
 }
 
@@ -79,9 +82,12 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([-1.0, 0.0, 0.0]);
         pd.points.push([0.0, 1.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![10.0, 20.0, 30.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
 
         let result = sample_on_sphere(&pd, "val", [0.0, 0.0, 0.0], 2.0, 4);
         assert!(result.points.len() > 5);
@@ -99,9 +105,8 @@ mod tests {
     fn poles_exist() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![1.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0], 1)));
 
         let result = sample_on_sphere(&pd, "v", [0.0, 0.0, 0.0], 1.0, 4);
         // Check north and south pole exist

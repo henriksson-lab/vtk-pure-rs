@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, StructuredGrid, DataSet};
+use crate::data::{CellArray, DataSet, Points, PolyData, StructuredGrid};
 
 /// Convert the outer surface of a StructuredGrid to PolyData quads.
 pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
@@ -20,34 +20,74 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
         points.push(input.point(i));
     }
 
-    let point_idx = |i: usize, j: usize, k: usize| -> i64 {
-        (k * ny * nx + j * nx + i) as i64
-    };
+    let point_idx = |i: usize, j: usize, k: usize| -> i64 { (k * ny * nx + j * nx + i) as i64 };
 
     // -X face
-    for k in 0..nz-1 { for j in 0..ny-1 {
-        polys.push_cell(&[point_idx(0,j,k), point_idx(0,j,k+1), point_idx(0,j+1,k+1), point_idx(0,j+1,k)]);
-    }}
+    for k in 0..nz - 1 {
+        for j in 0..ny - 1 {
+            polys.push_cell(&[
+                point_idx(0, j, k),
+                point_idx(0, j, k + 1),
+                point_idx(0, j + 1, k + 1),
+                point_idx(0, j + 1, k),
+            ]);
+        }
+    }
     // +X face
-    for k in 0..nz-1 { for j in 0..ny-1 {
-        polys.push_cell(&[point_idx(nx-1,j,k), point_idx(nx-1,j+1,k), point_idx(nx-1,j+1,k+1), point_idx(nx-1,j,k+1)]);
-    }}
+    for k in 0..nz - 1 {
+        for j in 0..ny - 1 {
+            polys.push_cell(&[
+                point_idx(nx - 1, j, k),
+                point_idx(nx - 1, j + 1, k),
+                point_idx(nx - 1, j + 1, k + 1),
+                point_idx(nx - 1, j, k + 1),
+            ]);
+        }
+    }
     // -Y face
-    for k in 0..nz-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,0,k), point_idx(i+1,0,k), point_idx(i+1,0,k+1), point_idx(i,0,k+1)]);
-    }}
+    for k in 0..nz - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, 0, k),
+                point_idx(i + 1, 0, k),
+                point_idx(i + 1, 0, k + 1),
+                point_idx(i, 0, k + 1),
+            ]);
+        }
+    }
     // +Y face
-    for k in 0..nz-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,ny-1,k), point_idx(i,ny-1,k+1), point_idx(i+1,ny-1,k+1), point_idx(i+1,ny-1,k)]);
-    }}
+    for k in 0..nz - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, ny - 1, k),
+                point_idx(i, ny - 1, k + 1),
+                point_idx(i + 1, ny - 1, k + 1),
+                point_idx(i + 1, ny - 1, k),
+            ]);
+        }
+    }
     // -Z face
-    for j in 0..ny-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,j,0), point_idx(i,j+1,0), point_idx(i+1,j+1,0), point_idx(i+1,j,0)]);
-    }}
+    for j in 0..ny - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, j, 0),
+                point_idx(i, j + 1, 0),
+                point_idx(i + 1, j + 1, 0),
+                point_idx(i + 1, j, 0),
+            ]);
+        }
+    }
     // +Z face
-    for j in 0..ny-1 { for i in 0..nx-1 {
-        polys.push_cell(&[point_idx(i,j,nz-1), point_idx(i+1,j,nz-1), point_idx(i+1,j+1,nz-1), point_idx(i,j+1,nz-1)]);
-    }}
+    for j in 0..ny - 1 {
+        for i in 0..nx - 1 {
+            polys.push_cell(&[
+                point_idx(i, j, nz - 1),
+                point_idx(i + 1, j, nz - 1),
+                point_idx(i + 1, j + 1, nz - 1),
+                point_idx(i, j + 1, nz - 1),
+            ]);
+        }
+    }
 
     let mut pd = PolyData::new();
     pd.points = points;

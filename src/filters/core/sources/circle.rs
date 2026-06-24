@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{CellArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a circle polyline.
 pub struct CircleParams {
@@ -30,15 +30,24 @@ pub fn circle(params: &CircleParams) -> PolyData {
     let r = params.radius;
 
     // Build local frame from normal
-    let nlen = (params.normal[0].powi(2) + params.normal[1].powi(2) + params.normal[2].powi(2)).sqrt();
+    let nlen =
+        (params.normal[0].powi(2) + params.normal[1].powi(2) + params.normal[2].powi(2)).sqrt();
     let nz = if nlen > 1e-15 {
-        [params.normal[0]/nlen, params.normal[1]/nlen, params.normal[2]/nlen]
+        [
+            params.normal[0] / nlen,
+            params.normal[1] / nlen,
+            params.normal[2] / nlen,
+        ]
     } else {
         [0.0, 0.0, 1.0]
     };
 
     // Find a perpendicular vector
-    let tmp = if nz[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let tmp = if nz[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let nx = normalize(cross(nz, tmp));
     let ny = cross(nz, nx);
 
@@ -68,12 +77,20 @@ pub fn circle(params: &CircleParams) -> PolyData {
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0]*v[0]+v[1]*v[1]+v[2]*v[2]).sqrt();
-    if len > 1e-15 { [v[0]/len, v[1]/len, v[2]/len] } else { [1.0, 0.0, 0.0] }
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len > 1e-15 {
+        [v[0] / len, v[1] / len, v[2] / len]
+    } else {
+        [1.0, 0.0, 0.0]
+    }
 }
 
 #[cfg(test)]
@@ -97,7 +114,7 @@ mod tests {
         });
         for i in 0..pd.points.len() {
             let p = pd.points.get(i);
-            let r = (p[0]*p[0] + p[1]*p[1]).sqrt();
+            let r = (p[0] * p[0] + p[1] * p[1]).sqrt();
             assert!((r - 2.0).abs() < 1e-10);
             assert!(p[2].abs() < 1e-10);
         }

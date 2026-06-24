@@ -8,11 +8,7 @@ use crate::types::ImplicitFunction;
 /// `f(x,y,z) >= 0` retain their original scalar value.
 ///
 /// Returns a new ImageData with a "Clipped" scalar array.
-pub fn clip_volume(
-    input: &ImageData,
-    scalars: &str,
-    func: &dyn ImplicitFunction,
-) -> ImageData {
+pub fn clip_volume(input: &ImageData, scalars: &str, func: &dyn ImplicitFunction) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -45,9 +41,12 @@ pub fn clip_volume(
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Clipped", output_values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Clipped",
+            output_values,
+            1,
+        )));
     img
 }
 

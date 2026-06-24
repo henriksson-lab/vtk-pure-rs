@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Clip PolyData by an axis-aligned bounding box.
 ///

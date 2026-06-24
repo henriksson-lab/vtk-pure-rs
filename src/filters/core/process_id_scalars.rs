@@ -10,9 +10,9 @@ pub fn add_process_id(mesh: &PolyData, process_id: usize) -> PolyData {
     let n = mesh.points.len();
     let data = vec![process_id as f64; n];
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ProcessId", data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("ProcessId", data, 1)));
     result
 }
 
@@ -21,16 +21,20 @@ pub fn add_process_id_cells(mesh: &PolyData, process_id: usize) -> PolyData {
     let n = mesh.polys.num_cells() + mesh.lines.num_cells();
     let data = vec![process_id as f64; n];
     let mut result = mesh.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ProcessId", data, 1),
-    ));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("ProcessId", data, 1)));
     result
 }
 
 /// Tag multiple meshes with sequential process IDs and merge.
 pub fn tag_and_merge(meshes: &[&PolyData]) -> PolyData {
-    if meshes.is_empty() { return PolyData::new(); }
-    let tagged: Vec<PolyData> = meshes.iter().enumerate()
+    if meshes.is_empty() {
+        return PolyData::new();
+    }
+    let tagged: Vec<PolyData> = meshes
+        .iter()
+        .enumerate()
         .map(|(i, m)| add_process_id(m, i))
         .collect();
     let refs: Vec<&PolyData> = tagged.iter().collect();
@@ -47,9 +51,9 @@ pub fn partition_and_tag(mesh: &PolyData, n_partitions: usize) -> PolyData {
     let n = mesh.points.len();
     let data: Vec<f64> = (0..n).map(|i| (i % n_partitions) as f64).collect();
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ProcessId", data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("ProcessId", data, 1)));
     result
 }
 
@@ -59,7 +63,7 @@ mod tests {
 
     #[test]
     fn add_id() {
-        let mesh = PolyData::from_points(vec![[0.0,0.0,0.0],[1.0,0.0,0.0]]);
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
         let result = add_process_id(&mesh, 3);
         let arr = result.point_data().get_array("ProcessId").unwrap();
         let mut buf = [0.0f64];
@@ -69,8 +73,8 @@ mod tests {
 
     #[test]
     fn tag_merge() {
-        let a = PolyData::from_points(vec![[0.0,0.0,0.0]]);
-        let b = PolyData::from_points(vec![[1.0,0.0,0.0]]);
+        let a = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let b = PolyData::from_points(vec![[1.0, 0.0, 0.0]]);
         let result = tag_and_merge(&[&a, &b]);
         assert_eq!(result.points.len(), 2);
         // ProcessId may or may not be preserved by append depending on array matching
@@ -80,13 +84,19 @@ mod tests {
     #[test]
     fn partition() {
         let mesh = PolyData::from_points(vec![
-            [0.0,0.0,0.0],[1.0,0.0,0.0],[2.0,0.0,0.0],[3.0,0.0,0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
         ]);
         let result = partition_and_tag(&mesh, 2);
         let arr = result.point_data().get_array("ProcessId").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0);
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 1.0);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

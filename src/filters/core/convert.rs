@@ -1,6 +1,5 @@
 use crate::data::{
-    CellArray, ImageData, Points, PolyData,
-    RectilinearGrid, StructuredGrid, UnstructuredGrid,
+    CellArray, ImageData, Points, PolyData, RectilinearGrid, StructuredGrid, UnstructuredGrid,
 };
 use crate::types::CellType;
 
@@ -19,15 +18,19 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         }
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> i64 {
-        (k * dims[1] * dims[0] + j * dims[0] + i) as i64
-    };
+    let idx =
+        |i: usize, j: usize, k: usize| -> i64 { (k * dims[1] * dims[0] + j * dims[0] + i) as i64 };
 
     // Z-min face (k=0)
     if dims[2] > 0 {
         for j in 0..dims[1] - 1 {
             for i in 0..dims[0] - 1 {
-                polys.push_cell(&[idx(i, j, 0), idx(i + 1, j, 0), idx(i + 1, j + 1, 0), idx(i, j + 1, 0)]);
+                polys.push_cell(&[
+                    idx(i, j, 0),
+                    idx(i + 1, j, 0),
+                    idx(i + 1, j + 1, 0),
+                    idx(i, j + 1, 0),
+                ]);
             }
         }
     }
@@ -36,7 +39,12 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         let k = dims[2] - 1;
         for j in 0..dims[1] - 1 {
             for i in 0..dims[0] - 1 {
-                polys.push_cell(&[idx(i, j, k), idx(i, j + 1, k), idx(i + 1, j + 1, k), idx(i + 1, j, k)]);
+                polys.push_cell(&[
+                    idx(i, j, k),
+                    idx(i, j + 1, k),
+                    idx(i + 1, j + 1, k),
+                    idx(i + 1, j, k),
+                ]);
             }
         }
     }
@@ -44,7 +52,12 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
     if dims[1] > 0 {
         for k in 0..dims[2] - 1 {
             for i in 0..dims[0] - 1 {
-                polys.push_cell(&[idx(i, 0, k), idx(i + 1, 0, k), idx(i + 1, 0, k + 1), idx(i, 0, k + 1)]);
+                polys.push_cell(&[
+                    idx(i, 0, k),
+                    idx(i + 1, 0, k),
+                    idx(i + 1, 0, k + 1),
+                    idx(i, 0, k + 1),
+                ]);
             }
         }
     }
@@ -53,7 +66,12 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         let j = dims[1] - 1;
         for k in 0..dims[2] - 1 {
             for i in 0..dims[0] - 1 {
-                polys.push_cell(&[idx(i, j, k), idx(i, j, k + 1), idx(i + 1, j, k + 1), idx(i + 1, j, k)]);
+                polys.push_cell(&[
+                    idx(i, j, k),
+                    idx(i, j, k + 1),
+                    idx(i + 1, j, k + 1),
+                    idx(i + 1, j, k),
+                ]);
             }
         }
     }
@@ -61,7 +79,12 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
     if dims[0] > 0 {
         for k in 0..dims[2] - 1 {
             for j in 0..dims[1] - 1 {
-                polys.push_cell(&[idx(0, j, k), idx(0, j, k + 1), idx(0, j + 1, k + 1), idx(0, j + 1, k)]);
+                polys.push_cell(&[
+                    idx(0, j, k),
+                    idx(0, j, k + 1),
+                    idx(0, j + 1, k + 1),
+                    idx(0, j + 1, k),
+                ]);
             }
         }
     }
@@ -70,7 +93,12 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         let i = dims[0] - 1;
         for k in 0..dims[2] - 1 {
             for j in 0..dims[1] - 1 {
-                polys.push_cell(&[idx(i, j, k), idx(i, j + 1, k), idx(i, j + 1, k + 1), idx(i, j, k + 1)]);
+                polys.push_cell(&[
+                    idx(i, j, k),
+                    idx(i, j + 1, k),
+                    idx(i, j + 1, k + 1),
+                    idx(i, j, k + 1),
+                ]);
             }
         }
     }
@@ -95,11 +123,19 @@ pub fn poly_data_to_unstructured_grid(pd: &PolyData) -> UnstructuredGrid {
         ug.push_cell(ct, cell);
     }
     for cell in pd.lines.iter() {
-        let ct = if cell.len() == 2 { CellType::Line } else { CellType::PolyLine };
+        let ct = if cell.len() == 2 {
+            CellType::Line
+        } else {
+            CellType::PolyLine
+        };
         ug.push_cell(ct, cell);
     }
     for cell in pd.verts.iter() {
-        let ct = if cell.len() == 1 { CellType::Vertex } else { CellType::PolyVertex };
+        let ct = if cell.len() == 1 {
+            CellType::Vertex
+        } else {
+            CellType::PolyVertex
+        };
         ug.push_cell(ct, cell);
     }
 
@@ -156,9 +192,8 @@ pub fn rectilinear_grid_to_poly_data(rg: &RectilinearGrid) -> PolyData {
     }
 
     let mut polys = CellArray::new();
-    let idx = |i: usize, j: usize, k: usize| -> i64 {
-        (k * dims[1] * dims[0] + j * dims[0] + i) as i64
-    };
+    let idx =
+        |i: usize, j: usize, k: usize| -> i64 { (k * dims[1] * dims[0] + j * dims[0] + i) as i64 };
 
     // Just do all faces of all cells (no shared face elimination)
     for k in 0..dims[2].saturating_sub(1) {
@@ -166,24 +201,54 @@ pub fn rectilinear_grid_to_poly_data(rg: &RectilinearGrid) -> PolyData {
             for i in 0..dims[0].saturating_sub(1) {
                 // Top and bottom
                 if k == 0 {
-                    polys.push_cell(&[idx(i,j,0), idx(i+1,j,0), idx(i+1,j+1,0), idx(i,j+1,0)]);
+                    polys.push_cell(&[
+                        idx(i, j, 0),
+                        idx(i + 1, j, 0),
+                        idx(i + 1, j + 1, 0),
+                        idx(i, j + 1, 0),
+                    ]);
                 }
                 if k == dims[2] - 2 {
-                    polys.push_cell(&[idx(i,j,k+1), idx(i,j+1,k+1), idx(i+1,j+1,k+1), idx(i+1,j,k+1)]);
+                    polys.push_cell(&[
+                        idx(i, j, k + 1),
+                        idx(i, j + 1, k + 1),
+                        idx(i + 1, j + 1, k + 1),
+                        idx(i + 1, j, k + 1),
+                    ]);
                 }
                 // Front and back
                 if j == 0 {
-                    polys.push_cell(&[idx(i,0,k), idx(i+1,0,k), idx(i+1,0,k+1), idx(i,0,k+1)]);
+                    polys.push_cell(&[
+                        idx(i, 0, k),
+                        idx(i + 1, 0, k),
+                        idx(i + 1, 0, k + 1),
+                        idx(i, 0, k + 1),
+                    ]);
                 }
                 if j == dims[1] - 2 {
-                    polys.push_cell(&[idx(i,j+1,k), idx(i,j+1,k+1), idx(i+1,j+1,k+1), idx(i+1,j+1,k)]);
+                    polys.push_cell(&[
+                        idx(i, j + 1, k),
+                        idx(i, j + 1, k + 1),
+                        idx(i + 1, j + 1, k + 1),
+                        idx(i + 1, j + 1, k),
+                    ]);
                 }
                 // Left and right
                 if i == 0 {
-                    polys.push_cell(&[idx(0,j,k), idx(0,j,k+1), idx(0,j+1,k+1), idx(0,j+1,k)]);
+                    polys.push_cell(&[
+                        idx(0, j, k),
+                        idx(0, j, k + 1),
+                        idx(0, j + 1, k + 1),
+                        idx(0, j + 1, k),
+                    ]);
                 }
                 if i == dims[0] - 2 {
-                    polys.push_cell(&[idx(i+1,j,k), idx(i+1,j+1,k), idx(i+1,j+1,k+1), idx(i+1,j,k+1)]);
+                    polys.push_cell(&[
+                        idx(i + 1, j, k),
+                        idx(i + 1, j + 1, k),
+                        idx(i + 1, j + 1, k + 1),
+                        idx(i + 1, j, k + 1),
+                    ]);
                 }
             }
         }
@@ -205,31 +270,60 @@ pub fn structured_grid_to_poly_data(sg: &StructuredGrid) -> PolyData {
         pd.points.push(sg.points.get(i));
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> i64 {
-        (k * dims[1] * dims[0] + j * dims[0] + i) as i64
-    };
+    let idx =
+        |i: usize, j: usize, k: usize| -> i64 { (k * dims[1] * dims[0] + j * dims[0] + i) as i64 };
 
     // Outer faces only
     for k in 0..dims[2].saturating_sub(1) {
         for j in 0..dims[1].saturating_sub(1) {
             for i in 0..dims[0].saturating_sub(1) {
                 if k == 0 {
-                    pd.polys.push_cell(&[idx(i,j,0), idx(i+1,j,0), idx(i+1,j+1,0), idx(i,j+1,0)]);
+                    pd.polys.push_cell(&[
+                        idx(i, j, 0),
+                        idx(i + 1, j, 0),
+                        idx(i + 1, j + 1, 0),
+                        idx(i, j + 1, 0),
+                    ]);
                 }
                 if k == dims[2].saturating_sub(2) {
-                    pd.polys.push_cell(&[idx(i,j,k+1), idx(i,j+1,k+1), idx(i+1,j+1,k+1), idx(i+1,j,k+1)]);
+                    pd.polys.push_cell(&[
+                        idx(i, j, k + 1),
+                        idx(i, j + 1, k + 1),
+                        idx(i + 1, j + 1, k + 1),
+                        idx(i + 1, j, k + 1),
+                    ]);
                 }
                 if j == 0 {
-                    pd.polys.push_cell(&[idx(i,0,k), idx(i+1,0,k), idx(i+1,0,k+1), idx(i,0,k+1)]);
+                    pd.polys.push_cell(&[
+                        idx(i, 0, k),
+                        idx(i + 1, 0, k),
+                        idx(i + 1, 0, k + 1),
+                        idx(i, 0, k + 1),
+                    ]);
                 }
                 if j == dims[1].saturating_sub(2) {
-                    pd.polys.push_cell(&[idx(i,j+1,k), idx(i,j+1,k+1), idx(i+1,j+1,k+1), idx(i+1,j+1,k)]);
+                    pd.polys.push_cell(&[
+                        idx(i, j + 1, k),
+                        idx(i, j + 1, k + 1),
+                        idx(i + 1, j + 1, k + 1),
+                        idx(i + 1, j + 1, k),
+                    ]);
                 }
                 if i == 0 {
-                    pd.polys.push_cell(&[idx(0,j,k), idx(0,j,k+1), idx(0,j+1,k+1), idx(0,j+1,k)]);
+                    pd.polys.push_cell(&[
+                        idx(0, j, k),
+                        idx(0, j, k + 1),
+                        idx(0, j + 1, k + 1),
+                        idx(0, j + 1, k),
+                    ]);
                 }
                 if i == dims[0].saturating_sub(2) {
-                    pd.polys.push_cell(&[idx(i+1,j,k), idx(i+1,j+1,k), idx(i+1,j+1,k+1), idx(i+1,j,k+1)]);
+                    pd.polys.push_cell(&[
+                        idx(i + 1, j, k),
+                        idx(i + 1, j + 1, k),
+                        idx(i + 1, j + 1, k + 1),
+                        idx(i + 1, j, k + 1),
+                    ]);
                 }
             }
         }
@@ -257,7 +351,9 @@ pub fn image_data_to_structured_grid(img: &ImageData) -> StructuredGrid {
 /// Returns None if the grid is not axis-aligned with uniform spacing.
 pub fn structured_grid_to_image_data(sg: &StructuredGrid) -> Option<ImageData> {
     let dims = sg.dimensions();
-    if dims[0] < 2 || dims[1] < 2 || dims[2] < 2 { return None; }
+    if dims[0] < 2 || dims[1] < 2 || dims[2] < 2 {
+        return None;
+    }
 
     let p000 = sg.points.get(sg.index_from_ijk(0, 0, 0));
     let p100 = sg.points.get(sg.index_from_ijk(1, 0, 0));
@@ -314,11 +410,7 @@ mod tests {
 
     #[test]
     fn rectilinear_to_poly() {
-        let rg = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 2.0],
-            vec![0.0, 1.0],
-            vec![0.0, 1.0],
-        );
+        let rg = RectilinearGrid::from_coords(vec![0.0, 1.0, 2.0], vec![0.0, 1.0], vec![0.0, 1.0]);
         let pd = rectilinear_grid_to_poly_data(&rg);
         assert_eq!(pd.points.len(), 12); // 3*2*2
         assert!(pd.polys.num_cells() > 0);
@@ -358,7 +450,12 @@ mod tests {
     #[test]
     fn roundtrip_poly_unstructured() {
         let pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
         let ug = poly_data_to_unstructured_grid(&pd);

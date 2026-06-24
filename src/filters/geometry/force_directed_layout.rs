@@ -3,33 +3,35 @@
 //! Positions graph vertices using spring-electric force simulation
 //! (Fruchterman-Reingold style).
 
-use crate::data::{AnyDataArray, DataArray, Graph, Points, PolyData, CellArray};
+use crate::data::{AnyDataArray, CellArray, DataArray, Graph, Points, PolyData};
 
 /// Compute a 2D force-directed layout of a Graph.
 ///
 /// Returns a PolyData with vertex positions and edge lines.
-pub fn force_directed_layout(
-    graph: &Graph,
-    iterations: usize,
-    area: f64,
-) -> PolyData {
+pub fn force_directed_layout(graph: &Graph, iterations: usize, area: f64) -> PolyData {
     let n = graph.num_vertices();
-    if n == 0 { return PolyData::new(); }
+    if n == 0 {
+        return PolyData::new();
+    }
 
     let k = (area / n as f64).sqrt(); // ideal spring length
 
     // Initialize positions randomly (deterministic seed)
-    let mut pos: Vec<[f64; 2]> = (0..n).map(|i| {
-        let angle = i as f64 * 2.399; // golden angle
-        let r = (i as f64 + 1.0).sqrt() * k * 0.5;
-        [r * angle.cos(), r * angle.sin()]
-    }).collect();
+    let mut pos: Vec<[f64; 2]> = (0..n)
+        .map(|i| {
+            let angle = i as f64 * 2.399; // golden angle
+            let r = (i as f64 + 1.0).sqrt() * k * 0.5;
+            [r * angle.cos(), r * angle.sin()]
+        })
+        .collect();
 
     let temp_start = area.sqrt() * 0.1;
 
     for iter in 0..iterations {
         let temp = temp_start * (1.0 - iter as f64 / iterations as f64);
-        if temp < 1e-10 { break; }
+        if temp < 1e-10 {
+            break;
+        }
 
         let mut disp = vec![[0.0f64; 2]; n];
 
@@ -98,9 +100,8 @@ pub fn force_directed_layout(
         degree[src] += 1.0;
         degree[dst] += 1.0;
     }
-    mesh.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Degree", degree, 1),
-    ));
+    mesh.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Degree", degree, 1)));
 
     mesh
 }
@@ -128,8 +129,12 @@ mod tests {
     #[test]
     fn path_graph() {
         let mut g = Graph::new_undirected();
-        for _ in 0..5 { g.add_vertex(); }
-        for i in 0..4 { g.add_edge(i, i + 1); }
+        for _ in 0..5 {
+            g.add_vertex();
+        }
+        for i in 0..4 {
+            g.add_edge(i, i + 1);
+        }
 
         let layout = force_directed_layout(&g, 100, 100.0);
         assert_eq!(layout.points.len(), 5);

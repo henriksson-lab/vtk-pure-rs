@@ -3,8 +3,8 @@
 //! Provides flexible delimiter support (comma, tab, semicolon, pipe)
 //! and handles quoted fields, headers, and type inference.
 
-use std::io::{BufRead, Write};
 use crate::data::{AnyDataArray, DataArray, Points, PolyData, Table};
+use std::io::{BufRead, Write};
 
 /// CSV delimiter type.
 #[derive(Debug, Clone, Copy)]
@@ -33,7 +33,8 @@ pub fn read_csv<R: BufRead>(reader: R, delimiter: Delimiter) -> Result<Table, St
     let delim = delimiter.char();
     let mut lines = reader.lines();
 
-    let header = lines.next()
+    let header = lines
+        .next()
         .ok_or("empty CSV")?
         .map_err(|e| e.to_string())?;
     let col_names: Vec<String> = split_csv_line(&header, delim);
@@ -43,7 +44,9 @@ pub fn read_csv<R: BufRead>(reader: R, delimiter: Delimiter) -> Result<Table, St
     for line_result in lines {
         let line = line_result.map_err(|e| e.to_string())?;
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
         let values = split_csv_line(trimmed, delim);
         for (i, val) in values.iter().enumerate().take(ncols) {
             columns[i].push(val.parse().unwrap_or(f64::NAN));
@@ -52,15 +55,21 @@ pub fn read_csv<R: BufRead>(reader: R, delimiter: Delimiter) -> Result<Table, St
 
     let mut table = Table::new();
     for (i, name) in col_names.iter().enumerate() {
-        table.add_column(AnyDataArray::F64(
-            DataArray::from_vec(name.trim(), columns[i].clone(), 1),
-        ));
+        table.add_column(AnyDataArray::F64(DataArray::from_vec(
+            name.trim(),
+            columns[i].clone(),
+            1,
+        )));
     }
     Ok(table)
 }
 
 /// Write a Table as CSV/TSV.
-pub fn write_csv<W: Write>(writer: &mut W, table: &Table, delimiter: Delimiter) -> std::io::Result<()> {
+pub fn write_csv<W: Write>(
+    writer: &mut W,
+    table: &Table,
+    delimiter: Delimiter,
+) -> std::io::Result<()> {
     let delim = delimiter.char();
     let names: Vec<&str> = table.columns().iter().map(|c| c.name()).collect();
     writeln!(writer, "{}", names.join(&delim.to_string()))?;
@@ -87,7 +96,9 @@ pub fn write_csv<W: Write>(writer: &mut W, table: &Table, delimiter: Delimiter) 
 pub fn read_csv_as_points<R: BufRead>(reader: R, delimiter: Delimiter) -> Result<PolyData, String> {
     let table = read_csv(reader, delimiter)?;
     let n = table.num_rows();
-    if n == 0 { return Ok(PolyData::new()); }
+    if n == 0 {
+        return Ok(PolyData::new());
+    }
 
     // Find x, y, z columns (case-insensitive)
     let names = table.column_names();
@@ -106,9 +117,15 @@ pub fn read_csv_as_points<R: BufRead>(reader: R, delimiter: Delimiter) -> Result
 
     let mut points = Points::<f64>::new();
     for row in 0..n {
-        let x = x_idx.and_then(|i| table.value_f64(row, names[i])).unwrap_or(0.0);
-        let y = y_idx.and_then(|i| table.value_f64(row, names[i])).unwrap_or(0.0);
-        let z = z_idx.and_then(|i| table.value_f64(row, names[i])).unwrap_or(0.0);
+        let x = x_idx
+            .and_then(|i| table.value_f64(row, names[i]))
+            .unwrap_or(0.0);
+        let y = y_idx
+            .and_then(|i| table.value_f64(row, names[i]))
+            .unwrap_or(0.0);
+        let z = z_idx
+            .and_then(|i| table.value_f64(row, names[i]))
+            .unwrap_or(0.0);
         points.push([x, y, z]);
     }
 
@@ -117,7 +134,9 @@ pub fn read_csv_as_points<R: BufRead>(reader: R, delimiter: Delimiter) -> Result
 
     // Add remaining columns as point data
     for (ci, name) in names.iter().enumerate() {
-        if Some(ci) == x_idx || Some(ci) == y_idx || Some(ci) == z_idx { continue; }
+        if Some(ci) == x_idx || Some(ci) == y_idx || Some(ci) == z_idx {
+            continue;
+        }
         if let Some(col) = table.column(ci) {
             let mut data = Vec::with_capacity(n);
             let mut buf = [0.0f64];
@@ -125,9 +144,12 @@ pub fn read_csv_as_points<R: BufRead>(reader: R, delimiter: Delimiter) -> Result
                 col.tuple_as_f64(row, &mut buf);
                 data.push(buf[0]);
             }
-            mesh.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec(&name.to_string(), data, 1),
-            ));
+            mesh.point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    &name.to_string(),
+                    data,
+                    1,
+                )));
         }
     }
 
@@ -206,8 +228,16 @@ mod tests {
     #[test]
     fn roundtrip() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![3.0, 4.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![3.0, 4.0],
+                1,
+            )));
         let mut buf = Vec::new();
         write_csv(&mut buf, &table, Delimiter::Comma).unwrap();
         let loaded = read_csv(&buf[..], Delimiter::Comma).unwrap();

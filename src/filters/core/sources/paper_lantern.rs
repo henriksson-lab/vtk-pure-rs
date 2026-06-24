@@ -2,13 +2,16 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn paper_lantern(radius: f64, n_ribs: usize, n_parallels: usize) -> PolyData {
-    let nr = n_ribs.max(6); let np = n_parallels.max(4);
+    let nr = n_ribs.max(6);
+    let np = n_parallels.max(4);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
     // Top and bottom attachment points
-    let top = pts.len(); pts.push([0.0, 0.0, radius]);
-    let bot = pts.len(); pts.push([0.0, 0.0, -radius]);
+    let top = pts.len();
+    pts.push([0.0, 0.0, radius]);
+    let bot = pts.len();
+    pts.push([0.0, 0.0, -radius]);
     // Ribs (meridian lines with slight bulge)
     for r in 0..nr {
         let theta = 2.0 * std::f64::consts::PI * r as f64 / nr as f64;
@@ -22,7 +25,9 @@ pub fn paper_lantern(radius: f64, n_ribs: usize, n_parallels: usize) -> PolyData
         }
         // Lines along rib
         lines.push_cell(&[top as i64, rib_base as i64]);
-        for p in 0..(np-2) { lines.push_cell(&[(rib_base+p) as i64, (rib_base+p+1) as i64]); }
+        for p in 0..(np - 2) {
+            lines.push_cell(&[(rib_base + p) as i64, (rib_base + p + 1) as i64]);
+        }
         lines.push_cell(&[(rib_base + np - 2) as i64, bot as i64]);
     }
     // Surface panels between ribs
@@ -33,13 +38,22 @@ pub fn paper_lantern(radius: f64, n_ribs: usize, n_parallels: usize) -> PolyData
         // Top fan
         polys.push_cell(&[top as i64, b0 as i64, b1 as i64]);
         // Middle quads
-        for p in 0..(np-2) {
-            polys.push_cell(&[(b0+p) as i64, (b0+p+1) as i64, (b1+p+1) as i64, (b1+p) as i64]);
+        for p in 0..(np - 2) {
+            polys.push_cell(&[
+                (b0 + p) as i64,
+                (b0 + p + 1) as i64,
+                (b1 + p + 1) as i64,
+                (b1 + p) as i64,
+            ]);
         }
         // Bottom fan
-        polys.push_cell(&[(b0+np-2) as i64, bot as i64, (b1+np-2) as i64]);
+        polys.push_cell(&[(b0 + np - 2) as i64, bot as i64, (b1 + np - 2) as i64]);
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

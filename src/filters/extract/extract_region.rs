@@ -1,4 +1,4 @@
-use crate::data::{DataArray, ImageData, AnyDataArray};
+use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Extract a sub-region of an ImageData by index extent.
 ///
@@ -72,7 +72,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 5);
         let n = img.num_points();
         let scalars: Vec<f64> = (0..n).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("idx", scalars, 1)));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("idx", scalars, 1)));
         img.point_data_mut().set_active_scalars("idx");
 
         let sub = extract_region(&img, [1, 3, 1, 3, 1, 3]);

@@ -43,7 +43,8 @@ pub fn mass_properties(input: &PolyData) -> MassProperties {
                 e1[2] * e2[0] - e1[0] * e2[2],
                 e1[0] * e2[1] - e1[1] * e2[0],
             ];
-            let area = 0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            let area =
+                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
             total_area += area;
 
             // Signed volume contribution via divergence theorem:
@@ -96,8 +97,16 @@ mod tests {
         let props = mass_properties(&tri_cube);
 
         // Unit cube: area = 6, volume = 1
-        assert!((props.surface_area - 6.0).abs() < 0.1, "area = {}", props.surface_area);
-        assert!((props.volume - 1.0).abs() < 0.1, "volume = {}", props.volume);
+        assert!(
+            (props.surface_area - 6.0).abs() < 0.1,
+            "area = {}",
+            props.surface_area
+        );
+        assert!(
+            (props.volume - 1.0).abs() < 0.1,
+            "volume = {}",
+            props.volume
+        );
     }
 
     #[test]
@@ -111,10 +120,16 @@ mod tests {
         let props = mass_properties(&sphere);
 
         // Sphere: area ≈ 4π ≈ 12.566, volume ≈ 4π/3 ≈ 4.189
-        assert!((props.surface_area - 4.0 * std::f64::consts::PI).abs() < 0.5,
-            "sphere area = {}", props.surface_area);
-        assert!((props.volume - 4.0 * std::f64::consts::PI / 3.0).abs() < 0.5,
-            "sphere volume = {}", props.volume);
+        assert!(
+            (props.surface_area - 4.0 * std::f64::consts::PI).abs() < 0.5,
+            "sphere area = {}",
+            props.surface_area
+        );
+        assert!(
+            (props.volume - 4.0 * std::f64::consts::PI / 3.0).abs() < 0.5,
+            "sphere volume = {}",
+            props.volume
+        );
     }
 
     #[test]

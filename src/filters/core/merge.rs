@@ -63,7 +63,9 @@ pub fn scale_uniform(pd: &PolyData, factor: f64) -> PolyData {
     let mut result = pd.clone();
     for i in 0..result.points.len() {
         let p = result.points.get(i);
-        result.points.set(i, [p[0] * factor, p[1] * factor, p[2] * factor]);
+        result
+            .points
+            .set(i, [p[0] * factor, p[1] * factor, p[2] * factor]);
     }
     result
 }
@@ -73,11 +75,14 @@ pub fn transform_position_scale(pd: &PolyData, position: [f64; 3], scale: f64) -
     let mut result = pd.clone();
     for i in 0..result.points.len() {
         let p = result.points.get(i);
-        result.points.set(i, [
-            p[0] * scale + position[0],
-            p[1] * scale + position[1],
-            p[2] * scale + position[2],
-        ]);
+        result.points.set(
+            i,
+            [
+                p[0] * scale + position[0],
+                p[1] * scale + position[1],
+                p[2] * scale + position[2],
+            ],
+        );
     }
     result
 }

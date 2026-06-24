@@ -1,7 +1,7 @@
 use crate::types::BoundingBox;
 
-use crate::data::{DataSetAttributes, FieldData};
 use crate::data::traits::{DataObject, DataSet};
+use crate::data::{DataSetAttributes, FieldData};
 
 /// Regular grid with implicit point coordinates computed from extent, spacing, and origin.
 ///
@@ -13,7 +13,7 @@ use crate::data::traits::{DataObject, DataSet};
 /// # Examples
 ///
 /// ```
-/// use crate::data::ImageData;
+/// use vtk_pure_rs::data::ImageData;
 ///
 /// // Create a 10x10x10 grid
 /// let img = ImageData::with_dimensions(10, 10, 10);
@@ -50,7 +50,14 @@ impl ImageData {
     /// Create an ImageData with given dimensions (number of points in each direction).
     pub fn with_dimensions(nx: usize, ny: usize, nz: usize) -> Self {
         Self {
-            extent: [0, (nx as i64) - 1, 0, (ny as i64) - 1, 0, (nz as i64) - 1],
+            extent: [
+                0,
+                extent_max_from_dimension(nx),
+                0,
+                extent_max_from_dimension(ny),
+                0,
+                extent_max_from_dimension(nz),
+            ],
             ..Default::default()
         }
     }
@@ -99,12 +106,23 @@ impl ImageData {
 
     /// Convert a flat point index to (i, j, k).
     pub fn ijk_from_index(&self, idx: usize) -> (usize, usize, usize) {
+        self.checked_ijk_from_index(idx)
+            .expect("point index out of bounds for ImageData extent")
+    }
+
+    /// Convert a flat point index to (i, j, k), returning `None` if out of bounds.
+    pub fn checked_ijk_from_index(&self, idx: usize) -> Option<(usize, usize, usize)> {
         let dims = self.dimensions();
-        let k = idx / (dims[0] * dims[1]);
-        let remainder = idx % (dims[0] * dims[1]);
+        let plane = dims[0].checked_mul(dims[1])?;
+        let total = plane.checked_mul(dims[2])?;
+        if plane == 0 || idx >= total {
+            return None;
+        }
+        let k = idx / plane;
+        let remainder = idx % plane;
         let j = remainder / dims[0];
         let i = remainder % dims[0];
-        (i, j, k)
+        Some((i, j, k))
     }
 
     /// Get point coordinates by flat index (equivalent to `point_from_ijk(ijk_from_index(idx))`).
@@ -115,8 +133,20 @@ impl ImageData {
 
     /// Convert (i, j, k) to a flat point index.
     pub fn index_from_ijk(&self, i: usize, j: usize, k: usize) -> usize {
+        self.checked_index_from_ijk(i, j, k)
+            .expect("point coordinates out of bounds for ImageData extent")
+    }
+
+    /// Convert (i, j, k) to a flat point index, returning `None` if out of bounds.
+    pub fn checked_index_from_ijk(&self, i: usize, j: usize, k: usize) -> Option<usize> {
         let dims = self.dimensions();
-        k * dims[0] * dims[1] + j * dims[0] + i
+        if i >= dims[0] || j >= dims[1] || k >= dims[2] {
+            return None;
+        }
+        let plane = dims[0].checked_mul(dims[1])?;
+        k.checked_mul(plane)?
+            .checked_add(j.checked_mul(dims[0])?)?
+            .checked_add(i)
     }
 
     /// Get the active scalar value at grid position (i, j, k).
@@ -124,7 +154,10 @@ impl ImageData {
     /// Returns None if no active scalars are set.
     pub fn scalar_at(&self, i: usize, j: usize, k: usize) -> Option<f64> {
         let scalars = self.point_data.scalars()?;
-        let idx = self.index_from_ijk(i, j, k);
+        let idx = self.checked_index_from_ijk(i, j, k)?;
+        if idx >= scalars.num_tuples() {
+            return None;
+        }
         let mut buf = [0.0f64];
         scalars.tuple_as_f64(idx, &mut buf);
         Some(buf[0])
@@ -139,7 +172,7 @@ impl ImageData {
     /// Number of points.
     pub fn num_points(&self) -> usize {
         let d = self.dimensions();
-        d[0] * d[1] * d[2]
+        d[0].saturating_mul(d[1]).saturating_mul(d[2])
     }
 
     pub fn point_data(&self) -> &DataSetAttributes {
@@ -178,7 +211,7 @@ impl ImageData {
     /// # Examples
     ///
     /// ```
-    /// use crate::data::ImageData;
+    /// use vtk_pure_rs::data::ImageData;
     ///
     /// // Create a sphere distance field
     /// let img = ImageData::from_function(
@@ -212,7 +245,8 @@ impl ImageData {
         }
 
         let arr = crate::data::DataArray::from_vec(name, values, 1);
-        img.point_data.add_array(crate::data::AnyDataArray::F64(arr));
+        img.point_data
+            .add_array(crate::data::AnyDataArray::F64(arr));
         img.point_data.set_active_scalars(name);
         img
     }
@@ -241,11 +275,14 @@ impl DataObject for ImageData {
 impl DataSet for ImageData {
     fn num_points(&self) -> usize {
         let d = self.dimensions();
-        d[0] * d[1] * d[2]
+        d[0].saturating_mul(d[1]).saturating_mul(d[2])
     }
 
     fn num_cells(&self) -> usize {
         let d = self.dimensions();
+        if d[0] == 0 || d[1] == 0 || d[2] == 0 {
+            return 0;
+        }
         let cx = d[0].saturating_sub(1);
         let cy = d[1].saturating_sub(1);
         let cz = d[2].saturating_sub(1);
@@ -294,8 +331,23 @@ impl DataSet for ImageData {
 impl std::fmt::Display for ImageData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let d = self.dimensions();
-        write!(f, "ImageData: {}x{}x{}, spacing {:?}, origin {:?}, {} point arrays",
-            d[0], d[1], d[2], self.spacing(), self.origin(), self.point_data.num_arrays())
+        write!(
+            f,
+            "ImageData: {}x{}x{}, spacing {:?}, origin {:?}, {} point arrays",
+            d[0],
+            d[1],
+            d[2],
+            self.spacing(),
+            self.origin(),
+            self.point_data.num_arrays()
+        )
+    }
+}
+
+fn extent_max_from_dimension(n: usize) -> i64 {
+    match n.checked_sub(1) {
+        Some(v) => i64::try_from(v).unwrap_or(i64::MAX),
+        None => -1,
     }
 }
 
@@ -330,6 +382,20 @@ mod tests {
     }
 
     #[test]
+    fn checked_indexing_rejects_empty_and_out_of_bounds() {
+        let empty = ImageData::with_dimensions(0, 4, 5);
+        assert_eq!(empty.dimensions(), [0, 4, 5]);
+        assert_eq!(empty.num_points(), 0);
+        assert_eq!(empty.num_cells(), 0);
+        assert_eq!(empty.checked_ijk_from_index(0), None);
+        assert_eq!(empty.checked_index_from_ijk(0, 0, 0), None);
+
+        let img = ImageData::with_dimensions(3, 4, 5);
+        assert_eq!(img.checked_ijk_from_index(60), None);
+        assert_eq!(img.checked_index_from_ijk(3, 0, 0), None);
+    }
+
+    #[test]
     fn bounds_computation() {
         let mut img = ImageData::with_dimensions(10, 10, 10);
         img.set_spacing([0.1, 0.1, 0.1]);
@@ -347,9 +413,11 @@ mod tests {
     #[test]
     fn from_function() {
         let img = ImageData::from_function(
-            [5, 5, 5], [0.2, 0.2, 0.2], [0.0, 0.0, 0.0],
+            [5, 5, 5],
+            [0.2, 0.2, 0.2],
+            [0.0, 0.0, 0.0],
             "dist",
-            |x, y, z| (x*x + y*y + z*z).sqrt(),
+            |x, y, z| (x * x + y * y + z * z).sqrt(),
         );
         assert_eq!(img.dimensions(), [5, 5, 5]);
         assert!(img.point_data().scalars().is_some());
@@ -369,12 +437,16 @@ mod tests {
     #[test]
     fn scalar_at() {
         let img = ImageData::from_function(
-            [3, 3, 3], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0],
-            "val", |x, _y, _z| x,
+            [3, 3, 3],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "val",
+            |x, _y, _z| x,
         );
         // At (0,0,0) x=0, at (2,0,0) x=2
         assert!((img.scalar_at(0, 0, 0).unwrap()).abs() < 1e-10);
         assert!((img.scalar_at(2, 0, 0).unwrap() - 2.0).abs() < 1e-10);
+        assert_eq!(img.scalar_at(3, 0, 0), None);
     }
 
     #[test]

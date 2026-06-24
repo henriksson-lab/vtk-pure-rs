@@ -21,7 +21,8 @@ impl SparseMatrix {
     /// Create an empty sparse matrix.
     pub fn new(rows: usize, cols: usize) -> Self {
         Self {
-            rows, cols,
+            rows,
+            cols,
             row_ptr: vec![0; rows + 1],
             col_idx: Vec::new(),
             values: Vec::new(),
@@ -49,7 +50,13 @@ impl SparseMatrix {
             row_ptr[i + 1] += row_ptr[i];
         }
 
-        Self { rows, cols, row_ptr, col_idx, values }
+        Self {
+            rows,
+            cols,
+            row_ptr,
+            col_idx,
+            values,
+        }
     }
 
     /// Number of non-zero entries.
@@ -91,15 +98,23 @@ impl SparseMatrix {
 
     /// Sparsity (fraction of non-zero entries).
     pub fn sparsity(&self) -> f64 {
-        if self.rows == 0 || self.cols == 0 { return 0.0; }
+        if self.rows == 0 || self.cols == 0 {
+            return 0.0;
+        }
         1.0 - self.nnz() as f64 / (self.rows * self.cols) as f64
     }
 }
 
 impl std::fmt::Display for SparseMatrix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SparseMatrix({}x{}, {} nnz, {:.1}% sparse)",
-            self.rows, self.cols, self.nnz(), self.sparsity() * 100.0)
+        write!(
+            f,
+            "SparseMatrix({}x{}, {} nnz, {:.1}% sparse)",
+            self.rows,
+            self.cols,
+            self.nnz(),
+            self.sparsity() * 100.0
+        )
     }
 }
 
@@ -118,9 +133,11 @@ mod tests {
 
     #[test]
     fn from_triplets() {
-        let m = SparseMatrix::from_triplets(3, 3, &[
-            (0, 0, 2.0), (0, 1, 1.0), (1, 1, 3.0), (2, 2, 4.0),
-        ]);
+        let m = SparseMatrix::from_triplets(
+            3,
+            3,
+            &[(0, 0, 2.0), (0, 1, 1.0), (1, 1, 3.0), (2, 2, 4.0)],
+        );
         assert_eq!(m.get(0, 0), 2.0);
         assert_eq!(m.get(1, 1), 3.0);
         assert_eq!(m.get(2, 0), 0.0);
@@ -136,9 +153,11 @@ mod tests {
 
     #[test]
     fn mul_vec_general() {
-        let m = SparseMatrix::from_triplets(2, 2, &[
-            (0, 0, 2.0), (0, 1, 1.0), (1, 0, 0.0), (1, 1, 3.0),
-        ]);
+        let m = SparseMatrix::from_triplets(
+            2,
+            2,
+            &[(0, 0, 2.0), (0, 1, 1.0), (1, 0, 0.0), (1, 1, 3.0)],
+        );
         let y = m.mul_vec(&[1.0, 2.0]);
         assert!((y[0] - 4.0).abs() < 1e-10); // 2*1 + 1*2
         assert!((y[1] - 6.0).abs() < 1e-10); // 0*1 + 3*2

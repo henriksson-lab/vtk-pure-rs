@@ -1,8 +1,15 @@
 //! Hourglass (two cones meeting at a narrow waist).
 use crate::data::{CellArray, Points, PolyData};
 
-pub fn hourglass(height: f64, radius: f64, waist_ratio: f64, n_floors: usize, n_angular: usize) -> PolyData {
-    let nf = n_floors.max(4); let na = n_angular.max(8);
+pub fn hourglass(
+    height: f64,
+    radius: f64,
+    waist_ratio: f64,
+    n_floors: usize,
+    n_angular: usize,
+) -> PolyData {
+    let nf = n_floors.max(4);
+    let na = n_angular.max(8);
     let waist = radius * waist_ratio.clamp(0.01, 0.5);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -21,14 +28,18 @@ pub fn hourglass(height: f64, radius: f64, waist_ratio: f64, n_floors: usize, n_
         }
     }
     for f in 0..nf {
-        let b0 = f * na; let b1 = (f+1) * na;
+        let b0 = f * na;
+        let b1 = (f + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

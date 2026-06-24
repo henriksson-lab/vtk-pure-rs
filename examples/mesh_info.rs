@@ -2,7 +2,11 @@
 //!
 //! Usage: cargo run --example mesh_info -- path/to/mesh.stl
 
-use vtk_data::DataSet;
+use std::path::Path;
+
+use vtk_pure_rs::data::{DataSet, PolyData};
+use vtk_pure_rs::filters::core::{elevation, sources, topology};
+use vtk_pure_rs::filters::normals::normals;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -15,17 +19,15 @@ fn main() {
         println!("Demo mode: analyzing generated sphere...");
         println!();
 
-        let pd = vtk_filters::sources::sphere::sphere(
-            &vtk_filters::sources::sphere::SphereParams::default(),
-        );
-        let pd = vtk_filters::normals::compute_normals(&pd);
-        let pd = vtk_filters::elevation::elevation_z(&pd);
+        let pd = sources::sphere(&sources::SphereParams::default());
+        let pd = normals::compute_normals(&pd);
+        let pd = elevation::elevation_z(&pd);
         analyze(&pd);
         return;
     }
 
     let path = std::path::Path::new(&args[1]);
-    match vtk::io::read_poly_data(path) {
+    match read_poly_data(path) {
         Ok(pd) => {
             println!("File: {}", path.display());
             println!();
@@ -38,25 +40,66 @@ fn main() {
     }
 }
 
-fn analyze(pd: &vtk_data::PolyData) {
+fn read_poly_data(path: &Path) -> Result<PolyData, String> {
+    match extension(path).as_str() {
+        "vtk" => {
+            vtk_pure_rs::io::legacy::LegacyReader::read_poly_data(path).map_err(|e| e.to_string())
+        }
+        "vtp" => vtk_pure_rs::io::xml::VtpReader::read(path).map_err(|e| e.to_string()),
+        "stl" => vtk_pure_rs::io::stl::StlReader::read(path).map_err(|e| e.to_string()),
+        "obj" => vtk_pure_rs::io::obj::ObjReader::read(path).map_err(|e| e.to_string()),
+        "ply" => vtk_pure_rs::io::ply::PlyReader::read(path).map_err(|e| e.to_string()),
+        "glb" => vtk_pure_rs::io::gltf::GlbReader::read(path).map_err(|e| e.to_string()),
+        "off" => vtk_pure_rs::io::off::read_off_file(path),
+        ext => Err(format!("unknown file extension: .{ext}")),
+    }
+}
+
+fn extension(path: &Path) -> String {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_lowercase)
+        .unwrap_or_default()
+}
+
+fn analyze(pd: &PolyData) {
     println!("=== Geometry ===");
     println!("  {pd}");
-    println!("  Triangles: {} / {} polys", pd.num_triangles(), pd.num_polys());
+    println!(
+        "  Triangles: {} / {} polys",
+        pd.num_triangles(),
+        pd.num_polys()
+    );
     println!("  All triangles: {}", pd.is_all_triangles());
     println!("  Edges: {}", pd.num_edges());
     println!();
 
     println!("=== Bounds ===");
     let bb = pd.bounds();
-    println!("  X: [{:.4}, {:.4}] (size: {:.4})", bb.x_min, bb.x_max, bb.size()[0]);
-    println!("  Y: [{:.4}, {:.4}] (size: {:.4})", bb.y_min, bb.y_max, bb.size()[1]);
-    println!("  Z: [{:.4}, {:.4}] (size: {:.4})", bb.z_min, bb.z_max, bb.size()[2]);
+    println!(
+        "  X: [{:.4}, {:.4}] (size: {:.4})",
+        bb.x_min,
+        bb.x_max,
+        bb.size()[0]
+    );
+    println!(
+        "  Y: [{:.4}, {:.4}] (size: {:.4})",
+        bb.y_min,
+        bb.y_max,
+        bb.size()[1]
+    );
+    println!(
+        "  Z: [{:.4}, {:.4}] (size: {:.4})",
+        bb.z_min,
+        bb.z_max,
+        bb.size()[2]
+    );
     println!("  Center: {:?}", bb.center());
     println!("  Diagonal: {:.4}", bb.diagonal_length());
     println!();
 
     println!("=== Topology ===");
-    let topo = vtk_filters::topology::analyze_topology(pd);
+    let topo = topology::analyze_topology(pd);
     println!("  Vertices: {}", topo.num_points);
     println!("  Edges: {}", topo.num_edges);
     println!("  Faces: {}", topo.num_faces);
@@ -71,12 +114,18 @@ fn analyze(pd: &vtk_data::PolyData) {
     }
     println!();
 
-    println!("=== Measurements ===");
-    let m = vtk_render::measurement::measure(pd);
-    println!("  Surface area: {:.6}", m.surface_area);
-    println!("  Edge lengths: min={:.4}, max={:.4}, avg={:.4}", m.min_edge_length, m.max_edge_length, m.avg_edge_length);
-    println!("  Total edge length: {:.4}", m.total_edge_length);
-    println!();
+    #[cfg(feature = "render")]
+    {
+        println!("=== Measurements ===");
+        let m = vtk_pure_rs::render::measurement::measure(pd);
+        println!("  Surface area: {:.6}", m.surface_area);
+        println!(
+            "  Edge lengths: min={:.4}, max={:.4}, avg={:.4}",
+            m.min_edge_length, m.max_edge_length, m.avg_edge_length
+        );
+        println!("  Total edge length: {:.4}", m.total_edge_length);
+        println!();
+    }
 
     println!("=== Point Data ===");
     if pd.point_data().num_arrays() == 0 {
@@ -86,7 +135,13 @@ fn analyze(pd: &vtk_data::PolyData) {
         if let Some(arr) = pd.point_data().get_array_by_index(i) {
             print!("  {arr}");
             if let Some(stats) = arr.statistics() {
-                print!(" range=[{:.4}, {:.4}] mean={:.4} std={:.4}", stats.min, stats.max, stats.mean, stats.std_dev());
+                print!(
+                    " range=[{:.4}, {:.4}] mean={:.4} std={:.4}",
+                    stats.min,
+                    stats.max,
+                    stats.mean,
+                    stats.std_dev()
+                );
             }
             println!();
         }

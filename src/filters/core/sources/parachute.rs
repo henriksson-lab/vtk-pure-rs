@@ -2,12 +2,14 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn parachute(canopy_radius: f64, line_length: f64, n_gores: usize, n_rings: usize) -> PolyData {
-    let ng = n_gores.max(6); let nr = n_rings.max(3);
+    let ng = n_gores.max(6);
+    let nr = n_rings.max(3);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
     // Canopy (hemispherical cap)
-    let apex = pts.len(); pts.push([0.0, 0.0, 0.0]);
+    let apex = pts.len();
+    pts.push([0.0, 0.0, 0.0]);
     for r in 1..=nr {
         let phi = std::f64::consts::PI / 3.0 * r as f64 / nr as f64; // 60 degree cap
         let ring_r = canopy_radius * phi.sin();
@@ -18,23 +20,36 @@ pub fn parachute(canopy_radius: f64, line_length: f64, n_gores: usize, n_rings: 
         }
     }
     // Top cap
-    for g in 0..ng { polys.push_cell(&[apex as i64, (apex+1+g) as i64, (apex+1+(g+1)%ng) as i64]); }
+    for g in 0..ng {
+        polys.push_cell(&[
+            apex as i64,
+            (apex + 1 + g) as i64,
+            (apex + 1 + (g + 1) % ng) as i64,
+        ]);
+    }
     // Rings
-    for r in 0..(nr-1) {
-        let b0 = apex + 1 + r * ng; let b1 = apex + 1 + (r+1) * ng;
-        for g in 0..ng { let g1=(g+1)%ng;
-            polys.push_cell(&[(b0+g) as i64, (b1+g) as i64, (b1+g1) as i64]);
-            polys.push_cell(&[(b0+g) as i64, (b1+g1) as i64, (b0+g1) as i64]);
+    for r in 0..(nr - 1) {
+        let b0 = apex + 1 + r * ng;
+        let b1 = apex + 1 + (r + 1) * ng;
+        for g in 0..ng {
+            let g1 = (g + 1) % ng;
+            polys.push_cell(&[(b0 + g) as i64, (b1 + g) as i64, (b1 + g1) as i64]);
+            polys.push_cell(&[(b0 + g) as i64, (b1 + g1) as i64, (b0 + g1) as i64]);
         }
     }
     // Payload point
-    let payload = pts.len(); pts.push([0.0, 0.0, -line_length]);
+    let payload = pts.len();
+    pts.push([0.0, 0.0, -line_length]);
     // Suspension lines from canopy skirt to payload
-    let skirt_base = apex + 1 + (nr-1) * ng;
+    let skirt_base = apex + 1 + (nr - 1) * ng;
     for g in 0..ng {
-        lines.push_cell(&[(skirt_base+g) as i64, payload as i64]);
+        lines.push_cell(&[(skirt_base + g) as i64, payload as i64]);
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

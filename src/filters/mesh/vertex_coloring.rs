@@ -12,11 +12,16 @@ pub fn checkerboard_color(mesh: &PolyData, cell_size: f64) -> PolyData {
         let cy = (p[1] / cell_size).floor() as i64;
         let cz = (p[2] / cell_size).floor() as i64;
         let is_white = (cx + cy + cz) % 2 == 0;
-        if is_white { rgb.extend_from_slice(&[1.0, 1.0, 1.0]); }
-        else { rgb.extend_from_slice(&[0.2, 0.2, 0.2]); }
+        if is_white {
+            rgb.extend_from_slice(&[1.0, 1.0, 1.0]);
+        } else {
+            rgb.extend_from_slice(&[0.2, 0.2, 0.2]);
+        }
     }
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
     result
 }
 
@@ -27,10 +32,14 @@ pub fn rainbow_by_index(mesh: &PolyData) -> PolyData {
     for i in 0..n {
         let t = i as f64 / n.max(1) as f64;
         let (r, g, b) = hsv_to_rgb(t, 1.0, 1.0);
-        rgb.push(r); rgb.push(g); rgb.push(b);
+        rgb.push(r);
+        rgb.push(g);
+        rgb.push(b);
     }
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
     result
 }
 
@@ -40,38 +49,75 @@ pub fn color_by_curvature(mesh: &PolyData) -> PolyData {
     let adj = build_adj(mesh, n);
     let mut curvature = Vec::with_capacity(n);
     for i in 0..n {
-        if adj[i].is_empty() { curvature.push(0.0); continue; }
+        if adj[i].is_empty() {
+            curvature.push(0.0);
+            continue;
+        }
         let p = mesh.points.get(i);
         let mut lap = [0.0; 3];
-        for &j in &adj[i] { let q = mesh.points.get(j); for c in 0..3 { lap[c] += q[c]-p[c]; } }
+        for &j in &adj[i] {
+            let q = mesh.points.get(j);
+            for c in 0..3 {
+                lap[c] += q[c] - p[c];
+            }
+        }
         let k = adj[i].len() as f64;
-        curvature.push(((lap[0]/k).powi(2)+(lap[1]/k).powi(2)+(lap[2]/k).powi(2)).sqrt());
+        curvature.push(((lap[0] / k).powi(2) + (lap[1] / k).powi(2) + (lap[2] / k).powi(2)).sqrt());
     }
 
     let max_c = curvature.iter().cloned().fold(0.0f64, f64::max).max(1e-15);
     let mut rgb = Vec::with_capacity(n * 3);
     for &c in &curvature {
         let t = (c / max_c).clamp(0.0, 1.0);
-        rgb.push(t); rgb.push(0.0); rgb.push(1.0 - t);
+        rgb.push(t);
+        rgb.push(0.0);
+        rgb.push(1.0 - t);
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Curvature", curvature, 1)));
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Curvature",
+            curvature,
+            1,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
     result
 }
 
-fn hsv_to_rgb(h:f64,s:f64,v:f64)->(f64,f64,f64){
-    let i=(h*6.0).floor() as i32; let f=h*6.0-i as f64;
-    let p=v*(1.0-s); let q=v*(1.0-f*s); let t=v*(1.0-(1.0-f)*s);
-    match i%6{0=>(v,t,p),1=>(q,v,p),2=>(p,v,t),3=>(p,q,v),4=>(t,p,v),_=>(v,p,q)}
+fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
+    let i = (h * 6.0).floor() as i32;
+    let f = h * 6.0 - i as f64;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - f * s);
+    let t = v * (1.0 - (1.0 - f) * s);
+    match i % 6 {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    }
 }
 
-fn build_adj(m:&PolyData,n:usize)->Vec<Vec<usize>>{
-    let mut a:Vec<std::collections::HashSet<usize>>=vec![std::collections::HashSet::new();n];
-    for c in m.polys.iter(){let nc=c.len();for i in 0..nc{
-        let x=c[i] as usize;let y=c[(i+1)%nc] as usize;if x<n&&y<n{a[x].insert(y);a[y].insert(x);}
-    }}a.into_iter().map(|s|s.into_iter().collect()).collect()
+fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut a: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    for c in m.polys.iter() {
+        let nc = c.len();
+        for i in 0..nc {
+            let x = c[i] as usize;
+            let y = c[(i + 1) % nc] as usize;
+            if x < n && y < n {
+                a[x].insert(y);
+                a[y].insert(x);
+            }
+        }
+    }
+    a.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 #[cfg(test)]
@@ -79,21 +125,40 @@ mod tests {
     use super::*;
     #[test]
     fn checker() {
-        let mesh=PolyData::from_points(vec![[0.0,0.0,0.0],[1.5,0.0,0.0],[0.0,1.5,0.0]]);
-        let result=checkerboard_color(&mesh,1.0);
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.5, 0.0, 0.0], [0.0, 1.5, 0.0]]);
+        let result = checkerboard_color(&mesh, 1.0);
         assert!(result.point_data().get_array("RGB").is_some());
     }
     #[test]
     fn rainbow() {
-        let mesh=PolyData::from_points(vec![[0.0;3];5]);
-        let result=rainbow_by_index(&mesh);
-        let arr=result.point_data().get_array("RGB").unwrap();
-        assert_eq!(arr.num_components(),3);
+        let mesh = PolyData::from_points(vec![[0.0; 3]; 5]);
+        let result = rainbow_by_index(&mesh);
+        let arr = result.point_data().get_array("RGB").unwrap();
+        assert_eq!(arr.num_components(), 3);
     }
     #[test]
     fn curv_color() {
-        let mesh=PolyData::from_triangles(vec![[0.0,0.0,1.0],[1.0,0.0,0.0],[0.0,1.0,0.0],[-1.0,0.0,0.0],[0.0,-1.0,0.0],[0.0,0.0,-1.0]],vec![[0,1,2],[0,2,3],[0,3,4],[0,4,1],[5,2,1],[5,3,2],[5,4,3],[5,1,4]]);
-        let result=color_by_curvature(&mesh);
+        let mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ],
+            vec![
+                [0, 1, 2],
+                [0, 2, 3],
+                [0, 3, 4],
+                [0, 4, 1],
+                [5, 2, 1],
+                [5, 3, 2],
+                [5, 4, 3],
+                [5, 1, 4],
+            ],
+        );
+        let result = color_by_curvature(&mesh);
         assert!(result.point_data().get_array("Curvature").is_some());
         assert!(result.point_data().get_array("RGB").is_some());
     }

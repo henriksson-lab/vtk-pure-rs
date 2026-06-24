@@ -7,11 +7,7 @@ use crate::data::{CellArray, Points, PolyData};
 /// is a unit sphere scaled by the eigenvalues and rotated by the
 /// eigenvectors of the tensor (approximated by the matrix columns for
 /// symmetric tensors).
-pub fn tensor_glyph(
-    input: &PolyData,
-    tensor_name: &str,
-    glyph: &PolyData,
-) -> PolyData {
+pub fn tensor_glyph(input: &PolyData, tensor_name: &str, glyph: &PolyData) -> PolyData {
     let tensor_arr = match input.point_data().get_array(tensor_name) {
         Some(a) if a.num_components() == 9 => a,
         _ => return PolyData::new(),
@@ -94,11 +90,7 @@ mod tests {
         let mut input = PolyData::new();
         input.points.push([5.0, 0.0, 0.0]);
         // Scale 2x in x, 1x in y, 0.5x in z
-        let tensor = DataArray::from_vec(
-            "T",
-            vec![2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5],
-            9,
-        );
+        let tensor = DataArray::from_vec("T", vec![2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.5], 9);
         input.point_data_mut().add_array(tensor.into());
 
         let glyph = PolyData::from_triangles(

@@ -15,25 +15,42 @@ pub struct RayHit {
 ///
 /// Ray is defined by `origin` and `direction`. Returns the closest hit.
 pub fn ray_cast(input: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> Option<RayHit> {
-    let dlen = (direction[0]*direction[0]+direction[1]*direction[1]+direction[2]*direction[2]).sqrt();
-    if dlen < 1e-15 { return None; }
-    let dir = [direction[0]/dlen, direction[1]/dlen, direction[2]/dlen];
+    let dlen =
+        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
+            .sqrt();
+    if dlen < 1e-15 {
+        return None;
+    }
+    let dir = [
+        direction[0] / dlen,
+        direction[1] / dlen,
+        direction[2] / dlen,
+    ];
 
     let mut best: Option<RayHit> = None;
 
     for (ci, cell) in input.polys.iter().enumerate() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len()-1 {
+        for i in 1..cell.len() - 1 {
             let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i+1] as usize);
+            let v2 = input.points.get(cell[i + 1] as usize);
             if let Some(t) = ray_triangle(origin, dir, v0, v1, v2) {
                 if t > 1e-12 {
-                    let hit = match &best { Some(b) => t < b.t, None => true };
+                    let hit = match &best {
+                        Some(b) => t < b.t,
+                        None => true,
+                    };
                     if hit {
                         best = Some(RayHit {
                             cell_id: ci,
-                            point: [origin[0]+t*dir[0], origin[1]+t*dir[1], origin[2]+t*dir[2]],
+                            point: [
+                                origin[0] + t * dir[0],
+                                origin[1] + t * dir[1],
+                                origin[2] + t * dir[2],
+                            ],
                             t,
                         });
                     }
@@ -46,46 +63,74 @@ pub fn ray_cast(input: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> Opti
 
 /// Cast a ray and find ALL intersections (sorted by distance).
 pub fn ray_cast_all(input: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> Vec<RayHit> {
-    let dlen = (direction[0]*direction[0]+direction[1]*direction[1]+direction[2]*direction[2]).sqrt();
-    if dlen < 1e-15 { return vec![]; }
-    let dir = [direction[0]/dlen, direction[1]/dlen, direction[2]/dlen];
+    let dlen =
+        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
+            .sqrt();
+    if dlen < 1e-15 {
+        return vec![];
+    }
+    let dir = [
+        direction[0] / dlen,
+        direction[1] / dlen,
+        direction[2] / dlen,
+    ];
 
     let mut hits = Vec::new();
     for (ci, cell) in input.polys.iter().enumerate() {
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len()-1 {
+        for i in 1..cell.len() - 1 {
             let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i+1] as usize);
+            let v2 = input.points.get(cell[i + 1] as usize);
             if let Some(t) = ray_triangle(origin, dir, v0, v1, v2) {
                 if t > 1e-12 {
                     hits.push(RayHit {
                         cell_id: ci,
-                        point: [origin[0]+t*dir[0], origin[1]+t*dir[1], origin[2]+t*dir[2]],
+                        point: [
+                            origin[0] + t * dir[0],
+                            origin[1] + t * dir[1],
+                            origin[2] + t * dir[2],
+                        ],
                         t,
                     });
                 }
             }
         }
     }
-    hits.sort_by(|a,b| a.t.partial_cmp(&b.t).unwrap());
+    hits.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap());
     hits
 }
 
-fn ray_triangle(o: [f64;3], d: [f64;3], v0: [f64;3], v1: [f64;3], v2: [f64;3]) -> Option<f64> {
-    let e1 = [v1[0]-v0[0],v1[1]-v0[1],v1[2]-v0[2]];
-    let e2 = [v2[0]-v0[0],v2[1]-v0[1],v2[2]-v0[2]];
-    let h = [d[1]*e2[2]-d[2]*e2[1], d[2]*e2[0]-d[0]*e2[2], d[0]*e2[1]-d[1]*e2[0]];
-    let a = e1[0]*h[0]+e1[1]*h[1]+e1[2]*h[2];
-    if a.abs() < 1e-12 { return None; }
-    let f = 1.0/a;
-    let s = [o[0]-v0[0],o[1]-v0[1],o[2]-v0[2]];
-    let u = f*(s[0]*h[0]+s[1]*h[1]+s[2]*h[2]);
-    if !(0.0..=1.0).contains(&u) { return None; }
-    let q = [s[1]*e1[2]-s[2]*e1[1], s[2]*e1[0]-s[0]*e1[2], s[0]*e1[1]-s[1]*e1[0]];
-    let v = f*(d[0]*q[0]+d[1]*q[1]+d[2]*q[2]);
-    if v < 0.0 || u+v > 1.0 { return None; }
-    Some(f*(e2[0]*q[0]+e2[1]*q[1]+e2[2]*q[2]))
+fn ray_triangle(o: [f64; 3], d: [f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> Option<f64> {
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let h = [
+        d[1] * e2[2] - d[2] * e2[1],
+        d[2] * e2[0] - d[0] * e2[2],
+        d[0] * e2[1] - d[1] * e2[0],
+    ];
+    let a = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
+    if a.abs() < 1e-12 {
+        return None;
+    }
+    let f = 1.0 / a;
+    let s = [o[0] - v0[0], o[1] - v0[1], o[2] - v0[2]];
+    let u = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
+    if !(0.0..=1.0).contains(&u) {
+        return None;
+    }
+    let q = [
+        s[1] * e1[2] - s[2] * e1[1],
+        s[2] * e1[0] - s[0] * e1[2],
+        s[0] * e1[1] - s[1] * e1[0],
+    ];
+    let v = f * (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]);
+    if v < 0.0 || u + v > 1.0 {
+        return None;
+    }
+    Some(f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]))
 }
 
 #[cfg(test)]
@@ -130,6 +175,6 @@ mod tests {
     #[test]
     fn empty_mesh() {
         let pd = PolyData::new();
-        assert!(ray_cast(&pd, [0.0;3], [0.0,0.0,-1.0]).is_none());
+        assert!(ray_cast(&pd, [0.0; 3], [0.0, 0.0, -1.0]).is_none());
     }
 }

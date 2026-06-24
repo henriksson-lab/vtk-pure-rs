@@ -21,12 +21,7 @@ pub fn convex_hull_3d(input: &PolyData) -> PolyData {
         None => return PolyData::new(),
     };
 
-    let mut faces: Vec<[usize; 3]> = vec![
-        [i0, i1, i2],
-        [i0, i2, i3],
-        [i0, i3, i1],
-        [i1, i3, i2],
-    ];
+    let mut faces: Vec<[usize; 3]> = vec![[i0, i1, i2], [i0, i2, i3], [i0, i3, i1], [i1, i3, i2]];
 
     // Ensure all initial faces point outward from centroid
     let centroid: [f64; 3] = [
@@ -79,11 +74,8 @@ pub fn convex_hull_3d(input: &PolyData) -> PolyData {
             if !visible[fi] {
                 continue;
             }
-            let edges: [(usize, usize); 3] = [
-                (face[0], face[1]),
-                (face[1], face[2]),
-                (face[2], face[0]),
-            ];
+            let edges: [(usize, usize); 3] =
+                [(face[0], face[1]), (face[1], face[2]), (face[2], face[0])];
             for (a, b) in edges {
                 let mut shared: bool = false;
                 for (fj, other) in faces.iter().enumerate() {

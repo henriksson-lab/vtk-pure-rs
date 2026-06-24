@@ -34,9 +34,7 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
         *v = buf[0];
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let point_at = |i: usize, j: usize, k: usize| -> [f64; 3] {
         [
@@ -52,9 +50,7 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
     let ncy = ny - 1;
     let ncz = nz - 1;
 
-    let cell_idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ncy * ncx + j * ncx + i
-    };
+    let cell_idx = |i: usize, j: usize, k: usize| -> usize { k * ncy * ncx + j * ncx + i };
 
     // Map from cell index to output vertex index
     let mut cell_vertex: HashMap<usize, usize> = HashMap::new();
@@ -65,10 +61,14 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
             for i in 0..ncx {
                 // 8 corner values
                 let corners = [
-                    values[idx(i,j,k)],     values[idx(i+1,j,k)],
-                    values[idx(i+1,j+1,k)], values[idx(i,j+1,k)],
-                    values[idx(i,j,k+1)],   values[idx(i+1,j,k+1)],
-                    values[idx(i+1,j+1,k+1)], values[idx(i,j+1,k+1)],
+                    values[idx(i, j, k)],
+                    values[idx(i + 1, j, k)],
+                    values[idx(i + 1, j + 1, k)],
+                    values[idx(i, j + 1, k)],
+                    values[idx(i, j, k + 1)],
+                    values[idx(i + 1, j, k + 1)],
+                    values[idx(i + 1, j + 1, k + 1)],
+                    values[idx(i, j + 1, k + 1)],
                 ];
 
                 // Check if cell straddles isovalue
@@ -79,17 +79,30 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
 
                 // Corner positions
                 let corner_pts = [
-                    point_at(i,j,k),     point_at(i+1,j,k),
-                    point_at(i+1,j+1,k), point_at(i,j+1,k),
-                    point_at(i,j,k+1),   point_at(i+1,j,k+1),
-                    point_at(i+1,j+1,k+1), point_at(i,j+1,k+1),
+                    point_at(i, j, k),
+                    point_at(i + 1, j, k),
+                    point_at(i + 1, j + 1, k),
+                    point_at(i, j + 1, k),
+                    point_at(i, j, k + 1),
+                    point_at(i + 1, j, k + 1),
+                    point_at(i + 1, j + 1, k + 1),
+                    point_at(i, j + 1, k + 1),
                 ];
 
                 // 12 edges of the cube
                 let edges: [(usize, usize); 12] = [
-                    (0,1),(1,2),(2,3),(3,0),
-                    (4,5),(5,6),(6,7),(7,4),
-                    (0,4),(1,5),(2,6),(3,7),
+                    (0, 1),
+                    (1, 2),
+                    (2, 3),
+                    (3, 0),
+                    (4, 5),
+                    (5, 6),
+                    (6, 7),
+                    (7, 4),
+                    (0, 4),
+                    (1, 5),
+                    (2, 6),
+                    (3, 7),
                 ];
 
                 // Find average of edge intersection points
@@ -109,8 +122,12 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
 
                 if count > 0 {
                     let vid = out_points.len();
-                    out_points.push([sum[0]/count as f64, sum[1]/count as f64, sum[2]/count as f64]);
-                    cell_vertex.insert(cell_idx(i,j,k), vid);
+                    out_points.push([
+                        sum[0] / count as f64,
+                        sum[1] / count as f64,
+                        sum[2] / count as f64,
+                    ]);
+                    cell_vertex.insert(cell_idx(i, j, k), vid);
                 }
             }
         }
@@ -130,53 +147,92 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
                 // Check 3 face directions: +X, +Y, +Z
                 // +X face: shared edge between (i,j,k) and (i+1,j,k)
                 if i + 1 < ncx {
-                    let edge_val_a = values[idx(i+1, j, k)];
-                    let edge_val_b = values[idx(i+1, j+1, k)];
-                    let edge_val_c = values[idx(i+1, j+1, k+1)];
-                    let edge_val_d = values[idx(i+1, j, k+1)];
+                    let edge_val_a = values[idx(i + 1, j, k)];
+                    let edge_val_b = values[idx(i + 1, j + 1, k)];
+                    let edge_val_c = values[idx(i + 1, j + 1, k + 1)];
+                    let edge_val_d = values[idx(i + 1, j, k + 1)];
                     // The face between cells (i,j,k) and (i+1,j,k)
                     // straddles if the 4 face vertices have mixed signs
                     let face_above = [edge_val_a, edge_val_b, edge_val_c, edge_val_d]
-                        .iter().filter(|&&v| v >= isovalue).count();
+                        .iter()
+                        .filter(|&&v| v >= isovalue)
+                        .count();
                     if face_above > 0 && face_above < 4 {
-                        try_add_quad(&cell_vertex, &mut out_polys,
-                            cell_idx(i,j,k), cell_idx(i+1,j,k),
-                            if j+1 < ncy { Some(cell_idx(i+1,j+1,k)) } else { None },
-                            if j+1 < ncy { Some(cell_idx(i,j+1,k)) } else { None },
+                        try_add_quad(
+                            &cell_vertex,
+                            &mut out_polys,
+                            cell_idx(i, j, k),
+                            cell_idx(i + 1, j, k),
+                            if j + 1 < ncy {
+                                Some(cell_idx(i + 1, j + 1, k))
+                            } else {
+                                None
+                            },
+                            if j + 1 < ncy {
+                                Some(cell_idx(i, j + 1, k))
+                            } else {
+                                None
+                            },
                         );
                     }
                 }
 
                 // +Y face
                 if j + 1 < ncy {
-                    let edge_val_a = values[idx(i, j+1, k)];
-                    let edge_val_b = values[idx(i+1, j+1, k)];
-                    let edge_val_c = values[idx(i+1, j+1, k+1)];
-                    let edge_val_d = values[idx(i, j+1, k+1)];
+                    let edge_val_a = values[idx(i, j + 1, k)];
+                    let edge_val_b = values[idx(i + 1, j + 1, k)];
+                    let edge_val_c = values[idx(i + 1, j + 1, k + 1)];
+                    let edge_val_d = values[idx(i, j + 1, k + 1)];
                     let face_above = [edge_val_a, edge_val_b, edge_val_c, edge_val_d]
-                        .iter().filter(|&&v| v >= isovalue).count();
+                        .iter()
+                        .filter(|&&v| v >= isovalue)
+                        .count();
                     if face_above > 0 && face_above < 4 {
-                        try_add_quad(&cell_vertex, &mut out_polys,
-                            cell_idx(i,j,k), cell_idx(i,j+1,k),
-                            if k+1 < ncz { Some(cell_idx(i,j+1,k+1)) } else { None },
-                            if k+1 < ncz { Some(cell_idx(i,j,k+1)) } else { None },
+                        try_add_quad(
+                            &cell_vertex,
+                            &mut out_polys,
+                            cell_idx(i, j, k),
+                            cell_idx(i, j + 1, k),
+                            if k + 1 < ncz {
+                                Some(cell_idx(i, j + 1, k + 1))
+                            } else {
+                                None
+                            },
+                            if k + 1 < ncz {
+                                Some(cell_idx(i, j, k + 1))
+                            } else {
+                                None
+                            },
                         );
                     }
                 }
 
                 // +Z face
                 if k + 1 < ncz {
-                    let edge_val_a = values[idx(i, j, k+1)];
-                    let edge_val_b = values[idx(i+1, j, k+1)];
-                    let edge_val_c = values[idx(i+1, j+1, k+1)];
-                    let edge_val_d = values[idx(i, j+1, k+1)];
+                    let edge_val_a = values[idx(i, j, k + 1)];
+                    let edge_val_b = values[idx(i + 1, j, k + 1)];
+                    let edge_val_c = values[idx(i + 1, j + 1, k + 1)];
+                    let edge_val_d = values[idx(i, j + 1, k + 1)];
                     let face_above = [edge_val_a, edge_val_b, edge_val_c, edge_val_d]
-                        .iter().filter(|&&v| v >= isovalue).count();
+                        .iter()
+                        .filter(|&&v| v >= isovalue)
+                        .count();
                     if face_above > 0 && face_above < 4 {
-                        try_add_quad(&cell_vertex, &mut out_polys,
-                            cell_idx(i,j,k), cell_idx(i,j,k+1),
-                            if i+1 < ncx { Some(cell_idx(i+1,j,k+1)) } else { None },
-                            if i+1 < ncx { Some(cell_idx(i+1,j,k)) } else { None },
+                        try_add_quad(
+                            &cell_vertex,
+                            &mut out_polys,
+                            cell_idx(i, j, k),
+                            cell_idx(i, j, k + 1),
+                            if i + 1 < ncx {
+                                Some(cell_idx(i + 1, j, k + 1))
+                            } else {
+                                None
+                            },
+                            if i + 1 < ncx {
+                                Some(cell_idx(i + 1, j, k))
+                            } else {
+                                None
+                            },
                         );
                     }
                 }
@@ -193,8 +249,10 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
 fn try_add_quad(
     cell_vertex: &HashMap<usize, usize>,
     polys: &mut CellArray,
-    a: usize, b: usize,
-    c: Option<usize>, d: Option<usize>,
+    a: usize,
+    b: usize,
+    c: Option<usize>,
+    d: Option<usize>,
 ) {
     let va = cell_vertex.get(&a);
     let vb = cell_vertex.get(&b);
@@ -225,13 +283,12 @@ mod tests {
                     let x = -1.0 + i as f64 * sp;
                     let y = -1.0 + j as f64 * sp;
                     let z = -1.0 + k as f64 * sp;
-                    values.push(x*x + y*y + z*z);
+                    values.push(x * x + y * y + z * z);
                 }
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("field", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("field", values, 1)));
         img
     }
 

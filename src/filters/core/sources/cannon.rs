@@ -17,11 +17,12 @@ pub fn cannon(barrel_length: f64, barrel_radius: f64, na: usize) -> PolyData {
         }
     }
     for f in 0..nf {
-        let b0 = f * na; let b1 = (f+1) * na;
+        let b0 = f * na;
+        let b1 = (f + 1) * na;
         for j in 0..na {
-            let j1 = (j+1)%na;
-            polys.push_cell(&[(b0+j) as i64, (b1+j) as i64, (b1+j1) as i64]);
-            polys.push_cell(&[(b0+j) as i64, (b1+j1) as i64, (b0+j1) as i64]);
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
     // Muzzle opening (ring at front)
@@ -32,8 +33,13 @@ pub fn cannon(barrel_length: f64, barrel_radius: f64, na: usize) -> PolyData {
         pts.push([bore_r * a.cos(), bore_r * a.sin(), barrel_length]);
     }
     for j in 0..na {
-        let j1 = (j+1)%na;
-        polys.push_cell(&[(nf*na+j) as i64, (muzzle_base+j) as i64, (muzzle_base+j1) as i64, (nf*na+j1) as i64]);
+        let j1 = (j + 1) % na;
+        polys.push_cell(&[
+            (nf * na + j) as i64,
+            (muzzle_base + j) as i64,
+            (muzzle_base + j1) as i64,
+            (nf * na + j1) as i64,
+        ]);
     }
     // Simple carriage (two lines as axle + wheels would be complex)
     let mut lines = CellArray::new();
@@ -42,10 +48,14 @@ pub fn cannon(barrel_length: f64, barrel_radius: f64, na: usize) -> PolyData {
     pts.push([barrel_radius * 2.0, 0.0, 0.0]);
     pts.push([-barrel_radius * 1.5, 0.0, -barrel_radius]);
     pts.push([barrel_radius * 1.5, 0.0, -barrel_radius]);
-    lines.push_cell(&[cb as i64, (cb+1) as i64]); // axle
-    lines.push_cell(&[cb as i64, (cb+2) as i64]); // left trail
-    lines.push_cell(&[(cb+1) as i64, (cb+3) as i64]); // right trail
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    lines.push_cell(&[cb as i64, (cb + 1) as i64]); // axle
+    lines.push_cell(&[cb as i64, (cb + 2) as i64]); // left trail
+    lines.push_cell(&[(cb + 1) as i64, (cb + 3) as i64]); // right trail
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

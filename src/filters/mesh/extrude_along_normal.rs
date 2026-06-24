@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::data::{CellArray, DataArray, AnyDataArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Extrude a surface mesh along its face normals by a given distance.
 ///
@@ -92,7 +92,8 @@ fn compute_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {
 
     // Normalize
     for normal in normals.iter_mut() {
-        let mag: f64 = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+        let mag: f64 =
+            (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
         if mag > 1e-12 {
             normal[0] /= mag;
             normal[1] /= mag;

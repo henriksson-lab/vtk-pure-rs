@@ -39,11 +39,16 @@ pub fn compute_vertex_normals_weighted(input: &PolyData, method: NormalWeightMet
             e1[2] * e2[0] - e1[0] * e2[2],
             e1[0] * e2[1] - e1[1] * e2[0],
         ];
-        let cross_len: f64 = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+        let cross_len: f64 =
+            (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
         if cross_len < 1e-20 {
             continue;
         }
-        let face_normal: [f64; 3] = [cross[0] / cross_len, cross[1] / cross_len, cross[2] / cross_len];
+        let face_normal: [f64; 3] = [
+            cross[0] / cross_len,
+            cross[1] / cross_len,
+            cross[2] / cross_len,
+        ];
         let face_area: f64 = cross_len * 0.5;
 
         for vi in 0..cn {
@@ -97,9 +102,12 @@ pub fn compute_vertex_normals_weighted(input: &PolyData, method: NormalWeightMet
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("WeightedNormals", flat, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "WeightedNormals",
+            flat,
+            3,
+        )));
     pd
 }
 
@@ -113,14 +121,24 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        for method in [NormalWeightMethod::Uniform, NormalWeightMethod::Area, NormalWeightMethod::Angle] {
+        for method in [
+            NormalWeightMethod::Uniform,
+            NormalWeightMethod::Area,
+            NormalWeightMethod::Angle,
+        ] {
             let result = compute_vertex_normals_weighted(&pd, method);
             let arr = result.point_data().get_array("WeightedNormals").unwrap();
             assert_eq!(arr.num_tuples(), 3);
             for i in 0..3 {
                 let mut val = [0.0f64; 3];
                 arr.tuple_as_f64(i, &mut val);
-                assert!(val[2] > 0.9, "method {:?}, vertex {} nz = {}", method, i, val[2]);
+                assert!(
+                    val[2] > 0.9,
+                    "method {:?}, vertex {} nz = {}",
+                    method,
+                    i,
+                    val[2]
+                );
             }
         }
     }
@@ -131,10 +149,10 @@ mod tests {
         // Triangle 0 in XY plane, triangle 1 tilted into Z.
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0],  // 0
-                [1.0, 0.0, 0.0],  // 1 (shared)
-                [0.5, 1.0, 0.0],  // 2
-                [1.5, 1.0, 1.0],  // 3
+                [0.0, 0.0, 0.0], // 0
+                [1.0, 0.0, 0.0], // 1 (shared)
+                [0.5, 1.0, 0.0], // 2
+                [1.5, 1.0, 1.0], // 3
             ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
@@ -162,8 +180,14 @@ mod tests {
         );
         let result_uniform = compute_vertex_normals_weighted(&pd, NormalWeightMethod::Uniform);
         let result_area = compute_vertex_normals_weighted(&pd, NormalWeightMethod::Area);
-        let arr_u = result_uniform.point_data().get_array("WeightedNormals").unwrap();
-        let arr_a = result_area.point_data().get_array("WeightedNormals").unwrap();
+        let arr_u = result_uniform
+            .point_data()
+            .get_array("WeightedNormals")
+            .unwrap();
+        let arr_a = result_area
+            .point_data()
+            .get_array("WeightedNormals")
+            .unwrap();
         let mut nu = [0.0f64; 3];
         let mut na = [0.0f64; 3];
         arr_u.tuple_as_f64(0, &mut nu);
@@ -172,6 +196,10 @@ mod tests {
         // The normals at vertex 0 should differ.
         let dot: f64 = nu[0] * na[0] + nu[1] * na[1] + nu[2] * na[2];
         // They should be similar but not identical (dot < 1.0).
-        assert!(dot < 1.0 - 1e-6, "area and uniform should differ for vertex 0, dot = {}", dot);
+        assert!(
+            dot < 1.0 - 1e-6,
+            "area and uniform should differ for vertex 0, dot = {}",
+            dot
+        );
     }
 }

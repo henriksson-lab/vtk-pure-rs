@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{CellArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a helix (spiral) polyline.
 pub struct HelixParams {

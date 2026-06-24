@@ -2,7 +2,8 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn kaleidoscope(radius: f64, n_sectors: usize, n_rings: usize) -> PolyData {
-    let ns = n_sectors.max(3); let nr = n_rings.max(2);
+    let ns = n_sectors.max(3);
+    let nr = n_rings.max(2);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     // Center point
@@ -18,19 +19,22 @@ pub fn kaleidoscope(radius: f64, n_sectors: usize, n_rings: usize) -> PolyData {
     }
     // Center fan
     for s in 0..ns {
-        polys.push_cell(&[0, (1 + s) as i64, (1 + (s+1)%ns) as i64]);
+        polys.push_cell(&[0, (1 + s) as i64, (1 + (s + 1) % ns) as i64]);
     }
     // Rings
     for r in 1..nr {
-        let b0 = 1 + (r-1) * ns;
+        let b0 = 1 + (r - 1) * ns;
         let b1 = 1 + r * ns;
         for s in 0..ns {
-            let s1 = (s+1)%ns;
-            polys.push_cell(&[(b0+s) as i64, (b1+s) as i64, (b1+s1) as i64]);
-            polys.push_cell(&[(b0+s) as i64, (b1+s1) as i64, (b0+s1) as i64]);
+            let s1 = (s + 1) % ns;
+            polys.push_cell(&[(b0 + s) as i64, (b1 + s) as i64, (b1 + s1) as i64]);
+            polys.push_cell(&[(b0 + s) as i64, (b1 + s1) as i64, (b0 + s1) as i64]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

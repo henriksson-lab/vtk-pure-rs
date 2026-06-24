@@ -33,8 +33,14 @@ impl LodSet {
     /// Create a LOD set with two levels: full detail and decimated.
     pub fn two_level(high: PolyData, low: PolyData, switch_distance: f64) -> Self {
         Self::new(vec![
-            LodLevel { data: high, max_distance: switch_distance },
-            LodLevel { data: low, max_distance: f64::INFINITY },
+            LodLevel {
+                data: high,
+                max_distance: switch_distance,
+            },
+            LodLevel {
+                data: low,
+                max_distance: f64::INFINITY,
+            },
         ])
     }
 
@@ -90,9 +96,18 @@ mod tests {
     #[test]
     fn multi_level_lod() {
         let lod = LodSet::new(vec![
-            LodLevel { data: make_pd(1000), max_distance: 2.0 },
-            LodLevel { data: make_pd(100), max_distance: 10.0 },
-            LodLevel { data: make_pd(10), max_distance: f64::INFINITY },
+            LodLevel {
+                data: make_pd(1000),
+                max_distance: 2.0,
+            },
+            LodLevel {
+                data: make_pd(100),
+                max_distance: 10.0,
+            },
+            LodLevel {
+                data: make_pd(10),
+                max_distance: f64::INFINITY,
+            },
         ]);
 
         assert_eq!(lod.select(1.0).points.len(), 1000);

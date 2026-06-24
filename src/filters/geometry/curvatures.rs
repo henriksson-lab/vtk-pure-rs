@@ -24,15 +24,19 @@ pub fn curvatures(input: &PolyData) -> PolyData {
     for ci in 0..nc {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
-        if end - start != 3 { continue; }
+        if end - start != 3 {
+            continue;
+        }
         let i0 = conn[start] as usize;
         let i1 = conn[start + 1] as usize;
         let i2 = conn[start + 2] as usize;
 
-        let b0 = i0 * 3; let b1 = i1 * 3; let b2 = i2 * 3;
-        let p0 = [pts[b0], pts[b0+1], pts[b0+2]];
-        let p1 = [pts[b1], pts[b1+1], pts[b1+2]];
-        let p2 = [pts[b2], pts[b2+1], pts[b2+2]];
+        let b0 = i0 * 3;
+        let b1 = i1 * 3;
+        let b2 = i2 * 3;
+        let p0 = [pts[b0], pts[b0 + 1], pts[b0 + 2]];
+        let p1 = [pts[b1], pts[b1 + 1], pts[b1 + 2]];
+        let p2 = [pts[b2], pts[b2 + 1], pts[b2 + 2]];
 
         let e01 = sub(p1, p0);
         let e02 = sub(p2, p0);
@@ -89,9 +93,17 @@ pub fn curvatures(input: &PolyData) -> PolyData {
 
     let mut pd = input.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("GaussCurvature", gauss, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GaussCurvature",
+            gauss,
+            1,
+        )));
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("MeanCurvature", mean, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MeanCurvature",
+            mean,
+            1,
+        )));
     pd
 }
 

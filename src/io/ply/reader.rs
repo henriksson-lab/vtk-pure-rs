@@ -115,7 +115,9 @@ impl PlyReader {
     }
 }
 
-fn read_line(lines: &mut impl Iterator<Item = Result<String, std::io::Error>>) -> Result<String, VtkError> {
+fn read_line(
+    lines: &mut impl Iterator<Item = Result<String, std::io::Error>>,
+) -> Result<String, VtkError> {
     lines
         .next()
         .ok_or_else(|| VtkError::Parse("unexpected end of file".into()))?

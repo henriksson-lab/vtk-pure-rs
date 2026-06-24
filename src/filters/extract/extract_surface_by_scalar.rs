@@ -30,7 +30,9 @@ pub fn extract_surface_by_scalar(
             arr.tuple_as_f64(pid as usize, &mut buf);
             buf[0] >= min_val && buf[0] <= max_val
         });
-        if !all_in { continue; }
+        if !all_in {
+            continue;
+        }
 
         let mut new_ids = Vec::with_capacity(cell.len());
         for &pid in cell {
@@ -50,9 +52,13 @@ pub fn extract_surface_by_scalar(
     let mut result = PolyData::new();
     result.points = new_points;
     result.polys = new_polys;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, scalar_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name,
+            scalar_data,
+            1,
+        )));
     result
 }
 
@@ -73,7 +79,9 @@ pub fn extract_surface_above_scalar(mesh: &PolyData, array_name: &str, threshold
             arr.tuple_as_f64(pid as usize, &mut buf);
             buf[0] >= threshold
         });
-        if !any_above { continue; }
+        if !any_above {
+            continue;
+        }
 
         let mut new_ids = Vec::with_capacity(cell.len());
         for &pid in cell {
@@ -100,13 +108,22 @@ mod tests {
 
     fn make_mesh() -> PolyData {
         let mut m = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],
-                 [2.0,0.0,0.0],[3.0,0.0,0.0],[2.5,1.0,0.0]],
-            vec![[0,1,2],[3,4,5]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [2.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
         );
-        m.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![10.0, 10.0, 10.0, 50.0, 50.0, 50.0], 1),
-        ));
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![10.0, 10.0, 10.0, 50.0, 50.0, 50.0],
+                1,
+            )));
         m
     }
 

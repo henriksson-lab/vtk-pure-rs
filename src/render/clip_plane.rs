@@ -22,7 +22,11 @@ impl ClipPlane {
             [0.0, 0.0, 1.0]
         };
         let d = -(n[0] * point[0] + n[1] * point[1] + n[2] * point[2]);
-        Self { normal: n, distance: d, enabled: true }
+        Self {
+            normal: n,
+            distance: d,
+            enabled: true,
+        }
     }
 
     /// X-axis clip plane at the given position (clips x < pos).

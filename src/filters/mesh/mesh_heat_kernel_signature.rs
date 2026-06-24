@@ -6,7 +6,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Uses diffusion on the mesh graph as an approximation.
 pub fn heat_kernel_signature(mesh: &PolyData, time_steps: &[f64]) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 || time_steps.is_empty() { return mesh.clone(); }
+    if n == 0 || time_steps.is_empty() {
+        return mesh.clone();
+    }
 
     // Build adjacency with cotangent weights (simplified: uniform weights)
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -16,8 +18,12 @@ pub fn heat_kernel_signature(mesh: &PolyData, time_steps: &[f64]) -> PolyData {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
             if a < n && b < n {
-                if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-                if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+                if !neighbors[a].contains(&b) {
+                    neighbors[a].push(b);
+                }
+                if !neighbors[b].contains(&a) {
+                    neighbors[b].push(a);
+                }
             }
         }
     }
@@ -37,9 +43,15 @@ pub fn heat_kernel_signature(mesh: &PolyData, time_steps: &[f64]) -> PolyData {
             for _ in 0..iters {
                 let mut new_heat = heat.clone();
                 for j in 0..n {
-                    if neighbors[j].is_empty() { continue; }
+                    if neighbors[j].is_empty() {
+                        continue;
+                    }
                     let k = neighbors[j].len() as f64;
-                    let lap: f64 = neighbors[j].iter().map(|&nb| heat[nb] - heat[j]).sum::<f64>() / k;
+                    let lap: f64 = neighbors[j]
+                        .iter()
+                        .map(|&nb| heat[nb] - heat[j])
+                        .sum::<f64>()
+                        / k;
                     new_heat[j] += dt * lap;
                 }
                 heat = new_heat;
@@ -51,7 +63,9 @@ pub fn heat_kernel_signature(mesh: &PolyData, time_steps: &[f64]) -> PolyData {
     let mut result = mesh.clone();
     // Store first time scale as scalar
     let first_t: Vec<f64> = (0..n).map(|i| hks_data[i * nt]).collect();
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("HKS", first_t, 1)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("HKS", first_t, 1)));
     result.point_data_mut().set_active_scalars("HKS");
     result
 }
@@ -66,8 +80,12 @@ pub fn auto_diffusion(mesh: &PolyData, time: f64, iterations: usize) -> PolyData
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
             if a < n && b < n {
-                if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-                if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+                if !neighbors[a].contains(&b) {
+                    neighbors[a].push(b);
+                }
+                if !neighbors[b].contains(&a) {
+                    neighbors[b].push(a);
+                }
             }
         }
     }
@@ -77,16 +95,24 @@ pub fn auto_diffusion(mesh: &PolyData, time: f64, iterations: usize) -> PolyData
     for _ in 0..iterations {
         let mut new_heat = heat.clone();
         for j in 0..n {
-            if neighbors[j].is_empty() { continue; }
+            if neighbors[j].is_empty() {
+                continue;
+            }
             let k = neighbors[j].len() as f64;
-            let lap: f64 = neighbors[j].iter().map(|&nb| heat[nb] - heat[j]).sum::<f64>() / k;
+            let lap: f64 = neighbors[j]
+                .iter()
+                .map(|&nb| heat[nb] - heat[j])
+                .sum::<f64>()
+                / k;
             new_heat[j] += dt * lap;
         }
         heat = new_heat;
     }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Diffusion", heat, 1)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Diffusion", heat, 1)));
     result.point_data_mut().set_active_scalars("Diffusion");
     result
 }
@@ -97,8 +123,13 @@ mod tests {
     #[test]
     fn test_hks() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
         );
         let r = heat_kernel_signature(&mesh, &[0.1, 1.0]);
         assert!(r.point_data().get_array("HKS").is_some());
@@ -106,8 +137,8 @@ mod tests {
     #[test]
     fn test_diffusion() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let r = auto_diffusion(&mesh, 1.0, 10);
         assert!(r.point_data().get_array("Diffusion").is_some());

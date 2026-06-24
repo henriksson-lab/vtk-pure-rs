@@ -21,7 +21,13 @@ pub struct PickResult {
 ///
 /// Performs CPU-side ray casting against all actors in the scene.
 /// Returns `None` if no intersection is found.
-pub fn pick(scene: &Scene, screen_x: f64, screen_y: f64, width: u32, height: u32) -> Option<PickResult> {
+pub fn pick(
+    scene: &Scene,
+    screen_x: f64,
+    screen_y: f64,
+    width: u32,
+    height: u32,
+) -> Option<PickResult> {
     let (origin, direction) = scene.camera.unproject(screen_x, screen_y, width, height);
     let ray_origin = [origin.x, origin.y, origin.z];
     let ray_dir = [direction.x, direction.y, direction.z];

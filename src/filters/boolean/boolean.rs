@@ -23,16 +23,22 @@ pub fn boolean(a: &PolyData, b: &PolyData, op: BooleanOp) -> PolyData {
     let tris_b = collect_triangles(b);
 
     // Classify A triangles w.r.t. B
-    let a_inside_b: Vec<bool> = tris_a.iter().map(|tri| {
-        let c = centroid(tri);
-        is_inside(&tris_b, c)
-    }).collect();
+    let a_inside_b: Vec<bool> = tris_a
+        .iter()
+        .map(|tri| {
+            let c = centroid(tri);
+            is_inside(&tris_b, c)
+        })
+        .collect();
 
     // Classify B triangles w.r.t. A
-    let b_inside_a: Vec<bool> = tris_b.iter().map(|tri| {
-        let c = centroid(tri);
-        is_inside(&tris_a, c)
-    }).collect();
+    let b_inside_a: Vec<bool> = tris_b
+        .iter()
+        .map(|tri| {
+            let c = centroid(tri);
+            is_inside(&tris_a, c)
+        })
+        .collect();
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
@@ -160,12 +166,7 @@ fn ray_hits_triangle(origin: [f64; 3], tri: &Tri) -> bool {
     t > 1e-12
 }
 
-fn add_triangle(
-    points: &mut Points<f64>,
-    polys: &mut CellArray,
-    tri: &Tri,
-    reverse: bool,
-) {
+fn add_triangle(points: &mut Points<f64>, polys: &mut CellArray, tri: &Tri, reverse: bool) {
     let base = points.len() as i64;
     points.push(tri[0]);
     points.push(tri[1]);
@@ -226,12 +227,10 @@ mod tests {
         ];
 
         for face in &faces {
-            pd.polys.push_cell(&[
-                face[0] as i64, face[1] as i64, face[2] as i64,
-            ]);
-            pd.polys.push_cell(&[
-                face[0] as i64, face[2] as i64, face[3] as i64,
-            ]);
+            pd.polys
+                .push_cell(&[face[0] as i64, face[1] as i64, face[2] as i64]);
+            pd.polys
+                .push_cell(&[face[0] as i64, face[2] as i64, face[3] as i64]);
         }
         pd
     }

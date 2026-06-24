@@ -32,9 +32,7 @@ pub fn extract_selection(input: &PolyData, selection: &Selection) -> PolyData {
                 SelectionFieldType::Point => {
                     extract_by_point_threshold(input, array_name, min, max)
                 }
-                SelectionFieldType::Cell => {
-                    extract_by_cell_threshold(input, array_name, min, max)
-                }
+                SelectionFieldType::Cell => extract_by_cell_threshold(input, array_name, min, max),
             }
         }
         _ => input.clone(),
@@ -56,8 +54,14 @@ fn extract_by_point_indices(input: &PolyData, indices: &[usize]) -> PolyData {
 
     // Copy cells that only reference selected points
     for cell in input.polys.iter() {
-        if cell.iter().all(|&pid| (pid as usize) < n && old_to_new[pid as usize] != usize::MAX) {
-            let new_cell: Vec<i64> = cell.iter().map(|&pid| old_to_new[pid as usize] as i64).collect();
+        if cell
+            .iter()
+            .all(|&pid| (pid as usize) < n && old_to_new[pid as usize] != usize::MAX)
+        {
+            let new_cell: Vec<i64> = cell
+                .iter()
+                .map(|&pid| old_to_new[pid as usize] as i64)
+                .collect();
             pd.polys.push_cell(&new_cell);
         }
     }
@@ -94,7 +98,8 @@ fn extract_by_cell_indices(input: &PolyData, indices: &[usize]) -> PolyData {
     // Copy selected cells with remapped indices
     for &ci in indices {
         if ci < all_cells.len() {
-            let new_cell: Vec<i64> = all_cells[ci].iter()
+            let new_cell: Vec<i64> = all_cells[ci]
+                .iter()
                 .map(|&pid| old_to_new[pid as usize] as i64)
                 .collect();
             pd.polys.push_cell(&new_cell);
@@ -104,12 +109,7 @@ fn extract_by_cell_indices(input: &PolyData, indices: &[usize]) -> PolyData {
     pd
 }
 
-fn extract_by_point_threshold(
-    input: &PolyData,
-    array_name: &str,
-    min: f64,
-    max: f64,
-) -> PolyData {
+fn extract_by_point_threshold(input: &PolyData, array_name: &str, min: f64, max: f64) -> PolyData {
     let Some(arr) = input.point_data().get_array(array_name) else {
         return PolyData::new();
     };
@@ -126,12 +126,7 @@ fn extract_by_point_threshold(
     extract_by_point_indices(input, &selected)
 }
 
-fn extract_by_cell_threshold(
-    input: &PolyData,
-    array_name: &str,
-    min: f64,
-    max: f64,
-) -> PolyData {
+fn extract_by_cell_threshold(input: &PolyData, array_name: &str, min: f64, max: f64) -> PolyData {
     let Some(arr) = input.cell_data().get_array(array_name) else {
         return PolyData::new();
     };
@@ -156,7 +151,12 @@ mod tests {
     #[test]
     fn extract_by_points() {
         let pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
         let mut sel = Selection::new();
@@ -170,7 +170,12 @@ mod tests {
     #[test]
     fn extract_by_cells() {
         let pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
         let mut sel = Selection::new();
@@ -184,14 +189,24 @@ mod tests {
     #[test]
     fn extract_by_threshold() {
         let mut pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
         let s = DataArray::from_vec("val", vec![0.0f64, 1.0, 2.0, 3.0], 1);
         pd.point_data_mut().add_array(AnyDataArray::F64(s));
 
         let mut sel = Selection::new();
-        sel.add_node(SelectionNode::from_threshold("val", 0.0, 1.5, SelectionFieldType::Point));
+        sel.add_node(SelectionNode::from_threshold(
+            "val",
+            0.0,
+            1.5,
+            SelectionFieldType::Point,
+        ));
 
         let result = extract_selection(&pd, &sel);
         assert_eq!(result.points.len(), 2); // points 0 and 1

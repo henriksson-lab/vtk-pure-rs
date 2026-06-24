@@ -18,11 +18,19 @@ pub struct TopologyAnalysis {
 
 impl std::fmt::Display for TopologyAnalysis {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "V={} E={} F={} χ={} g={} loops={} components={} closed={} orientable={}",
-            self.vertices, self.edges, self.faces,
-            self.euler_characteristic, self.genus,
-            self.num_boundary_loops, self.num_components,
-            self.is_closed, self.is_orientable)
+        write!(
+            f,
+            "V={} E={} F={} χ={} g={} loops={} components={} closed={} orientable={}",
+            self.vertices,
+            self.edges,
+            self.faces,
+            self.euler_characteristic,
+            self.genus,
+            self.num_boundary_loops,
+            self.num_components,
+            self.is_closed,
+            self.is_orientable
+        )
     }
 }
 
@@ -32,15 +40,16 @@ pub fn analyze_topology(mesh: &PolyData) -> TopologyAnalysis {
     let f = mesh.polys.num_cells();
 
     // Count unique edges
-    let mut edges_set: std::collections::HashSet<(usize,usize)> = std::collections::HashSet::new();
-    let mut edge_count: std::collections::HashMap<(usize,usize), usize> = std::collections::HashMap::new();
+    let mut edges_set: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
 
     for cell in &all_cells {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
-            let b = cell[(i+1)%nc] as usize;
+            let b = cell[(i + 1) % nc] as usize;
             let edge = (a.min(b), a.max(b));
             edges_set.insert(edge);
             *edge_count.entry(edge).or_insert(0) += 1;
@@ -51,8 +60,11 @@ pub fn analyze_topology(mesh: &PolyData) -> TopologyAnalysis {
     let chi = v as i64 - e as i64 + f as i64;
 
     // Boundary loops
-    let boundary_edges: Vec<(usize,usize)> = edge_count.iter()
-        .filter(|(_, &c)| c == 1).map(|(&e, _)| e).collect();
+    let boundary_edges: Vec<(usize, usize)> = edge_count
+        .iter()
+        .filter(|(_, &c)| c == 1)
+        .map(|(&e, _)| e)
+        .collect();
     let num_boundary_loops = count_loops(&boundary_edges);
 
     // Connected components
@@ -66,7 +78,9 @@ pub fn analyze_topology(mesh: &PolyData) -> TopologyAnalysis {
     let is_orientable = check_orientability(&all_cells);
 
     TopologyAnalysis {
-        vertices: v, edges: e, faces: f,
+        vertices: v,
+        edges: e,
+        faces: f,
         euler_characteristic: chi,
         genus: genus.max(0),
         num_boundary_loops: num_boundary_loops,
@@ -76,19 +90,32 @@ pub fn analyze_topology(mesh: &PolyData) -> TopologyAnalysis {
     }
 }
 
-fn count_loops(edges: &[(usize,usize)]) -> usize {
-    if edges.is_empty() { return 0; }
+fn count_loops(edges: &[(usize, usize)]) -> usize {
+    if edges.is_empty() {
+        return 0;
+    }
     let mut adj: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
-    for &(a, b) in edges { adj.entry(a).or_default().push(b); adj.entry(b).or_default().push(a); }
+    for &(a, b) in edges {
+        adj.entry(a).or_default().push(b);
+        adj.entry(b).or_default().push(a);
+    }
 
     let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
     let mut loops = 0;
     for &(start, _) in edges {
-        if visited.contains(&start) { continue; }
+        if visited.contains(&start) {
+            continue;
+        }
         let mut queue = vec![start];
         while let Some(v) = queue.pop() {
-            if !visited.insert(v) { continue; }
-            if let Some(neighbors) = adj.get(&v) { for &n in neighbors { queue.push(n); } }
+            if !visited.insert(v) {
+                continue;
+            }
+            if let Some(neighbors) = adj.get(&v) {
+                for &n in neighbors {
+                    queue.push(n);
+                }
+            }
         }
         loops += 1;
     }
@@ -100,19 +127,29 @@ fn count_components(mesh: &PolyData, n: usize) -> usize {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize; let b = cell[(i+1)%nc] as usize;
-            if a < n && b < n { adj[a].insert(b); adj[b].insert(a); }
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % nc] as usize;
+            if a < n && b < n {
+                adj[a].insert(b);
+                adj[b].insert(a);
+            }
         }
     }
     let mut visited = vec![false; n];
     let mut components = 0;
     for start in 0..n {
-        if visited[start] || adj[start].is_empty() { continue; }
+        if visited[start] || adj[start].is_empty() {
+            continue;
+        }
         let mut queue = vec![start];
         while let Some(v) = queue.pop() {
-            if visited[v] { continue; }
+            if visited[v] {
+                continue;
+            }
             visited[v] = true;
-            for &nb in &adj[v] { queue.push(nb); }
+            for &nb in &adj[v] {
+                queue.push(nb);
+            }
         }
         components += 1;
     }
@@ -121,20 +158,25 @@ fn count_components(mesh: &PolyData, n: usize) -> usize {
 
 fn check_orientability(cells: &[Vec<i64>]) -> bool {
     // Build directed edge map: for each edge, check that it appears in opposite directions
-    let mut directed: std::collections::HashMap<(usize,usize), usize> = std::collections::HashMap::new();
+    let mut directed: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for cell in cells {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
-            let b = cell[(i+1)%nc] as usize;
+            let b = cell[(i + 1) % nc] as usize;
             *directed.entry((a, b)).or_insert(0) += 1;
         }
     }
     // For orientable: each internal edge (a,b) should appear once as (a,b) and once as (b,a)
-    for (&(a,b), &count) in &directed {
-        if count > 1 { return false; } // same direction appears twice
-        let reverse = directed.get(&(b,a)).unwrap_or(&0);
-        if *reverse > 1 { return false; }
+    for (&(a, b), &count) in &directed {
+        if count > 1 {
+            return false;
+        } // same direction appears twice
+        let reverse = directed.get(&(b, a)).unwrap_or(&0);
+        if *reverse > 1 {
+            return false;
+        }
     }
     true
 }
@@ -146,8 +188,13 @@ mod tests {
     #[test]
     fn tetrahedron() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[0.5,0.5,1.0]],
-            vec![[0,1,2],[0,1,3],[1,2,3],[0,2,3]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, 0.5, 1.0],
+            ],
+            vec![[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]],
         );
         let topo = analyze_topology(&mesh);
         assert_eq!(topo.vertices, 4);
@@ -159,7 +206,9 @@ mod tests {
     #[test]
     fn open_triangle() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let topo = analyze_topology(&mesh);
         assert!(!topo.is_closed);
         assert_eq!(topo.num_boundary_loops, 1);
@@ -168,7 +217,9 @@ mod tests {
     #[test]
     fn display() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]], vec![[0,1,2]]);
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
         let topo = analyze_topology(&mesh);
         let s = format!("{topo}");
         assert!(s.contains("V=3"));
@@ -177,9 +228,15 @@ mod tests {
     #[test]
     fn two_components() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0],
-                 [5.0,0.0,0.0],[6.0,0.0,0.0],[5.0,1.0,0.0]],
-            vec![[0,1,2],[3,4,5]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [5.0, 0.0, 0.0],
+                [6.0, 0.0, 0.0],
+                [5.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
         );
         let topo = analyze_topology(&mesh);
         assert_eq!(topo.num_components, 2);

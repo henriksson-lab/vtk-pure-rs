@@ -63,12 +63,7 @@ pub fn frustum(params: &FrustumParams) -> PolyData {
     // Side quads
     for i in 0..n {
         let i_next = (i + 1) % n;
-        polys.push_cell(&[
-            i as i64,
-            i_next as i64,
-            (n + i_next) as i64,
-            (n + i) as i64,
-        ]);
+        polys.push_cell(&[i as i64, i_next as i64, (n + i_next) as i64, (n + i) as i64]);
     }
 
     // Caps

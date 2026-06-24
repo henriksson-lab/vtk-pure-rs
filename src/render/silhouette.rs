@@ -30,7 +30,10 @@ impl Default for SilhouetteConfig {
 
 impl SilhouetteConfig {
     pub fn new() -> Self {
-        Self { enabled: true, ..Default::default() }
+        Self {
+            enabled: true,
+            ..Default::default()
+        }
     }
 
     pub fn with_color(mut self, r: f32, g: f32, b: f32) -> Self {
@@ -57,7 +60,9 @@ mod tests {
 
     #[test]
     fn builder() {
-        let c = SilhouetteConfig::new().with_color(1.0, 0.0, 0.0).with_width(2.0);
+        let c = SilhouetteConfig::new()
+            .with_color(1.0, 0.0, 0.0)
+            .with_width(2.0);
         assert!(c.enabled);
         assert_eq!(c.color, [1.0, 0.0, 0.0]);
         assert_eq!(c.width, 2.0);

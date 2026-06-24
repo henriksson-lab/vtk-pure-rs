@@ -1,5 +1,5 @@
-use std::io::Write;
 use crate::data::PolyData;
+use std::io::Write;
 
 /// Write a PolyData as GeoJSON FeatureCollection.
 ///
@@ -14,12 +14,23 @@ pub fn write_geojson<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()
 
     // Write polygon features
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 { continue; }
-        if !first { writeln!(w, ",")?; } else { first = false; }
-        write!(w, "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"Polygon\",\"coordinates\":[[")?;
+        if cell.len() < 3 {
+            continue;
+        }
+        if !first {
+            writeln!(w, ",")?;
+        } else {
+            first = false;
+        }
+        write!(
+            w,
+            "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"Polygon\",\"coordinates\":[["
+        )?;
         for (i, &pid) in cell.iter().enumerate() {
             let p = mesh.points.get(pid as usize);
-            if i > 0 { write!(w, ",")?; }
+            if i > 0 {
+                write!(w, ",")?;
+            }
             write!(w, "[{},{}]", p[0], p[1])?;
         }
         // Close the ring
@@ -30,12 +41,23 @@ pub fn write_geojson<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()
 
     // Write line features
     for cell in mesh.lines.iter() {
-        if cell.len() < 2 { continue; }
-        if !first { writeln!(w, ",")?; } else { first = false; }
-        write!(w, "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"LineString\",\"coordinates\":[")?;
+        if cell.len() < 2 {
+            continue;
+        }
+        if !first {
+            writeln!(w, ",")?;
+        } else {
+            first = false;
+        }
+        write!(
+            w,
+            "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"LineString\",\"coordinates\":["
+        )?;
         for (i, &pid) in cell.iter().enumerate() {
             let p = mesh.points.get(pid as usize);
-            if i > 0 { write!(w, ",")?; }
+            if i > 0 {
+                write!(w, ",")?;
+            }
             write!(w, "[{},{}]", p[0], p[1])?;
         }
         write!(w, "]}},\"properties\":{{}}}}")?;
@@ -44,7 +66,11 @@ pub fn write_geojson<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()
     // Write vertex features as points
     for cell in mesh.verts.iter() {
         for &pid in cell {
-            if !first { writeln!(w, ",")?; } else { first = false; }
+            if !first {
+                writeln!(w, ",")?;
+            } else {
+                first = false;
+            }
             let p = mesh.points.get(pid as usize);
             write!(w, "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"Point\",\"coordinates\":[{},{}]}},\"properties\":{{}}}}", p[0], p[1])?;
         }
@@ -83,10 +109,7 @@ mod tests {
 
     #[test]
     fn write_line() {
-        let mesh = PolyData::from_lines(
-            vec![[0.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
-            vec![[0, 1]],
-        );
+        let mesh = PolyData::from_lines(vec![[0.0, 0.0, 0.0], [1.0, 1.0, 0.0]], vec![[0, 1]]);
         let mut buf = Vec::new();
         write_geojson(&mut buf, &mesh).unwrap();
         let s = String::from_utf8(buf).unwrap();

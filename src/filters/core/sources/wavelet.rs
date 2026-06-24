@@ -62,7 +62,8 @@ pub fn wavelet(params: &WaveletParams) -> ImageData {
                 let y = origin[1] + j as f64 * sp - params.center[1];
                 let z = origin[2] + k as f64 * sp - params.center[2];
                 let r2 = x * x + y * y + z * z;
-                let v = params.maximum * (-r2 * inv_ext2).exp()
+                let v = params.maximum
+                    * (-r2 * inv_ext2).exp()
                     * (params.x_freq * x * 0.01).cos()
                     * (params.y_freq * y * 0.01).cos()
                     * (params.z_freq * z * 0.01).cos();
@@ -71,9 +72,8 @@ pub fn wavelet(params: &WaveletParams) -> ImageData {
         }
     }
 
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("RTData", values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RTData", values, 1)));
     img.point_data_mut().set_active_scalars("RTData");
     img
 }
@@ -114,7 +114,7 @@ mod tests {
         let mut buf = [0.0f64];
         let mut min_v = f64::MAX;
         let mut max_v = f64::MIN;
-        for i in 0..20*20*20 {
+        for i in 0..20 * 20 * 20 {
             arr.tuple_as_f64(i, &mut buf);
             min_v = min_v.min(buf[0]);
             max_v = max_v.max(buf[0]);

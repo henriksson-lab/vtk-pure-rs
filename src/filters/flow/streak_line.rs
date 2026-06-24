@@ -65,7 +65,9 @@ pub fn streak_lines(
         // Advect all particles
         for _ in 0..steps_per_field {
             for particle in all_particles.iter_mut() {
-                if !particle.alive { continue; }
+                if !particle.alive {
+                    continue;
+                }
 
                 // Check bounds
                 if !in_bounds(particle.pos, origin, spacing, dims) {
@@ -115,24 +117,36 @@ pub fn streak_lines(
     let mut result = PolyData::new();
     result.points = out_points;
     result.lines = out_lines;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("SeedId", seed_id_data, 1),
-    ));
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Time", time_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SeedId",
+            seed_id_data,
+            1,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Time", time_data, 1)));
     result
 }
 
 fn in_bounds(pos: [f64; 3], origin: [f64; 3], spacing: [f64; 3], dims: [usize; 3]) -> bool {
     for i in 0..3 {
         let max = origin[i] + (dims[i] as f64 - 1.0) * spacing[i];
-        if pos[i] < origin[i] || pos[i] > max { return false; }
+        if pos[i] < origin[i] || pos[i] > max {
+            return false;
+        }
     }
     true
 }
 
-fn interp_vec3(vectors: &AnyDataArray, pos: [f64; 3], origin: [f64; 3], spacing: [f64; 3], dims: [usize; 3]) -> [f64; 3] {
+fn interp_vec3(
+    vectors: &AnyDataArray,
+    pos: [f64; 3],
+    origin: [f64; 3],
+    spacing: [f64; 3],
+    dims: [usize; 3],
+) -> [f64; 3] {
     let fx = (pos[0] - origin[0]) / spacing[0];
     let fy = (pos[1] - origin[1]) / spacing[1];
     let fz = (pos[2] - origin[2]) / spacing[2];
@@ -152,9 +166,11 @@ fn interp_vec3(vectors: &AnyDataArray, pos: [f64; 3], origin: [f64; 3], spacing:
                 if idx < vectors.num_tuples() {
                     vectors.tuple_as_f64(idx, &mut buf);
                     let w = (if dx == 0 { 1.0 - tx } else { tx })
-                          * (if dy == 0 { 1.0 - ty } else { ty })
-                          * (if dz == 0 { 1.0 - tz } else { tz });
-                    for c in 0..3 { result[c] += w * buf[c]; }
+                        * (if dy == 0 { 1.0 - ty } else { ty })
+                        * (if dz == 0 { 1.0 - tz } else { tz });
+                    for c in 0..3 {
+                        result[c] += w * buf[c];
+                    }
                 }
             }
         }
@@ -178,9 +194,9 @@ mod tests {
         let mut field = ImageData::with_dimensions(dims[0], dims[1], dims[2]);
         field.set_spacing([1.0, 1.0, 1.0]);
         field.set_origin([0.0, 0.0, 0.0]);
-        field.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("velocity", vdata, 3),
-        ));
+        field
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("velocity", vdata, 3)));
         field.point_data_mut().set_active_vectors("velocity");
         field
     }

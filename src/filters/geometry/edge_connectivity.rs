@@ -1,5 +1,5 @@
-use std::collections::{HashMap, VecDeque};
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::{HashMap, VecDeque};
 
 /// Label connected regions of a PolyData mesh by shared edges.
 ///
@@ -66,9 +66,7 @@ pub fn edge_connectivity(input: &PolyData) -> PolyData {
     output
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "RegionId",
-            region_f64,
-            1,
+            "RegionId", region_f64, 1,
         )));
     output
 }

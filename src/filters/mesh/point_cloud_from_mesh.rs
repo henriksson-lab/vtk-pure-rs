@@ -63,7 +63,9 @@ pub fn random_sample_on_surface(input: &PolyData, num_points: usize, seed: u64) 
     // Simple LCG PRNG
     let mut rng_state: u64 = seed;
     let mut next_rand = || -> f64 {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         // Use upper bits for better quality
         let val: u64 = (rng_state >> 11) & 0x1FFFFFFFFFFFFF; // 53 bits
         val as f64 / (1u64 << 53) as f64
@@ -117,11 +119,7 @@ mod tests {
 
     fn make_unit_triangle() -> PolyData {
         PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         )
     }

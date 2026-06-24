@@ -1,17 +1,37 @@
 #!/bin/bash
 # Generate multiple simple image filters at once.
 # Each line: name|description|operation
-# Then run: make gen-mods && cargo build
+# Then add matching pub mod entries in src/filters/image/mod.rs and run:
+# cargo test --features filters-image --lib
 
-DIR="crates/vtk-filters-image/src"
+set -euo pipefail
+
+DIR="src/filters/image"
+MOD_FILE="$DIR/mod.rs"
+
+validate_name() {
+    [[ "$1" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]
+}
+
+register_module() {
+    local name=$1
+    local mod_line="pub mod ${name};"
+    [ -f "$MOD_FILE" ] || { echo "ERROR missing module file: $MOD_FILE" >&2; return 1; }
+    if ! grep -Fxq "$mod_line" "$MOD_FILE"; then
+        printf '%s\n' "$mod_line" >> "$MOD_FILE"
+    fi
+}
 
 gen() {
     local name=$1 desc=$2 op=$3
+    validate_name "$name" || { echo "ERROR invalid Rust module/function name: $name" >&2; return 1; }
+    [ -d "$DIR" ] || { echo "ERROR missing directory: $DIR" >&2; return 1; }
+    [ -f "$MOD_FILE" ] || { echo "ERROR missing module file: $MOD_FILE" >&2; return 1; }
     [ -f "$DIR/${name}.rs" ] && { echo "SKIP $name (exists)"; return; }
     cat > "$DIR/${name}.rs" << EOF
 //! ${desc}
 
-use vtk_data::{AnyDataArray, DataArray, ImageData};
+use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// ${desc}
 pub fn ${name}(input: &ImageData, scalars: &str) -> ImageData {
@@ -42,6 +62,7 @@ mod tests {
     }
 }
 EOF
+    register_module "$name"
     echo "  + $name"
 }
 
@@ -59,4 +80,4 @@ gen "image_round" "Round pixel values to nearest integer" "buf[0].round()"
 gen "image_sign" "Sign of pixel values (-1, 0, or 1)" "buf[0].signum()"
 gen "image_step" "Step function (0 if negative, 1 if non-negative)" "if buf[0] >= 0.0 { 1.0 } else { 0.0 }"
 
-echo "Done. Run: make gen-mods && cargo test -p vtk-filters-image --lib"
+echo "Done. Registered generated modules in $MOD_FILE. Run: cargo test --features filters-image --lib"

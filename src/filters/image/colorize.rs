@@ -6,31 +6,42 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// stores the result as a 3-component "RGB" array.
 pub fn image_colorize(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a, None => return input.clone(),
+        Some(a) => a,
+        None => return input.clone(),
     };
 
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let mut min_v = f64::MAX; let mut max_v = f64::MIN;
-    for i in 0..n { arr.tuple_as_f64(i, &mut buf); min_v=min_v.min(buf[0]); max_v=max_v.max(buf[0]); }
-    let range = (max_v-min_v).max(1e-15);
-
-    let mut rgb = Vec::with_capacity(n*3);
+    let mut min_v = f64::MAX;
+    let mut max_v = f64::MIN;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let t = (buf[0]-min_v)/range;
+        min_v = min_v.min(buf[0]);
+        max_v = max_v.max(buf[0]);
+    }
+    let range = (max_v - min_v).max(1e-15);
+
+    let mut rgb = Vec::with_capacity(n * 3);
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        let t = (buf[0] - min_v) / range;
         // Blue -> White -> Red
         if t < 0.5 {
             let s = t * 2.0;
-            rgb.push(s); rgb.push(s); rgb.push(1.0);
+            rgb.push(s);
+            rgb.push(s);
+            rgb.push(1.0);
         } else {
             let s = (t - 0.5) * 2.0;
-            rgb.push(1.0); rgb.push(1.0-s); rgb.push(1.0-s);
+            rgb.push(1.0);
+            rgb.push(1.0 - s);
+            rgb.push(1.0 - s);
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
     img
 }
 
@@ -40,24 +51,30 @@ pub fn image_colorize(input: &ImageData, scalars: &str) -> ImageData {
 /// to the nearest integer index.
 pub fn image_apply_lut(input: &ImageData, scalars: &str, lut: &[[f64; 3]]) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a, None => return input.clone(),
+        Some(a) => a,
+        None => return input.clone(),
     };
 
     let n = arr.num_tuples();
     let lut_len = lut.len();
-    if lut_len == 0 { return input.clone(); }
+    if lut_len == 0 {
+        return input.clone();
+    }
 
     let mut buf = [0.0f64];
-    let mut rgb = Vec::with_capacity(n*3);
+    let mut rgb = Vec::with_capacity(n * 3);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let idx = (buf[0].round() as usize).min(lut_len-1);
+        let idx = (buf[0].round() as usize).min(lut_len - 1);
         let c = lut[idx];
-        rgb.push(c[0]); rgb.push(c[1]); rgb.push(c[2]);
+        rgb.push(c[0]);
+        rgb.push(c[1]);
+        rgb.push(c[2]);
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("RGB", rgb, 3)));
     img
 }
 
@@ -68,29 +85,39 @@ mod tests {
     #[test]
     fn colorize_gradient() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 0.25, 0.5, 0.75, 1.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 0.25, 0.5, 0.75, 1.0],
+                1,
+            )));
         let result = image_colorize(&img, "v");
         let arr = result.point_data().get_array("RGB").unwrap();
         assert_eq!(arr.num_components(), 3);
         let mut buf = [0.0f64; 3];
-        arr.tuple_as_f64(0, &mut buf); assert!(buf[2] > 0.9); // blue at low
-        arr.tuple_as_f64(4, &mut buf); assert!(buf[0] > 0.9); // red at high
+        arr.tuple_as_f64(0, &mut buf);
+        assert!(buf[2] > 0.9); // blue at low
+        arr.tuple_as_f64(4, &mut buf);
+        assert!(buf[0] > 0.9); // red at high
     }
 
     #[test]
     fn lut_basic() {
-        let lut = [[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]];
+        let lut = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 1.0, 2.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 1.0, 2.0],
+                1,
+            )));
         let result = image_apply_lut(&img, "v", &lut);
         let arr = result.point_data().get_array("RGB").unwrap();
         let mut buf = [0.0f64; 3];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf, [1.0,0.0,0.0]);
-        arr.tuple_as_f64(2, &mut buf); assert_eq!(buf, [0.0,0.0,1.0]);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [1.0, 0.0, 0.0]);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf, [0.0, 0.0, 1.0]);
     }
 
     #[test]

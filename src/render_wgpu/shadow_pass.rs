@@ -132,8 +132,7 @@ impl ShadowPass {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Depth32Float,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let view = texture.create_view(&Default::default());
@@ -157,23 +156,48 @@ impl ShadowPass {
         }
 
         // Find first directional light for shadow casting
-        let dir_light = scene.lights.iter().find(|l| {
-            l.enabled && matches!(l.light_type, LightType::Directional)
-        })?;
+        let dir_light = scene
+            .lights
+            .iter()
+            .find(|l| l.enabled && matches!(l.light_type, LightType::Directional))?;
 
         let center = scene.camera.focal_point;
         let center_arr = [center.x, center.y, center.z];
         let light_dir = dir_light.direction;
         let light_vp = scene.shadows.light_vp_matrix(
-            [light_dir[0] as f64, light_dir[1] as f64, light_dir[2] as f64],
+            [
+                light_dir[0] as f64,
+                light_dir[1] as f64,
+                light_dir[2] as f64,
+            ],
             center_arr,
         );
 
         let light_vp_f32: [[f32; 4]; 4] = [
-            [light_vp[0][0] as f32, light_vp[0][1] as f32, light_vp[0][2] as f32, light_vp[0][3] as f32],
-            [light_vp[1][0] as f32, light_vp[1][1] as f32, light_vp[1][2] as f32, light_vp[1][3] as f32],
-            [light_vp[2][0] as f32, light_vp[2][1] as f32, light_vp[2][2] as f32, light_vp[2][3] as f32],
-            [light_vp[3][0] as f32, light_vp[3][1] as f32, light_vp[3][2] as f32, light_vp[3][3] as f32],
+            [
+                light_vp[0][0] as f32,
+                light_vp[0][1] as f32,
+                light_vp[0][2] as f32,
+                light_vp[0][3] as f32,
+            ],
+            [
+                light_vp[1][0] as f32,
+                light_vp[1][1] as f32,
+                light_vp[1][2] as f32,
+                light_vp[1][3] as f32,
+            ],
+            [
+                light_vp[2][0] as f32,
+                light_vp[2][1] as f32,
+                light_vp[2][2] as f32,
+                light_vp[2][3] as f32,
+            ],
+            [
+                light_vp[3][0] as f32,
+                light_vp[3][1] as f32,
+                light_vp[3][2] as f32,
+                light_vp[3][3] as f32,
+            ],
         ];
 
         self.ensure_texture(device, scene.shadows.resolution);

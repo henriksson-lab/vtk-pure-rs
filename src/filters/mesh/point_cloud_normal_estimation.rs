@@ -74,9 +74,12 @@ pub fn estimate_point_cloud_normals(input: &PolyData, k_neighbors: usize) -> Pol
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Normals", normal_data, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Normals",
+            normal_data,
+            3,
+        )));
     pd
 }
 
@@ -86,11 +89,7 @@ fn smallest_eigenvector(cov: &[f64; 9]) -> [f64; 3] {
     // Use Jacobi eigenvalue algorithm for 3x3 symmetric matrix
     let mut a: [f64; 9] = *cov;
     // Eigenvectors as columns of v
-    let mut v: [f64; 9] = [
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
-    ];
+    let mut v: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
     // Jacobi iterations
     for _ in 0..50 {

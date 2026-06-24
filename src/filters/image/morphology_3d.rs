@@ -43,8 +43,13 @@ pub fn morphological_gradient_3d(image: &ImageData, array_name: &str, radius: us
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("MorphGradient", grad, 1)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MorphGradient",
+            grad,
+            1,
+        )));
     result
 }
 
@@ -59,7 +64,10 @@ fn morphology_op(image: &ImageData, array_name: &str, radius: usize, is_dilate: 
 
     let mut buf = [0.0f64];
     let mut values = Vec::with_capacity(n);
-    for i in 0..n { arr.tuple_as_f64(i, &mut buf); values.push(buf[0]); }
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values.push(buf[0]);
+    }
 
     let mut output = vec![0.0f64; n];
     let threshold = 0.5;
@@ -67,43 +75,70 @@ fn morphology_op(image: &ImageData, array_name: &str, radius: usize, is_dilate: 
     for iz in 0..dims[2] {
         for iy in 0..dims[1] {
             for ix in 0..dims[0] {
-                let idx = ix + iy*dims[0] + iz*dims[0]*dims[1];
+                let idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
                 let mut found = false;
 
                 'search: for dz in -r..=r {
                     for dy in -r..=r {
                         for dx in -r..=r {
-                            if dx*dx+dy*dy+dz*dz > r*r { continue; }
-                            let nx = ix as i64+dx;
-                            let ny = iy as i64+dy;
-                            let nz = iz as i64+dz;
-                            if nx<0||ny<0||nz<0 { continue; }
+                            if dx * dx + dy * dy + dz * dz > r * r {
+                                continue;
+                            }
+                            let nx = ix as i64 + dx;
+                            let ny = iy as i64 + dy;
+                            let nz = iz as i64 + dz;
+                            if nx < 0 || ny < 0 || nz < 0 {
+                                continue;
+                            }
                             let nx = nx as usize;
                             let ny = ny as usize;
                             let nz = nz as usize;
-                            if nx>=dims[0]||ny>=dims[1]||nz>=dims[2] { continue; }
-                            let ni = nx+ny*dims[0]+nz*dims[0]*dims[1];
+                            if nx >= dims[0] || ny >= dims[1] || nz >= dims[2] {
+                                continue;
+                            }
+                            let ni = nx + ny * dims[0] + nz * dims[0] * dims[1];
                             if is_dilate {
-                                if values[ni] >= threshold { found = true; break 'search; }
+                                if values[ni] >= threshold {
+                                    found = true;
+                                    break 'search;
+                                }
                             } else {
-                                if values[ni] < threshold { found = true; break 'search; }
+                                if values[ni] < threshold {
+                                    found = true;
+                                    break 'search;
+                                }
                             }
                         }
                     }
                 }
 
                 output[idx] = if is_dilate {
-                    if found { 1.0 } else { 0.0 }
+                    if found {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 } else {
-                    if found { 0.0 } else { if values[idx] >= threshold { 1.0 } else { 0.0 } }
+                    if found {
+                        0.0
+                    } else {
+                        if values[idx] >= threshold {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    }
                 };
             }
         }
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, output, 1)));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, output, 1,
+        )));
     result
 }
 
@@ -113,8 +148,17 @@ mod tests {
 
     fn make_sphere_image() -> ImageData {
         ImageData::from_function(
-            [20,20,20], [0.1,0.1,0.1], [0.0,0.0,0.0],
-            "mask", |x,y,z| if (x-1.0).powi(2)+(y-1.0).powi(2)+(z-1.0).powi(2) < 0.25 { 1.0 } else { 0.0 },
+            [20, 20, 20],
+            [0.1, 0.1, 0.1],
+            [0.0, 0.0, 0.0],
+            "mask",
+            |x, y, z| {
+                if (x - 1.0).powi(2) + (y - 1.0).powi(2) + (z - 1.0).powi(2) < 0.25 {
+                    1.0
+                } else {
+                    0.0
+                }
+            },
         )
     }
 
@@ -149,7 +193,12 @@ mod tests {
         let arr = img.point_data().get_array(name).unwrap();
         let mut c = 0;
         let mut buf = [0.0f64];
-        for i in 0..arr.num_tuples() { arr.tuple_as_f64(i, &mut buf); if buf[0] >= thresh { c += 1; } }
+        for i in 0..arr.num_tuples() {
+            arr.tuple_as_f64(i, &mut buf);
+            if buf[0] >= thresh {
+                c += 1;
+            }
+        }
         c
     }
 }

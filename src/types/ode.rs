@@ -3,21 +3,13 @@
 //! Used internally by stream tracers and particle advection.
 
 /// Euler method: simplest first-order integrator.
-pub fn euler_step(
-    pos: [f64; 3],
-    velocity_fn: &dyn Fn([f64; 3]) -> [f64; 3],
-    dt: f64,
-) -> [f64; 3] {
+pub fn euler_step(pos: [f64; 3], velocity_fn: &dyn Fn([f64; 3]) -> [f64; 3], dt: f64) -> [f64; 3] {
     let v = velocity_fn(pos);
     [pos[0] + v[0] * dt, pos[1] + v[1] * dt, pos[2] + v[2] * dt]
 }
 
 /// RK2 (midpoint method): second-order integrator.
-pub fn rk2_step(
-    pos: [f64; 3],
-    velocity_fn: &dyn Fn([f64; 3]) -> [f64; 3],
-    dt: f64,
-) -> [f64; 3] {
+pub fn rk2_step(pos: [f64; 3], velocity_fn: &dyn Fn([f64; 3]) -> [f64; 3], dt: f64) -> [f64; 3] {
     let k1 = velocity_fn(pos);
     let mid = [
         pos[0] + k1[0] * dt * 0.5,
@@ -25,27 +17,39 @@ pub fn rk2_step(
         pos[2] + k1[2] * dt * 0.5,
     ];
     let k2 = velocity_fn(mid);
-    [pos[0] + k2[0] * dt, pos[1] + k2[1] * dt, pos[2] + k2[2] * dt]
+    [
+        pos[0] + k2[0] * dt,
+        pos[1] + k2[1] * dt,
+        pos[2] + k2[2] * dt,
+    ]
 }
 
 /// RK4 (classical Runge-Kutta): fourth-order integrator.
-pub fn rk4_step(
-    pos: [f64; 3],
-    velocity_fn: &dyn Fn([f64; 3]) -> [f64; 3],
-    dt: f64,
-) -> [f64; 3] {
+pub fn rk4_step(pos: [f64; 3], velocity_fn: &dyn Fn([f64; 3]) -> [f64; 3], dt: f64) -> [f64; 3] {
     let k1 = velocity_fn(pos);
-    let p2 = [pos[0]+k1[0]*dt*0.5, pos[1]+k1[1]*dt*0.5, pos[2]+k1[2]*dt*0.5];
+    let p2 = [
+        pos[0] + k1[0] * dt * 0.5,
+        pos[1] + k1[1] * dt * 0.5,
+        pos[2] + k1[2] * dt * 0.5,
+    ];
     let k2 = velocity_fn(p2);
-    let p3 = [pos[0]+k2[0]*dt*0.5, pos[1]+k2[1]*dt*0.5, pos[2]+k2[2]*dt*0.5];
+    let p3 = [
+        pos[0] + k2[0] * dt * 0.5,
+        pos[1] + k2[1] * dt * 0.5,
+        pos[2] + k2[2] * dt * 0.5,
+    ];
     let k3 = velocity_fn(p3);
-    let p4 = [pos[0]+k3[0]*dt, pos[1]+k3[1]*dt, pos[2]+k3[2]*dt];
+    let p4 = [
+        pos[0] + k3[0] * dt,
+        pos[1] + k3[1] * dt,
+        pos[2] + k3[2] * dt,
+    ];
     let k4 = velocity_fn(p4);
 
     [
-        pos[0] + (k1[0] + 2.0*k2[0] + 2.0*k3[0] + k4[0]) * dt / 6.0,
-        pos[1] + (k1[1] + 2.0*k2[1] + 2.0*k3[1] + k4[1]) * dt / 6.0,
-        pos[2] + (k1[2] + 2.0*k2[2] + 2.0*k3[2] + k4[2]) * dt / 6.0,
+        pos[0] + (k1[0] + 2.0 * k2[0] + 2.0 * k3[0] + k4[0]) * dt / 6.0,
+        pos[1] + (k1[1] + 2.0 * k2[1] + 2.0 * k3[1] + k4[1]) * dt / 6.0,
+        pos[2] + (k1[2] + 2.0 * k2[2] + 2.0 * k3[2] + k4[2]) * dt / 6.0,
     ]
 }
 
@@ -71,7 +75,10 @@ mod tests {
     use super::*;
 
     // Constant velocity field: v = (1, 0, 0)
-    fn const_vel(p: [f64; 3]) -> [f64; 3] { let _ = p; [1.0, 0.0, 0.0] }
+    fn const_vel(p: [f64; 3]) -> [f64; 3] {
+        let _ = p;
+        [1.0, 0.0, 0.0]
+    }
 
     #[test]
     fn euler_constant() {
@@ -92,7 +99,9 @@ mod tests {
     }
 
     // Circular orbit: v = (-y, x, 0) at unit circle speed
-    fn circular_vel(p: [f64; 3]) -> [f64; 3] { [-p[1], p[0], 0.0] }
+    fn circular_vel(p: [f64; 3]) -> [f64; 3] {
+        [-p[1], p[0], 0.0]
+    }
 
     #[test]
     fn rk4_circular_orbit() {

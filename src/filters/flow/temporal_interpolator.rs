@@ -33,7 +33,9 @@ pub fn temporal_interpolator(a: &PolyData, b: &PolyData, t: f64) -> PolyData {
     for i in 0..a.point_data().num_arrays() {
         let arr_a = a.point_data().get_array_by_index(i).unwrap();
         if let Some(arr_b) = b.point_data().get_array(arr_a.name()) {
-            if arr_a.num_tuples() == arr_b.num_tuples() && arr_a.num_components() == arr_b.num_components() {
+            if arr_a.num_tuples() == arr_b.num_tuples()
+                && arr_a.num_components() == arr_b.num_components()
+            {
                 let nc = arr_a.num_components();
                 let nt = arr_a.num_tuples();
                 let mut interp = Vec::with_capacity(nt * nc);
@@ -46,9 +48,11 @@ pub fn temporal_interpolator(a: &PolyData, b: &PolyData, t: f64) -> PolyData {
                         interp.push(ba[c] + t * (bb[c] - ba[c]));
                     }
                 }
-                new_attrs.add_array(AnyDataArray::F64(
-                    DataArray::from_vec(arr_a.name(), interp, nc),
-                ));
+                new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                    arr_a.name(),
+                    interp,
+                    nc,
+                )));
                 continue;
             }
         }
@@ -104,15 +108,21 @@ mod tests {
     fn interpolate_scalars() {
         let mut a = PolyData::new();
         a.points.push([0.0, 0.0, 0.0]);
-        a.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![100.0], 1),
-        ));
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![100.0],
+                1,
+            )));
 
         let mut b = PolyData::new();
         b.points.push([0.0, 0.0, 0.0]);
-        b.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temp", vec![200.0], 1),
-        ));
+        b.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temp",
+                vec![200.0],
+                1,
+            )));
 
         let result = temporal_interpolator(&a, &b, 0.25);
         let arr = result.point_data().get_array("temp").unwrap();

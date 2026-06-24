@@ -17,7 +17,12 @@ pub fn base64_decode(input: &str) -> Result<Vec<u8>, VtkError> {
             b'/' => 63,
             b'=' => continue,
             b' ' | b'\n' | b'\r' | b'\t' => continue,
-            _ => return Err(VtkError::Parse(format!("invalid base64 char: {}", byte as char))),
+            _ => {
+                return Err(VtkError::Parse(format!(
+                    "invalid base64 char: {}",
+                    byte as char
+                )))
+            }
         };
         buf = (buf << 6) | val as u32;
         nbits += 6;
@@ -75,7 +80,9 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
             let mut buf = Vec::with_capacity(total * 4);
             for i in 0..nt {
                 let t = a.tuple(i);
-                for &v in t { buf.extend_from_slice(&v.to_le_bytes()); }
+                for &v in t {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
             }
             buf
         }
@@ -83,7 +90,9 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
             let mut buf = Vec::with_capacity(total * 8);
             for i in 0..nt {
                 let t = a.tuple(i);
-                for &v in t { buf.extend_from_slice(&v.to_le_bytes()); }
+                for &v in t {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
             }
             buf
         }
@@ -91,7 +100,9 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
             let mut buf = Vec::with_capacity(total * 4);
             for i in 0..nt {
                 let t = a.tuple(i);
-                for &v in t { buf.extend_from_slice(&v.to_le_bytes()); }
+                for &v in t {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
             }
             buf
         }
@@ -99,7 +110,9 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
             let mut buf = Vec::with_capacity(total * 8);
             for i in 0..nt {
                 let t = a.tuple(i);
-                for &v in t { buf.extend_from_slice(&v.to_le_bytes()); }
+                for &v in t {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
             }
             buf
         }
@@ -117,7 +130,9 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
             let mut tmp = vec![0.0f64; nc];
             for i in 0..nt {
                 arr.tuple_as_f64(i, &mut tmp);
-                for &v in &tmp { buf.extend_from_slice(&v.to_le_bytes()); }
+                for &v in &tmp {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
             }
             buf
         }
@@ -149,13 +164,17 @@ pub fn parse_binary_data_array(
         // Try 8-byte header
         if bytes.len() >= 8 {
             let data_bytes_64 = u64::from_le_bytes([
-                bytes[0], bytes[1], bytes[2], bytes[3],
-                bytes[4], bytes[5], bytes[6], bytes[7],
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
             ]) as usize;
             let data_start_64 = 8;
             let data_end_64 = data_start_64 + data_bytes_64;
             if data_end_64 <= bytes.len() {
-                return bytes_to_data_array(&bytes[data_start_64..data_end_64], name, type_str, num_components);
+                return bytes_to_data_array(
+                    &bytes[data_start_64..data_end_64],
+                    name,
+                    type_str,
+                    num_components,
+                );
             }
         }
         return Err(VtkError::Parse(format!(
@@ -193,10 +212,17 @@ pub fn parse_appended_data_array(
     let data_start = offset + 4;
     let data_end = data_start + header;
     if data_end > appended_data.len() {
-        return Err(VtkError::Parse("appended data extends beyond buffer".into()));
+        return Err(VtkError::Parse(
+            "appended data extends beyond buffer".into(),
+        ));
     }
 
-    bytes_to_data_array(&appended_data[data_start..data_end], name, type_str, num_components)
+    bytes_to_data_array(
+        &appended_data[data_start..data_end],
+        name,
+        type_str,
+        num_components,
+    )
 }
 
 /// Parse base64-encoded appended data.
@@ -242,9 +268,11 @@ fn bytes_to_data_array(
             let values: Vec<i8> = data.iter().map(|&b| b as i8).collect();
             Ok(AnyDataArray::I8(DataArray::from_vec(name, values, nc)))
         }
-        "UInt8" => {
-            Ok(AnyDataArray::U8(DataArray::from_vec(name, data.to_vec(), nc)))
-        }
+        "UInt8" => Ok(AnyDataArray::U8(DataArray::from_vec(
+            name,
+            data.to_vec(),
+            nc,
+        ))),
         "Int16" => {
             if data.len() % 2 != 0 {
                 return Err(VtkError::Parse("Int16 data not aligned".into()));
@@ -305,7 +333,9 @@ fn bytes_to_data_array(
                 .collect();
             Ok(AnyDataArray::U64(DataArray::from_vec(name, values, nc)))
         }
-        _ => Err(VtkError::Parse(format!("unsupported binary type: {type_str}"))),
+        _ => Err(VtkError::Parse(format!(
+            "unsupported binary type: {type_str}"
+        ))),
     }
 }
 

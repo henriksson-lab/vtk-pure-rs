@@ -28,6 +28,10 @@ pub struct Bond {
 pub struct Molecule {
     atoms: Vec<Atom>,
     bonds: Vec<Bond>,
+    /// Unit-cell lattice vectors. `None` means no unit-cell lattice is defined.
+    lattice: Option<[[f64; 3]; 3]>,
+    /// Unit-cell origin for rendering.
+    lattice_origin: [f64; 3],
     /// Per-atom data attributes.
     atom_data: DataSetAttributes,
     /// Per-bond data attributes.
@@ -42,6 +46,8 @@ impl Molecule {
         Self {
             atoms: Vec::new(),
             bonds: Vec::new(),
+            lattice: None,
+            lattice_origin: [0.0, 0.0, 0.0],
             atom_data: DataSetAttributes::new(),
             bond_data: DataSetAttributes::new(),
             field_data: FieldData::new(),
@@ -51,15 +57,36 @@ impl Molecule {
     /// Add an atom and return its index.
     pub fn add_atom(&mut self, atomic_number: u16, position: [f64; 3]) -> usize {
         let idx = self.atoms.len();
-        self.atoms.push(Atom { atomic_number, position });
+        self.atoms.push(Atom {
+            atomic_number,
+            position,
+        });
         idx
+    }
+
+    /// Add an atom, returning its index.
+    pub fn try_add_atom(&mut self, atomic_number: u16, position: [f64; 3]) -> Option<usize> {
+        Some(self.add_atom(atomic_number, position))
     }
 
     /// Add a bond between two atoms. Returns the bond index.
     pub fn add_bond(&mut self, atom1: usize, atom2: usize, order: u16) -> usize {
+        self.try_add_bond(atom1, atom2, order)
+            .expect("bond atom index out of bounds for Molecule")
+    }
+
+    /// Add a bond between two atoms, returning `None` if either atom index is invalid.
+    pub fn try_add_bond(&mut self, atom1: usize, atom2: usize, order: u16) -> Option<usize> {
+        if atom1 >= self.atoms.len() || atom2 >= self.atoms.len() {
+            return None;
+        }
         let idx = self.bonds.len();
-        self.bonds.push(Bond { atom1, atom2, order });
-        idx
+        self.bonds.push(Bond {
+            atom1,
+            atom2,
+            order,
+        });
+        Some(idx)
     }
 
     /// Number of atoms.
@@ -101,23 +128,95 @@ impl Molecule {
         pts
     }
 
+    /// Return true if a unit-cell lattice is defined.
+    pub fn has_lattice(&self) -> bool {
+        self.lattice.is_some()
+    }
+
+    /// Remove any unit-cell lattice information and reset the lattice origin.
+    pub fn clear_lattice(&mut self) {
+        self.lattice = None;
+        self.lattice_origin = [0.0, 0.0, 0.0];
+    }
+
+    /// Set the unit-cell lattice vectors.
+    pub fn set_lattice(&mut self, a: [f64; 3], b: [f64; 3], c: [f64; 3]) {
+        self.lattice = Some([a, b, c]);
+    }
+
+    /// Get the unit-cell lattice vectors. Returns zero vectors if none are set.
+    pub fn lattice(&self) -> [[f64; 3]; 3] {
+        self.lattice.unwrap_or([[0.0; 3]; 3])
+    }
+
+    /// Unit-cell lattice vectors, if present.
+    pub fn lattice_opt(&self) -> Option<[[f64; 3]; 3]> {
+        self.lattice
+    }
+
+    /// Set the unit-cell origin.
+    pub fn set_lattice_origin(&mut self, origin: [f64; 3]) {
+        self.lattice_origin = origin;
+    }
+
+    /// Get the unit-cell origin.
+    pub fn lattice_origin(&self) -> [f64; 3] {
+        self.lattice_origin
+    }
+
+    /// Set periodic unit-cell vectors for crystalline or periodic molecule data.
+    pub fn set_periodic_cell(&mut self, cell: [[f64; 3]; 3]) -> bool {
+        self.set_lattice(cell[0], cell[1], cell[2]);
+        true
+    }
+
+    /// Clear periodic unit-cell vectors.
+    pub fn clear_periodic_cell(&mut self) {
+        self.clear_lattice();
+    }
+
+    /// Periodic unit-cell vectors, if present.
+    pub fn periodic_cell(&self) -> Option<[[f64; 3]; 3]> {
+        self.lattice_opt()
+    }
+
+    /// Whether this molecule has periodic unit-cell metadata.
+    pub fn is_periodic(&self) -> bool {
+        self.has_lattice()
+    }
+
     /// Element symbol for an atomic number.
     pub fn element_symbol(atomic_number: u16) -> &'static str {
-        match atomic_number {
-            1 => "H", 2 => "He", 3 => "Li", 4 => "Be", 5 => "B",
-            6 => "C", 7 => "N", 8 => "O", 9 => "F", 10 => "Ne",
-            11 => "Na", 12 => "Mg", 13 => "Al", 14 => "Si", 15 => "P",
-            16 => "S", 17 => "Cl", 18 => "Ar", 19 => "K", 20 => "Ca",
-            26 => "Fe", 29 => "Cu", 30 => "Zn", 35 => "Br", 53 => "I",
-            _ => "?",
-        }
+        const SYMBOLS: [&str; 119] = [
+            "Xx", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si",
+            "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu",
+            "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc",
+            "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La",
+            "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
+            "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At",
+            "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es",
+            "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt", "Ds", "Rg", "Cn", "Uut",
+            "Fl", "Uup", "Lv", "Uus", "Uuo",
+        ];
+        SYMBOLS
+            .get(atomic_number as usize)
+            .copied()
+            .unwrap_or(SYMBOLS[0])
     }
 
     /// Approximate covalent radius in Angstroms for common elements.
     pub fn covalent_radius(atomic_number: u16) -> f64 {
         match atomic_number {
-            1 => 0.31, 6 => 0.76, 7 => 0.71, 8 => 0.66, 9 => 0.57,
-            15 => 1.07, 16 => 1.05, 17 => 1.02, 35 => 1.20, 53 => 1.39,
+            1 => 0.31,
+            6 => 0.76,
+            7 => 0.71,
+            8 => 0.66,
+            9 => 0.57,
+            15 => 1.07,
+            16 => 1.05,
+            17 => 1.02,
+            35 => 1.20,
+            53 => 1.39,
             _ => 0.8,
         }
     }
@@ -125,16 +224,16 @@ impl Molecule {
     /// CPK color for common elements (RGB 0-1).
     pub fn cpk_color(atomic_number: u16) -> [f32; 3] {
         match atomic_number {
-            1 => [1.0, 1.0, 1.0],       // H: white
-            6 => [0.2, 0.2, 0.2],       // C: dark gray
-            7 => [0.0, 0.0, 1.0],       // N: blue
-            8 => [1.0, 0.0, 0.0],       // O: red
-            9 => [0.0, 1.0, 0.0],       // F: green
-            15 => [1.0, 0.5, 0.0],      // P: orange
-            16 => [1.0, 1.0, 0.0],      // S: yellow
-            17 => [0.0, 1.0, 0.0],      // Cl: green
-            26 => [0.5, 0.3, 0.0],      // Fe: brown
-            _ => [0.8, 0.5, 1.0],       // default: pink
+            1 => [1.0, 1.0, 1.0],  // H: white
+            6 => [0.2, 0.2, 0.2],  // C: dark gray
+            7 => [0.0, 0.0, 1.0],  // N: blue
+            8 => [1.0, 0.0, 0.0],  // O: red
+            9 => [0.0, 1.0, 0.0],  // F: green
+            15 => [1.0, 0.5, 0.0], // P: orange
+            16 => [1.0, 1.0, 0.0], // S: yellow
+            17 => [0.0, 1.0, 0.0], // Cl: green
+            26 => [0.5, 0.3, 0.0], // Fe: brown
+            _ => [0.8, 0.5, 1.0],  // default: pink
         }
     }
 
@@ -186,6 +285,8 @@ mod tests {
         assert_eq!(mol.num_bonds(), 2);
         assert_eq!(mol.atom(0).atomic_number, 8);
         assert_eq!(Molecule::element_symbol(8), "O");
+        assert_eq!(Molecule::element_symbol(118), "Uuo");
+        assert_eq!(Molecule::element_symbol(119), "Xx");
     }
 
     #[test]
@@ -228,5 +329,30 @@ mod tests {
     #[test]
     fn covalent_radii() {
         assert!(Molecule::covalent_radius(1) < Molecule::covalent_radius(6));
+    }
+
+    #[test]
+    fn try_add_bond_rejects_invalid_atom_indices() {
+        let mut mol = Molecule::new();
+        let c = mol.add_atom(6, [0.0, 0.0, 0.0]);
+        assert_eq!(mol.try_add_bond(c, 10, 1), None);
+        assert_eq!(mol.num_bonds(), 0);
+    }
+
+    #[test]
+    fn atom_positions_and_lattice_follow_vtk_storage_rules() {
+        let mut mol = Molecule::new();
+        assert_eq!(mol.try_add_atom(6, [f64::NAN, 0.0, 0.0]), Some(0));
+        assert_eq!(mol.num_atoms(), 1);
+
+        assert!(mol.set_periodic_cell([[1.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 3.0]]));
+        assert!(mol.is_periodic());
+        mol.set_lattice_origin([4.0, 5.0, 6.0]);
+        assert_eq!(mol.periodic_cell().unwrap()[1][1], 2.0);
+        assert_eq!(mol.lattice_origin(), [4.0, 5.0, 6.0]);
+        mol.clear_lattice();
+        assert!(!mol.has_lattice());
+        assert_eq!(mol.lattice(), [[0.0; 3]; 3]);
+        assert_eq!(mol.lattice_origin(), [0.0, 0.0, 0.0]);
     }
 }

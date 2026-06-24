@@ -262,11 +262,19 @@ mod tests {
     #[test]
     fn from_u8_roundtrip() {
         let types = [
-            CellType::Empty, CellType::Vertex, CellType::Line,
-            CellType::Triangle, CellType::Quad, CellType::Tetra,
-            CellType::Hexahedron, CellType::Wedge, CellType::Pyramid,
-            CellType::QuadraticEdge, CellType::QuadraticTriangle,
-            CellType::LagrangeCurve, CellType::BezierTriangle,
+            CellType::Empty,
+            CellType::Vertex,
+            CellType::Line,
+            CellType::Triangle,
+            CellType::Quad,
+            CellType::Tetra,
+            CellType::Hexahedron,
+            CellType::Wedge,
+            CellType::Pyramid,
+            CellType::QuadraticEdge,
+            CellType::QuadraticTriangle,
+            CellType::LagrangeCurve,
+            CellType::BezierTriangle,
         ];
         for ct in &types {
             let v = *ct as u8;

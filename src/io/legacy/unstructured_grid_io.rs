@@ -163,7 +163,8 @@ pub fn read_unstructured_grid_from<R: BufRead>(reader: R) -> Result<Unstructured
                     idx += 1;
                 }
                 for i in 0..n {
-                    grid.points.push([values[i * 3], values[i * 3 + 1], values[i * 3 + 2]]);
+                    grid.points
+                        .push([values[i * 3], values[i * 3 + 1], values[i * 3 + 2]]);
                 }
             }
             "CELLS" => {
@@ -243,12 +244,7 @@ fn parse_data_section(
             let nc: usize = p.get(3).and_then(|s| s.parse().ok()).unwrap_or(1);
 
             // Skip LOOKUP_TABLE line
-            if idx < lines.len()
-                && lines[idx]
-                    .trim()
-                    .to_uppercase()
-                    .starts_with("LOOKUP_TABLE")
-            {
+            if idx < lines.len() && lines[idx].trim().to_uppercase().starts_with("LOOKUP_TABLE") {
                 idx += 1;
             }
 

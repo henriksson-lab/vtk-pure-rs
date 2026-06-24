@@ -7,15 +7,21 @@ use crate::data::{Points, PolyData};
 /// better than uniform Laplacian. `dt` is the time step.
 pub fn curvature_flow(input: &PolyData, dt: f64, iterations: usize) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
-            let b = cell[(i+1)%cell.len()] as usize;
-            if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-            if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+            let b = cell[(i + 1) % cell.len()] as usize;
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
         }
     }
 
@@ -24,7 +30,9 @@ pub fn curvature_flow(input: &PolyData, dt: f64, iterations: usize) -> PolyData 
     for _ in 0..iterations {
         let mut new_pts = pts.clone();
         for i in 0..n {
-            if neighbors[i].is_empty() { continue; }
+            if neighbors[i].is_empty() {
+                continue;
+            }
             // Cotangent-weighted Laplacian (simplified: uniform weights)
             let cnt = neighbors[i].len() as f64;
             let mut lap = [0.0; 3];
@@ -33,7 +41,9 @@ pub fn curvature_flow(input: &PolyData, dt: f64, iterations: usize) -> PolyData 
                 lap[1] += pts[j][1] - pts[i][1];
                 lap[2] += pts[j][2] - pts[i][2];
             }
-            lap[0] /= cnt; lap[1] /= cnt; lap[2] /= cnt;
+            lap[0] /= cnt;
+            lap[1] /= cnt;
+            lap[2] /= cnt;
             new_pts[i] = [
                 pts[i][0] + dt * lap[0],
                 pts[i][1] + dt * lap[1],
@@ -44,7 +54,9 @@ pub fn curvature_flow(input: &PolyData, dt: f64, iterations: usize) -> PolyData 
     }
 
     let mut points = Points::<f64>::new();
-    for p in &pts { points.push(*p); }
+    for p in &pts {
+        points.push(*p);
+    }
     let mut pd = input.clone();
     pd.points = points;
     pd

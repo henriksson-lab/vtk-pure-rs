@@ -57,11 +57,18 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
         face_normals.push(polygon_normal(input, cell));
         let n = cell.len();
         for i in 0..n {
-            let (a, b) = (cell[i], cell[(i+1) % n]);
-            let key = if a < b { (a as u64) << 32 | b as u64 } else { (b as u64) << 32 | a as u64 };
+            let (a, b) = (cell[i], cell[(i + 1) % n]);
+            let key = if a < b {
+                (a as u64) << 32 | b as u64
+            } else {
+                (b as u64) << 32 | a as u64
+            };
             let entry = edge_data.entry(key).or_insert((0, 0, 0));
-            if entry.0 == 0 { entry.1 = ci; }
-            else if entry.0 == 1 { entry.2 = ci; }
+            if entry.0 == 0 {
+                entry.1 = ci;
+            } else if entry.0 == 1 {
+                entry.2 = ci;
+            }
             entry.0 += 1;
         }
     }
@@ -82,8 +89,12 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
         } else if count == 2 {
             let n1 = face_normals[f0];
             let n2 = face_normals[f1];
-            let dot = n1[0]*n2[0] + n1[1]*n2[1] + n1[2]*n2[2];
-            if dot < cos_threshold { EdgeType::Feature } else { EdgeType::Manifold }
+            let dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
+            if dot < cos_threshold {
+                EdgeType::Feature
+            } else {
+                EdgeType::Manifold
+            }
         } else {
             EdgeType::NonManifold
         };
@@ -102,7 +113,9 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
                 if pt_map[ui] < 0 {
                     pt_map[ui] = (pts_flat.len() / 3) as i64;
                     let p = input.points.get(ui);
-                    pts_flat.push(p[0]); pts_flat.push(p[1]); pts_flat.push(p[2]);
+                    pts_flat.push(p[0]);
+                    pts_flat.push(p[1]);
+                    pts_flat.push(p[2]);
                 }
             }
             line_conn.push(pt_map[a as usize]);
@@ -111,7 +124,7 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
     }
 
     let n_lines = line_conn.len() / 2;
-    let offsets: Vec<i64> = (0..=n_lines).map(|i| (i*2) as i64).collect();
+    let offsets: Vec<i64> = (0..=n_lines).map(|i| (i * 2) as i64).collect();
 
     let mut pd = PolyData::new();
     pd.points = Points::from_flat_vec(pts_flat);

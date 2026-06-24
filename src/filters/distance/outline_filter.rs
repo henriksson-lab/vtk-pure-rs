@@ -19,13 +19,24 @@ pub fn outline_from_bounds(bounds: &BoundingBox) -> PolyData {
     ];
 
     let edges: Vec<[usize; 2]> = vec![
-        [0,1],[1,2],[2,3],[3,0], // bottom
-        [4,5],[5,6],[6,7],[7,4], // top
-        [0,4],[1,5],[2,6],[3,7], // verticals
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 0], // bottom
+        [4, 5],
+        [5, 6],
+        [6, 7],
+        [7, 4], // top
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7], // verticals
     ];
 
     let mut points = Points::<f64>::new();
-    for p in &pts { points.push(*p); }
+    for p in &pts {
+        points.push(*p);
+    }
 
     let mut lines = CellArray::new();
     for e in &edges {
@@ -40,12 +51,17 @@ pub fn outline_from_bounds(bounds: &BoundingBox) -> PolyData {
 
 /// Create a wireframe outline of a PolyData's bounding box.
 pub fn outline_poly_data(mesh: &PolyData) -> PolyData {
-    if mesh.points.len() == 0 { return PolyData::new(); }
+    if mesh.points.len() == 0 {
+        return PolyData::new();
+    }
     let mut min = mesh.points.get(0);
     let mut max = min;
     for i in 1..mesh.points.len() {
         let p = mesh.points.get(i);
-        for j in 0..3 { min[j] = min[j].min(p[j]); max[j] = max[j].max(p[j]); }
+        for j in 0..3 {
+            min[j] = min[j].min(p[j]);
+            max[j] = max[j].max(p[j]);
+        }
     }
     outline_from_bounds(&BoundingBox::from_corners(min, max))
 }
@@ -69,19 +85,24 @@ pub fn outline_rectilinear_grid(grid: &RectilinearGrid) -> PolyData {
     let y = grid.y_coords();
     let z = grid.z_coords();
     let min = [x[0], y[0], z[0]];
-    let max = [x[x.len()-1], y[y.len()-1], z[z.len()-1]];
+    let max = [x[x.len() - 1], y[y.len() - 1], z[z.len() - 1]];
     outline_from_bounds(&BoundingBox::from_corners(min, max))
 }
 
 /// Create a wireframe outline of an UnstructuredGrid's bounding box.
 pub fn outline_unstructured_grid(grid: &UnstructuredGrid) -> PolyData {
     let n = grid.points.len();
-    if n == 0 { return PolyData::new(); }
+    if n == 0 {
+        return PolyData::new();
+    }
     let mut min = grid.points.get(0);
     let mut max = min;
     for i in 1..n {
         let p = grid.points.get(i);
-        for j in 0..3 { min[j] = min[j].min(p[j]); max[j] = max[j].max(p[j]); }
+        for j in 0..3 {
+            min[j] = min[j].min(p[j]);
+            max[j] = max[j].max(p[j]);
+        }
     }
     outline_from_bounds(&BoundingBox::from_corners(min, max))
 }
@@ -111,17 +132,15 @@ mod tests {
 
     #[test]
     fn outline_image() {
-        let img = ImageData::with_dimensions(10, 10, 10)
-            .with_spacing([0.5, 0.5, 0.5]);
+        let img = ImageData::with_dimensions(10, 10, 10).with_spacing([0.5, 0.5, 0.5]);
         let outline = outline_image_data(&img);
         assert_eq!(outline.points.len(), 8);
     }
 
     #[test]
     fn outline_rectilinear() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 3.0], vec![0.0, 2.0], vec![0.0, 1.0],
-        );
+        let grid =
+            RectilinearGrid::from_coords(vec![0.0, 1.0, 3.0], vec![0.0, 2.0], vec![0.0, 1.0]);
         let outline = outline_rectilinear_grid(&grid);
         assert_eq!(outline.lines.num_cells(), 12);
     }

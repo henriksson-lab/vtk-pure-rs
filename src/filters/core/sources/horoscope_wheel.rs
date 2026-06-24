@@ -16,22 +16,32 @@ pub fn horoscope_wheel(outer_radius: f64, inner_radius: f64) -> PolyData {
     }
     // Ring quads
     for j in 0..na {
-        let j1 = (j+1)%na;
-        polys.push_cell(&[(j*2) as i64, (j1*2) as i64, (j1*2+1) as i64, (j*2+1) as i64]);
+        let j1 = (j + 1) % na;
+        polys.push_cell(&[
+            (j * 2) as i64,
+            (j1 * 2) as i64,
+            (j1 * 2 + 1) as i64,
+            (j * 2 + 1) as i64,
+        ]);
     }
     // Segment dividers
     for s in 0..n_segments {
         let j = s * na_per_seg;
-        lines.push_cell(&[(j*2) as i64, (j*2+1) as i64]);
+        lines.push_cell(&[(j * 2) as i64, (j * 2 + 1) as i64]);
     }
     // Center point
-    let center = pts.len(); pts.push([0.0, 0.0, 0.0]);
+    let center = pts.len();
+    pts.push([0.0, 0.0, 0.0]);
     // Inner ring fill
     for j in 0..na {
-        let j1 = (j+1)%na;
-        polys.push_cell(&[center as i64, (j*2+1) as i64, (j1*2+1) as i64]);
+        let j1 = (j + 1) % na;
+        polys.push_cell(&[center as i64, (j * 2 + 1) as i64, (j1 * 2 + 1) as i64]);
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m.lines = lines; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m.lines = lines;
+    m
 }
 
 #[cfg(test)]

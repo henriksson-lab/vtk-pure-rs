@@ -31,7 +31,10 @@ impl<T: Scalar> Points<T> {
 
     /// Create from a pre-flattened Vec (x0,y0,z0,x1,y1,z1,...). Zero-copy.
     pub fn from_flat_vec(flat: Vec<T>) -> Self {
-        debug_assert!(flat.len() % 3 == 0, "flat vec length must be divisible by 3");
+        debug_assert!(
+            flat.len() % 3 == 0,
+            "flat vec length must be divisible by 3"
+        );
         Self {
             data: DataArray::from_vec("Points", flat, 3),
         }
@@ -108,11 +111,15 @@ impl<T: Scalar> Points<T> {
 impl Points<f64> {
     /// Compute the centroid (average position).
     pub fn centroid(&self) -> [f64; 3] {
-        if self.is_empty() { return [0.0; 3]; }
+        if self.is_empty() {
+            return [0.0; 3];
+        }
         let n = self.len() as f64;
         let mut c = [0.0; 3];
         for p in self {
-            c[0] += p[0]; c[1] += p[1]; c[2] += p[2];
+            c[0] += p[0];
+            c[1] += p[1];
+            c[2] += p[2];
         }
         [c[0] / n, c[1] / n, c[2] / n]
     }
@@ -156,7 +163,10 @@ impl<'a, T: Scalar> ExactSizeIterator for PointsIter<'a, T> {}
 impl<T: Scalar> Points<T> {
     /// Iterate over all points.
     pub fn iter(&self) -> PointsIter<'_, T> {
-        PointsIter { points: self, idx: 0 }
+        PointsIter {
+            points: self,
+            idx: 0,
+        }
     }
 }
 

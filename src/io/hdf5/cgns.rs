@@ -3,16 +3,20 @@
 //! CGNS (CFD General Notation System) stores CFD data in HDF5 format
 //! with a specific tree structure: Base > Zone > GridCoordinates + FlowSolution.
 
-use std::path::Path;
 use crate::data::{AnyDataArray, DataArray, UnstructuredGrid};
 use crate::types::{CellType, VtkError};
+use std::path::Path;
 
 use crate::types::CgnsInfo;
 
 /// Read a CGNS file, returning an UnstructuredGrid + metadata.
 pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> {
-    let file = hdf5::File::open(path)
-        .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("{e}"))))?;
+    let file = hdf5::File::open(path).map_err(|e| {
+        VtkError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{e}"),
+        ))
+    })?;
 
     let mut info = CgnsInfo::default();
 
@@ -25,7 +29,8 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
     let mut all_connectivity: Vec<Vec<i64>> = Vec::new();
 
     for base_name in &base_names {
-        let base = file.group(base_name)
+        let base = file
+            .group(base_name)
             .map_err(|e| VtkError::Parse(format!("base '{base_name}': {e}")))?;
 
         // Read cell/phys dimensions from base attributes
@@ -40,7 +45,8 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
         info.num_zones += zone_names.len();
 
         for zone_name in &zone_names {
-            let zone = base.group(zone_name)
+            let zone = base
+                .group(zone_name)
                 .map_err(|e| VtkError::Parse(format!("zone '{zone_name}': {e}")))?;
 
             // Read coordinates
@@ -60,16 +66,19 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
                 // Read element connectivity if unstructured
                 if let Ok(elems) = zone.group("Elements") {
                     if let Ok(conn_ds) = elems.dataset("ElementConnectivity") {
-                        let conn: Vec<i32> = conn_ds.read_raw()
+                        let conn: Vec<i32> = conn_ds
+                            .read_raw()
                             .map_err(|e| VtkError::Parse(format!("connectivity: {e}")))?;
                         // Read element type
-                        let etype = elems.attr("ElementType")
+                        let etype = elems
+                            .attr("ElementType")
                             .and_then(|a| a.read_scalar::<i32>())
                             .unwrap_or(5); // default TRI_3
 
                         let (cell_type, npn) = cgns_element_type(etype);
                         for chunk in conn.chunks_exact(npn) {
-                            let cell: Vec<i64> = chunk.iter()
+                            let cell: Vec<i64> = chunk
+                                .iter()
                                 .map(|&v| (v - 1) as i64 + base_idx as i64) // CGNS 1-based
                                 .collect();
                             all_cell_types.push(cell_type);
@@ -94,7 +103,15 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
 
     let num_nodes = all_points.len() / 3;
     let points = crate::data::Points::from_vec(
-        (0..num_nodes).map(|i| [all_points[i*3], all_points[i*3+1], all_points[i*3+2]]).collect()
+        (0..num_nodes)
+            .map(|i| {
+                [
+                    all_points[i * 3],
+                    all_points[i * 3 + 1],
+                    all_points[i * 3 + 2],
+                ]
+            })
+            .collect(),
     );
 
     let mut grid = UnstructuredGrid::new();
@@ -109,12 +126,12 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
 fn cgns_element_type(etype: i32) -> (CellType, usize) {
     match etype {
         2 => (CellType::Line, 2),        // BAR_2
-        5 => (CellType::Triangle, 3),     // TRI_3
-        7 => (CellType::Quad, 4),         // QUAD_4
-        10 => (CellType::Tetra, 4),       // TETRA_4
-        12 => (CellType::Pyramid, 5),     // PYRA_5
-        14 => (CellType::Wedge, 6),       // PENTA_6
-        17 => (CellType::Hexahedron, 8),  // HEXA_8
+        5 => (CellType::Triangle, 3),    // TRI_3
+        7 => (CellType::Quad, 4),        // QUAD_4
+        10 => (CellType::Tetra, 4),      // TETRA_4
+        12 => (CellType::Pyramid, 5),    // PYRA_5
+        14 => (CellType::Wedge, 6),      // PENTA_6
+        17 => (CellType::Hexahedron, 8), // HEXA_8
         _ => (CellType::Triangle, 3),
     }
 }
@@ -129,7 +146,8 @@ fn list_datasets(loc: &hdf5::Group) -> Vec<String> {
 }
 
 fn read_f64_ds(group: &hdf5::Group, name: &str) -> Result<Vec<f64>, VtkError> {
-    let ds = group.dataset(name)
+    let ds = group
+        .dataset(name)
         .map_err(|e| VtkError::Parse(format!("dataset '{name}': {e}")))?;
     ds.read_raw::<f64>()
         .map_err(|e| VtkError::Parse(format!("read '{name}': {e}")))

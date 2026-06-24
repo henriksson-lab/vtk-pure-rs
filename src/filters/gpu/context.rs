@@ -34,11 +34,12 @@ impl GpuContext {
     /// Upload f32 data to a GPU storage buffer.
     pub(crate) fn create_storage_buffer(&self, data: &[f32]) -> wgpu::Buffer {
         use wgpu::util::DeviceExt;
-        self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("storage buffer"),
-            contents: bytemuck::cast_slice(data),
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
-        })
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("storage buffer"),
+                contents: bytemuck::cast_slice(data),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            })
     }
 
     /// Create an output storage buffer of given size.

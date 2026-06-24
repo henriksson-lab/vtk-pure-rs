@@ -45,12 +45,18 @@ pub fn youngs_material_interface(
 
         let mut n = [0.0f64; 3];
         normals.tuple_as_f64(ci, &mut n);
-        let nlen = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
-        if nlen < 1e-15 { continue; }
-        n[0] /= nlen; n[1] /= nlen; n[2] /= nlen;
+        let nlen = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if nlen < 1e-15 {
+            continue;
+        }
+        n[0] /= nlen;
+        n[1] /= nlen;
+        n[2] /= nlen;
 
         let cell = input.polys.cell(ci);
-        if cell.len() < 3 { continue; }
+        if cell.len() < 3 {
+            continue;
+        }
 
         // Compute cell centroid
         let mut cx = 0.0;
@@ -58,17 +64,22 @@ pub fn youngs_material_interface(
         let mut cz = 0.0;
         for &vid in cell {
             let p = input.points.get(vid as usize);
-            cx += p[0]; cy += p[1]; cz += p[2];
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
         }
         let nc_pts = cell.len() as f64;
-        cx /= nc_pts; cy /= nc_pts; cz /= nc_pts;
+        cx /= nc_pts;
+        cy /= nc_pts;
+        cz /= nc_pts;
 
         // Place interface plane through centroid, offset by volume fraction
         // The offset shifts the plane along the normal to match the volume fraction
         let pts: Vec<[f64; 3]> = cell.iter().map(|&v| input.points.get(v as usize)).collect();
-        let projections: Vec<f64> = pts.iter().map(|p| {
-            (p[0] - cx) * n[0] + (p[1] - cy) * n[1] + (p[2] - cz) * n[2]
-        }).collect();
+        let projections: Vec<f64> = pts
+            .iter()
+            .map(|p| (p[0] - cx) * n[0] + (p[1] - cy) * n[1] + (p[2] - cz) * n[2])
+            .collect();
         let min_proj = projections.iter().cloned().fold(f64::MAX, f64::min);
         let max_proj = projections.iter().cloned().fold(f64::MIN, f64::max);
         let plane_offset = min_proj + f * (max_proj - min_proj);
@@ -107,9 +118,13 @@ pub fn youngs_material_interface(
     result.points = interface_points;
     result.lines = interface_lines;
     if !material_id.is_empty() {
-        result.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("SourceCellId", material_id, 1),
-        ));
+        result
+            .cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "SourceCellId",
+                material_id,
+                1,
+            )));
     }
     result
 }
@@ -124,16 +139,22 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 2.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("VF", vec![0.5], 1),
-        ));
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Normal", vec![1.0, 0.0, 0.0], 3),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("VF", vec![0.5], 1)));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normal",
+                vec![1.0, 0.0, 0.0],
+                3,
+            )));
 
         let result = youngs_material_interface(&pd, "VF", "Normal");
         assert!(result.points.len() >= 2, "should produce interface points");
-        assert_eq!(result.lines.num_cells(), 1, "should produce one interface line");
+        assert_eq!(
+            result.lines.num_cells(),
+            1,
+            "should produce one interface line"
+        );
     }
 
     #[test]
@@ -142,14 +163,20 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("VF", vec![1.0], 1),
-        ));
-        pd.cell_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Normal", vec![0.0, 0.0, 1.0], 3),
-        ));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("VF", vec![1.0], 1)));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normal",
+                vec![0.0, 0.0, 1.0],
+                3,
+            )));
 
         let result = youngs_material_interface(&pd, "VF", "Normal");
-        assert_eq!(result.points.len(), 0, "pure cell should produce no interface");
+        assert_eq!(
+            result.points.len(),
+            0,
+            "pure cell should produce no interface"
+        );
     }
 }

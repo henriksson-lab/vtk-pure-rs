@@ -10,7 +10,11 @@ pub fn amr_to_multi_block(htg: &HyperTreeGrid) -> MultiBlockDataSet {
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 1.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            1.0
+        },
     ];
 
     let mut mb = MultiBlockDataSet::new();
@@ -21,17 +25,18 @@ pub fn amr_to_multi_block(htg: &HyperTreeGrid) -> MultiBlockDataSet {
                 let origin = [
                     bounds.x_min + i as f64 * spacing[0],
                     bounds.y_min + j as f64 * spacing[1],
-                    if gs[2] > 1 { bounds.z_min + k as f64 * spacing[2] } else { 0.0 },
+                    if gs[2] > 1 {
+                        bounds.z_min + k as f64 * spacing[2]
+                    } else {
+                        0.0
+                    },
                 ];
 
                 let block = ImageData::with_dimensions(2, 2, if gs[2] > 1 { 2 } else { 1 })
                     .with_spacing([spacing[0], spacing[1], spacing[2]])
                     .with_origin(origin);
 
-                mb.add_block(
-                    format!("block_{i}_{j}_{k}"),
-                    Block::ImageData(block),
-                );
+                mb.add_block(format!("block_{i}_{j}_{k}"), Block::ImageData(block));
             }
         }
     }
@@ -63,7 +68,9 @@ pub fn multi_block_to_image(mb: &MultiBlockDataSet) -> Option<ImageData> {
         }
     }
 
-    if !found { return None; }
+    if !found {
+        return None;
+    }
 
     let dims = [
         ((global_max[0] - global_min[0]) / spacing[0]).round() as usize + 1,
@@ -71,9 +78,11 @@ pub fn multi_block_to_image(mb: &MultiBlockDataSet) -> Option<ImageData> {
         ((global_max[2] - global_min[2]) / spacing[2]).round() as usize + 1,
     ];
 
-    Some(ImageData::with_dimensions(dims[0], dims[1], dims[2])
-        .with_spacing(spacing)
-        .with_origin(global_min))
+    Some(
+        ImageData::with_dimensions(dims[0], dims[1], dims[2])
+            .with_spacing(spacing)
+            .with_origin(global_min),
+    )
 }
 
 #[cfg(test)]

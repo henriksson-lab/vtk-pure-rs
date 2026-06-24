@@ -1,5 +1,5 @@
-use crate::data::UnstructuredGrid;
 use crate::data::DataSet;
+use crate::data::UnstructuredGrid;
 use crate::types::CellType;
 
 /// Triangulate all cells in an UnstructuredGrid to tetrahedra and triangles.

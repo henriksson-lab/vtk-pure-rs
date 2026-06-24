@@ -5,8 +5,8 @@
 //! followed by part boundaries, vertices (x y z per line), and
 //! polygon connectivity (negative index terminates each polygon).
 
-use std::io::{BufRead, Write};
 use crate::data::{CellArray, Points, PolyData};
+use std::io::{BufRead, Write};
 
 /// Write a PolyData mesh in BYU format.
 pub fn write_byu<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
@@ -14,7 +14,9 @@ pub fn write_byu<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
     let n_polys = mesh.polys.num_cells();
     // Count total edges (sum of polygon sizes)
     let mut n_edges = 0;
-    for cell in mesh.polys.iter() { n_edges += cell.len(); }
+    for cell in mesh.polys.iter() {
+        n_edges += cell.len();
+    }
 
     // Header: parts vertices polygons edges
     writeln!(w, "1 {n_pts} {n_polys} {n_edges}")?;
@@ -134,8 +136,13 @@ mod tests {
     #[test]
     fn roundtrip_two_triangles() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[2.0,0.0,0.0]],
-            vec![[0,1,2],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
         );
         let mut buf = Vec::new();
         write_byu(&mut buf, &mesh).unwrap();
@@ -147,8 +154,13 @@ mod tests {
     #[test]
     fn quad() {
         let mesh = PolyData::from_quads(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2,3]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2, 3]],
         );
         let mut buf = Vec::new();
         write_byu(&mut buf, &mesh).unwrap();

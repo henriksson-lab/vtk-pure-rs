@@ -27,7 +27,9 @@ pub fn sierpinski_triangle(depth: usize) -> PolyData {
     let mut polys = CellArray::new();
     for [a, b, c] in &tris {
         let i = pts.len();
-        pts.push(*a); pts.push(*b); pts.push(*c);
+        pts.push(*a);
+        pts.push(*b);
+        pts.push(*c);
         polys.push_cell(&[i as i64, (i + 1) as i64, (i + 2) as i64]);
     }
     let mut result = PolyData::new();
@@ -66,8 +68,11 @@ pub fn sierpinski_tetrahedron(depth: usize) -> PolyData {
     let mut polys = CellArray::new();
     for [a, b, c, d] in &tets {
         let i = pts.len();
-        pts.push(*a); pts.push(*b); pts.push(*c); pts.push(*d);
-        let faces = [[0,2,1],[0,1,3],[1,2,3],[0,3,2]];
+        pts.push(*a);
+        pts.push(*b);
+        pts.push(*c);
+        pts.push(*d);
+        let faces = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]];
         for f in &faces {
             polys.push_cell(&[(i + f[0]) as i64, (i + f[1]) as i64, (i + f[2]) as i64]);
         }
@@ -79,7 +84,11 @@ pub fn sierpinski_tetrahedron(depth: usize) -> PolyData {
 }
 
 fn mid(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [(a[0]+b[0])/2.0, (a[1]+b[1])/2.0, (a[2]+b[2])/2.0]
+    [
+        (a[0] + b[0]) / 2.0,
+        (a[1] + b[1]) / 2.0,
+        (a[2] + b[2]) / 2.0,
+    ]
 }
 
 #[cfg(test)]

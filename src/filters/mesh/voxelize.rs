@@ -139,12 +139,18 @@ mod tests {
         ];
         // 12 triangles forming the 6 faces
         let tris = vec![
-            [0, 2, 1], [0, 3, 2], // -Z face
-            [4, 5, 6], [4, 6, 7], // +Z face
-            [0, 1, 5], [0, 5, 4], // -Y face
-            [2, 3, 7], [2, 7, 6], // +Y face
-            [0, 4, 7], [0, 7, 3], // -X face
-            [1, 2, 6], [1, 6, 5], // +X face
+            [0, 2, 1],
+            [0, 3, 2], // -Z face
+            [4, 5, 6],
+            [4, 6, 7], // +Z face
+            [0, 1, 5],
+            [0, 5, 4], // -Y face
+            [2, 3, 7],
+            [2, 7, 6], // +Y face
+            [0, 4, 7],
+            [0, 7, 3], // -X face
+            [1, 2, 6],
+            [1, 6, 5], // +X face
         ];
         PolyData::from_triangles(pts, tris)
     }
@@ -152,11 +158,7 @@ mod tests {
     #[test]
     fn voxelize_box_produces_correct_dimensions() {
         let mesh = make_box_mesh();
-        let result = voxelize(
-            &mesh,
-            [5, 5, 5],
-            [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]],
-        );
+        let result = voxelize(&mesh, [5, 5, 5], [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]]);
         assert_eq!(result.dimensions(), [5, 5, 5]);
         assert_eq!(result.num_points(), 125);
         let arr = result.point_data().get_array("Voxels").unwrap();
@@ -166,11 +168,7 @@ mod tests {
     #[test]
     fn voxelize_box_has_inside_voxels() {
         let mesh = make_box_mesh();
-        let result = voxelize(
-            &mesh,
-            [5, 5, 5],
-            [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]],
-        );
+        let result = voxelize(&mesh, [5, 5, 5], [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]]);
         let arr = result.point_data().get_array("Voxels").unwrap();
         let mut buf = [0.0f64];
 

@@ -3,7 +3,9 @@ use crate::data::{CellArray, Points, PolyData};
 
 pub fn merge_close_vertices(mesh: &PolyData, tolerance: f64) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
     let tol2 = tolerance * tolerance;
     let mut map = vec![0usize; n];
     let mut pts = Points::<f64>::new();
@@ -12,7 +14,7 @@ pub fn merge_close_vertices(mesh: &PolyData, tolerance: f64) -> PolyData {
         let mut merged = false;
         for j in 0..pts.len() {
             let q = pts.get(j);
-            if (p[0]-q[0]).powi(2)+(p[1]-q[1]).powi(2)+(p[2]-q[2]).powi(2) < tol2 {
+            if (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2) < tol2 {
                 map[i] = j;
                 merged = true;
                 break;
@@ -28,7 +30,9 @@ pub fn merge_close_vertices(mesh: &PolyData, tolerance: f64) -> PolyData {
         for cell in cells.iter() {
             let mapped: Vec<i64> = cell.iter().map(|&v| map[v as usize] as i64).collect();
             let unique: std::collections::HashSet<i64> = mapped.iter().copied().collect();
-            if unique.len() >= cell.len().min(3) { out.push_cell(&mapped); }
+            if unique.len() >= cell.len().min(3) {
+                out.push_cell(&mapped);
+            }
         }
         out
     };
@@ -47,11 +51,14 @@ mod tests {
     fn test_merge() {
         let mut mesh = PolyData::new();
         let mut pts = Points::<f64>::new();
-        pts.push([0.0, 0.0, 0.0]); pts.push([0.001, 0.0, 0.0]); // very close
-        pts.push([1.0, 0.0, 0.0]); pts.push([0.5, 1.0, 0.0]);
+        pts.push([0.0, 0.0, 0.0]);
+        pts.push([0.001, 0.0, 0.0]); // very close
+        pts.push([1.0, 0.0, 0.0]);
+        pts.push([0.5, 1.0, 0.0]);
         mesh.points = pts;
         let mut polys = CellArray::new();
-        polys.push_cell(&[0, 2, 3]); polys.push_cell(&[1, 2, 3]);
+        polys.push_cell(&[0, 2, 3]);
+        polys.push_cell(&[1, 2, 3]);
         mesh.polys = polys;
         let r = merge_close_vertices(&mesh, 0.01);
         assert_eq!(r.points.len(), 3); // 0 and 1 merged

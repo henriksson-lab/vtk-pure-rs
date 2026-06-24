@@ -53,9 +53,12 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
-        pd.field_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temps", vec![100.0, 200.0], 1),
-        ));
+        pd.field_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temps",
+                vec![100.0, 200.0],
+                1,
+            )));
 
         let result = field_to_point_data(&pd, "temps");
         assert!(result.point_data().get_array("temps").is_some());
@@ -68,9 +71,8 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.0, 1.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 2]);
-        pd.field_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("area", vec![0.5], 1),
-        ));
+        pd.field_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("area", vec![0.5], 1)));
 
         let result = field_to_cell_data(&pd, "area");
         assert!(result.cell_data().get_array("area").is_some());
@@ -80,9 +82,8 @@ mod tests {
     fn point_to_field() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![42.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", vec![42.0], 1)));
 
         let result = point_data_to_field(&pd, "val");
         assert!(result.field_data().get_array("val").is_some());

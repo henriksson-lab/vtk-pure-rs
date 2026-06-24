@@ -16,19 +16,27 @@ pub struct RingParams {
 
 impl Default for RingParams {
     fn default() -> Self {
-        Self { radius: 1.0, tube_radius: 0.1, ring_resolution: 32, tube_resolution: 12, center: [0.0; 3] }
+        Self {
+            radius: 1.0,
+            tube_radius: 0.1,
+            ring_resolution: 32,
+            tube_resolution: 12,
+            center: [0.0; 3],
+        }
     }
 }
 
 /// Generate a ring (same geometry as torus but explicitly named for clarity).
 pub fn ring(params: &RingParams) -> PolyData {
-    crate::filters::core::sources::torus::torus(&crate::filters::core::sources::torus::TorusParams {
-        ring_radius: params.radius,
-        cross_section_radius: params.tube_radius,
-        ring_resolution: params.ring_resolution,
-        cross_section_resolution: params.tube_resolution,
-        center: params.center,
-    })
+    crate::filters::core::sources::torus::torus(
+        &crate::filters::core::sources::torus::TorusParams {
+            ring_radius: params.radius,
+            cross_section_radius: params.tube_radius,
+            ring_resolution: params.ring_resolution,
+            cross_section_resolution: params.tube_resolution,
+            center: params.center,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -44,7 +52,11 @@ mod tests {
 
     #[test]
     fn small_ring() {
-        let pd = ring(&RingParams { ring_resolution: 4, tube_resolution: 3, ..Default::default() });
+        let pd = ring(&RingParams {
+            ring_resolution: 4,
+            tube_resolution: 3,
+            ..Default::default()
+        });
         assert_eq!(pd.points.len(), 12);
     }
 }

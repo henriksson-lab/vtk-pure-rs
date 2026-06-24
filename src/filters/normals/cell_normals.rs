@@ -34,9 +34,12 @@ pub fn compute_cell_normals(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("CellNormals", normals, 3),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CellNormals",
+            normals,
+            3,
+        )));
     pd
 }
 
@@ -63,8 +66,10 @@ mod tests {
     fn two_triangles() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0], [0.5, 0.0, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, 0.0, 1.0],
             ],
             vec![[0, 1, 2], [0, 1, 3]],
         );

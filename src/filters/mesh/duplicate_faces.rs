@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use crate::data::PolyData;
+use std::collections::HashSet;
 
 /// Count the number of duplicate (overlapping) faces in a PolyData.
 ///
@@ -47,7 +47,12 @@ mod tests {
     #[test]
     fn no_duplicates() {
         let pd = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
             vec![[0, 1, 2], [1, 3, 2]],
         );
         assert_eq!(count_duplicate_faces(&pd), 0);

@@ -5,11 +5,11 @@
 
 use crate::types::BoundingBox;
 
-use crate::data::{
-    DataSetAttributes, FieldData, ImageData, PolyData, RectilinearGrid, StructuredGrid,
-    UnstructuredGrid,
-};
 use crate::data::traits::{DataObject, DataSet};
+use crate::data::{
+    DataSetAttributes, ExplicitStructuredGrid, FieldData, ImageData, PolyData, RectilinearGrid,
+    StructuredGrid, UnstructuredGrid,
+};
 
 /// Enum wrapping all concrete dataset types.
 ///
@@ -26,6 +26,8 @@ pub enum AnyDataSet {
     Rectilinear(RectilinearGrid),
     /// Curvilinear structured grid.
     Structured(StructuredGrid),
+    /// Explicit structured grid.
+    ExplicitStructured(ExplicitStructuredGrid),
 }
 
 impl AnyDataSet {
@@ -37,6 +39,7 @@ impl AnyDataSet {
             Self::Unstructured(d) => d.num_points(),
             Self::Rectilinear(d) => d.num_points(),
             Self::Structured(d) => d.num_points(),
+            Self::ExplicitStructured(d) => d.num_points(),
         }
     }
 
@@ -48,6 +51,7 @@ impl AnyDataSet {
             Self::Unstructured(d) => d.num_cells(),
             Self::Rectilinear(d) => d.num_cells(),
             Self::Structured(d) => d.num_cells(),
+            Self::ExplicitStructured(d) => d.num_cells(),
         }
     }
 
@@ -59,6 +63,7 @@ impl AnyDataSet {
             Self::Unstructured(d) => d.point(idx),
             Self::Rectilinear(d) => d.point(idx),
             Self::Structured(d) => d.point(idx),
+            Self::ExplicitStructured(d) => d.points.get(idx),
         }
     }
 
@@ -70,6 +75,7 @@ impl AnyDataSet {
             Self::Unstructured(d) => d.bounds(),
             Self::Rectilinear(d) => d.bounds(),
             Self::Structured(d) => d.bounds(),
+            Self::ExplicitStructured(d) => d.bounds(),
         }
     }
 
@@ -81,6 +87,7 @@ impl AnyDataSet {
             Self::Unstructured(d) => d.point_data(),
             Self::Rectilinear(d) => d.point_data(),
             Self::Structured(d) => d.point_data(),
+            Self::ExplicitStructured(d) => d.point_data(),
         }
     }
 
@@ -92,6 +99,7 @@ impl AnyDataSet {
             Self::Unstructured(d) => d.cell_data(),
             Self::Rectilinear(d) => d.cell_data(),
             Self::Structured(d) => d.cell_data(),
+            Self::ExplicitStructured(d) => d.cell_data(),
         }
     }
 }
@@ -104,6 +112,7 @@ impl DataObject for AnyDataSet {
             Self::Unstructured(d) => d.field_data(),
             Self::Rectilinear(d) => d.field_data(),
             Self::Structured(d) => d.field_data(),
+            Self::ExplicitStructured(d) => d.field_data(),
         }
     }
 
@@ -114,6 +123,7 @@ impl DataObject for AnyDataSet {
             Self::Unstructured(d) => d.field_data_mut(),
             Self::Rectilinear(d) => d.field_data_mut(),
             Self::Structured(d) => d.field_data_mut(),
+            Self::ExplicitStructured(d) => d.field_data_mut(),
         }
     }
 }
@@ -146,6 +156,7 @@ impl DataSet for AnyDataSet {
             Self::Unstructured(d) => d.point_data_mut(),
             Self::Rectilinear(d) => d.point_data_mut(),
             Self::Structured(d) => d.point_data_mut(),
+            Self::ExplicitStructured(d) => d.point_data_mut(),
         }
     }
 
@@ -160,6 +171,7 @@ impl DataSet for AnyDataSet {
             Self::Unstructured(d) => d.cell_data_mut(),
             Self::Rectilinear(d) => d.cell_data_mut(),
             Self::Structured(d) => d.cell_data_mut(),
+            Self::ExplicitStructured(d) => d.cell_data_mut(),
         }
     }
 }
@@ -194,6 +206,12 @@ impl From<StructuredGrid> for AnyDataSet {
     }
 }
 
+impl From<ExplicitStructuredGrid> for AnyDataSet {
+    fn from(d: ExplicitStructuredGrid) -> Self {
+        Self::ExplicitStructured(d)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +236,13 @@ mod tests {
         assert_eq!(any.num_points(), 27);
         let b = any.bounds();
         assert!(b.diagonal_length() > 0.0);
+    }
+
+    #[test]
+    fn any_dataset_from_explicit_structured_grid() {
+        let grid = ExplicitStructuredGrid::new([2, 2, 2]);
+        let any = AnyDataSet::from(grid);
+        assert_eq!(any.num_points(), 8);
+        assert_eq!(any.num_cells(), 1);
     }
 }

@@ -69,8 +69,7 @@ pub fn iso_lines(input: &PolyData, array_name: &str, iso_value: f64) -> PolyData
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.lines = out_lines;
-    pd.point_data_mut()
-        .add_array(out_scalars.into());
+    pd.point_data_mut().add_array(out_scalars.into());
     pd
 }
 

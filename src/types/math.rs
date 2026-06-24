@@ -2,24 +2,30 @@
 
 /// Dot product of two 3D vectors.
 pub fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 /// Cross product of two 3D vectors.
 pub fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 /// Vector length (magnitude).
 pub fn length(v: [f64; 3]) -> f64 {
-    (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]).sqrt()
+    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
 /// Normalize a vector to unit length.
 pub fn normalize(v: [f64; 3]) -> [f64; 3] {
     let len = length(v);
-    if len < 1e-15 { return [0.0, 0.0, 0.0]; }
-    [v[0]/len, v[1]/len, v[2]/len]
+    if len < 1e-15 {
+        return [0.0, 0.0, 0.0];
+    }
+    [v[0] / len, v[1] / len, v[2] / len]
 }
 
 /// Distance between two points.
@@ -29,22 +35,26 @@ pub fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
 
 /// Add two vectors.
 pub fn add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0]+b[0], a[1]+b[1], a[2]+b[2]]
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
 /// Subtract b from a.
 pub fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[0]-b[0], a[1]-b[1], a[2]-b[2]]
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
 /// Scale a vector by a scalar.
 pub fn scale(v: [f64; 3], s: f64) -> [f64; 3] {
-    [v[0]*s, v[1]*s, v[2]*s]
+    [v[0] * s, v[1] * s, v[2] * s]
 }
 
 /// Linear interpolation between two points.
 pub fn lerp(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
-    [a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1]), a[2]+t*(b[2]-a[2])]
+    [
+        a[0] + t * (b[0] - a[0]),
+        a[1] + t * (b[1] - a[1]),
+        a[2] + t * (b[2] - a[2]),
+    ]
 }
 
 /// Angle between two vectors in radians.
@@ -52,14 +62,18 @@ pub fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
     let d = dot(a, b);
     let la = length(a);
     let lb = length(b);
-    if la < 1e-15 || lb < 1e-15 { return 0.0; }
+    if la < 1e-15 || lb < 1e-15 {
+        return 0.0;
+    }
     (d / (la * lb)).clamp(-1.0, 1.0).acos()
 }
 
 /// Project vector a onto vector b.
 pub fn project(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     let b_len2 = dot(b, b);
-    if b_len2 < 1e-15 { return [0.0; 3]; }
+    if b_len2 < 1e-15 {
+        return [0.0; 3];
+    }
     scale(b, dot(a, b) / b_len2)
 }
 
@@ -79,24 +93,38 @@ pub fn clamp(v: f64, min: f64, max: f64) -> f64 {
 /// Cartesian (x, y, z) to spherical (r, theta, phi).
 /// theta = polar angle from +Z [0, pi], phi = azimuthal angle from +X [0, 2pi].
 pub fn cartesian_to_spherical(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    let r = (x*x + y*y + z*z).sqrt();
-    if r < 1e-15 { return (0.0, 0.0, 0.0); }
+    let r = (x * x + y * y + z * z).sqrt();
+    if r < 1e-15 {
+        return (0.0, 0.0, 0.0);
+    }
     let theta = (z / r).clamp(-1.0, 1.0).acos();
     let phi = y.atan2(x);
-    let phi = if phi < 0.0 { phi + 2.0 * std::f64::consts::PI } else { phi };
+    let phi = if phi < 0.0 {
+        phi + 2.0 * std::f64::consts::PI
+    } else {
+        phi
+    };
     (r, theta, phi)
 }
 
 /// Spherical (r, theta, phi) to cartesian (x, y, z).
 pub fn spherical_to_cartesian(r: f64, theta: f64, phi: f64) -> (f64, f64, f64) {
-    (r * theta.sin() * phi.cos(), r * theta.sin() * phi.sin(), r * theta.cos())
+    (
+        r * theta.sin() * phi.cos(),
+        r * theta.sin() * phi.sin(),
+        r * theta.cos(),
+    )
 }
 
 /// Cartesian (x, y, z) to cylindrical (r, theta, z).
 pub fn cartesian_to_cylindrical(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-    let r = (x*x + y*y).sqrt();
+    let r = (x * x + y * y).sqrt();
     let theta = y.atan2(x);
-    let theta = if theta < 0.0 { theta + 2.0 * std::f64::consts::PI } else { theta };
+    let theta = if theta < 0.0 {
+        theta + 2.0 * std::f64::consts::PI
+    } else {
+        theta
+    };
     (r, theta, z)
 }
 
@@ -117,9 +145,17 @@ pub fn bilinear(v00: f64, v10: f64, v01: f64, v11: f64, u: f64, v: f64) -> f64 {
 
 /// Trilinear interpolation on a 3D grid.
 pub fn trilinear(
-    v000: f64, v100: f64, v010: f64, v110: f64,
-    v001: f64, v101: f64, v011: f64, v111: f64,
-    u: f64, v: f64, w: f64,
+    v000: f64,
+    v100: f64,
+    v010: f64,
+    v110: f64,
+    v001: f64,
+    v101: f64,
+    v011: f64,
+    v111: f64,
+    u: f64,
+    v: f64,
+    w: f64,
 ) -> f64 {
     let a = bilinear(v000, v100, v010, v110, u, v);
     let b = bilinear(v001, v101, v011, v111, u, v);
@@ -148,11 +184,17 @@ pub fn value_noise_3d(x: f64, y: f64, z: f64) -> f64 {
     let sz = smoothstep(0.0, 1.0, fz);
 
     trilinear(
-        hash3(ix, iy, iz), hash3(ix+1, iy, iz),
-        hash3(ix, iy+1, iz), hash3(ix+1, iy+1, iz),
-        hash3(ix, iy, iz+1), hash3(ix+1, iy, iz+1),
-        hash3(ix, iy+1, iz+1), hash3(ix+1, iy+1, iz+1),
-        sx, sy, sz,
+        hash3(ix, iy, iz),
+        hash3(ix + 1, iy, iz),
+        hash3(ix, iy + 1, iz),
+        hash3(ix + 1, iy + 1, iz),
+        hash3(ix, iy, iz + 1),
+        hash3(ix + 1, iy, iz + 1),
+        hash3(ix, iy + 1, iz + 1),
+        hash3(ix + 1, iy + 1, iz + 1),
+        sx,
+        sy,
+        sz,
     )
 }
 
@@ -172,13 +214,21 @@ pub fn fbm_3d(x: f64, y: f64, z: f64, octaves: usize) -> f64 {
 fn hash3(x: i64, y: i64, z: i64) -> f64 {
     // Simple integer hash → [0, 1]
     let n = x.wrapping_mul(73856093) ^ y.wrapping_mul(19349663) ^ z.wrapping_mul(83492791);
-    let n = ((n.wrapping_mul(n).wrapping_mul(n.wrapping_mul(60493)).wrapping_add(19990303)) & 0x7FFFFFFF) as f64;
+    let n = ((n
+        .wrapping_mul(n)
+        .wrapping_mul(n.wrapping_mul(60493))
+        .wrapping_add(19990303))
+        & 0x7FFFFFFF) as f64;
     n / 0x7FFFFFFF as f64
 }
 
 /// Remap a value from [a_min, a_max] to [b_min, b_max].
 pub fn remap(v: f64, a_min: f64, a_max: f64, b_min: f64, b_max: f64) -> f64 {
-    let t = if (a_max - a_min).abs() > 1e-15 { (v - a_min) / (a_max - a_min) } else { 0.0 };
+    let t = if (a_max - a_min).abs() > 1e-15 {
+        (v - a_min) / (a_max - a_min)
+    } else {
+        0.0
+    };
     b_min + t * (b_max - b_min)
 }
 

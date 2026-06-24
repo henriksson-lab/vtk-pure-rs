@@ -48,7 +48,8 @@ pub fn integrate_attributes(input: &PolyData) -> IntegrationResult {
                 e1[2] * e2[0] - e1[0] * e2[2],
                 e1[0] * e2[1] - e1[1] * e2[0],
             ];
-            let area = 0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            let area =
+                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
             total_area += area;
 
             // Average value at triangle centroid = (v0 + v1 + v2) / 3

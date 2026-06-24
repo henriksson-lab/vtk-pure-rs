@@ -7,7 +7,7 @@ use crate::data::{CellArray, DataArray, DataSet, Points, PolyData};
 pub fn threshold(input: &PolyData, lower: f64, upper: f64) -> PolyData {
     let scalars = match input.point_data().scalars() {
         Some(s) => s,
-        None => return input.clone(),
+        None => return PolyData::new(),
     };
 
     // Read scalar values into a flat array
@@ -60,9 +60,7 @@ pub fn threshold(input: &PolyData, lower: f64, upper: f64) -> PolyData {
     output.points = new_points;
     output.polys = polys;
     output.point_data_mut().add_array(new_scalars.into());
-    output
-        .point_data_mut()
-        .set_active_scalars(scalars.name());
+    output.point_data_mut().set_active_scalars(scalars.name());
     output
 }
 

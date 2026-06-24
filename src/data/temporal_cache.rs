@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 
 use crate::data::PolyData;
 
-/// Cache for temporal datasets with LRU eviction.
+/// Cache for temporal datasets with FIFO eviction.
 #[derive(Debug, Clone)]
 pub struct TemporalDataSetCache {
     entries: VecDeque<(f64, PolyData)>,
@@ -18,12 +18,19 @@ impl TemporalDataSetCache {
     pub fn new(capacity: usize) -> Self {
         Self {
             entries: VecDeque::with_capacity(capacity),
-            capacity: capacity.max(1),
+            capacity,
         }
     }
 
     /// Insert a dataset at the given time. Evicts oldest if at capacity.
     pub fn insert(&mut self, time: f64, data: PolyData) {
+        if self.capacity == 0 {
+            return;
+        }
+        if let Some((_, cached)) = self.entries.iter_mut().find(|(t, _)| *t == time) {
+            *cached = data;
+            return;
+        }
         if self.entries.len() >= self.capacity {
             self.entries.pop_front();
         }
@@ -32,7 +39,10 @@ impl TemporalDataSetCache {
 
     /// Get the dataset at exactly the given time, if cached.
     pub fn get(&self, time: f64) -> Option<&PolyData> {
-        self.entries.iter().find(|(t, _)| (*t - time).abs() < 1e-15).map(|(_, d)| d)
+        self.entries
+            .iter()
+            .find(|(t, _)| *t == time)
+            .map(|(_, d)| d)
     }
 
     /// Get the dataset closest to the given time.
@@ -40,7 +50,10 @@ impl TemporalDataSetCache {
         self.entries
             .iter()
             .min_by(|(a, _), (b, _)| {
-                (a - time).abs().partial_cmp(&(b - time).abs()).unwrap_or(std::cmp::Ordering::Equal)
+                (a - time)
+                    .abs()
+                    .partial_cmp(&(b - time).abs())
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|(_, d)| d)
     }
@@ -51,17 +64,21 @@ impl TemporalDataSetCache {
         let mut after: Option<(f64, &PolyData)> = None;
 
         for (t, data) in &self.entries {
-            if *t <= time {
+            if *t <= time && before.map_or(true, |(bt, _)| *t > bt) {
                 before = Some((*t, data));
             }
-            if *t >= time && after.is_none() {
+            if *t >= time && after.map_or(true, |(at, _)| *t < at) {
                 after = Some((*t, data));
             }
         }
 
         match (before, after) {
             (Some((t0, d0)), Some((t1, d1))) => {
-                let alpha = if (t1 - t0).abs() > 1e-15 { (time - t0) / (t1 - t0) } else { 0.0 };
+                let alpha = if (t1 - t0).abs() > 1e-15 {
+                    (time - t0) / (t1 - t0)
+                } else {
+                    0.0
+                };
                 Some((d0, d1, alpha))
             }
             _ => None,
@@ -171,11 +188,40 @@ mod tests {
     }
 
     #[test]
+    fn zero_capacity_disables_cache() {
+        let mut cache = TemporalDataSetCache::new(0);
+        cache.insert(0.0, sample_pd(3));
+        assert_eq!(cache.len(), 0);
+        assert!(cache.get(0.0).is_none());
+    }
+
+    #[test]
+    fn insert_replaces_existing_time_without_growing() {
+        let mut cache = TemporalDataSetCache::new(2);
+        cache.insert(1.0, sample_pd(3));
+        cache.insert(1.0, sample_pd(6));
+        assert_eq!(cache.len(), 1);
+        assert_eq!(cache.get(1.0).unwrap().points.len(), 6);
+    }
+
+    #[test]
     fn bracket_interpolation() {
         let mut cache = TemporalDataSetCache::new(3);
         cache.insert(0.0, sample_pd(3));
         cache.insert(2.0, sample_pd(5));
         let (_, _, alpha) = cache.bracket(1.0).unwrap();
+        assert!((alpha - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn bracket_uses_time_order_not_insertion_order() {
+        let mut cache = TemporalDataSetCache::new(4);
+        cache.insert(4.0, sample_pd(4));
+        cache.insert(0.0, sample_pd(3));
+        cache.insert(2.0, sample_pd(5));
+        let (before, after, alpha) = cache.bracket(3.0).unwrap();
+        assert_eq!(before.points.len(), 5);
+        assert_eq!(after.points.len(), 4);
         assert!((alpha - 0.5).abs() < 1e-10);
     }
 

@@ -16,6 +16,7 @@ exclude = [
     "scripts/",
     "convo.txt",
     "convo.txt.save",
+    "TOAUDIT.md",
     "NOTES.md",
     "TODO.md",
     "ALLFEAT.md",
@@ -26,8 +27,19 @@ exclude = [
 readme = "README.md"
 keywords = ["vtk", "visualization", "mesh", "scientific", "3d"]
 categories = ["science", "graphics", "rendering::data-formats"]
-# exclude is defined above
 autobenches = false
+
+[[bench]]
+name = "filters"
+path = "benches/filters.rs"
+harness = false
+required-features = ["filters-smooth"]
+
+[[bench]]
+name = "bench_large"
+path = "benches/bench_large.rs"
+harness = false
+required-features = ["filters-smooth"]
 
 [features]
 default = ["filters-core", "io-common"]
@@ -91,47 +103,3 @@ fontdue = { version = "0.9", optional = true }
 [dev-dependencies]
 proptest = "1"
 serde_json = "1"
-
-[[example]]
-name = "triangle"
-path = "examples/triangle.rs"
-
-[[example]]
-name = "shapes"
-path = "examples/shapes.rs"
-
-[[example]]
-name = "isosurface"
-path = "examples/isosurface.rs"
-
-[[example]]
-name = "scalar_colors"
-path = "examples/scalar_colors.rs"
-
-[[example]]
-name = "pipeline_demo"
-path = "examples/pipeline_demo.rs"
-
-[[example]]
-name = "showcase"
-path = "examples/showcase.rs"
-
-[[example]]
-name = "volume"
-path = "examples/volume.rs"
-
-[[example]]
-name = "mesh_info"
-path = "examples/mesh_info.rs"
-
-[[example]]
-name = "headless_render"
-path = "examples/headless_render.rs"
-
-[[example]]
-name = "bench_filters"
-path = "benches/filters.rs"
-
-[[example]]
-name = "bench_large"
-path = "benches/bench_large.rs"

@@ -1,10 +1,10 @@
-mod context;
-mod compute_scale;
 mod compute_map;
-mod compute_reduce;
 mod compute_normals;
-pub use context::GpuContext;
-pub use compute_scale::gpu_scale_array;
+mod compute_reduce;
+mod compute_scale;
+mod context;
 pub use compute_map::gpu_map_array;
-pub use compute_reduce::gpu_reduce_sum;
 pub use compute_normals::gpu_compute_normals;
+pub use compute_reduce::gpu_reduce_sum;
+pub use compute_scale::gpu_scale_array;
+pub use context::GpuContext;

@@ -16,7 +16,9 @@ pub fn random_points_box(n: usize, bounds: [[f64; 2]; 3], seed: u64) -> PolyData
         verts.push_cell(&[i as i64]);
     }
     let mut result = PolyData::new();
-    result.points = pts; result.verts = verts; result
+    result.points = pts;
+    result.verts = verts;
+    result
 }
 
 /// Generate random points on a sphere surface.
@@ -28,11 +30,17 @@ pub fn random_points_sphere(n: usize, radius: f64, seed: u64) -> PolyData {
         let z = 2.0 * rng.next() - 1.0;
         let phi = 2.0 * std::f64::consts::PI * rng.next();
         let rxy = (1.0 - z * z).sqrt();
-        pts.push([radius * rxy * phi.cos(), radius * rxy * phi.sin(), radius * z]);
+        pts.push([
+            radius * rxy * phi.cos(),
+            radius * rxy * phi.sin(),
+            radius * z,
+        ]);
         verts.push_cell(&[i as i64]);
     }
     let mut result = PolyData::new();
-    result.points = pts; result.verts = verts; result
+    result.points = pts;
+    result.verts = verts;
+    result
 }
 
 /// Generate Gaussian distributed points.
@@ -49,7 +57,9 @@ pub fn random_points_gaussian(n: usize, center: [f64; 3], sigma: [f64; 3], seed:
         verts.push_cell(&[i as i64]);
     }
     let mut result = PolyData::new();
-    result.points = pts; result.verts = verts; result
+    result.points = pts;
+    result.verts = verts;
+    result
 }
 
 fn box_muller(rng: &mut Rng) -> f64 {
@@ -61,7 +71,10 @@ fn box_muller(rng: &mut Rng) -> f64 {
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 33) as f64) / (u32::MAX as f64)
     }
 }
@@ -84,7 +97,7 @@ mod tests {
         assert_eq!(pc.points.len(), 50);
         for i in 0..50 {
             let p = pc.points.get(i);
-            let r = (p[0]*p[0]+p[1]*p[1]+p[2]*p[2]).sqrt();
+            let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
             assert!((r - 1.0).abs() < 1e-10);
         }
     }

@@ -14,7 +14,8 @@ pub fn extract_components(input: &PolyData) -> Vec<PolyData> {
     let mut rank = vec![0usize; n];
 
     // Union all points in each cell using raw connectivity for speed
-    let all_cells: [&crate::data::CellArray; 4] = [&input.polys, &input.verts, &input.lines, &input.strips];
+    let all_cells: [&crate::data::CellArray; 4] =
+        [&input.polys, &input.verts, &input.lines, &input.strips];
     for cells in &all_cells {
         let off = cells.offsets();
         let con = cells.connectivity();
@@ -22,7 +23,9 @@ pub fn extract_components(input: &PolyData) -> Vec<PolyData> {
         for ci in 0..nc {
             let start = off[ci] as usize;
             let end = off[ci + 1] as usize;
-            if end - start < 2 { continue; }
+            if end - start < 2 {
+                continue;
+            }
             let first = con[start] as usize;
             for idx in (start + 1)..end {
                 union(&mut parent, &mut rank, first, con[idx] as usize);
@@ -41,7 +44,9 @@ pub fn extract_components(input: &PolyData) -> Vec<PolyData> {
     for ci in 0..nc {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
-        if start >= end { continue; }
+        if start >= end {
+            continue;
+        }
         let root = find(&mut parent, conn[start] as usize);
         component_cells.entry(root).or_default().push(ci);
     }
@@ -54,9 +59,7 @@ pub fn extract_components(input: &PolyData) -> Vec<PolyData> {
     let pts = input.points.as_flat_slice();
     components
         .into_iter()
-        .map(|cell_indices| {
-            build_component_fast(pts, offsets, conn, n, &cell_indices)
-        })
+        .map(|cell_indices| build_component_fast(pts, offsets, conn, n, &cell_indices))
         .collect()
 }
 
@@ -174,9 +177,14 @@ mod tests {
     fn largest_component() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], [1.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
                 // Separate single triangle
-                [10.0, 0.0, 0.0], [11.0, 0.0, 0.0], [10.0, 1.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [11.0, 0.0, 0.0],
+                [10.0, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [1, 3, 2], [4, 5, 6]],
         );

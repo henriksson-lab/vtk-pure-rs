@@ -126,7 +126,10 @@ mod tests {
         let mag = result.column_by_name("signal_magnitude").unwrap();
         let mut v = [0.0f64];
         mag.tuple_as_f64(0, &mut v);
-        assert!((v[0] - 8.0).abs() < 1e-10, "DC magnitude should be 8 for 8 ones");
+        assert!(
+            (v[0] - 8.0).abs() < 1e-10,
+            "DC magnitude should be 8 for 8 ones"
+        );
         // Non-DC should be ~0
         mag.tuple_as_f64(1, &mut v);
         assert!(v[0].abs() < 1e-10);
@@ -136,9 +139,9 @@ mod tests {
     fn fft_single_frequency() {
         let mut table = Table::new();
         let n = 16;
-        let data: Vec<f64> = (0..n).map(|i| {
-            (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos()
-        }).collect();
+        let data: Vec<f64> = (0..n)
+            .map(|i| (2.0 * std::f64::consts::PI * i as f64 / n as f64).cos())
+            .collect();
         table.add_column(AnyDataArray::F64(DataArray::from_vec("signal", data, 1)));
 
         let result = table_fft(&table, "signal");
@@ -146,6 +149,10 @@ mod tests {
         let mut v = [0.0f64];
         // For a single cosine at frequency 1, peaks at index 1 and n-1
         mag.tuple_as_f64(1, &mut v);
-        assert!(v[0] > 7.0, "peak at frequency 1 should be large, got {}", v[0]);
+        assert!(
+            v[0] > 7.0,
+            "peak at frequency 1 should be large, got {}",
+            v[0]
+        );
     }
 }

@@ -106,14 +106,23 @@ impl GpuPicker {
             cache: None,
         });
 
-        Self { pipeline, uniform_buffer, bind_group_layout, bind_group }
+        Self {
+            pipeline,
+            uniform_buffer,
+            bind_group_layout,
+            bind_group,
+        }
     }
 
     /// Decode a pixel's RGBA values into a pick result.
     pub fn decode_pixel(r: u8, g: u8, b: u8, a: u8) -> Option<GpuPickResult> {
-        if a == 0 { return None; } // background
+        if a == 0 {
+            return None;
+        } // background
         let actor_id = r;
-        if actor_id == 255 { return None; }
+        if actor_id == 255 {
+            return None;
+        }
         let cell_id = ((g as u32) << 8) | (b as u32);
         Some(GpuPickResult { actor_id, cell_id })
     }

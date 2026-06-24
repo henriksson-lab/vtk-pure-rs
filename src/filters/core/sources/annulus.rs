@@ -17,7 +17,7 @@ pub fn annulus(inner_radius: f64, outer_radius: f64, resolution: usize, z: f64) 
     }
 
     for i in 0..n {
-        let i0 = (i * 2) as i64;     // inner current
+        let i0 = (i * 2) as i64; // inner current
         let o0 = (i * 2 + 1) as i64; // outer current
         let i1 = (i * 2 + 2) as i64; // inner next
         let o1 = (i * 2 + 3) as i64; // outer next
@@ -44,7 +44,7 @@ mod tests {
         // Check radii
         for i in 0..a.points.len() {
             let p = a.points.get(i);
-            let r = (p[0]*p[0] + p[1]*p[1]).sqrt();
+            let r = (p[0] * p[0] + p[1] * p[1]).sqrt();
             assert!(r >= 0.49 && r <= 1.01, "r={r}");
         }
     }

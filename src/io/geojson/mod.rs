@@ -1,5 +1,5 @@
-mod writer;
 mod reader;
-pub use writer::write_geojson;
+mod writer;
 pub use reader::read_geojson;
+pub use writer::write_geojson;
 pub mod citygml;

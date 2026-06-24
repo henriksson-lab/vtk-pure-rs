@@ -45,7 +45,9 @@ pub fn close_holes(input: &PolyData) -> PolyData {
     // Trace boundary loops
     let mut visited = std::collections::HashSet::new();
     for &start in edge_next.keys() {
-        if visited.contains(&start) { continue; }
+        if visited.contains(&start) {
+            continue;
+        }
 
         // Trace the loop
         let mut loop_pts = vec![start];
@@ -79,7 +81,9 @@ pub fn close_holes(input: &PolyData) -> PolyData {
             let mut cz = 0.0;
             for &pid in &loop_pts {
                 let p = points.get(pid as usize);
-                cx += p[0]; cy += p[1]; cz += p[2];
+                cx += p[0];
+                cy += p[1];
+                cz += p[2];
             }
             let n = loop_pts.len() as f64;
             let center_id = points.len() as i64;
@@ -112,7 +116,7 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]); // 1
         pd.points.push([1.0, 1.0, 0.0]); // 2
         pd.points.push([0.0, 1.0, 0.0]); // 3
-        // Two triangles forming a quad
+                                         // Two triangles forming a quad
         pd.polys.push_cell(&[0, 1, 2]);
         pd.polys.push_cell(&[0, 2, 3]);
 

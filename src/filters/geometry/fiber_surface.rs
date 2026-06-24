@@ -89,8 +89,7 @@ pub fn fiber_surface(
                 // Fiber segment: rp0 to rp1
                 // Find intersection of two line segments
                 if let Some(t) = line_segment_intersect(
-                    f_vals[a], g_vals[a], f_vals[b], g_vals[b],
-                    rp0.f, rp0.g, rp1.f, rp1.g,
+                    f_vals[a], g_vals[a], f_vals[b], g_vals[b], rp0.f, rp0.g, rp1.f, rp1.g,
                 ) {
                     // Interpolate 3D position along edge at parameter t
                     let pa = input.points.get(a);
@@ -123,8 +122,14 @@ pub fn fiber_surface(
 /// Find the intersection parameter t along segment (ax,ay)-(bx,by)
 /// with segment (cx,cy)-(dx,dy). Returns Some(t) in [0,1] if they intersect.
 fn line_segment_intersect(
-    ax: f64, ay: f64, bx: f64, by: f64,
-    cx: f64, cy: f64, dx: f64, dy: f64,
+    ax: f64,
+    ay: f64,
+    bx: f64,
+    by: f64,
+    cx: f64,
+    cy: f64,
+    dx: f64,
+    dy: f64,
 ) -> Option<f64> {
     let denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
     if denom.abs() < 1e-12 {
@@ -159,10 +164,7 @@ mod tests {
         pd.point_data_mut().add_array(g.into());
 
         // Fiber curve crossing through range space
-        let curve = vec![
-            RangePoint::new(0.5, -0.5),
-            RangePoint::new(0.5, 1.5),
-        ];
+        let curve = vec![RangePoint::new(0.5, -0.5), RangePoint::new(0.5, 1.5)];
 
         let result = fiber_surface(&pd, "f", "g", &curve);
         // Should find some intersection points

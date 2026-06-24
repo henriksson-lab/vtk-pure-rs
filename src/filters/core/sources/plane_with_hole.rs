@@ -3,7 +3,12 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create a plane with a circular hole at center.
-pub fn plane_with_circular_hole(width: f64, height: f64, hole_radius: f64, resolution: usize) -> PolyData {
+pub fn plane_with_circular_hole(
+    width: f64,
+    height: f64,
+    hole_radius: f64,
+    resolution: usize,
+) -> PolyData {
     let res = resolution.max(8);
     let hw = width * 0.5;
     let hh = height * 0.5;
@@ -11,10 +16,14 @@ pub fn plane_with_circular_hole(width: f64, height: f64, hole_radius: f64, resol
     let mut polys = CellArray::new();
 
     // Corner points
-    let c0 = pts.len(); pts.push([-hw, -hh, 0.0]);
-    let c1 = pts.len(); pts.push([hw, -hh, 0.0]);
-    let c2 = pts.len(); pts.push([hw, hh, 0.0]);
-    let c3 = pts.len(); pts.push([-hw, hh, 0.0]);
+    let c0 = pts.len();
+    pts.push([-hw, -hh, 0.0]);
+    let c1 = pts.len();
+    pts.push([hw, -hh, 0.0]);
+    let c2 = pts.len();
+    pts.push([hw, hh, 0.0]);
+    let c3 = pts.len();
+    pts.push([-hw, hh, 0.0]);
 
     // Hole circle points
     let hole_start = pts.len();
@@ -39,7 +48,11 @@ pub fn plane_with_circular_hole(width: f64, height: f64, hole_radius: f64, resol
         // Triangles along the hole arc
         for i in start..end {
             let next = if i + 1 >= res { 0 } else { i + 1 };
-            polys.push_cell(&[cb as i64, (hole_start + i) as i64, (hole_start + next) as i64]);
+            polys.push_cell(&[
+                cb as i64,
+                (hole_start + i) as i64,
+                (hole_start + next) as i64,
+            ]);
         }
     }
 
@@ -59,14 +72,14 @@ pub fn plane_with_rect_hole(width: f64, height: f64, hole_w: f64, hole_h: f64) -
     let mut pts = Points::<f64>::new();
     // Outer corners
     pts.push([-hw, -hh, 0.0]); // 0
-    pts.push([hw, -hh, 0.0]);  // 1
-    pts.push([hw, hh, 0.0]);   // 2
-    pts.push([-hw, hh, 0.0]);  // 3
-    // Inner corners
+    pts.push([hw, -hh, 0.0]); // 1
+    pts.push([hw, hh, 0.0]); // 2
+    pts.push([-hw, hh, 0.0]); // 3
+                              // Inner corners
     pts.push([-ihw, -ihh, 0.0]); // 4
-    pts.push([ihw, -ihh, 0.0]);  // 5
-    pts.push([ihw, ihh, 0.0]);   // 6
-    pts.push([-ihw, ihh, 0.0]);  // 7
+    pts.push([ihw, -ihh, 0.0]); // 5
+    pts.push([ihw, ihh, 0.0]); // 6
+    pts.push([-ihw, ihh, 0.0]); // 7
 
     let mut polys = CellArray::new();
     // Bottom strip

@@ -1,7 +1,7 @@
 use crate::types::BoundingBox;
 
-use crate::data::{DataSetAttributes, FieldData};
 use crate::data::traits::{DataObject, DataSet};
+use crate::data::{DataSetAttributes, FieldData};
 
 /// Axis-aligned grid with per-axis coordinate arrays.
 ///
@@ -76,7 +76,11 @@ impl RectilinearGrid {
 
     /// Number of points in each dimension.
     pub fn dimensions(&self) -> [usize; 3] {
-        [self.x_coords.len(), self.y_coords.len(), self.z_coords.len()]
+        [
+            self.x_coords.len(),
+            self.y_coords.len(),
+            self.z_coords.len(),
+        ]
     }
 
     /// Compute the world-space position of a point given its (i, j, k) index.
@@ -133,8 +137,14 @@ impl RectilinearGrid {
 impl std::fmt::Display for RectilinearGrid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let d = self.dimensions();
-        write!(f, "RectilinearGrid: {}x{}x{}, {} point arrays",
-            d[0], d[1], d[2], self.point_data.num_arrays())
+        write!(
+            f,
+            "RectilinearGrid: {}x{}x{}, {} point arrays",
+            d[0],
+            d[1],
+            d[2],
+            self.point_data.num_arrays()
+        )
     }
 }
 
@@ -203,11 +213,7 @@ mod tests {
 
     #[test]
     fn basic_rectilinear_grid() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 3.0],
-            vec![0.0, 2.0],
-            vec![0.0],
-        );
+        let grid = RectilinearGrid::from_coords(vec![0.0, 1.0, 3.0], vec![0.0, 2.0], vec![0.0]);
         assert_eq!(grid.dimensions(), [3, 2, 1]);
         assert_eq!(grid.num_points(), 6);
         assert_eq!(grid.num_cells(), 2); // 2x1 cells
@@ -215,21 +221,15 @@ mod tests {
 
     #[test]
     fn point_coordinates() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 4.0],
-            vec![0.0, 3.0],
-            vec![0.0, 5.0],
-        );
+        let grid =
+            RectilinearGrid::from_coords(vec![0.0, 1.0, 4.0], vec![0.0, 3.0], vec![0.0, 5.0]);
         assert_eq!(grid.point_from_ijk(2, 1, 1), [4.0, 3.0, 5.0]);
     }
 
     #[test]
     fn index_roundtrip() {
-        let grid = RectilinearGrid::from_coords(
-            vec![0.0, 1.0, 2.0],
-            vec![0.0, 1.0, 2.0],
-            vec![0.0, 1.0],
-        );
+        let grid =
+            RectilinearGrid::from_coords(vec![0.0, 1.0, 2.0], vec![0.0, 1.0, 2.0], vec![0.0, 1.0]);
         for idx in 0..grid.num_points() {
             let (i, j, k) = grid.ijk_from_index(idx);
             let p1 = grid.point_from_ijk(i, j, k);

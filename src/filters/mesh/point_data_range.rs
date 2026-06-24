@@ -5,7 +5,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Searches point data first, then cell data. Returns `None` if the array
 /// is not found or has zero tuples.
 pub fn scalar_range(input: &PolyData, array_name: &str) -> Option<(f64, f64)> {
-    let arr = input.point_data().get_array(array_name)
+    let arr = input
+        .point_data()
+        .get_array(array_name)
         .or_else(|| input.cell_data().get_array(array_name))?;
 
     let n: usize = arr.num_tuples();
@@ -68,9 +70,8 @@ pub fn normalize_scalar(input: &PolyData, array_name: &str) -> PolyData {
 
     let mut pd = input.clone();
     let name = format!("{}_normalized", array_name);
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(&name, normalized, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(&name, normalized, 1)));
     pd
 }
 
@@ -93,9 +94,12 @@ mod tests {
         pd.polys = polys;
 
         let scalars = vec![2.0f64, 8.0, 5.0];
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Temperature", scalars, 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Temperature",
+                scalars,
+                1,
+            )));
         pd
     }
 
@@ -120,7 +124,10 @@ mod tests {
     fn test_normalize_scalar() {
         let pd = make_triangle_with_scalars();
         let result = normalize_scalar(&pd, "Temperature");
-        let arr = result.point_data().get_array("Temperature_normalized").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("Temperature_normalized")
+            .unwrap();
         assert_eq!(arr.num_tuples(), 3);
 
         let mut buf = [0.0f64];

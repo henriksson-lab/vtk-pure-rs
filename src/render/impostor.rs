@@ -5,8 +5,8 @@
 
 use crate::data::{CellArray, Points, PolyData};
 
-use crate::render::Camera;
 use crate::render::scene::Actor;
+use crate::render::Camera;
 
 /// Configuration for impostor-based level-of-detail rendering.
 #[derive(Debug, Clone)]
@@ -33,10 +33,7 @@ impl Default for ImpostorConfig {
 ///
 /// Returns a list of (actor_index, impostor_quad) pairs for actors that
 /// should be replaced with impostors.
-pub fn generate_impostor_quads(
-    actors: &[Actor],
-    camera: &Camera,
-) -> Vec<(usize, PolyData)> {
+pub fn generate_impostor_quads(actors: &[Actor], camera: &Camera) -> Vec<(usize, PolyData)> {
     let cam_pos = [camera.position.x, camera.position.y, camera.position.z];
     let cam_right = {
         let fwd = camera.direction();
@@ -124,19 +121,15 @@ mod tests {
 
     #[test]
     fn test_billboard_quad() {
-        let quad = billboard_quad(
-            [0.0, 0.0, 0.0],
-            2.0,
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        );
+        let quad = billboard_quad([0.0, 0.0, 0.0], 2.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
         assert_eq!(quad.points.len(), 4);
         assert_eq!(quad.polys.num_cells(), 1);
 
         // Check that opposite corners are 2*sqrt(2) apart (diagonal of 2x2 quad)
         let p0 = quad.points.get(0);
         let p2 = quad.points.get(2);
-        let diag = ((p2[0] - p0[0]).powi(2) + (p2[1] - p0[1]).powi(2) + (p2[2] - p0[2]).powi(2)).sqrt();
+        let diag =
+            ((p2[0] - p0[0]).powi(2) + (p2[1] - p0[1]).powi(2) + (p2[2] - p0[2]).powi(2)).sqrt();
         assert!((diag - 2.0_f64 * 2.0_f64.sqrt()).abs() < 1e-10);
     }
 

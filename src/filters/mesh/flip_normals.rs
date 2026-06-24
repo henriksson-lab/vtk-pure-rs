@@ -17,11 +17,15 @@ pub fn flip_faces(mesh: &PolyData) -> PolyData {
         if normals.num_components() == 3 {
             let n = normals.num_tuples();
             let mut buf = [0.0f64; 3];
-            let data: Vec<f64> = (0..n).flat_map(|i| {
-                normals.tuple_as_f64(i, &mut buf);
-                vec![-buf[0], -buf[1], -buf[2]]
-            }).collect();
-            result.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("Normals", data, 3)));
+            let data: Vec<f64> = (0..n)
+                .flat_map(|i| {
+                    normals.tuple_as_f64(i, &mut buf);
+                    vec![-buf[0], -buf[1], -buf[2]]
+                })
+                .collect();
+            result
+                .point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec("Normals", data, 3)));
         }
     }
     result
@@ -54,9 +58,13 @@ pub fn flip_faces_toward(mesh: &PolyData, direction: [f64; 3]) -> PolyData {
 }
 
 fn face_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> [f64; 3] {
-    let e1 = [b[0]-a[0], b[1]-a[1], b[2]-a[2]];
-    let e2 = [c[0]-a[0], c[1]-a[1], c[2]-a[2]];
-    [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]]
+    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ]
 }
 
 #[cfg(test)]
@@ -65,8 +73,8 @@ mod tests {
     #[test]
     fn test_flip() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let flipped = flip_faces(&mesh);
         let cell: Vec<i64> = flipped.polys.iter().next().unwrap().to_vec();
@@ -75,8 +83,8 @@ mod tests {
     #[test]
     fn test_flip_toward() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         // Normal points +Z, asking for -Z should flip
         let flipped = flip_faces_toward(&mesh, [0.0, 0.0, -1.0]);

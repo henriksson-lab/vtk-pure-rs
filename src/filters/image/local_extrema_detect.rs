@@ -86,7 +86,11 @@ fn detect_extrema(input: &ImageData, scalars: &str, find_maxima: bool) -> ImageD
         }
     }
 
-    let name: &str = if find_maxima { "LocalMaxima" } else { "LocalMinima" };
+    let name: &str = if find_maxima {
+        "LocalMaxima"
+    } else {
+        "LocalMinima"
+    };
     let mut img = input.clone();
     img.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(name, result, 1)));

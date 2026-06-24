@@ -80,7 +80,11 @@ fn make_cone_tip(
     ];
 
     // Perpendicular frame
-    let seed = if direction[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let seed = if direction[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let u = normalize(cross(seed, direction));
     let v = cross(direction, u);
 
@@ -120,12 +124,20 @@ fn make_cone_tip(
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0]*v[0]+v[1]*v[1]+v[2]*v[2]).sqrt();
-    if len > 1e-10 { [v[0]/len, v[1]/len, v[2]/len] } else { [0.0, 0.0, 1.0] }
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len > 1e-10 {
+        [v[0] / len, v[1] / len, v[2] / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
 }
 
 #[cfg(test)]

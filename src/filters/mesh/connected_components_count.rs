@@ -56,9 +56,12 @@ pub fn count_components(input: &PolyData, label: bool) -> (ComponentCount, PolyD
             });
             labels.push(id);
         }
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("ComponentId", labels, 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "ComponentId",
+                labels,
+                1,
+            )));
     }
 
     (ComponentCount { count }, pd)

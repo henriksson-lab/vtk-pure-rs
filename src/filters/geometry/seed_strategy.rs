@@ -1,12 +1,10 @@
 /// Seed point generation strategies for streamline tracing.
 
 /// Generate seed points along a line segment.
-pub fn seed_line(
-    start: [f64; 3],
-    end: [f64; 3],
-    num_seeds: usize,
-) -> Vec<[f64; 3]> {
-    if num_seeds == 0 { return Vec::new(); }
+pub fn seed_line(start: [f64; 3], end: [f64; 3], num_seeds: usize) -> Vec<[f64; 3]> {
+    if num_seeds == 0 {
+        return Vec::new();
+    }
     if num_seeds == 1 {
         return vec![[
             (start[0] + end[0]) / 2.0,
@@ -14,14 +12,16 @@ pub fn seed_line(
             (start[2] + end[2]) / 2.0,
         ]];
     }
-    (0..num_seeds).map(|i| {
-        let t = i as f64 / (num_seeds - 1) as f64;
-        [
-            start[0] + t * (end[0] - start[0]),
-            start[1] + t * (end[1] - start[1]),
-            start[2] + t * (end[2] - start[2]),
-        ]
-    }).collect()
+    (0..num_seeds)
+        .map(|i| {
+            let t = i as f64 / (num_seeds - 1) as f64;
+            [
+                start[0] + t * (end[0] - start[0]),
+                start[1] + t * (end[1] - start[1]),
+                start[2] + t * (end[2] - start[2]),
+            ]
+        })
+        .collect()
 }
 
 /// Generate seed points on a plane (grid of points).
@@ -35,8 +35,16 @@ pub fn seed_plane(
     let mut seeds = Vec::with_capacity(n1 * n2);
     for j in 0..n2 {
         for i in 0..n1 {
-            let u = if n1 > 1 { i as f64 / (n1 - 1) as f64 } else { 0.5 };
-            let v = if n2 > 1 { j as f64 / (n2 - 1) as f64 } else { 0.5 };
+            let u = if n1 > 1 {
+                i as f64 / (n1 - 1) as f64
+            } else {
+                0.5
+            };
+            let v = if n2 > 1 {
+                j as f64 / (n2 - 1) as f64
+            } else {
+                0.5
+            };
             seeds.push([
                 origin[0] + u * axis1[0] + v * axis2[0],
                 origin[1] + u * axis1[1] + v * axis2[1],
@@ -48,12 +56,7 @@ pub fn seed_plane(
 }
 
 /// Generate seed points on a sphere surface.
-pub fn seed_sphere(
-    center: [f64; 3],
-    radius: f64,
-    n_theta: usize,
-    n_phi: usize,
-) -> Vec<[f64; 3]> {
+pub fn seed_sphere(center: [f64; 3], radius: f64, n_theta: usize, n_phi: usize) -> Vec<[f64; 3]> {
     let mut seeds = Vec::with_capacity(n_theta * n_phi);
     for j in 0..n_phi {
         let phi = std::f64::consts::PI * (j as f64 + 0.5) / n_phi as f64;
@@ -76,32 +79,46 @@ pub fn seed_circle(
     normal: [f64; 3],
     num_seeds: usize,
 ) -> Vec<[f64; 3]> {
-    if num_seeds == 0 { return Vec::new(); }
+    if num_seeds == 0 {
+        return Vec::new();
+    }
 
     // Build orthonormal basis
     let n = normalize(normal);
-    let up = if n[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+    let up = if n[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
     let u = normalize(cross(n, up));
     let v = cross(n, u);
 
-    (0..num_seeds).map(|i| {
-        let angle = 2.0 * std::f64::consts::PI * i as f64 / num_seeds as f64;
-        [
-            center[0] + radius * (angle.cos() * u[0] + angle.sin() * v[0]),
-            center[1] + radius * (angle.cos() * u[1] + angle.sin() * v[1]),
-            center[2] + radius * (angle.cos() * u[2] + angle.sin() * v[2]),
-        ]
-    }).collect()
+    (0..num_seeds)
+        .map(|i| {
+            let angle = 2.0 * std::f64::consts::PI * i as f64 / num_seeds as f64;
+            [
+                center[0] + radius * (angle.cos() * u[0] + angle.sin() * v[0]),
+                center[1] + radius * (angle.cos() * u[1] + angle.sin() * v[1]),
+                center[2] + radius * (angle.cos() * u[2] + angle.sin() * v[2]),
+            ]
+        })
+        .collect()
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0]*v[0] + v[1]*v[1] + v[2]*v[2]).sqrt();
-    if len < 1e-15 { return [0.0, 0.0, 1.0]; }
-    [v[0]/len, v[1]/len, v[2]/len]
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len < 1e-15 {
+        return [0.0, 0.0, 1.0];
+    }
+    [v[0] / len, v[1] / len, v[2] / len]
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 #[cfg(test)]
@@ -129,7 +146,7 @@ mod tests {
         assert_eq!(seeds.len(), 32);
         // All should be approximately on the unit sphere
         for s in &seeds {
-            let r = (s[0]*s[0] + s[1]*s[1] + s[2]*s[2]).sqrt();
+            let r = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
             assert!((r - 1.0).abs() < 1e-10);
         }
     }
@@ -139,7 +156,7 @@ mod tests {
         let seeds = seed_circle([0.0; 3], 2.0, [0.0, 0.0, 1.0], 8);
         assert_eq!(seeds.len(), 8);
         for s in &seeds {
-            let r = (s[0]*s[0] + s[1]*s[1]).sqrt();
+            let r = (s[0] * s[0] + s[1] * s[1]).sqrt();
             assert!((r - 2.0).abs() < 1e-6);
             assert!(s[2].abs() < 1e-10);
         }

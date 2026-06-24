@@ -35,18 +35,33 @@ pub fn color_from_position(input: &PolyData) -> PolyData {
     let mut colors: Vec<f64> = Vec::with_capacity(n * 3);
     for i in 0..n {
         let p = input.points.get(i);
-        let r: f64 = if range_x > 1e-20 { (p[0] - min_x) / range_x } else { 0.5 };
-        let g: f64 = if range_y > 1e-20 { (p[1] - min_y) / range_y } else { 0.5 };
-        let b: f64 = if range_z > 1e-20 { (p[2] - min_z) / range_z } else { 0.5 };
+        let r: f64 = if range_x > 1e-20 {
+            (p[0] - min_x) / range_x
+        } else {
+            0.5
+        };
+        let g: f64 = if range_y > 1e-20 {
+            (p[1] - min_y) / range_y
+        } else {
+            0.5
+        };
+        let b: f64 = if range_z > 1e-20 {
+            (p[2] - min_z) / range_z
+        } else {
+            0.5
+        };
         colors.push(r);
         colors.push(g);
         colors.push(b);
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("PositionColor", colors, 3),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "PositionColor",
+            colors,
+            3,
+        )));
     pd
 }
 
@@ -86,11 +101,7 @@ mod tests {
     #[test]
     fn colors_in_range() {
         let pd = PolyData::from_triangles(
-            vec![
-                [-5.0, 10.0, 0.0],
-                [5.0, -10.0, 0.0],
-                [0.0, 0.0, 3.0],
-            ],
+            vec![[-5.0, 10.0, 0.0], [5.0, -10.0, 0.0], [0.0, 0.0, 3.0]],
             vec![[0, 1, 2]],
         );
         let result = color_from_position(&pd);
@@ -99,7 +110,11 @@ mod tests {
         for i in 0..3 {
             arr.tuple_as_f64(i, &mut val);
             for c in &val {
-                assert!(*c >= 0.0 - 1e-10 && *c <= 1.0 + 1e-10, "color out of range: {}", c);
+                assert!(
+                    *c >= 0.0 - 1e-10 && *c <= 1.0 + 1e-10,
+                    "color out of range: {}",
+                    c
+                );
             }
         }
     }

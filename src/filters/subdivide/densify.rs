@@ -37,11 +37,7 @@ pub fn densify(input: &PolyData, max_edge_length: f64) -> PolyData {
                 for s in 1..n_subdivs {
                     let t = s as f64 / n_subdivs as f64;
                     let idx = out_points.len() as i64;
-                    out_points.push([
-                        pa[0] + t * dx,
-                        pa[1] + t * dy,
-                        pa[2] + t * dz,
-                    ]);
+                    out_points.push([pa[0] + t * dx, pa[1] + t * dy, pa[2] + t * dz]);
                     new_cell.push(idx);
                 }
             }

@@ -2,7 +2,8 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn honeycomb(cell_size: f64, nx: usize, ny: usize) -> PolyData {
-    let nx = nx.max(1); let ny = ny.max(1);
+    let nx = nx.max(1);
+    let ny = ny.max(1);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let dx = cell_size * 3.0f64.sqrt();
@@ -16,10 +17,20 @@ pub fn honeycomb(cell_size: f64, nx: usize, ny: usize) -> PolyData {
                 let a = std::f64::consts::PI / 3.0 * j as f64 + std::f64::consts::PI / 6.0;
                 pts.push([cx + cell_size * a.cos(), cy + cell_size * a.sin(), 0.0]);
             }
-            polys.push_cell(&[base as i64, (base+1) as i64, (base+2) as i64, (base+3) as i64, (base+4) as i64, (base+5) as i64]);
+            polys.push_cell(&[
+                base as i64,
+                (base + 1) as i64,
+                (base + 2) as i64,
+                (base + 3) as i64,
+                (base + 4) as i64,
+                (base + 5) as i64,
+            ]);
         }
     }
-    let mut m = PolyData::new(); m.points = pts; m.polys = polys; m
+    let mut m = PolyData::new();
+    m.points = pts;
+    m.polys = polys;
+    m
 }
 
 #[cfg(test)]

@@ -36,29 +36,38 @@ pub fn sample_implicit_function(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ImplicitSphere, ImplicitPlane};
+    use crate::types::{ImplicitPlane, ImplicitSphere};
 
     #[test]
     fn sphere_distance_field() {
         let sphere = ImplicitSphere::new([0.0, 0.0, 0.0], 1.0);
         let img = sample_implicit_function(
-            [5, 5, 5], [0.5, 0.5, 0.5], [-1.0, -1.0, -1.0],
-            "distance", &sphere,
+            [5, 5, 5],
+            [0.5, 0.5, 0.5],
+            [-1.0, -1.0, -1.0],
+            "distance",
+            &sphere,
         );
         assert_eq!(img.dimensions(), [5, 5, 5]);
         let scalars = img.point_data().scalars().unwrap();
         assert_eq!(scalars.num_tuples(), 125);
         // Center voxel (2,2,2) at origin should have negative value (inside sphere)
         let center_val = img.scalar_at(2, 2, 2).unwrap();
-        assert!(center_val < 0.0, "center should be inside sphere, got {center_val}");
+        assert!(
+            center_val < 0.0,
+            "center should be inside sphere, got {center_val}"
+        );
     }
 
     #[test]
     fn plane_field() {
         let plane = ImplicitPlane::new([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         let img = sample_implicit_function(
-            [5, 1, 1], [1.0, 1.0, 1.0], [-2.0, 0.0, 0.0],
-            "plane", &plane,
+            [5, 1, 1],
+            [1.0, 1.0, 1.0],
+            [-2.0, 0.0, 0.0],
+            "plane",
+            &plane,
         );
         // At x=-2: negative, at x=2: positive
         let v0 = img.scalar_at(0, 0, 0).unwrap();

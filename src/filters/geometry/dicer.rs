@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData, DataSet};
+use crate::data::{AnyDataArray, DataArray, DataSet, PolyData};
 
 /// Dice a PolyData into spatial regions.
 ///
@@ -53,9 +53,10 @@ pub fn dicer(input: &PolyData, nx: usize, ny: usize, nz: usize) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("RegionId", region_ids, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "RegionId", region_ids, 1,
+        )));
     pd
 }
 

@@ -6,11 +6,16 @@ use crate::data::{Points, PolyData};
 /// in `surface` and moves the point there.
 pub fn project_to_surface(input: &PolyData, surface: &PolyData) -> PolyData {
     let tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = surface
-        .polys.iter()
+        .polys
+        .iter()
         .flat_map(|cell| {
             let p0 = surface.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {
-                (p0, surface.points.get(cell[i] as usize), surface.points.get(cell[i + 1] as usize))
+                (
+                    p0,
+                    surface.points.get(cell[i] as usize),
+                    surface.points.get(cell[i + 1] as usize),
+                )
             })
         })
         .collect();
@@ -37,40 +42,75 @@ pub fn project_to_surface(input: &PolyData, surface: &PolyData) -> PolyData {
     pd
 }
 
-fn closest_point_on_triangle(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> ([f64; 3], f64) {
-    let ab = sub(b, a); let ac = sub(c, a); let ap = sub(p, a);
-    let d1 = dot(ab, ap); let d2 = dot(ac, ap);
-    if d1 <= 0.0 && d2 <= 0.0 { return (a, dist2(p, a)); }
-    let bp = sub(p, b); let d3 = dot(ab, bp); let d4 = dot(ac, bp);
-    if d3 >= 0.0 && d4 <= d3 { return (b, dist2(p, b)); }
-    let cp = sub(p, c); let d5 = dot(ab, cp); let d6 = dot(ac, cp);
-    if d6 >= 0.0 && d5 <= d6 { return (c, dist2(p, c)); }
-    let vc = d1*d4 - d3*d2;
+fn closest_point_on_triangle(
+    p: [f64; 3],
+    a: [f64; 3],
+    b: [f64; 3],
+    c: [f64; 3],
+) -> ([f64; 3], f64) {
+    let ab = sub(b, a);
+    let ac = sub(c, a);
+    let ap = sub(p, a);
+    let d1 = dot(ab, ap);
+    let d2 = dot(ac, ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return (a, dist2(p, a));
+    }
+    let bp = sub(p, b);
+    let d3 = dot(ab, bp);
+    let d4 = dot(ac, bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return (b, dist2(p, b));
+    }
+    let cp = sub(p, c);
+    let d5 = dot(ab, cp);
+    let d6 = dot(ac, cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return (c, dist2(p, c));
+    }
+    let vc = d1 * d4 - d3 * d2;
     if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
-        let v = d1/(d1-d3);
-        let proj = [a[0]+v*ab[0], a[1]+v*ab[1], a[2]+v*ab[2]];
+        let v = d1 / (d1 - d3);
+        let proj = [a[0] + v * ab[0], a[1] + v * ab[1], a[2] + v * ab[2]];
         return (proj, dist2(p, proj));
     }
-    let vb = d5*d2 - d1*d6;
+    let vb = d5 * d2 - d1 * d6;
     if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
-        let w = d2/(d2-d6);
-        let proj = [a[0]+w*ac[0], a[1]+w*ac[1], a[2]+w*ac[2]];
+        let w = d2 / (d2 - d6);
+        let proj = [a[0] + w * ac[0], a[1] + w * ac[1], a[2] + w * ac[2]];
         return (proj, dist2(p, proj));
     }
-    let va = d3*d6 - d5*d4;
-    if va <= 0.0 && (d4-d3) >= 0.0 && (d5-d6) >= 0.0 {
-        let w = (d4-d3)/((d4-d3)+(d5-d6));
-        let proj = [b[0]+w*(c[0]-b[0]), b[1]+w*(c[1]-b[1]), b[2]+w*(c[2]-b[2])];
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        let proj = [
+            b[0] + w * (c[0] - b[0]),
+            b[1] + w * (c[1] - b[1]),
+            b[2] + w * (c[2] - b[2]),
+        ];
         return (proj, dist2(p, proj));
     }
-    let d = 1.0/(va+vb+vc); let v = vb*d; let w = vc*d;
-    let proj = [a[0]+ab[0]*v+ac[0]*w, a[1]+ab[1]*v+ac[1]*w, a[2]+ab[2]*v+ac[2]*w];
+    let d = 1.0 / (va + vb + vc);
+    let v = vb * d;
+    let w = vc * d;
+    let proj = [
+        a[0] + ab[0] * v + ac[0] * w,
+        a[1] + ab[1] * v + ac[1] * w,
+        a[2] + ab[2] * v + ac[2] * w,
+    ];
     (proj, dist2(p, proj))
 }
 
-fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] { [a[0]-b[0], a[1]-b[1], a[2]-b[2]] }
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 { a[0]*b[0]+a[1]*b[1]+a[2]*b[2] }
-fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 { let d = sub(a,b); dot(d,d) }
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let d = sub(a, b);
+    dot(d, d)
+}
 
 #[cfg(test)]
 mod tests {
@@ -79,8 +119,8 @@ mod tests {
     #[test]
     fn project_onto_plane() {
         let surface = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[10.0,0.0,0.0],[0.0,10.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let mut input = PolyData::new();
         input.points.push([1.0, 1.0, 5.0]); // 5 units above plane
@@ -95,8 +135,8 @@ mod tests {
     #[test]
     fn project_onto_edge() {
         let surface = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.0,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let mut input = PolyData::new();
         input.points.push([-1.0, 0.5, 0.0]); // off the left edge

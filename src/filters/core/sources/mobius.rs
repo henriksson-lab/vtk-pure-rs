@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{CellArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a Möbius strip.
 pub struct MobiusParams {
@@ -15,7 +15,12 @@ pub struct MobiusParams {
 
 impl Default for MobiusParams {
     fn default() -> Self {
-        Self { radius: 1.0, width: 0.3, resolution: 64, center: [0.0, 0.0, 0.0] }
+        Self {
+            radius: 1.0,
+            width: 0.3,
+            resolution: 64,
+            center: [0.0, 0.0, 0.0],
+        }
     }
 }
 
@@ -77,7 +82,10 @@ mod tests {
 
     #[test]
     fn small_mobius() {
-        let pd = mobius(&MobiusParams { resolution: 8, ..Default::default() });
+        let pd = mobius(&MobiusParams {
+            resolution: 8,
+            ..Default::default()
+        });
         assert_eq!(pd.polys.num_cells(), 16); // 8 segments * 2 quads
     }
 }

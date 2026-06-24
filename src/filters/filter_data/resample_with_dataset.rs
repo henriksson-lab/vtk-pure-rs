@@ -4,11 +4,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// For each point in `target`, find the nearest point in `source` and copy
 /// the named scalar array. Returns a clone of `target` with the interpolated array.
-pub fn resample_with_dataset(
-    source: &PolyData,
-    target: &PolyData,
-    array_name: &str,
-) -> PolyData {
+pub fn resample_with_dataset(source: &PolyData, target: &PolyData, array_name: &str) -> PolyData {
     let mut result = target.clone();
     let n_source = source.points.len();
     let n_target = target.points.len();
@@ -33,9 +29,7 @@ pub fn resample_with_dataset(
         let mut best_idx = 0;
         for si in 0..n_source {
             let sp = source.points.get(si);
-            let d = (tp[0] - sp[0]).powi(2)
-                + (tp[1] - sp[1]).powi(2)
-                + (tp[2] - sp[2]).powi(2);
+            let d = (tp[0] - sp[0]).powi(2) + (tp[1] - sp[1]).powi(2) + (tp[2] - sp[2]).powi(2);
             if d < best_dist {
                 best_dist = d;
                 best_idx = si;
@@ -64,7 +58,9 @@ mod tests {
         source.points.push([0.0, 0.0, 0.0]);
         source.points.push([10.0, 0.0, 0.0]);
         let scalars = DataArray::from_vec("temp", vec![100.0, 200.0], 1);
-        source.point_data_mut().add_array(AnyDataArray::F64(scalars));
+        source
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(scalars));
 
         let mut target = PolyData::new();
         target.points.push([1.0, 0.0, 0.0]); // closer to source[0]

@@ -15,7 +15,8 @@ pub fn image_local_minima(input: &ImageData, scalars: &str) -> ImageData {
 
 fn image_extrema(input: &ImageData, scalars: &str, find_maxima: bool) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a, None => return input.clone(),
+        Some(a) => a,
+        None => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -26,37 +27,57 @@ fn image_extrema(input: &ImageData, scalars: &str, find_maxima: bool) -> ImageDa
 
     let mut values = vec![0.0f64; n];
     let mut buf = [0.0f64];
-    for i in 0..n { arr.tuple_as_f64(i, &mut buf); values[i] = buf[0]; }
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values[i] = buf[0];
+    }
 
-    let idx = |i: usize, j: usize, k: usize| k*ny*nx + j*nx + i;
+    let idx = |i: usize, j: usize, k: usize| k * ny * nx + j * nx + i;
 
     let mut result = vec![0.0f64; n];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let v = values[idx(i,j,k)];
+                let v = values[idx(i, j, k)];
                 let mut is_extremum = true;
                 let neighbors = [
-                    (i.wrapping_sub(1), j, k), (i+1, j, k),
-                    (i, j.wrapping_sub(1), k), (i, j+1, k),
-                    (i, j, k.wrapping_sub(1)), (i, j, k+1),
+                    (i.wrapping_sub(1), j, k),
+                    (i + 1, j, k),
+                    (i, j.wrapping_sub(1), k),
+                    (i, j + 1, k),
+                    (i, j, k.wrapping_sub(1)),
+                    (i, j, k + 1),
                 ];
                 for &(ni, nj, nk) in &neighbors {
                     if ni < nx && nj < ny && nk < nz {
                         let nv = values[idx(ni, nj, nk)];
-                        if find_maxima { if nv >= v { is_extremum = false; break; } }
-                        else { if nv <= v { is_extremum = false; break; } }
+                        if find_maxima {
+                            if nv >= v {
+                                is_extremum = false;
+                                break;
+                            }
+                        } else {
+                            if nv <= v {
+                                is_extremum = false;
+                                break;
+                            }
+                        }
                     }
                 }
-                result[idx(i,j,k)] = if is_extremum { 1.0 } else { 0.0 };
+                result[idx(i, j, k)] = if is_extremum { 1.0 } else { 0.0 };
             }
         }
     }
 
-    let name = if find_maxima { "LocalMaxima" } else { "LocalMinima" };
+    let name = if find_maxima {
+        "LocalMaxima"
+    } else {
+        "LocalMinima"
+    };
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec(name, result, 1)));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(name, result, 1)));
     img
 }
 
@@ -69,7 +90,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let mut values = vec![0.0; 25];
         values[12] = 10.0; // center peak
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_local_maxima(&img, "v");
         let arr = result.point_data().get_array("LocalMaxima").unwrap();
@@ -85,7 +107,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let mut values = vec![10.0; 25];
         values[12] = 0.0; // center valley
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_local_minima(&img, "v");
         let arr = result.point_data().get_array("LocalMinima").unwrap();

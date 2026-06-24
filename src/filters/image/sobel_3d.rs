@@ -55,9 +55,18 @@ pub fn sobel_3d(input: &ImageData, scalars: &str) -> ImageData {
                     for dy in 0i64..3 {
                         for dx in 0i64..3 {
                             let val: f64 = get(ii + dx - 1, jj + dy - 1, kk + dz - 1);
-                            gx += deriv[dx as usize] * smooth[dy as usize] * smooth[dz as usize] * val;
-                            gy += smooth[dx as usize] * deriv[dy as usize] * smooth[dz as usize] * val;
-                            gz += smooth[dx as usize] * smooth[dy as usize] * deriv[dz as usize] * val;
+                            gx += deriv[dx as usize]
+                                * smooth[dy as usize]
+                                * smooth[dz as usize]
+                                * val;
+                            gy += smooth[dx as usize]
+                                * deriv[dy as usize]
+                                * smooth[dz as usize]
+                                * val;
+                            gz += smooth[dx as usize]
+                                * smooth[dy as usize]
+                                * deriv[dz as usize]
+                                * val;
                         }
                     }
                 }
@@ -68,9 +77,12 @@ pub fn sobel_3d(input: &ImageData, scalars: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("SobelMagnitude", mag, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SobelMagnitude",
+            mag,
+            1,
+        )));
     img
 }
 
@@ -82,9 +94,12 @@ mod tests {
     fn uniform_field_zero_gradient() {
         let mut img = ImageData::with_dimensions(4, 4, 4);
         let n: usize = 64;
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalars", vec![7.0; n], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "scalars",
+                vec![7.0; n],
+                1,
+            )));
 
         let result = sobel_3d(&img, "scalars");
         let arr = result.point_data().get_array("SobelMagnitude").unwrap();
@@ -92,7 +107,11 @@ mod tests {
         let mut buf = [0.0f64];
         for i in 0..n {
             arr.tuple_as_f64(i, &mut buf);
-            assert!(buf[0].abs() < 1e-10, "expected zero gradient, got {}", buf[0]);
+            assert!(
+                buf[0].abs() < 1e-10,
+                "expected zero gradient, got {}",
+                buf[0]
+            );
         }
     }
 
@@ -109,9 +128,8 @@ mod tests {
                 }
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("s", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", values, 1)));
 
         let result = sobel_3d(&img, "s");
         let arr = result.point_data().get_array("SobelMagnitude").unwrap();
@@ -124,7 +142,10 @@ mod tests {
         let mut interior_val = [0.0f64];
         arr.tuple_as_f64(2 * 25 + 2 * 5 + 0, &mut interior_val);
 
-        assert!(edge_val[0] > interior_val[0], "edge should have higher magnitude");
+        assert!(
+            edge_val[0] > interior_val[0],
+            "edge should have higher magnitude"
+        );
     }
 
     #[test]

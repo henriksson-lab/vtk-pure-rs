@@ -26,9 +26,16 @@ impl std::fmt::Display for MeshDiff {
         if self.identical {
             write!(f, "Identical")
         } else {
-            write!(f, "Different: max_pos_diff={:.6}, points={}vs{}, cells={}vs{}, same_topo={}",
-                self.max_position_diff, self.points_a, self.points_b,
-                self.cells_a, self.cells_b, self.same_topology)
+            write!(
+                f,
+                "Different: max_pos_diff={:.6}, points={}vs{}, cells={}vs{}, same_topo={}",
+                self.max_position_diff,
+                self.points_a,
+                self.points_b,
+                self.cells_a,
+                self.cells_b,
+                self.same_topology
+            )
         }
     }
 }
@@ -42,9 +49,8 @@ pub fn diff(a: &PolyData, b: &PolyData) -> MeshDiff {
 
     let same_count = points_a == points_b && cells_a == cells_b;
 
-    let same_topology = same_count && {
-        a.polys.iter().zip(b.polys.iter()).all(|(ca, cb)| ca == cb)
-    };
+    let same_topology =
+        same_count && { a.polys.iter().zip(b.polys.iter()).all(|(ca, cb)| ca == cb) };
 
     let (max_diff, avg_diff) = if points_a == points_b && points_a > 0 {
         let mut max_d = 0.0f64;
@@ -52,7 +58,8 @@ pub fn diff(a: &PolyData, b: &PolyData) -> MeshDiff {
         for i in 0..points_a {
             let pa = a.points.get(i);
             let pb = b.points.get(i);
-            let d = ((pa[0]-pb[0]).powi(2) + (pa[1]-pb[1]).powi(2) + (pa[2]-pb[2]).powi(2)).sqrt();
+            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                .sqrt();
             max_d = max_d.max(d);
             sum_d += d;
         }
@@ -66,15 +73,21 @@ pub fn diff(a: &PolyData, b: &PolyData) -> MeshDiff {
     MeshDiff {
         max_position_diff: max_diff,
         avg_position_diff: avg_diff,
-        points_a, points_b, cells_a, cells_b,
-        same_topology, identical,
+        points_a,
+        points_b,
+        cells_a,
+        cells_b,
+        same_topology,
+        identical,
     }
 }
 
 /// Compute per-point displacement between two meshes with the same topology.
 /// Returns a new PolyData (copy of A) with a "Displacement" vector array.
 pub fn displacement_field(a: &PolyData, b: &PolyData) -> Option<PolyData> {
-    if a.points.len() != b.points.len() { return None; }
+    if a.points.len() != b.points.len() {
+        return None;
+    }
 
     let mut result = a.clone();
     let n = a.points.len();

@@ -9,7 +9,9 @@ use crate::data::{AnyDataArray, DataArray, Points, PolyData};
 /// The mesh connectivity is preserved.
 pub fn project_to_sphere(mesh: &PolyData, center: [f64; 3], radius: f64) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 { return mesh.clone(); }
+    if n == 0 {
+        return mesh.clone();
+    }
 
     let mut new_points = Points::<f64>::new();
     let mut displacement = Vec::with_capacity(n);
@@ -38,18 +40,18 @@ pub fn project_to_sphere(mesh: &PolyData, center: [f64; 3], radius: f64) -> Poly
 
     let mut result = mesh.clone();
     result.points = new_points;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ProjectionDisplacement", displacement, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ProjectionDisplacement",
+            displacement,
+            1,
+        )));
     result
 }
 
 /// Project points onto a sphere and add spherical coordinate arrays.
-pub fn project_to_sphere_with_coords(
-    mesh: &PolyData,
-    center: [f64; 3],
-    radius: f64,
-) -> PolyData {
+pub fn project_to_sphere_with_coords(mesh: &PolyData, center: [f64; 3], radius: f64) -> PolyData {
     let mut result = project_to_sphere(mesh, center, radius);
     let n = result.points.len();
 
@@ -68,12 +70,14 @@ pub fn project_to_sphere_with_coords(
         phi_data.push(phi.to_degrees());
     }
 
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Theta", theta_data, 1),
-    ));
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Phi", phi_data, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Theta", theta_data, 1,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Phi", phi_data, 1)));
     result
 }
 
@@ -85,8 +89,12 @@ mod tests {
     fn project_cube_to_sphere() {
         let mesh = PolyData::from_triangles(
             vec![
-                [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
-                [-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [-1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, -1.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );
@@ -96,20 +104,21 @@ mod tests {
         // All points should be at distance 2.0 from origin
         for i in 0..result.points.len() {
             let p = result.points.get(i);
-            let r = (p[0]*p[0] + p[1]*p[1] + p[2]*p[2]).sqrt();
+            let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
             assert!((r - 2.0).abs() < 1e-10, "r={r}");
         }
     }
 
     #[test]
     fn with_coords() {
-        let mesh = PolyData::from_points(vec![
-            [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
-        ]);
+        let mesh = PolyData::from_points(vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
         let result = project_to_sphere_with_coords(&mesh, [0.0, 0.0, 0.0], 1.0);
         assert!(result.point_data().get_array("Theta").is_some());
         assert!(result.point_data().get_array("Phi").is_some());
-        assert!(result.point_data().get_array("ProjectionDisplacement").is_some());
+        assert!(result
+            .point_data()
+            .get_array("ProjectionDisplacement")
+            .is_some());
     }
 
     #[test]
@@ -119,7 +128,10 @@ mod tests {
         let p = result.points.get(0);
         assert!((p[0] - 1.0).abs() < 1e-10);
 
-        let arr = result.point_data().get_array("ProjectionDisplacement").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("ProjectionDisplacement")
+            .unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert!(buf[0] < 1e-10); // no displacement

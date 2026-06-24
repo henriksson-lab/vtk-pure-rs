@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData, UnstructuredGrid, DataSet};
+use crate::data::{CellArray, DataSet, Points, PolyData, UnstructuredGrid};
 use crate::types::CellType;
 
 /// Convert an UnstructuredGrid to PolyData by extracting surface cells.
@@ -25,22 +25,31 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
         match ct {
             CellType::Triangle => {
                 if pts.len() >= 3 {
-                    let mapped: Vec<i64> = pts.iter().map(|&id| map_point(id, input, &mut out_points)).collect();
+                    let mapped: Vec<i64> = pts
+                        .iter()
+                        .map(|&id| map_point(id, input, &mut out_points))
+                        .collect();
                     out_polys.push_cell(&mapped);
                 }
             }
             CellType::Quad | CellType::Polygon => {
                 if pts.len() >= 3 {
-                    let mapped: Vec<i64> = pts.iter().map(|&id| map_point(id, input, &mut out_points)).collect();
+                    let mapped: Vec<i64> = pts
+                        .iter()
+                        .map(|&id| map_point(id, input, &mut out_points))
+                        .collect();
                     out_polys.push_cell(&mapped);
                 }
             }
             CellType::Tetra => {
                 // Extract 4 faces
                 if pts.len() >= 4 {
-                    let faces = [[0,1,2],[0,3,1],[1,3,2],[0,2,3]];
+                    let faces = [[0, 1, 2], [0, 3, 1], [1, 3, 2], [0, 2, 3]];
                     for f in &faces {
-                        let mapped: Vec<i64> = f.iter().map(|&fi| map_point(pts[fi], input, &mut out_points)).collect();
+                        let mapped: Vec<i64> = f
+                            .iter()
+                            .map(|&fi| map_point(pts[fi], input, &mut out_points))
+                            .collect();
                         out_polys.push_cell(&mapped);
                     }
                 }
@@ -48,10 +57,18 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
             CellType::Hexahedron => {
                 if pts.len() >= 8 {
                     let faces = [
-                        [0,3,2,1],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,4,7,3],[1,2,6,5],
+                        [0, 3, 2, 1],
+                        [4, 5, 6, 7],
+                        [0, 1, 5, 4],
+                        [2, 3, 7, 6],
+                        [0, 4, 7, 3],
+                        [1, 2, 6, 5],
                     ];
                     for f in &faces {
-                        let mapped: Vec<i64> = f.iter().map(|&fi| map_point(pts[fi], input, &mut out_points)).collect();
+                        let mapped: Vec<i64> = f
+                            .iter()
+                            .map(|&fi| map_point(pts[fi], input, &mut out_points))
+                            .collect();
                         out_polys.push_cell(&mapped);
                     }
                 }

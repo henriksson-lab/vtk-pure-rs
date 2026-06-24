@@ -17,15 +17,18 @@ pub fn warp_by_implicit<F: ImplicitFunction>(
         let p = pd.points.get(i);
         let val = func.evaluate(p[0], p[1], p[2]);
         let grad = func.gradient(p[0], p[1], p[2]);
-        let glen = (grad[0]*grad[0] + grad[1]*grad[1] + grad[2]*grad[2]).sqrt();
+        let glen = (grad[0] * grad[0] + grad[1] * grad[1] + grad[2] * grad[2]).sqrt();
 
         if glen > 1e-20 {
             let factor = val * scale_factor / glen;
-            pd.points.set(i, [
-                p[0] - factor * grad[0],
-                p[1] - factor * grad[1],
-                p[2] - factor * grad[2],
-            ]);
+            pd.points.set(
+                i,
+                [
+                    p[0] - factor * grad[0],
+                    p[1] - factor * grad[1],
+                    p[2] - factor * grad[2],
+                ],
+            );
         }
     }
 

@@ -104,10 +104,7 @@ impl ColorMap {
 
     /// Grayscale (black → white).
     pub fn grayscale() -> Self {
-        Self::new(vec![
-            (0.0, [0.0, 0.0, 0.0]),
-            (1.0, [1.0, 1.0, 1.0]),
-        ])
+        Self::new(vec![(0.0, [0.0, 0.0, 0.0]), (1.0, [1.0, 1.0, 1.0])])
     }
 
     /// Plasma (dark purple → magenta → orange → yellow).
@@ -259,9 +256,21 @@ impl ColorMap {
     /// List all built-in color map names.
     pub fn available_names() -> &'static [&'static str] {
         &[
-            "jet", "cool_to_warm", "viridis", "grayscale", "plasma",
-            "inferno", "turbo", "black_body", "blue_red", "magma",
-            "cividis", "rd_yl_bu", "rainbow_desaturated", "parula", "spectral",
+            "jet",
+            "cool_to_warm",
+            "viridis",
+            "grayscale",
+            "plasma",
+            "inferno",
+            "turbo",
+            "black_body",
+            "blue_red",
+            "magma",
+            "cividis",
+            "rd_yl_bu",
+            "rainbow_desaturated",
+            "parula",
+            "spectral",
         ]
     }
 }

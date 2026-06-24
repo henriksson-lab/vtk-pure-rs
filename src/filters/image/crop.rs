@@ -55,9 +55,8 @@ pub fn image_crop(
     let mut img = ImageData::with_dimensions(new_nx, new_ny, new_nz);
     img.set_origin(new_origin);
     img.set_spacing(spacing);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
     img
 }
 
@@ -69,9 +68,8 @@ mod tests {
     fn crop_center() {
         let mut img = ImageData::with_dimensions(5, 5, 5);
         let values: Vec<f64> = (0..125).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_crop(&img, "v", [1, 3], [1, 3], [1, 3]);
         assert_eq!(result.dimensions(), [3, 3, 3]);
@@ -82,9 +80,8 @@ mod tests {
     fn crop_single_slice() {
         let mut img = ImageData::with_dimensions(5, 5, 5);
         let values: Vec<f64> = (0..125).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_crop(&img, "v", [0, 4], [0, 4], [2, 2]);
         assert_eq!(result.dimensions(), [5, 5, 1]);
@@ -94,9 +91,8 @@ mod tests {
     fn full_crop_unchanged() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
         let values: Vec<f64> = (0..27).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_crop(&img, "v", [0, 2], [0, 2], [0, 2]);
         assert_eq!(result.dimensions(), [3, 3, 3]);

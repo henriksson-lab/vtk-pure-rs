@@ -5,7 +5,8 @@ use crate::data::{CellArray, Points, PolyData};
 /// Extract boundary edges as polyline loops.
 pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
     // Find boundary edges (shared by exactly 1 face)
-    let mut edge_count: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
@@ -14,7 +15,8 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
             *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
-    let boundary_edges: Vec<(usize, usize)> = edge_count.iter()
+    let boundary_edges: Vec<(usize, usize)> = edge_count
+        .iter()
         .filter(|(_, &c)| c == 1)
         .map(|(&e, _)| e)
         .collect();
@@ -33,23 +35,33 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
     }
 
     // Trace loops
-    let mut visited_edges: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut visited_edges: std::collections::HashSet<(usize, usize)> =
+        std::collections::HashSet::new();
     let mut loops: Vec<Vec<usize>> = Vec::new();
 
     for &start in adj.keys() {
-        if adj[&start].iter().all(|&nb| visited_edges.contains(&(start.min(nb), start.max(nb)))) {
+        if adj[&start]
+            .iter()
+            .all(|&nb| visited_edges.contains(&(start.min(nb), start.max(nb))))
+        {
             continue;
         }
         let mut loop_verts = vec![start];
         let mut current = start;
         loop {
-            let next = adj.get(&current).and_then(|nbs| {
-                nbs.iter().find(|&&nb| !visited_edges.contains(&(current.min(nb), current.max(nb))))
-            }).copied();
+            let next = adj
+                .get(&current)
+                .and_then(|nbs| {
+                    nbs.iter()
+                        .find(|&&nb| !visited_edges.contains(&(current.min(nb), current.max(nb))))
+                })
+                .copied();
             match next {
                 Some(nb) => {
                     visited_edges.insert((current.min(nb), current.max(nb)));
-                    if nb == start { break; }
+                    if nb == start {
+                        break;
+                    }
                     loop_verts.push(nb);
                     current = nb;
                 }
@@ -67,13 +79,16 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
     let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     for lp in &loops {
-        let ids: Vec<i64> = lp.iter().map(|&v| {
-            *pt_map.entry(v).or_insert_with(|| {
-                let idx = pts.len();
-                pts.push(mesh.points.get(v));
-                idx
-            }) as i64
-        }).collect();
+        let ids: Vec<i64> = lp
+            .iter()
+            .map(|&v| {
+                *pt_map.entry(v).or_insert_with(|| {
+                    let idx = pts.len();
+                    pts.push(mesh.points.get(v));
+                    idx
+                }) as i64
+            })
+            .collect();
         lines.push_cell(&ids);
     }
 
@@ -95,16 +110,21 @@ mod tests {
     fn test_open_mesh() {
         // Single triangle has one boundary loop
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         assert_eq!(boundary_loop_count(&mesh), 1);
     }
     #[test]
     fn test_two_tris() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0],[1.5,1.0,0.0]],
-            vec![[0,1,2],[1,3,2]],
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
         );
         assert_eq!(boundary_loop_count(&mesh), 1);
     }

@@ -14,11 +14,7 @@ use crate::data::PolyData;
 ///
 /// The output is a PolyData with the same connectivity as the input but with
 /// contracted vertex positions.
-pub fn extract_skeleton(
-    input: &PolyData,
-    iterations: usize,
-    contraction_weight: f64,
-) -> PolyData {
+pub fn extract_skeleton(input: &PolyData, iterations: usize, contraction_weight: f64) -> PolyData {
     let mut output = input.clone();
     let n: usize = output.points.len();
     if n == 0 || iterations == 0 {
@@ -173,8 +169,10 @@ mod tests {
         let p0: [f64; 3] = result.points.get(0);
         let p1: [f64; 3] = result.points.get(1);
         let p2: [f64; 3] = result.points.get(2);
-        let d01: f64 = ((p0[0] - p1[0]).powi(2) + (p0[1] - p1[1]).powi(2) + (p0[2] - p1[2]).powi(2)).sqrt();
-        let d02: f64 = ((p0[0] - p2[0]).powi(2) + (p0[1] - p2[1]).powi(2) + (p0[2] - p2[2]).powi(2)).sqrt();
+        let d01: f64 =
+            ((p0[0] - p1[0]).powi(2) + (p0[1] - p1[1]).powi(2) + (p0[2] - p1[2]).powi(2)).sqrt();
+        let d02: f64 =
+            ((p0[0] - p2[0]).powi(2) + (p0[1] - p2[1]).powi(2) + (p0[2] - p2[2]).powi(2)).sqrt();
         assert!(d01 < 0.01);
         assert!(d02 < 0.01);
     }

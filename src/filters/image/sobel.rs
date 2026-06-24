@@ -40,28 +40,38 @@ pub fn image_sobel(input: &ImageData, scalars: &str) -> ImageData {
                 let kk = k as i64;
 
                 // Sobel X: [-1 0 1; -2 0 2; -1 0 1]
-                let gx = -get(ii-1,jj-1,kk) + get(ii+1,jj-1,kk)
-                    - 2.0*get(ii-1,jj,kk) + 2.0*get(ii+1,jj,kk)
-                    - get(ii-1,jj+1,kk) + get(ii+1,jj+1,kk);
+                let gx = -get(ii - 1, jj - 1, kk) + get(ii + 1, jj - 1, kk)
+                    - 2.0 * get(ii - 1, jj, kk)
+                    + 2.0 * get(ii + 1, jj, kk)
+                    - get(ii - 1, jj + 1, kk)
+                    + get(ii + 1, jj + 1, kk);
 
                 // Sobel Y
-                let gy = -get(ii-1,jj-1,kk) - 2.0*get(ii,jj-1,kk) - get(ii+1,jj-1,kk)
-                    + get(ii-1,jj+1,kk) + 2.0*get(ii,jj+1,kk) + get(ii+1,jj+1,kk);
+                let gy =
+                    -get(ii - 1, jj - 1, kk) - 2.0 * get(ii, jj - 1, kk) - get(ii + 1, jj - 1, kk)
+                        + get(ii - 1, jj + 1, kk)
+                        + 2.0 * get(ii, jj + 1, kk)
+                        + get(ii + 1, jj + 1, kk);
 
                 // Sobel Z (for 3D)
                 let gz = if nz > 1 {
-                    -get(ii,jj,kk-1) + get(ii,jj,kk+1)
-                } else { 0.0 };
+                    -get(ii, jj, kk - 1) + get(ii, jj, kk + 1)
+                } else {
+                    0.0
+                };
 
-                mag[k * ny * nx + j * nx + i] = (gx*gx + gy*gy + gz*gz).sqrt();
+                mag[k * ny * nx + j * nx + i] = (gx * gx + gy * gy + gz * gz).sqrt();
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("SobelMagnitude", mag, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SobelMagnitude",
+            mag,
+            1,
+        )));
     img
 }
 
@@ -74,16 +84,19 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         let mut values = vec![0.0f64; 25];
         // Left half = 0, right half = 100
-        for j in 0..5 { for i in 3..5 { values[j*5+i] = 100.0; } }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", values, 1),
-        ));
+        for j in 0..5 {
+            for i in 3..5 {
+                values[j * 5 + i] = 100.0;
+            }
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
 
         let result = image_sobel(&img, "v");
         let arr = result.point_data().get_array("SobelMagnitude").unwrap();
         let mut buf = [0.0f64];
         // Edge at column 2-3 should have high magnitude
-        arr.tuple_as_f64(2*1 + 2*5, &mut buf); // (2,2)
+        arr.tuple_as_f64(2 * 1 + 2 * 5, &mut buf); // (2,2)
         let edge_mag = buf[0];
         // Interior should have zero
         arr.tuple_as_f64(0, &mut buf);
@@ -93,9 +106,8 @@ mod tests {
     #[test]
     fn uniform_zero_edges() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![5.0; 9], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![5.0; 9], 1)));
 
         let result = image_sobel(&img, "v");
         let arr = result.point_data().get_array("SobelMagnitude").unwrap();

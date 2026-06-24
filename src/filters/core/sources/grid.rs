@@ -38,9 +38,9 @@ pub fn grid(params: &GridParams) -> PolyData {
 
     // Normal = x_axis × y_axis
     let n = cross(params.x_axis, params.y_axis);
-    let nlen = (n[0]*n[0] + n[1]*n[1] + n[2]*n[2]).sqrt();
+    let nlen = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     let normal = if nlen > 1e-15 {
-        [n[0]/nlen, n[1]/nlen, n[2]/nlen]
+        [n[0] / nlen, n[1] / nlen, n[2] / nlen]
     } else {
         [0.0, 0.0, 1.0]
     };
@@ -80,7 +80,11 @@ pub fn grid(params: &GridParams) -> PolyData {
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 #[cfg(test)]

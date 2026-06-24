@@ -28,9 +28,7 @@ pub fn tensor_principal_invariants(tensor: &DataArray<f64>) -> DataArray<f64> {
         // I2 = sum of principal minors
         let i2 = xx * yy + yy * zz + zz * xx - xy * xy - yz * yz - xz * xz;
         // I3 = determinant
-        let i3 = xx * (yy * zz - yz * yz)
-            - xy * (xy * zz - yz * xz)
-            + xz * (xy * yz - yy * xz);
+        let i3 = xx * (yy * zz - yz * yz) - xy * (xy * zz - yz * xz) + xz * (xy * yz - yy * xz);
 
         data.push(i1);
         data.push(i2);
@@ -59,13 +57,11 @@ pub fn tensor_deviatoric_invariants(tensor: &DataArray<f64>) -> DataArray<f64> {
         let szz = zz - mean;
 
         // J2 = (1/2) * (sxx^2 + syy^2 + szz^2 + 2*(xy^2 + yz^2 + xz^2))
-        let j2 = 0.5 * (sxx * sxx + syy * syy + szz * szz)
-            + xy * xy + yz * yz + xz * xz;
+        let j2 = 0.5 * (sxx * sxx + syy * syy + szz * szz) + xy * xy + yz * yz + xz * xz;
 
         // J3 = det(deviatoric)
-        let j3 = sxx * (syy * szz - yz * yz)
-            - xy * (xy * szz - yz * xz)
-            + xz * (xy * yz - syy * xz);
+        let j3 =
+            sxx * (syy * szz - yz * yz) - xy * (xy * szz - yz * xz) + xz * (xy * yz - syy * xz);
 
         data.push(j2);
         data.push(j3);
@@ -106,7 +102,8 @@ pub fn tresca_stress(tensor: &DataArray<f64>) -> DataArray<f64> {
 
     for i in 0..n {
         let principals = compute_principal_stresses_single(tensor.tuple(i));
-        let tresca = (principals[0] - principals[1]).abs()
+        let tresca = (principals[0] - principals[1])
+            .abs()
             .max((principals[1] - principals[2]).abs())
             .max((principals[2] - principals[0]).abs());
         data.push(tresca);
@@ -160,8 +157,7 @@ fn compute_principal_stresses_single(t: &[f64]) -> [f64; 3] {
     let b23 = a23 / p;
 
     // det(B) / 2
-    let det_b = b11 * (b22 * b33 - b23 * b23)
-        - b12 * (b12 * b33 - b23 * b13)
+    let det_b = b11 * (b22 * b33 - b23 * b23) - b12 * (b12 * b33 - b23 * b13)
         + b13 * (b12 * b23 - b22 * b13);
     let r = (det_b / 2.0).clamp(-1.0, 1.0);
 
@@ -237,14 +233,20 @@ mod tests {
     fn uniaxial_von_mises() {
         let t = uniaxial_tensor();
         let vm = von_mises_stress(&t);
-        assert!((vm.tuple(0)[0] - 100.0).abs() < 1e-10, "uniaxial σ=100 → von Mises = 100");
+        assert!(
+            (vm.tuple(0)[0] - 100.0).abs() < 1e-10,
+            "uniaxial σ=100 → von Mises = 100"
+        );
     }
 
     #[test]
     fn uniaxial_tresca() {
         let t = uniaxial_tensor();
         let tr = tresca_stress(&t);
-        assert!((tr.tuple(0)[0] - 100.0).abs() < 1e-10, "uniaxial σ=100 → Tresca = 100");
+        assert!(
+            (tr.tuple(0)[0] - 100.0).abs() < 1e-10,
+            "uniaxial σ=100 → Tresca = 100"
+        );
     }
 
     #[test]
@@ -252,7 +254,11 @@ mod tests {
         let t = uniaxial_tensor();
         let ps = principal_stresses(&t);
         let v = ps.tuple(0);
-        assert!((v[0] - 100.0).abs() < 1e-6, "σ1 should be 100, got {}", v[0]);
+        assert!(
+            (v[0] - 100.0).abs() < 1e-6,
+            "σ1 should be 100, got {}",
+            v[0]
+        );
         assert!(v[1].abs() < 1e-6, "σ2 should be 0, got {}", v[1]);
         assert!(v[2].abs() < 1e-6, "σ3 should be 0, got {}", v[2]);
     }

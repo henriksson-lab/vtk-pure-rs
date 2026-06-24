@@ -22,12 +22,7 @@ pub fn convex_hull(input: &PolyData) -> PolyData {
     };
 
     // Faces are stored as (a, b, c) with outward-facing normal
-    let mut faces: Vec<[usize; 3]> = vec![
-        [i0, i1, i2],
-        [i0, i2, i3],
-        [i0, i3, i1],
-        [i1, i3, i2],
-    ];
+    let mut faces: Vec<[usize; 3]> = vec![[i0, i1, i2], [i0, i2, i3], [i0, i3, i1], [i1, i3, i2]];
 
     // Ensure all initial faces point outward
     let centroid = [
@@ -146,13 +141,11 @@ fn find_initial_tetra(pts: &[[f64; 3]]) -> Option<(usize, usize, usize, usize)> 
 
     // Find point farthest from line i0-i1
     let dir = sub3(pts[i1], pts[i0]);
-    let i2 = (0..n)
-        .filter(|&i| i != i0 && i != i1)
-        .max_by(|&a, &b| {
-            point_line_dist2(pts[a], pts[i0], dir)
-                .partial_cmp(&point_line_dist2(pts[b], pts[i0], dir))
-                .unwrap()
-        })?;
+    let i2 = (0..n).filter(|&i| i != i0 && i != i1).max_by(|&a, &b| {
+        point_line_dist2(pts[a], pts[i0], dir)
+            .partial_cmp(&point_line_dist2(pts[b], pts[i0], dir))
+            .unwrap()
+    })?;
 
     // Find point farthest from plane i0-i1-i2
     let normal = cross3(sub3(pts[i1], pts[i0]), sub3(pts[i2], pts[i0]));

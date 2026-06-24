@@ -13,7 +13,11 @@ pub fn amr_slice(htg: &HyperTreeGrid, axis: usize, position: f64) -> PolyData {
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
-        if gs[2] > 1 { (bounds.z_max - bounds.z_min) / gs[2] as f64 } else { 1.0 },
+        if gs[2] > 1 {
+            (bounds.z_max - bounds.z_min) / gs[2] as f64
+        } else {
+            1.0
+        },
     ];
     let origin = [bounds.x_min, bounds.y_min, bounds.z_min];
 
@@ -24,7 +28,8 @@ pub fn amr_slice(htg: &HyperTreeGrid, axis: usize, position: f64) -> PolyData {
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let mut point_map: std::collections::HashMap<[i64; 3], usize> = std::collections::HashMap::new();
+    let mut point_map: std::collections::HashMap<[i64; 3], usize> =
+        std::collections::HashMap::new();
 
     // Generate quads on the slice plane
     let (dim_a, dim_b) = match axis {
@@ -36,7 +41,7 @@ pub fn amr_slice(htg: &HyperTreeGrid, axis: usize, position: f64) -> PolyData {
     for ja in 0..gs[dim_a] {
         for jb in 0..gs[dim_b] {
             let mut corners = [[0.0f64; 3]; 4];
-            for (ci, &(da, db)) in [(0,0),(1,0),(1,1),(0,1)].iter().enumerate() {
+            for (ci, &(da, db)) in [(0, 0), (1, 0), (1, 1), (0, 1)].iter().enumerate() {
                 let mut p = [position, position, position];
                 p[dim_a] = origin[dim_a] + (ja + da) as f64 * spacing[dim_a];
                 p[dim_b] = origin[dim_b] + (jb + db) as f64 * spacing[dim_b];
@@ -46,7 +51,11 @@ pub fn amr_slice(htg: &HyperTreeGrid, axis: usize, position: f64) -> PolyData {
 
             let mut ids = Vec::new();
             for c in &corners {
-                let key = [(c[0]*1e6) as i64, (c[1]*1e6) as i64, (c[2]*1e6) as i64];
+                let key = [
+                    (c[0] * 1e6) as i64,
+                    (c[1] * 1e6) as i64,
+                    (c[2] * 1e6) as i64,
+                ];
                 let idx = *point_map.entry(key).or_insert_with(|| {
                     let idx = points.len();
                     points.push(*c);
@@ -71,9 +80,12 @@ pub fn amr_slice_with_indices(htg: &HyperTreeGrid, axis: usize, position: f64) -
     let mut mesh = amr_slice(htg, axis, position);
     let n_cells = mesh.polys.num_cells();
     let indices: Vec<f64> = (0..n_cells).map(|i| i as f64).collect();
-    mesh.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("SliceIndex", indices, 1),
-    ));
+    mesh.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SliceIndex",
+            indices,
+            1,
+        )));
     mesh
 }
 

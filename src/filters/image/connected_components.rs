@@ -5,7 +5,11 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Uses flood-fill to assign a unique integer label to each connected
 /// region where scalar >= threshold. Adds a "Labels" scalar array.
 /// Returns the number of components found.
-pub fn image_connected_components(input: &ImageData, scalars: &str, threshold: f64) -> (ImageData, usize) {
+pub fn image_connected_components(
+    input: &ImageData,
+    scalars: &str,
+    threshold: f64,
+) -> (ImageData, usize) {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return (input.clone(), 0),
@@ -27,9 +31,7 @@ pub fn image_connected_components(input: &ImageData, scalars: &str, threshold: f
     let mut labels = vec![0i64; n];
     let mut current_label = 0i64;
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     for k in 0..nz {
         for j in 0..ny {
@@ -50,12 +52,24 @@ pub fn image_connected_components(input: &ImageData, scalars: &str, threshold: f
                     labels[ci_idx] = current_label;
 
                     // 6-connected neighbors
-                    if ci > 0 { stack.push((ci-1, cj, ck)); }
-                    if ci+1 < nx { stack.push((ci+1, cj, ck)); }
-                    if cj > 0 { stack.push((ci, cj-1, ck)); }
-                    if cj+1 < ny { stack.push((ci, cj+1, ck)); }
-                    if ck > 0 { stack.push((ci, cj, ck-1)); }
-                    if ck+1 < nz { stack.push((ci, cj, ck+1)); }
+                    if ci > 0 {
+                        stack.push((ci - 1, cj, ck));
+                    }
+                    if ci + 1 < nx {
+                        stack.push((ci + 1, cj, ck));
+                    }
+                    if cj > 0 {
+                        stack.push((ci, cj - 1, ck));
+                    }
+                    if cj + 1 < ny {
+                        stack.push((ci, cj + 1, ck));
+                    }
+                    if ck > 0 {
+                        stack.push((ci, cj, ck - 1));
+                    }
+                    if ck + 1 < nz {
+                        stack.push((ci, cj, ck + 1));
+                    }
                 }
             }
         }
@@ -63,9 +77,10 @@ pub fn image_connected_components(input: &ImageData, scalars: &str, threshold: f
 
     let label_f64: Vec<f64> = labels.iter().map(|&l| l as f64).collect();
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Labels", label_f64, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Labels", label_f64, 1,
+        )));
 
     (img, current_label as usize)
 }
@@ -78,9 +93,12 @@ mod tests {
     fn two_blobs() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         // Two separate blobs: [1,1,0,1,1]
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", vec![1.0, 1.0, 0.0, 1.0, 1.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                vec![1.0, 1.0, 0.0, 1.0, 1.0],
+                1,
+            )));
 
         let (result, count) = image_connected_components(&img, "mask", 0.5);
         assert_eq!(count, 2);
@@ -98,9 +116,12 @@ mod tests {
     #[test]
     fn single_component() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", vec![1.0; 9], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                vec![1.0; 9],
+                1,
+            )));
 
         let (_, count) = image_connected_components(&img, "mask", 0.5);
         assert_eq!(count, 1);
@@ -109,9 +130,12 @@ mod tests {
     #[test]
     fn no_foreground() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", vec![0.0; 9], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                vec![0.0; 9],
+                1,
+            )));
 
         let (_, count) = image_connected_components(&img, "mask", 0.5);
         assert_eq!(count, 0);

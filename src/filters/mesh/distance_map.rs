@@ -15,23 +15,37 @@ pub fn hop_distance_from_seeds(mesh: &PolyData, seeds: &[usize]) -> PolyData {
 
     let mut queue = std::collections::VecDeque::new();
     for &s in seeds {
-        if s < n { dist[s] = 0.0; queue.push_back(s); }
+        if s < n {
+            dist[s] = 0.0;
+            queue.push_back(s);
+        }
     }
 
     while let Some(v) = queue.pop_front() {
         let d = dist[v] + 1.0;
         for &nb in &adj[v] {
-            if d < dist[nb] { dist[nb] = d; queue.push_back(nb); }
+            if d < dist[nb] {
+                dist[nb] = d;
+                queue.push_back(nb);
+            }
         }
     }
 
     // Replace MAX with -1
-    for d in &mut dist { if *d == f64::MAX { *d = -1.0; } }
+    for d in &mut dist {
+        if *d == f64::MAX {
+            *d = -1.0;
+        }
+    }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("HopDistance", dist, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "HopDistance",
+            dist,
+            1,
+        )));
     result
 }
 
@@ -44,26 +58,44 @@ pub fn geodesic_distance_from_seeds(mesh: &PolyData, seeds: &[usize]) -> PolyDat
     // Min-heap: (distance, vertex)
     let mut heap = std::collections::BinaryHeap::new();
     for &s in seeds {
-        if s < n { dist[s] = 0.0; heap.push(std::cmp::Reverse((OrdF64(0.0), s))); }
-    }
-
-    while let Some(std::cmp::Reverse((OrdF64(d), v))) = heap.pop() {
-        if d > dist[v] { continue; }
-        for &nb in &adj[v] {
-            let pv = mesh.points.get(v);
-            let pn = mesh.points.get(nb);
-            let edge_len = ((pv[0]-pn[0]).powi(2)+(pv[1]-pn[1]).powi(2)+(pv[2]-pn[2]).powi(2)).sqrt();
-            let new_d = d + edge_len;
-            if new_d < dist[nb] { dist[nb] = new_d; heap.push(std::cmp::Reverse((OrdF64(new_d), nb))); }
+        if s < n {
+            dist[s] = 0.0;
+            heap.push(std::cmp::Reverse((OrdF64(0.0), s)));
         }
     }
 
-    for d in &mut dist { if *d == f64::MAX { *d = -1.0; } }
+    while let Some(std::cmp::Reverse((OrdF64(d), v))) = heap.pop() {
+        if d > dist[v] {
+            continue;
+        }
+        for &nb in &adj[v] {
+            let pv = mesh.points.get(v);
+            let pn = mesh.points.get(nb);
+            let edge_len =
+                ((pv[0] - pn[0]).powi(2) + (pv[1] - pn[1]).powi(2) + (pv[2] - pn[2]).powi(2))
+                    .sqrt();
+            let new_d = d + edge_len;
+            if new_d < dist[nb] {
+                dist[nb] = new_d;
+                heap.push(std::cmp::Reverse((OrdF64(new_d), nb)));
+            }
+        }
+    }
+
+    for d in &mut dist {
+        if *d == f64::MAX {
+            *d = -1.0;
+        }
+    }
 
     let mut result = mesh.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GeodesicDistance", dist, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GeodesicDistance",
+            dist,
+            1,
+        )));
     result
 }
 
@@ -71,8 +103,12 @@ pub fn geodesic_distance_from_seeds(mesh: &PolyData, seeds: &[usize]) -> PolyDat
 pub fn distance_to_boundary(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let boundary_verts = find_boundary_vertices(mesh, n);
-    let seeds: Vec<usize> = boundary_verts.iter().enumerate()
-        .filter(|(_, &b)| b).map(|(i, _)| i).collect();
+    let seeds: Vec<usize> = boundary_verts
+        .iter()
+        .enumerate()
+        .filter(|(_, &b)| b)
+        .map(|(i, _)| i)
+        .collect();
     geodesic_distance_from_seeds(mesh, &seeds)
 }
 
@@ -80,10 +116,14 @@ pub fn distance_to_boundary(mesh: &PolyData) -> PolyData {
 struct OrdF64(f64);
 impl Eq for OrdF64 {}
 impl PartialOrd for OrdF64 {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { self.0.partial_cmp(&other.0) }
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
 }
 impl Ord for OrdF64 {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal) }
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    }
 }
 
 fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
@@ -91,25 +131,34 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize; let b = cell[(i+1)%nc] as usize;
-            if a < n && b < n { adj[a].insert(b); adj[b].insert(a); }
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % nc] as usize;
+            if a < n && b < n {
+                adj[a].insert(b);
+                adj[b].insert(a);
+            }
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 fn find_boundary_vertices(mesh: &PolyData, n: usize) -> Vec<bool> {
-    let mut edge_count: std::collections::HashMap<(usize,usize),usize> = std::collections::HashMap::new();
+    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize; let b = cell[(i+1)%nc] as usize;
-            *edge_count.entry((a.min(b),a.max(b))).or_insert(0) += 1;
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % nc] as usize;
+            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
     let mut boundary = vec![false; n];
-    for (&(a,b), &c) in &edge_count {
-        if c == 1 { boundary[a] = true; boundary[b] = true; }
+    for (&(a, b), &c) in &edge_count {
+        if c == 1 {
+            boundary[a] = true;
+            boundary[b] = true;
+        }
     }
     boundary
 }
@@ -120,13 +169,19 @@ mod tests {
 
     fn make_grid() -> PolyData {
         let mut pts = Vec::new();
-        for y in 0..5 { for x in 0..5 { pts.push([x as f64, y as f64, 0.0]); } }
+        for y in 0..5 {
+            for x in 0..5 {
+                pts.push([x as f64, y as f64, 0.0]);
+            }
+        }
         let mut tris = Vec::new();
-        for y in 0..4 { for x in 0..4 {
-            let bl = y*5+x;
-            tris.push([bl, bl+1, bl+6]);
-            tris.push([bl, bl+6, bl+5]);
-        }}
+        for y in 0..4 {
+            for x in 0..4 {
+                let bl = y * 5 + x;
+                tris.push([bl, bl + 1, bl + 6]);
+                tris.push([bl, bl + 6, bl + 5]);
+            }
+        }
         PolyData::from_triangles(pts, tris)
     }
 
@@ -136,8 +191,10 @@ mod tests {
         let result = hop_distance_from_seeds(&mesh, &[0]);
         let arr = result.point_data().get_array("HopDistance").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0);
-        arr.tuple_as_f64(1, &mut buf); assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 
     #[test]
@@ -146,8 +203,10 @@ mod tests {
         let result = geodesic_distance_from_seeds(&mesh, &[0]);
         let arr = result.point_data().get_array("GeodesicDistance").unwrap();
         let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0);
-        arr.tuple_as_f64(1, &mut buf); assert!((buf[0] - 1.0).abs() < 0.01);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 0.01);
     }
 
     #[test]
@@ -157,8 +216,10 @@ mod tests {
         let arr = result.point_data().get_array("GeodesicDistance").unwrap();
         let mut buf = [0.0f64];
         // Corner vertex is on boundary → distance 0
-        arr.tuple_as_f64(0, &mut buf); assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
         // Center vertex (12 = row 2, col 2) should have positive distance
-        arr.tuple_as_f64(12, &mut buf); assert!(buf[0] > 0.0);
+        arr.tuple_as_f64(12, &mut buf);
+        assert!(buf[0] > 0.0);
     }
 }

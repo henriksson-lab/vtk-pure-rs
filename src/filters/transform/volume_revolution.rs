@@ -50,7 +50,7 @@ pub fn volume_of_revolution(input: &PolyData, num_sides: usize) -> PolyData {
         for pp in &profile {
             let x = pp[0]; // radius from Y axis
             let y = pp[1]; // height along Y axis
-            // Rotate (x, 0) around Y axis
+                           // Rotate (x, 0) around Y axis
             output.points.push([x * cos_a, y, x * sin_a]);
         }
     }

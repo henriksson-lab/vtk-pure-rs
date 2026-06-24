@@ -25,17 +25,30 @@ pub struct ArrayDescriptiveStats {
 
 impl std::fmt::Display for ArrayDescriptiveStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: n={}, range=[{:.4}, {:.4}], mean={:.4}, std={:.4}, \
+        write!(
+            f,
+            "{}: n={}, range=[{:.4}, {:.4}], mean={:.4}, std={:.4}, \
                skew={:.4}, kurt={:.4}, median={:.4}, IQR={:.4}",
-            self.name, self.count, self.min, self.max, self.mean, self.std_dev,
-            self.skewness, self.kurtosis, self.median, self.iqr)
+            self.name,
+            self.count,
+            self.min,
+            self.max,
+            self.mean,
+            self.std_dev,
+            self.skewness,
+            self.kurtosis,
+            self.median,
+            self.iqr
+        )
     }
 }
 
 /// Compute descriptive statistics for a scalar array.
 pub fn descriptive_statistics(array: &AnyDataArray) -> Option<ArrayDescriptiveStats> {
     let n = array.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -96,7 +109,9 @@ pub fn descriptive_statistics_table(table: &Table) -> Table {
     let mut kurts = Vec::new();
 
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         if let Some(stats) = descriptive_statistics(col) {
             names.push(stats.name.clone());
             counts.push(stats.count as f64);
@@ -173,16 +188,28 @@ fn compute_stats(name: &str, values: &mut [f64]) -> ArrayDescriptiveStats {
     ArrayDescriptiveStats {
         name: name.to_string(),
         count: n,
-        min, max, mean, variance, std_dev,
-        skewness, kurtosis, median, q1, q3,
+        min,
+        max,
+        mean,
+        variance,
+        std_dev,
+        skewness,
+        kurtosis,
+        median,
+        q1,
+        q3,
         iqr: q3 - q1,
     }
 }
 
 fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
     let n = sorted.len();
-    if n == 0 { return 0.0; }
-    if n == 1 { return sorted[0]; }
+    if n == 0 {
+        return 0.0;
+    }
+    if n == 1 {
+        return sorted[0];
+    }
 
     let idx = p * (n - 1) as f64;
     let lo = idx.floor() as usize;
@@ -203,7 +230,9 @@ pub fn correlation_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     let mut cols: Vec<(String, Vec<f64>)> = Vec::new();
 
     for col in table.columns() {
-        if col.num_components() != 1 { continue; }
+        if col.num_components() != 1 {
+            continue;
+        }
         let n = col.num_tuples();
         let mut values = Vec::with_capacity(n);
         let mut buf = [0.0f64];
@@ -232,7 +261,9 @@ pub fn correlation_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
 
 fn pearson(a: &[f64], b: &[f64]) -> f64 {
     let n = a.len().min(b.len());
-    if n < 2 { return 0.0; }
+    if n < 2 {
+        return 0.0;
+    }
 
     let mean_a = a[..n].iter().sum::<f64>() / n as f64;
     let mean_b = b[..n].iter().sum::<f64>() / n as f64;
@@ -249,7 +280,11 @@ fn pearson(a: &[f64], b: &[f64]) -> f64 {
     }
 
     let denom = (var_a * var_b).sqrt();
-    if denom < 1e-15 { 0.0 } else { cov / denom }
+    if denom < 1e-15 {
+        0.0
+    } else {
+        cov / denom
+    }
 }
 
 #[cfg(test)]
@@ -258,7 +293,11 @@ mod tests {
 
     #[test]
     fn basic_stats() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("test", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1));
+        let arr = AnyDataArray::F64(DataArray::from_vec(
+            "test",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0],
+            1,
+        ));
         let stats = descriptive_statistics(&arr).unwrap();
         assert_eq!(stats.count, 5);
         assert_eq!(stats.min, 1.0);
@@ -271,16 +310,22 @@ mod tests {
 
     #[test]
     fn skewed_distribution() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("skew",
-            vec![1.0, 1.0, 1.0, 1.0, 1.0, 10.0], 1));
+        let arr = AnyDataArray::F64(DataArray::from_vec(
+            "skew",
+            vec![1.0, 1.0, 1.0, 1.0, 1.0, 10.0],
+            1,
+        ));
         let stats = descriptive_statistics(&arr).unwrap();
         assert!(stats.skewness > 0.0); // right-skewed
     }
 
     #[test]
     fn quartiles() {
-        let arr = AnyDataArray::F64(DataArray::from_vec("q",
-            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0], 1));
+        let arr = AnyDataArray::F64(DataArray::from_vec(
+            "q",
+            vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            1,
+        ));
         let stats = descriptive_statistics(&arr).unwrap();
         assert!(stats.q1 > 1.0 && stats.q1 < 4.0);
         assert!(stats.q3 > 5.0 && stats.q3 < 8.0);
@@ -290,9 +335,21 @@ mod tests {
     #[test]
     fn correlation_matrix_test() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![2.0, 4.0, 6.0, 8.0, 10.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("z", vec![5.0, 4.0, 3.0, 2.0, 1.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![2.0, 4.0, 6.0, 8.0, 10.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "z",
+                vec![5.0, 4.0, 3.0, 2.0, 1.0],
+                1,
+            )));
 
         let (names, matrix) = correlation_matrix(&table);
         assert_eq!(names.len(), 3);
@@ -304,8 +361,16 @@ mod tests {
     #[test]
     fn table_stats() {
         let table = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0, 2.0, 3.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("b", vec![10.0, 20.0, 30.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "a",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "b",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
 
         let summary = descriptive_statistics_table(&table);
         assert_eq!(summary.num_rows(), 2); // two columns analyzed
@@ -327,9 +392,12 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        mesh.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("elev", vec![0.0, 1.0, 2.0], 1),
-        ));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "elev",
+                vec![0.0, 1.0, 2.0],
+                1,
+            )));
         mesh.point_data_mut().set_active_scalars("elev");
 
         let stats = descriptive_statistics_point_data(&mesh);

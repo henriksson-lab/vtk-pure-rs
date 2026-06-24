@@ -1,4 +1,4 @@
-mod glb_writer;
 mod glb_reader;
-pub use glb_writer::GlbWriter;
+mod glb_writer;
 pub use glb_reader::GlbReader;
+pub use glb_writer::GlbWriter;

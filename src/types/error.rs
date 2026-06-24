@@ -32,7 +32,10 @@ impl VtkError {
 
     /// Create a dimension mismatch error.
     pub fn dim_mismatch(expected: impl Into<String>, got: impl Into<String>) -> Self {
-        Self::DimensionMismatch { expected: expected.into(), got: got.into() }
+        Self::DimensionMismatch {
+            expected: expected.into(),
+            got: got.into(),
+        }
     }
 
     /// Add context to any VtkError variant.

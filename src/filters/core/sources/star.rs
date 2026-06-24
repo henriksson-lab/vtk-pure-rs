@@ -1,5 +1,5 @@
-use std::f64::consts::PI;
 use crate::data::{CellArray, Points, PolyData};
+use std::f64::consts::PI;
 
 /// Parameters for generating a star polygon.
 pub struct StarParams {
@@ -15,7 +15,12 @@ pub struct StarParams {
 
 impl Default for StarParams {
     fn default() -> Self {
-        Self { num_points: 5, outer_radius: 1.0, inner_radius: 0.4, center: [0.0; 3] }
+        Self {
+            num_points: 5,
+            outer_radius: 1.0,
+            inner_radius: 0.4,
+            center: [0.0; 3],
+        }
     }
 }
 
@@ -31,7 +36,11 @@ pub fn star(params: &StarParams) -> PolyData {
 
     for i in 0..n_verts {
         let angle = PI * 2.0 * i as f64 / n_verts as f64 - PI / 2.0;
-        let r = if i % 2 == 0 { params.outer_radius } else { params.inner_radius };
+        let r = if i % 2 == 0 {
+            params.outer_radius
+        } else {
+            params.inner_radius
+        };
         points.push([
             params.center[0] + r * angle.cos(),
             params.center[1] + r * angle.sin(),
@@ -65,7 +74,10 @@ mod tests {
 
     #[test]
     fn triangle_star() {
-        let pd = star(&StarParams { num_points: 3, ..Default::default() });
+        let pd = star(&StarParams {
+            num_points: 3,
+            ..Default::default()
+        });
         assert_eq!(pd.points.len(), 7); // center + 6
         assert_eq!(pd.polys.num_cells(), 6);
     }

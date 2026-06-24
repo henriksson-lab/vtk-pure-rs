@@ -31,9 +31,12 @@ pub fn compute_face_centroids(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("FaceCentroid", centroids, 3),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FaceCentroid",
+            centroids,
+            3,
+        )));
     pd
 }
 

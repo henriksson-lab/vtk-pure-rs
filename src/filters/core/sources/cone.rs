@@ -79,7 +79,11 @@ pub fn cone(params: &ConeParams) -> PolyData {
         let pz = base_center[2] + r * (ct * u[2] + st * v[2]);
 
         // Normal: outward from the cone surface
-        let radial = [ct * u[0] + st * v[0], ct * u[1] + st * v[1], ct * u[2] + st * v[2]];
+        let radial = [
+            ct * u[0] + st * v[0],
+            ct * u[1] + st * v[1],
+            ct * u[2] + st * v[2],
+        ];
         // Cone surface normal is a blend of radial and axis direction
         let slope = r / h;
         let nx = radial[0] + dir[0] * slope;

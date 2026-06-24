@@ -14,8 +14,11 @@ pub struct ColumnStats {
 
 impl std::fmt::Display for ColumnStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: n={}, min={:.4}, max={:.4}, mean={:.4}, std={:.4}, median={:.4}",
-            self.name, self.count, self.min, self.max, self.mean, self.std_dev, self.median)
+        write!(
+            f,
+            "{}: n={}, min={:.4}, max={:.4}, mean={:.4}, std={:.4}, median={:.4}",
+            self.name, self.count, self.min, self.max, self.mean, self.std_dev, self.median
+        )
     }
 }
 
@@ -23,7 +26,9 @@ impl std::fmt::Display for ColumnStats {
 pub fn describe_column(table: &Table, column_name: &str) -> Option<ColumnStats> {
     let col = table.column_by_name(column_name)?;
     let n = col.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut values = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -46,7 +51,9 @@ pub fn describe_column(table: &Table, column_name: &str) -> Option<ColumnStats> 
     Some(ColumnStats {
         name: column_name.to_string(),
         count: n,
-        min, max, mean,
+        min,
+        max,
+        mean,
         std_dev: variance.sqrt(),
         median,
     })
@@ -57,7 +64,9 @@ pub fn correlation(table: &Table, col_a: &str, col_b: &str) -> Option<f64> {
     let a = table.column_by_name(col_a)?;
     let b = table.column_by_name(col_b)?;
     let n = a.num_tuples().min(b.num_tuples());
-    if n < 2 { return None; }
+    if n < 2 {
+        return None;
+    }
 
     let mut buf_a = [0.0f64];
     let mut buf_b = [0.0f64];
@@ -87,7 +96,9 @@ pub fn correlation(table: &Table, col_a: &str, col_b: &str) -> Option<f64> {
     }
 
     let denom = (var_a * var_b).sqrt();
-    if denom < 1e-15 { return Some(0.0); }
+    if denom < 1e-15 {
+        return Some(0.0);
+    }
     Some(cov / denom)
 }
 
@@ -97,7 +108,9 @@ pub fn linear_regression(table: &Table, x_col: &str, y_col: &str) -> Option<(f64
     let x = table.column_by_name(x_col)?;
     let y = table.column_by_name(y_col)?;
     let n = x.num_tuples().min(y.num_tuples());
-    if n < 2 { return None; }
+    if n < 2 {
+        return None;
+    }
 
     let mut buf_x = [0.0f64];
     let mut buf_y = [0.0f64];
@@ -119,23 +132,33 @@ pub fn linear_regression(table: &Table, x_col: &str, y_col: &str) -> Option<(f64
 
     let nf = n as f64;
     let denom = nf * sum_x2 - sum_x * sum_x;
-    if denom.abs() < 1e-15 { return None; }
+    if denom.abs() < 1e-15 {
+        return None;
+    }
 
     let slope = (nf * sum_xy - sum_x * sum_y) / denom;
     let intercept = (sum_y - slope * sum_x) / nf;
 
-    let ss_res: f64 = (0..n).map(|i| {
-        x.tuple_as_f64(i, &mut buf_x);
-        y.tuple_as_f64(i, &mut buf_y);
-        let pred = slope * buf_x[0] + intercept;
-        (buf_y[0] - pred) * (buf_y[0] - pred)
-    }).sum();
+    let ss_res: f64 = (0..n)
+        .map(|i| {
+            x.tuple_as_f64(i, &mut buf_x);
+            y.tuple_as_f64(i, &mut buf_y);
+            let pred = slope * buf_x[0] + intercept;
+            (buf_y[0] - pred) * (buf_y[0] - pred)
+        })
+        .sum();
     let mean_y = sum_y / nf;
-    let ss_tot: f64 = (0..n).map(|i| {
-        y.tuple_as_f64(i, &mut buf_y);
-        (buf_y[0] - mean_y) * (buf_y[0] - mean_y)
-    }).sum();
-    let r2 = if ss_tot > 1e-15 { 1.0 - ss_res / ss_tot } else { 1.0 };
+    let ss_tot: f64 = (0..n)
+        .map(|i| {
+            y.tuple_as_f64(i, &mut buf_y);
+            (buf_y[0] - mean_y) * (buf_y[0] - mean_y)
+        })
+        .sum();
+    let r2 = if ss_tot > 1e-15 {
+        1.0 - ss_res / ss_tot
+    } else {
+        1.0
+    };
 
     Some((slope, intercept, r2))
 }
@@ -147,9 +170,21 @@ mod tests {
 
     fn make_table() -> Table {
         Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0, 4.0, 5.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![2.0, 4.0, 6.0, 8.0, 10.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("z", vec![5.0, 3.0, 1.0, 4.0, 2.0], 1)))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![2.0, 4.0, 6.0, 8.0, 10.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "z",
+                vec![5.0, 3.0, 1.0, 4.0, 2.0],
+                1,
+            )))
     }
 
     #[test]

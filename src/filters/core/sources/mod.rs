@@ -26,7 +26,8 @@ pub use amphora::*;
 pub mod anchor;
 #[cfg(feature = "sources-extra")]
 pub use anchor::*;
-pub mod annulus; pub use annulus::*;
+pub mod annulus;
+pub use annulus::*;
 #[cfg(feature = "sources-extra")]
 pub mod antenna_tower;
 #[cfg(feature = "sources-extra")]
@@ -39,7 +40,8 @@ pub use anvil::*;
 pub mod aqueduct;
 #[cfg(feature = "sources-extra")]
 pub use aqueduct::*;
-pub mod arc; pub use arc::*;
+pub mod arc;
+pub use arc::*;
 #[cfg(feature = "sources-extra")]
 pub mod arch;
 #[cfg(feature = "sources-extra")]
@@ -52,11 +54,16 @@ pub use arch_bridge::*;
 pub mod armillary_sphere;
 #[cfg(feature = "sources-extra")]
 pub use armillary_sphere::*;
-pub mod arrow; pub use arrow::*;
-pub mod arrow_2d; pub use arrow_2d::*;
-pub mod arrow_3d; pub use arrow_3d::*;
-pub mod arrow_curved; pub use arrow_curved::*;
-pub mod arrow_source; pub use arrow_source::*;
+pub mod arrow;
+pub use arrow::*;
+pub mod arrow_2d;
+pub use arrow_2d::*;
+pub mod arrow_3d;
+pub use arrow_3d::*;
+pub mod arrow_curved;
+pub use arrow_curved::*;
+pub mod arrow_source;
+pub use arrow_source::*;
 #[cfg(feature = "sources-extra")]
 pub mod astrolabe;
 #[cfg(feature = "sources-extra")]
@@ -65,7 +72,8 @@ pub use astrolabe::*;
 pub mod atom_model;
 #[cfg(feature = "sources-extra")]
 pub use atom_model::*;
-pub mod axes; pub use axes::*;
+pub mod axes;
+pub use axes::*;
 #[cfg(feature = "sources-extra")]
 pub mod bagpipe;
 #[cfg(feature = "sources-extra")]
@@ -126,12 +134,14 @@ pub use book::*;
 pub mod boomerang;
 #[cfg(feature = "sources-extra")]
 pub use boomerang::*;
-pub mod bounding_box_source; pub use bounding_box_source::*;
+pub mod bounding_box_source;
+pub use bounding_box_source::*;
 #[cfg(feature = "sources-extra")]
 pub mod box_with_lid;
 #[cfg(feature = "sources-extra")]
 pub use box_with_lid::*;
-pub mod boy_surface; pub use boy_surface::*;
+pub mod boy_surface;
+pub use boy_surface::*;
 #[cfg(feature = "sources-extra")]
 pub mod boy_surface_immersion;
 #[cfg(feature = "sources-extra")]
@@ -166,7 +176,8 @@ pub use candelabra::*;
 pub mod cannon;
 #[cfg(feature = "sources-extra")]
 pub use cannon::*;
-pub mod capsule; pub use capsule::*;
+pub mod capsule;
+pub use capsule::*;
 #[cfg(feature = "sources-extra")]
 pub mod cargo_ship;
 #[cfg(feature = "sources-extra")]
@@ -193,7 +204,8 @@ pub mod catapult;
 pub mod catapult_simple;
 #[cfg(feature = "sources-extra")]
 pub use catapult_simple::*;
-pub mod catenary; pub use catenary::*;
+pub mod catenary;
+pub use catenary::*;
 #[cfg(feature = "sources-extra")]
 pub mod cell_membrane;
 #[cfg(feature = "sources-extra")]
@@ -230,12 +242,14 @@ pub use chess_piece::*;
 pub mod church;
 #[cfg(feature = "sources-extra")]
 pub use church::*;
-pub mod circle; pub use circle::*;
+pub mod circle;
+pub use circle::*;
 #[cfg(feature = "sources-extra")]
 pub mod clock_face;
 #[cfg(feature = "sources-extra")]
 pub use clock_face::*;
-pub mod cloth; pub use cloth::*;
+pub mod cloth;
+pub use cloth::*;
 #[cfg(feature = "sources-extra")]
 pub mod coal_power_plant;
 #[cfg(feature = "sources-extra")]
@@ -256,7 +270,8 @@ pub use column_fluted::*;
 pub mod compass_rose;
 #[cfg(feature = "sources-extra")]
 pub use compass_rose::*;
-pub mod cone; pub use cone::*;
+pub mod cone;
+pub use cone::*;
 #[cfg(feature = "sources-extra")]
 pub mod conveyor_belt;
 #[cfg(feature = "sources-extra")]
@@ -265,7 +280,8 @@ pub use conveyor_belt::*;
 pub mod conveyor_roller;
 #[cfg(feature = "sources-extra")]
 pub use conveyor_roller::*;
-pub mod coordinate_axes; pub use coordinate_axes::*;
+pub mod coordinate_axes;
+pub use coordinate_axes::*;
 #[cfg(feature = "sources-extra")]
 pub mod coral_reef;
 #[cfg(feature = "sources-extra")]
@@ -290,7 +306,8 @@ pub use crane::*;
 pub mod crenellation;
 #[cfg(feature = "sources-extra")]
 pub use crenellation::*;
-pub mod cross; pub use cross::*;
+pub mod cross;
+pub use cross::*;
 #[cfg(feature = "sources-extra")]
 pub mod cross_polytope;
 #[cfg(feature = "sources-extra")]
@@ -319,7 +336,8 @@ pub use crystal_lattice::*;
 pub mod csg_primitives;
 #[cfg(feature = "sources-extra")]
 pub use csg_primitives::*;
-pub mod cube; pub use cube::*;
+pub mod cube;
+pub use cube::*;
 #[cfg(feature = "sources-extra")]
 pub mod cuckoo_clock;
 #[cfg(feature = "sources-extra")]
@@ -328,7 +346,8 @@ pub use cuckoo_clock::*;
 pub mod cyclotron;
 #[cfg(feature = "sources-extra")]
 pub use cyclotron::*;
-pub mod cylinder; pub use cylinder::*;
+pub mod cylinder;
+pub use cylinder::*;
 #[cfg(feature = "sources-extra")]
 pub mod cylinder_beveled;
 #[cfg(feature = "sources-extra")]
@@ -365,7 +384,8 @@ pub use digital_display::*;
 pub mod dish_array;
 #[cfg(feature = "sources-extra")]
 pub use dish_array::*;
-pub mod disk; pub use disk::*;
+pub mod disk;
+pub use disk::*;
 #[cfg(feature = "sources-extra")]
 pub mod dna_double_helix;
 #[cfg(feature = "sources-extra")]
@@ -402,12 +422,14 @@ pub use dumbbell::*;
 pub mod dyson_sphere;
 #[cfg(feature = "sources-extra")]
 pub use dyson_sphere::*;
-pub mod earth; pub use earth::*;
+pub mod earth;
+pub use earth::*;
 #[cfg(feature = "sources-extra")]
 pub mod egg_timer;
 #[cfg(feature = "sources-extra")]
 pub use egg_timer::*;
-pub mod ellipsoid; pub use ellipsoid::*;
+pub mod ellipsoid;
+pub use ellipsoid::*;
 #[cfg(feature = "sources-extra")]
 pub mod eye_model;
 #[cfg(feature = "sources-extra")]
@@ -440,7 +462,8 @@ pub use fractal_tree::*;
 pub mod fresnel_lens;
 #[cfg(feature = "sources-extra")]
 pub use fresnel_lens::*;
-pub mod frustum; pub use frustum::*;
+pub mod frustum;
+pub use frustum::*;
 #[cfg(feature = "sources-extra")]
 pub mod funnel;
 #[cfg(feature = "sources-extra")]
@@ -461,7 +484,8 @@ pub use gatling_gun::*;
 pub mod gazebo;
 #[cfg(feature = "sources-extra")]
 pub use gazebo::*;
-pub mod gear; pub use gear::*;
+pub mod gear;
+pub use gear::*;
 #[cfg(feature = "sources-extra")]
 pub mod gear_rack;
 #[cfg(feature = "sources-extra")]
@@ -474,7 +498,8 @@ pub use gear_wheel::*;
 pub mod geodesic_dome_source;
 #[cfg(feature = "sources-extra")]
 pub use geodesic_dome_source::*;
-pub mod geodesic_sphere; pub use geodesic_sphere::*;
+pub mod geodesic_sphere;
+pub use geodesic_sphere::*;
 #[cfg(feature = "sources-extra")]
 pub mod goalpost;
 #[cfg(feature = "sources-extra")]
@@ -499,9 +524,12 @@ pub use grandfather_clock::*;
 pub mod greek_temple;
 #[cfg(feature = "sources-extra")]
 pub use greek_temple::*;
-pub mod grid; pub use grid::*;
-pub mod grid_2d; pub use grid_2d::*;
-pub mod grid_3d; pub use grid_3d::*;
+pub mod grid;
+pub use grid::*;
+pub mod grid_2d;
+pub use grid_2d::*;
+pub mod grid_3d;
+pub use grid_3d::*;
 #[cfg(feature = "sources-extra")]
 pub mod grid_surface;
 #[cfg(feature = "sources-extra")]
@@ -538,7 +566,8 @@ pub use heart_model::*;
 pub mod heat_sink;
 #[cfg(feature = "sources-extra")]
 pub use heat_sink::*;
-pub mod heightfield; pub use heightfield::*;
+pub mod heightfield;
+pub use heightfield::*;
 #[cfg(feature = "sources-extra")]
 pub mod helical_gear;
 #[cfg(feature = "sources-extra")]
@@ -551,12 +580,14 @@ pub use helicopter::*;
 pub mod helipad;
 #[cfg(feature = "sources-extra")]
 pub use helipad::*;
-pub mod helix; pub use helix::*;
+pub mod helix;
+pub use helix::*;
 #[cfg(feature = "sources-extra")]
 pub mod helix_wire;
 #[cfg(feature = "sources-extra")]
 pub use helix_wire::*;
-pub mod hemisphere; pub use hemisphere::*;
+pub mod hemisphere;
+pub use hemisphere::*;
 #[cfg(feature = "sources-extra")]
 pub mod hex_telescope_array;
 #[cfg(feature = "sources-extra")]
@@ -593,7 +624,8 @@ pub use hourglass::*;
 pub mod hydrofoil;
 #[cfg(feature = "sources-extra")]
 pub use hydrofoil::*;
-pub mod icosphere; pub use icosphere::*;
+pub mod icosphere;
+pub use icosphere::*;
 #[cfg(feature = "sources-extra")]
 pub mod igloo;
 #[cfg(feature = "sources-extra")]
@@ -624,7 +656,8 @@ pub use katana::*;
 pub mod kidney_model;
 #[cfg(feature = "sources-extra")]
 pub use kidney_model::*;
-pub mod klein_bottle; pub use klein_bottle::*;
+pub mod klein_bottle;
+pub use klein_bottle::*;
 #[cfg(feature = "sources-extra")]
 pub mod klein_bottle_immersion;
 #[cfg(feature = "sources-extra")]
@@ -645,12 +678,14 @@ pub use lamp_post::*;
 pub mod lattice;
 #[cfg(feature = "sources-extra")]
 pub use lattice::*;
-pub mod lens; pub use lens::*;
+pub mod lens;
+pub use lens::*;
 #[cfg(feature = "sources-extra")]
 pub mod lighthouse;
 #[cfg(feature = "sources-extra")]
 pub use lighthouse::*;
-pub mod line; pub use line::*;
+pub mod line;
+pub use line::*;
 #[cfg(feature = "sources-extra")]
 pub mod loom;
 #[cfg(feature = "sources-extra")]
@@ -727,8 +762,10 @@ pub use minaret::*;
 pub mod mitochondria;
 #[cfg(feature = "sources-extra")]
 pub use mitochondria::*;
-pub mod mobius; pub use mobius::*;
-pub mod mobius_strip; pub use mobius_strip::*;
+pub mod mobius;
+pub use mobius::*;
+pub mod mobius_strip;
+pub use mobius_strip::*;
 #[cfg(feature = "sources-extra")]
 pub mod molecule_model;
 #[cfg(feature = "sources-extra")]
@@ -757,7 +794,8 @@ pub use nautilus_shell::*;
 pub mod neuron_model;
 #[cfg(feature = "sources-extra")]
 pub use neuron_model::*;
-pub mod noise_field; pub use noise_field::*;
+pub mod noise_field;
+pub use noise_field::*;
 #[cfg(feature = "sources-extra")]
 pub mod nuclear_reactor;
 #[cfg(feature = "sources-extra")]
@@ -810,7 +848,8 @@ pub use paper_lantern::*;
 pub mod parachute;
 #[cfg(feature = "sources-extra")]
 pub use parachute::*;
-pub mod parametric; pub use parametric::*;
+pub mod parametric;
+pub use parametric::*;
 #[cfg(feature = "sources-extra")]
 pub mod parametric_surface;
 #[cfg(feature = "sources-extra")]
@@ -881,7 +920,8 @@ pub use pipe_reducer::*;
 pub mod pipe_tee;
 #[cfg(feature = "sources-extra")]
 pub use pipe_tee::*;
-pub mod plane; pub use plane::*;
+pub mod plane;
+pub use plane::*;
 #[cfg(feature = "sources-extra")]
 pub mod plane_with_hole;
 #[cfg(feature = "sources-extra")]
@@ -890,7 +930,8 @@ pub use plane_with_hole::*;
 pub mod platonic;
 #[cfg(feature = "sources-extra")]
 pub use platonic::*;
-pub mod platonic_solid; pub use platonic_solid::*;
+pub mod platonic_solid;
+pub use platonic_solid::*;
 #[cfg(feature = "sources-extra")]
 pub mod playground;
 #[cfg(feature = "sources-extra")]
@@ -911,8 +952,10 @@ pub use pocket_watch::*;
 pub mod pogo_stick;
 #[cfg(feature = "sources-extra")]
 pub use pogo_stick::*;
-pub mod point_source; pub use point_source::*;
-pub mod polygon_extrude; pub use polygon_extrude::*;
+pub mod point_source;
+pub use point_source::*;
+pub mod polygon_extrude;
+pub use polygon_extrude::*;
 #[cfg(feature = "sources-extra")]
 pub mod polyhedron;
 #[cfg(feature = "sources-extra")]
@@ -925,7 +968,8 @@ pub use portcullis::*;
 pub mod power_line_tower;
 #[cfg(feature = "sources-extra")]
 pub use power_line_tower::*;
-pub mod prism; pub use prism::*;
+pub mod prism;
+pub use prism::*;
 #[cfg(feature = "sources-extra")]
 pub mod propeller;
 #[cfg(feature = "sources-extra")]
@@ -938,7 +982,8 @@ pub use prosthetic_limb::*;
 pub mod protein_backbone;
 #[cfg(feature = "sources-extra")]
 pub use protein_backbone::*;
-pub mod pyramid; pub use pyramid::*;
+pub mod pyramid;
+pub use pyramid::*;
 #[cfg(feature = "sources-extra")]
 pub mod pyramid_glass;
 #[cfg(feature = "sources-extra")]
@@ -975,7 +1020,8 @@ pub use ramp::*;
 pub mod random_point_cloud;
 #[cfg(feature = "sources-extra")]
 pub use random_point_cloud::*;
-pub mod regular_polygon; pub use regular_polygon::*;
+pub mod regular_polygon;
+pub use regular_polygon::*;
 #[cfg(feature = "sources-extra")]
 pub mod revolution;
 #[cfg(feature = "sources-extra")]
@@ -984,7 +1030,8 @@ pub use revolution::*;
 pub mod rickshaw;
 #[cfg(feature = "sources-extra")]
 pub use rickshaw::*;
-pub mod ring; pub use ring::*;
+pub mod ring;
+pub use ring::*;
 #[cfg(feature = "sources-extra")]
 pub mod ringworld;
 #[cfg(feature = "sources-extra")]
@@ -1073,12 +1120,14 @@ pub use scarecrow::*;
 pub mod screw_thread;
 #[cfg(feature = "sources-extra")]
 pub use screw_thread::*;
-pub mod seashell; pub use seashell::*;
+pub mod seashell;
+pub use seashell::*;
 #[cfg(feature = "sources-extra")]
 pub mod seashell_parametric;
 #[cfg(feature = "sources-extra")]
 pub use seashell_parametric::*;
-pub mod sector; pub use sector::*;
+pub mod sector;
+pub use sector::*;
 #[cfg(feature = "sources-extra")]
 pub mod sextant;
 #[cfg(feature = "sources-extra")]
@@ -1167,7 +1216,8 @@ pub use space_station::*;
 pub mod space_telescope;
 #[cfg(feature = "sources-extra")]
 pub use space_telescope::*;
-pub mod sphere; pub use sphere::*;
+pub mod sphere;
+pub use sphere::*;
 #[cfg(feature = "sources-extra")]
 pub mod sphere_uv;
 #[cfg(feature = "sources-extra")]
@@ -1184,18 +1234,22 @@ pub use spinning_top::*;
 pub mod spinning_wheel;
 #[cfg(feature = "sources-extra")]
 pub use spinning_wheel::*;
-pub mod spiral; pub use spiral::*;
+pub mod spiral;
+pub use spiral::*;
 #[cfg(feature = "sources-extra")]
 pub mod spiral_staircase;
 #[cfg(feature = "sources-extra")]
 pub use spiral_staircase::*;
-pub mod spiral_surface; pub use spiral_surface::*;
-pub mod spring; pub use spring::*;
+pub mod spiral_surface;
+pub use spiral_surface::*;
+pub mod spring;
+pub use spring::*;
 #[cfg(feature = "sources-extra")]
 pub mod spring_coil;
 #[cfg(feature = "sources-extra")]
 pub use spring_coil::*;
-pub mod stadium; pub use stadium::*;
+pub mod stadium;
+pub use stadium::*;
 #[cfg(feature = "sources-extra")]
 pub mod stadium_track;
 #[cfg(feature = "sources-extra")]
@@ -1204,7 +1258,8 @@ pub use stadium_track::*;
 pub mod staircase;
 #[cfg(feature = "sources-extra")]
 pub use staircase::*;
-pub mod star; pub use star::*;
+pub mod star;
+pub use star::*;
 #[cfg(feature = "sources-extra")]
 pub mod steam_locomotive;
 #[cfg(feature = "sources-extra")]
@@ -1233,8 +1288,10 @@ pub use submarine::*;
 pub mod sundial;
 #[cfg(feature = "sources-extra")]
 pub use sundial::*;
-pub mod superellipse; pub use superellipse::*;
-pub mod superquadric; pub use superquadric::*;
+pub mod superellipse;
+pub use superellipse::*;
+pub mod superquadric;
+pub use superquadric::*;
 #[cfg(feature = "sources-extra")]
 pub mod supertoroid;
 #[cfg(feature = "sources-extra")]
@@ -1271,7 +1328,8 @@ pub use telescope_mount::*;
 pub mod tent;
 #[cfg(feature = "sources-extra")]
 pub use tent::*;
-pub mod terrain; pub use terrain::*;
+pub mod terrain;
+pub use terrain::*;
 #[cfg(feature = "sources-extra")]
 pub mod terrain_heightmap;
 #[cfg(feature = "sources-extra")]
@@ -1282,7 +1340,8 @@ pub use tesla_coil::*;
 pub mod tetrahedron;
 #[cfg(feature = "sources-extra")]
 pub use tetrahedron::*;
-pub mod text_3d; pub use text_3d::*;
+pub mod text_3d;
+pub use text_3d::*;
 #[cfg(feature = "sources-extra")]
 pub mod text_label;
 #[cfg(feature = "sources-extra")]
@@ -1297,8 +1356,10 @@ pub mod tokamak;
 pub use tokamak::*;
 #[cfg(feature = "sources-extra")]
 pub mod torii_gate;
-pub mod torus; pub use torus::*;
-pub mod torus_knot; pub use torus_knot::*;
+pub mod torus;
+pub use torus::*;
+pub mod torus_knot;
+pub use torus_knot::*;
 #[cfg(feature = "sources-extra")]
 pub mod torus_mesh;
 #[cfg(feature = "sources-extra")]
@@ -1317,7 +1378,8 @@ pub mod traffic_light;
 pub use traffic_light::*;
 #[cfg(feature = "sources-extra")]
 pub mod trebuchet;
-pub mod trefoil_knot; pub use trefoil_knot::*;
+pub mod trefoil_knot;
+pub use trefoil_knot::*;
 #[cfg(feature = "sources-extra")]
 pub mod trident;
 #[cfg(feature = "sources-extra")]
@@ -1396,8 +1458,10 @@ pub use water_wheel::*;
 pub mod waterfall;
 #[cfg(feature = "sources-extra")]
 pub use waterfall::*;
-pub mod wave_surface; pub use wave_surface::*;
-pub mod wavelet; pub use wavelet::*;
+pub mod wave_surface;
+pub use wave_surface::*;
+pub mod wavelet;
+pub use wavelet::*;
 #[cfg(feature = "sources-extra")]
 pub mod weathervane;
 #[cfg(feature = "sources-extra")]

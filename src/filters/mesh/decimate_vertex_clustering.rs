@@ -41,10 +41,8 @@ pub fn decimate_vertex_cluster(input: &PolyData, grid_size: usize) -> PolyData {
     // Map each vertex to a grid cell.
     let mut vertex_to_cell: Vec<usize> = vec![0; n];
     // Accumulate positions per cell.
-    let mut cell_sum: std::collections::HashMap<usize, [f64; 3]> =
-        std::collections::HashMap::new();
-    let mut cell_count: std::collections::HashMap<usize, usize> =
-        std::collections::HashMap::new();
+    let mut cell_sum: std::collections::HashMap<usize, [f64; 3]> = std::collections::HashMap::new();
+    let mut cell_count: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     for i in 0..n {
         let p = input.points.get(i);

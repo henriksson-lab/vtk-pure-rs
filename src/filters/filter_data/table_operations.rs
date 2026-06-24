@@ -17,8 +17,11 @@ pub fn table_inner_join(left: &Table, right: &Table, key_column: &str) -> Table 
     };
 
     let l_names = left.column_names();
-    let r_names: Vec<&str> = right.column_names().into_iter()
-        .filter(|n| *n != key_column).collect();
+    let r_names: Vec<&str> = right
+        .column_names()
+        .into_iter()
+        .filter(|n| *n != key_column)
+        .collect();
 
     // Build index of right key values
     let mut r_index: std::collections::HashMap<i64, Vec<usize>> = std::collections::HashMap::new();
@@ -56,7 +59,11 @@ pub fn table_inner_join(left: &Table, right: &Table, key_column: &str) -> Table 
                 col.tuple_as_f64(li, &mut buf);
                 data.extend_from_slice(&buf);
             }
-            result.add_column(AnyDataArray::F64(DataArray::from_vec(&name.to_string(), data, nc)));
+            result.add_column(AnyDataArray::F64(DataArray::from_vec(
+                &name.to_string(),
+                data,
+                nc,
+            )));
         }
     }
 
@@ -70,7 +77,11 @@ pub fn table_inner_join(left: &Table, right: &Table, key_column: &str) -> Table 
                 col.tuple_as_f64(ri, &mut buf);
                 data.extend_from_slice(&buf);
             }
-            result.add_column(AnyDataArray::F64(DataArray::from_vec(&name.to_string(), data, nc)));
+            result.add_column(AnyDataArray::F64(DataArray::from_vec(
+                &name.to_string(),
+                data,
+                nc,
+            )));
         }
     }
 
@@ -133,11 +144,15 @@ pub fn table_melt(table: &Table, id_cols: &[&str], value_cols: &[&str]) -> Table
 
     let mut result = Table::new();
     for (ii, &id_name) in id_cols.iter().enumerate() {
-        result.add_column(AnyDataArray::F64(
-            DataArray::from_vec(id_name, id_data[ii].clone(), 1),
-        ));
+        result.add_column(AnyDataArray::F64(DataArray::from_vec(
+            id_name,
+            id_data[ii].clone(),
+            1,
+        )));
     }
-    result.add_column(AnyDataArray::F64(DataArray::from_vec("Variable", var_data, 1)));
+    result.add_column(AnyDataArray::F64(DataArray::from_vec(
+        "Variable", var_data, 1,
+    )));
     result.add_column(AnyDataArray::F64(DataArray::from_vec("Value", val_data, 1)));
     result
 }
@@ -149,8 +164,14 @@ pub fn table_group_by(
     value_col: &str,
     agg: impl Fn(&[f64]) -> f64,
 ) -> Table {
-    let g_arr = match table.column_by_name(group_col) { Some(a) => a, None => return Table::new() };
-    let v_arr = match table.column_by_name(value_col) { Some(a) => a, None => return Table::new() };
+    let g_arr = match table.column_by_name(group_col) {
+        Some(a) => a,
+        None => return Table::new(),
+    };
+    let v_arr = match table.column_by_name(value_col) {
+        Some(a) => a,
+        None => return Table::new(),
+    };
 
     let n = g_arr.num_tuples().min(v_arr.num_tuples());
     let mut groups: std::collections::BTreeMap<i64, Vec<f64>> = std::collections::BTreeMap::new();
@@ -181,11 +202,27 @@ mod tests {
     #[test]
     fn inner_join() {
         let left = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("id", vec![1.0, 2.0, 3.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("val_a", vec![10.0, 20.0, 30.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "id",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "val_a",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
         let right = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("id", vec![2.0, 3.0, 4.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("val_b", vec![200.0, 300.0, 400.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "id",
+                vec![2.0, 3.0, 4.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "val_b",
+                vec![200.0, 300.0, 400.0],
+                1,
+            )));
         let result = table_inner_join(&left, &right, "id");
         assert_eq!(result.num_rows(), 2); // ids 2 and 3
         assert!(result.column_by_name("val_b").is_some());
@@ -193,10 +230,16 @@ mod tests {
 
     #[test]
     fn horizontal_merge() {
-        let left = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0, 2.0], 1)));
-        let right = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("b", vec![3.0, 4.0], 1)));
+        let left = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "a",
+            vec![1.0, 2.0],
+            1,
+        )));
+        let right = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "b",
+            vec![3.0, 4.0],
+            1,
+        )));
         let result = table_horizontal_merge(&left, &right);
         assert_eq!(result.num_columns(), 2);
     }
@@ -204,9 +247,21 @@ mod tests {
     #[test]
     fn melt() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("id", vec![1.0, 2.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![10.0, 20.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("y", vec![30.0, 40.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "id",
+                vec![1.0, 2.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![10.0, 20.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![30.0, 40.0],
+                1,
+            )));
         let result = table_melt(&t, &["id"], &["x", "y"]);
         assert_eq!(result.num_rows(), 4); // 2 rows * 2 value columns
     }
@@ -214,8 +269,16 @@ mod tests {
     #[test]
     fn group_by_sum() {
         let t = Table::new()
-            .with_column(AnyDataArray::F64(DataArray::from_vec("group", vec![1.0, 1.0, 2.0, 2.0], 1)))
-            .with_column(AnyDataArray::F64(DataArray::from_vec("val", vec![10.0, 20.0, 30.0, 40.0], 1)));
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "group",
+                vec![1.0, 1.0, 2.0, 2.0],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![10.0, 20.0, 30.0, 40.0],
+                1,
+            )));
         let result = table_group_by(&t, "group", "val", |vs| vs.iter().sum());
         assert_eq!(result.num_rows(), 2);
         assert_eq!(result.value_f64(0, "val"), Some(30.0)); // 10+20

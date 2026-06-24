@@ -59,8 +59,7 @@ pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
         let opp1: usize = find_opposite(&t1, ea, eb);
 
         // Current minimum angle across both triangles
-        let current_min: f64 = min_angle_of_tri(input, &t0)
-            .min(min_angle_of_tri(input, &t1));
+        let current_min: f64 = min_angle_of_tri(input, &t0).min(min_angle_of_tri(input, &t1));
 
         // Proposed swap: replace edge (ea, eb) with edge (opp0, opp1)
         // New triangles: (opp0, opp1, ea) and (opp0, opp1, eb)
@@ -68,8 +67,7 @@ pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
         let new_t1: [usize; 3] = [opp0, opp1, eb];
 
         // Check that the new triangles are valid (non-degenerate, correct winding)
-        let new_min: f64 = min_angle_of_tri(input, &new_t0)
-            .min(min_angle_of_tri(input, &new_t1));
+        let new_min: f64 = min_angle_of_tri(input, &new_t0).min(min_angle_of_tri(input, &new_t1));
 
         if new_min > current_min + 1e-10 {
             triangles[ti0] = new_t0;
@@ -144,10 +142,10 @@ mod tests {
         // are close, making thin triangles that benefit from a swap.
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 2.0, 0.0],   // 0: top
-                [0.0, 0.0, 0.0],   // 1: bottom-left
-                [4.0, 0.0, 0.0],   // 2: bottom-right (shared edge with 1)
-                [4.0, 2.0, 0.0],   // 3: top-right
+                [0.0, 2.0, 0.0], // 0: top
+                [0.0, 0.0, 0.0], // 1: bottom-left
+                [4.0, 0.0, 0.0], // 2: bottom-right (shared edge with 1)
+                [4.0, 2.0, 0.0], // 3: top-right
             ],
             vec![[0, 1, 2], [2, 3, 0]],
         );
