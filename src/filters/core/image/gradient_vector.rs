@@ -1,13 +1,15 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
-/// Compute the gradient of a scalar field on ImageData as a 3-component vector field.
+/// Compute the gradient of a scalar field on ImageData as a 2-component vector field.
 ///
-/// Uses central differences. Adds a "GradientVector" 3-component point data array
-/// containing [dF/dx, dF/dy, dF/dz] at each grid point.
+/// Uses duplicated-boundary central differences. Adds a "GradientVector"
+/// point data array containing [dF/dx, dF/dy], matching vtkImageGradient's
+/// default dimensionality.
 pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -25,11 +27,10 @@ pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
         values[i] = buf[0];
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
-    let mut grad: Vec<f64> = vec![0.0; n * 3];
+    let dimensionality = 2;
+    let mut grad: Vec<f64> = vec![0.0; n * dimensionality];
 
     for k in 0..nz {
         for j in 0..ny {
@@ -41,40 +42,30 @@ pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
                 let ip: usize = if i + 1 < nx { i + 1 } else { nx - 1 };
                 let jm: usize = if j > 0 { j - 1 } else { 0 };
                 let jp: usize = if j + 1 < ny { j + 1 } else { ny - 1 };
-                let km: usize = if k > 0 { k - 1 } else { 0 };
-                let kp: usize = if k + 1 < nz { k + 1 } else { nz - 1 };
-
-                let dx_span: f64 = (ip - im) as f64 * spacing[0];
-                let dy_span: f64 = (jp - jm) as f64 * spacing[1];
-                let dz_span: f64 = (kp - km) as f64 * spacing[2];
-
-                let gx: f64 = if dx_span > 1e-15 {
-                    (values[idx(ip, j, k)] - values[idx(im, j, k)]) / dx_span
+                let gx: f64 = if spacing[0].abs() > 1e-15 {
+                    (values[idx(ip, j, k)] - values[idx(im, j, k)]) * 0.5 / spacing[0]
                 } else {
                     0.0
                 };
-                let gy: f64 = if dy_span > 1e-15 {
-                    (values[idx(i, jp, k)] - values[idx(i, jm, k)]) / dy_span
-                } else {
-                    0.0
-                };
-                let gz: f64 = if dz_span > 1e-15 {
-                    (values[idx(i, j, kp)] - values[idx(i, j, km)]) / dz_span
+                let gy: f64 = if spacing[1].abs() > 1e-15 {
+                    (values[idx(i, jp, k)] - values[idx(i, jm, k)]) * 0.5 / spacing[1]
                 } else {
                     0.0
                 };
 
-                grad[pi * 3] = gx;
-                grad[pi * 3 + 1] = gy;
-                grad[pi * 3 + 2] = gz;
+                grad[pi * dimensionality] = gx;
+                grad[pi * dimensionality + 1] = gy;
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GradientVector", grad, 3),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientVector",
+            grad,
+            dimensionality,
+        )));
     img
 }
 
@@ -84,9 +75,8 @@ mod tests {
 
     fn make_image(nx: usize, ny: usize, nz: usize, values: Vec<f64>) -> ImageData {
         let mut img = ImageData::with_dimensions(nx, ny, nz);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
         img
     }
 
@@ -96,12 +86,12 @@ mod tests {
         let img = make_image(3, 3, 3, vec![5.0; n]);
         let result = image_gradient_vector(&img, "Scalars");
         let grad = result.point_data().get_array("GradientVector").unwrap();
-        let mut buf: [f64; 3] = [0.0; 3];
+        assert_eq!(grad.num_components(), 2);
+        let mut buf: [f64; 2] = [0.0; 2];
         for i in 0..n {
             grad.tuple_as_f64(i, &mut buf);
             assert!(buf[0].abs() < 1e-10);
             assert!(buf[1].abs() < 1e-10);
-            assert!(buf[2].abs() < 1e-10);
         }
     }
 
@@ -111,12 +101,12 @@ mod tests {
         let img = make_image(5, 1, 1, vec![0.0, 1.0, 2.0, 3.0, 4.0]);
         let result = image_gradient_vector(&img, "Scalars");
         let grad = result.point_data().get_array("GradientVector").unwrap();
-        let mut buf: [f64; 3] = [0.0; 3];
+        assert_eq!(grad.num_components(), 2);
+        let mut buf: [f64; 2] = [0.0; 2];
         // Interior point (index 2): central diff = (3 - 1) / 2 = 1.0
         grad.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 1.0).abs() < 1e-10, "gx = {}", buf[0]);
         assert!(buf[1].abs() < 1e-10);
-        assert!(buf[2].abs() < 1e-10);
     }
 
     #[test]

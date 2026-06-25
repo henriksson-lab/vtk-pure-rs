@@ -5,6 +5,14 @@ use crate::data::{CellArray, PolyData};
 /// Finds boundary edges (edges used by exactly one polygon), traces
 /// closed loops, and fills each loop with triangles using existing points.
 pub fn fill_holes(input: &PolyData) -> PolyData {
+    fill_holes_with_hole_size(input, 1.0)
+}
+
+/// Fill holes whose bounding-sphere radius is no larger than `hole_size`.
+///
+/// This mirrors `vtkFillHolesFilter::HoleSize`: VTK uses the radius of a
+/// bounding circumsphere as an approximate hole-size gate before triangulating.
+pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
     let work_polys = polys_with_decomposed_strips(input);
     let offsets = work_polys.offsets();
     let conn = work_polys.connectivity();
@@ -95,6 +103,9 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
     let mut pd = input.clone();
 
     for lp in &loops {
+        if loop_bounding_sphere_radius(input, lp) > hole_size {
+            continue;
+        }
         for i in 1..lp.len() - 1 {
             pd.polys.push_cell(&[lp[0], lp[i], lp[i + 1]]);
         }
@@ -102,6 +113,30 @@ pub fn fill_holes(input: &PolyData) -> PolyData {
     pd.cell_data_mut().clear();
 
     pd
+}
+
+fn loop_bounding_sphere_radius(input: &PolyData, loop_pts: &[i64]) -> f64 {
+    let mut center = [0.0; 3];
+    for &pid in loop_pts {
+        let p = input.points.get(pid as usize);
+        center[0] += p[0];
+        center[1] += p[1];
+        center[2] += p[2];
+    }
+    let inv_n = 1.0 / loop_pts.len() as f64;
+    center[0] *= inv_n;
+    center[1] *= inv_n;
+    center[2] *= inv_n;
+
+    let mut radius2: f64 = 0.0;
+    for &pid in loop_pts {
+        let p = input.points.get(pid as usize);
+        let dx = p[0] - center[0];
+        let dy = p[1] - center[1];
+        let dz = p[2] - center[2];
+        radius2 = radius2.max(dx * dx + dy * dy + dz * dz);
+    }
+    radius2.sqrt()
 }
 
 fn polys_with_decomposed_strips(input: &PolyData) -> CellArray {
@@ -142,6 +177,16 @@ mod tests {
         );
         let result = fill_holes(&pd);
         assert!(result.polys.num_cells() >= 2);
+    }
+
+    #[test]
+    fn respects_hole_size() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let result = fill_holes_with_hole_size(&pd, 0.1);
+        assert_eq!(result.polys.num_cells(), pd.polys.num_cells());
     }
 
     #[test]

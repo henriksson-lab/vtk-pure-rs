@@ -7,7 +7,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Adds "HessianDet" scalar array.
 pub fn image_hessian_det(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a, None => return input.clone(),
+        Some(a) => a,
+        None => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -19,33 +20,43 @@ pub fn image_hessian_det(input: &ImageData, scalars: &str) -> ImageData {
 
     let mut values = vec![0.0f64; n];
     let mut buf = [0.0f64];
-    for i in 0..n { arr.tuple_as_f64(i, &mut buf); values[i] = buf[0]; }
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values[i] = buf[0];
+    }
 
     let get = |i: i64, j: i64, k: i64| -> f64 {
-        let ii = i.clamp(0, nx as i64 -1) as usize;
-        let jj = j.clamp(0, ny as i64 -1) as usize;
-        let kk = k.clamp(0, nz as i64 -1) as usize;
-        values[kk*ny*nx + jj*nx + ii]
+        let ii = i.clamp(0, nx as i64 - 1) as usize;
+        let jj = j.clamp(0, ny as i64 - 1) as usize;
+        let kk = k.clamp(0, nz as i64 - 1) as usize;
+        values[kk * ny * nx + jj * nx + ii]
     };
 
     let mut det = vec![0.0f64; n];
-    let hx2 = sp[0]*sp[0]; let hy2 = sp[1]*sp[1];
+    let hx2 = sp[0] * sp[0];
+    let hy2 = sp[1] * sp[1];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let ii = i as i64; let jj = j as i64; let kk = k as i64;
-                let c = get(ii,jj,kk);
-                let fxx = (get(ii+1,jj,kk) - 2.0*c + get(ii-1,jj,kk)) / hx2;
-                let fyy = (get(ii,jj+1,kk) - 2.0*c + get(ii,jj-1,kk)) / hy2;
-                let fxy = (get(ii+1,jj+1,kk) - get(ii-1,jj+1,kk) - get(ii+1,jj-1,kk) + get(ii-1,jj-1,kk)) / (4.0*sp[0]*sp[1]);
-                det[k*ny*nx + j*nx + i] = fxx*fyy - fxy*fxy;
+                let ii = i as i64;
+                let jj = j as i64;
+                let kk = k as i64;
+                let c = get(ii, jj, kk);
+                let fxx = (get(ii + 1, jj, kk) - 2.0 * c + get(ii - 1, jj, kk)) / hx2;
+                let fyy = (get(ii, jj + 1, kk) - 2.0 * c + get(ii, jj - 1, kk)) / hy2;
+                let fxy =
+                    (get(ii + 1, jj + 1, kk) - get(ii - 1, jj + 1, kk) - get(ii + 1, jj - 1, kk)
+                        + get(ii - 1, jj - 1, kk))
+                        / (4.0 * sp[0] * sp[1]);
+                det[k * ny * nx + j * nx + i] = fxx * fyy - fxy * fxy;
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("HessianDet", det, 1)));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("HessianDet", det, 1)));
     img
 }
 
@@ -59,11 +70,15 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         img.set_spacing([1.0, 1.0, 1.0]);
         let mut values = Vec::new();
-        for j in 0..5 { for i in 0..5 {
-            let x = i as f64 - 2.0; let y = j as f64 - 2.0;
-            values.push(x*x + y*y);
-        }}
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("f", values, 1)));
+        for j in 0..5 {
+            for i in 0..5 {
+                let x = i as f64 - 2.0;
+                let y = j as f64 - 2.0;
+                values.push(x * x + y * y);
+            }
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("f", values, 1)));
 
         let result = image_hessian_det(&img, "f");
         let arr = result.point_data().get_array("HessianDet").unwrap();
@@ -78,11 +93,15 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 5, 1);
         img.set_spacing([1.0, 1.0, 1.0]);
         let mut values = Vec::new();
-        for j in 0..5 { for i in 0..5 {
-            let x = i as f64 - 2.0; let y = j as f64 - 2.0;
-            values.push(x*x - y*y);
-        }}
-        img.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("f", values, 1)));
+        for j in 0..5 {
+            for i in 0..5 {
+                let x = i as f64 - 2.0;
+                let y = j as f64 - 2.0;
+                values.push(x * x - y * y);
+            }
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("f", values, 1)));
 
         let result = image_hessian_det(&img, "f");
         let arr = result.point_data().get_array("HessianDet").unwrap();

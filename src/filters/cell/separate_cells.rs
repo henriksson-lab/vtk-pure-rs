@@ -2,8 +2,9 @@ use crate::data::PolyData;
 
 /// Separate all cells so they don't share any vertices.
 ///
-/// Each cell gets its own copy of its vertices. Useful for flat shading
-/// or for exploded views. Opposite of `clean` which merges shared vertices.
+/// Uses the `vtkShrinkPolyData` topology at factor 1.0: each output cell gets
+/// its own copy of its vertices, polylines are split into line segments, and
+/// triangle strips are split into triangle polygons.
 pub fn separate_cells(input: &PolyData) -> PolyData {
     crate::filters::cell::shrink::shrink(input, 1.0)
 }
@@ -62,7 +63,7 @@ mod tests {
         assert_eq!(result.points.len(), 9);
         assert_eq!(result.verts.num_cells(), 1);
         assert_eq!(result.lines.num_cells(), 1);
-        assert_eq!(result.polys.num_cells(), 1);
-        assert_eq!(result.strips.num_cells(), 1);
+        assert_eq!(result.polys.num_cells(), 2);
+        assert_eq!(result.strips.num_cells(), 0);
     }
 }

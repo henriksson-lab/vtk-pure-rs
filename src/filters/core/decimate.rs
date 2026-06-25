@@ -12,7 +12,7 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
     let n_points = input.points.len();
     let n_cells = input.polys.num_cells();
 
-    if n_cells == 0 || n_points < 4 {
+    if target_reduction == 0.0 || n_cells == 0 || n_points < 4 {
         return input.clone();
     }
 
@@ -287,10 +287,13 @@ mod tests {
 
     #[test]
     fn decimate_zero() {
-        let pd = PolyData::from_triangles(
+        let mut pd = PolyData::from_triangles(
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        assert_eq!(decimate(&pd, 0.0).polys.num_cells(), 1);
+        pd.add_scalars("s", vec![1.0, 2.0, 3.0]);
+        let result = decimate(&pd, 0.0);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert!(result.point_data().get_array("s").is_some());
     }
 }

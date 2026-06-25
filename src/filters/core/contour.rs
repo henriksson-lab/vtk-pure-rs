@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::data::{CellArray, DataArray, Points, PolyData};
 
 /// Extract contour lines at a given isovalue from a PolyData with scalar data.
@@ -10,23 +12,53 @@ pub fn contour(input: &PolyData, scalars: &[f64], isovalue: f64) -> PolyData {
     let mut out_lines = CellArray::new();
     let mut out_scalars = DataArray::<f64>::new("contour_scalars", 1);
 
+    if scalars.len() < input.points.len() {
+        return PolyData::new();
+    }
+
     for cell in input.polys.iter() {
         let n = cell.len();
         if n < 3 {
             continue;
         }
 
-        // Collect crossing points on edges of this polygon
+        // Collect crossing points on edges of this polygon.
         let mut crossing_pts: Vec<usize> = Vec::new();
+        let mut exact_vertex_pts: HashMap<usize, usize> = HashMap::new();
 
         for i in 0..n {
             let id0 = cell[i] as usize;
             let id1 = cell[(i + 1) % n] as usize;
             let s0 = scalars[id0];
             let s1 = scalars[id1];
+            let d0 = s0 - isovalue;
+            let d1 = s1 - isovalue;
 
-            // Check if isovalue crosses this edge
-            if (s0 - isovalue) * (s1 - isovalue) < 0.0 {
+            if d0 == 0.0 {
+                let idx = *exact_vertex_pts.entry(id0).or_insert_with(|| {
+                    let idx = out_points.len();
+                    out_points.push(input.points.get(id0));
+                    out_scalars.push_tuple(&[isovalue]);
+                    idx
+                });
+                if !crossing_pts.contains(&idx) {
+                    crossing_pts.push(idx);
+                }
+            }
+            if d1 == 0.0 {
+                let idx = *exact_vertex_pts.entry(id1).or_insert_with(|| {
+                    let idx = out_points.len();
+                    out_points.push(input.points.get(id1));
+                    out_scalars.push_tuple(&[isovalue]);
+                    idx
+                });
+                if !crossing_pts.contains(&idx) {
+                    crossing_pts.push(idx);
+                }
+            }
+
+            // Check if isovalue strictly crosses this edge.
+            if d0 * d1 < 0.0 {
                 let t = (isovalue - s0) / (s1 - s0);
                 let p0 = input.points.get(id0);
                 let p1 = input.points.get(id1);
@@ -128,7 +160,18 @@ mod tests {
         let scalars = vec![0.0, 1.0, 0.5];
         let result = contour_range(&pd, &scalars, 0.1, 0.9, 3);
         // 3 contour values: 0.1, 0.5, 0.9
-        // 0.1 and 0.9 each cross 2 edges; 0.5 exactly hits vertex 2 so no strict crossing
-        assert!(result.lines.num_cells() >= 2);
+        assert!(result.lines.num_cells() >= 3);
+    }
+
+    #[test]
+    fn contour_through_exact_vertex() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let scalars = vec![0.0, 1.0, 0.5];
+        let result = contour(&pd, &scalars, 0.5);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.points.len(), 2);
     }
 }

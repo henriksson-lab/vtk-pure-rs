@@ -6,10 +6,19 @@ use std::collections::HashMap;
 /// Existing strips are passed through, non-triangle polygons stay in `polys`,
 /// and triangle polygons are greedily assembled into new strips.
 pub fn to_triangle_strips(input: &PolyData) -> PolyData {
+    to_triangle_strips_with_maximum_length(input, 1000)
+}
+
+/// Convert triangle polygons to triangle strips, limiting strip/line length.
+///
+/// `maximum_length` matches `vtkStripper::MaximumLength`: at most this many
+/// triangles per strip, and at most this many segments per poly-line.
+pub fn to_triangle_strips_with_maximum_length(input: &PolyData, maximum_length: usize) -> PolyData {
+    let maximum_length = maximum_length.clamp(4, 100000);
     let mut output = PolyData::new();
     output.points = input.points.clone();
     output.verts = input.verts.clone();
-    output.lines = strip_lines(&input.lines);
+    output.lines = strip_lines(&input.lines, maximum_length);
     output.strips = input.strips.clone();
     *output.point_data_mut() = input.point_data().clone();
 
@@ -72,6 +81,9 @@ pub fn to_triangle_strips(input: &PolyData) -> PolyData {
 
                 visited[next.0] = true;
                 strip.push(next.1);
+                if strip.len() >= maximum_length + 2 {
+                    break;
+                }
             }
         }
 
@@ -82,7 +94,7 @@ pub fn to_triangle_strips(input: &PolyData) -> PolyData {
 }
 
 fn find_start_edge(
-    tri_verts: &[[i64; 3]],
+    _tri_verts: &[[i64; 3]],
     edge_tris: &HashMap<(i64, i64), [usize; 2]>,
     visited: &[bool],
     tri: [i64; 3],
@@ -140,7 +152,7 @@ fn edge_key(a: i64, b: i64) -> (i64, i64) {
     }
 }
 
-fn strip_lines(lines: &CellArray) -> CellArray {
+fn strip_lines(lines: &CellArray, maximum_length: usize) -> CellArray {
     let mut out = CellArray::new();
     let mut segments = Vec::new();
 
@@ -170,8 +182,22 @@ fn strip_lines(lines: &CellArray) -> CellArray {
 
         visited[cell_id] = true;
         let mut line = Vec::from(segments[cell_id]);
-        extend_line(&segments, &point_cells, &mut visited, &mut line, false);
-        extend_line(&segments, &point_cells, &mut visited, &mut line, true);
+        extend_line(
+            &segments,
+            &point_cells,
+            &mut visited,
+            &mut line,
+            false,
+            maximum_length,
+        );
+        extend_line(
+            &segments,
+            &point_cells,
+            &mut visited,
+            &mut line,
+            true,
+            maximum_length,
+        );
         out.push_cell(&line);
     }
 
@@ -184,8 +210,12 @@ fn extend_line(
     visited: &mut [bool],
     line: &mut Vec<i64>,
     at_front: bool,
+    maximum_length: usize,
 ) {
     loop {
+        if line.len() >= maximum_length + 1 {
+            break;
+        }
         let endpoint = if at_front {
             line[0]
         } else {

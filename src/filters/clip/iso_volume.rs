@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Extract the volume (surface) between two isovalues.
 ///
@@ -21,6 +21,7 @@ pub fn iso_volume(input: &PolyData, scalars: &str, lower: f64, upper: f64) -> Po
 
     let mut out_points = input.points.clone();
     let mut out_polys = CellArray::new();
+    let mut out_scalars = svals.clone();
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
@@ -45,14 +46,15 @@ pub fn iso_volume(input: &PolyData, scalars: &str, lower: f64, upper: f64) -> Po
             if v1.len() < 3 {
                 continue;
             }
-            let (v2, _) = clip_poly_threshold(&v1, &s1, upper, false);
+            let (v2, s2) = clip_poly_threshold(&v1, &s1, upper, false);
             if v2.len() < 3 {
                 continue;
             }
 
             let base = out_points.len() as i64;
-            for p in &v2 {
+            for (p, s) in v2.iter().zip(&s2) {
                 out_points.push(*p);
+                out_scalars.push(*s);
             }
             for i in 1..v2.len() - 1 {
                 out_polys.push_cell(&[base, base + i as i64, base + (i + 1) as i64]);
@@ -60,7 +62,7 @@ pub fn iso_volume(input: &PolyData, scalars: &str, lower: f64, upper: f64) -> Po
         }
     }
 
-    compact_poly_data(out_points, out_polys)
+    compact_poly_data(out_points, out_scalars, out_polys, scalars)
 }
 
 /// Sutherland-Hodgman clip: keep vertices where scalar >= threshold (keep_above)
@@ -114,7 +116,12 @@ fn lerp3(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
     ]
 }
 
-fn compact_poly_data(points: Points<f64>, polys: CellArray) -> PolyData {
+fn compact_poly_data(
+    points: Points<f64>,
+    scalars: Vec<f64>,
+    polys: CellArray,
+    scalar_name: &str,
+) -> PolyData {
     let mut used = vec![false; points.len()];
     for cell in polys.iter() {
         for &id in cell {
@@ -124,10 +131,12 @@ fn compact_poly_data(points: Points<f64>, polys: CellArray) -> PolyData {
 
     let mut point_map = vec![0i64; points.len()];
     let mut compact_points = Points::new();
+    let mut compact_scalars = Vec::new();
     for (old_id, is_used) in used.into_iter().enumerate() {
         if is_used {
             point_map[old_id] = compact_points.len() as i64;
             compact_points.push(points.get(old_id));
+            compact_scalars.push(scalars[old_id]);
         }
     }
 
@@ -140,6 +149,13 @@ fn compact_poly_data(points: Points<f64>, polys: CellArray) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = compact_points;
     pd.polys = compact_polys;
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalar_name,
+            compact_scalars,
+            1,
+        )));
+    pd.point_data_mut().set_active_scalars(scalar_name);
     pd
 }
 

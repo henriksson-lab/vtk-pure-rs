@@ -32,7 +32,7 @@ pub fn compute_histogram(
 
     // First pass: find min/max
     let mut min_v: f64 = f64::MAX;
-    let mut max_v: f64 = f64::MIN;
+    let mut max_v: f64 = f64::NEG_INFINITY;
     let mut buf = [0.0f64];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
@@ -114,5 +114,23 @@ mod tests {
         let image = ImageData::with_dimensions(2, 2, 2);
         let result = compute_histogram(&image, "NonExistent", 10);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn histogram_zero_bins_clamps_to_one() {
+        let values: Vec<f64> = vec![1.0, 2.0, 3.0];
+        let image = make_image_with_scalars(values);
+        let result = compute_histogram(&image, "TestScalars", 0).unwrap();
+        assert_eq!(result.counts.len(), 1);
+        assert_eq!(result.bin_edges.len(), 2);
+        assert_eq!(result.total, 3);
+    }
+
+    #[test]
+    fn histogram_all_negative_values() {
+        let image = make_image_with_scalars(vec![-3.0, -2.0, -1.0]);
+        let result = compute_histogram(&image, "TestScalars", 2).unwrap();
+        assert_eq!(result.max, -1.0);
+        assert_eq!(result.counts.iter().sum::<usize>(), 3);
     }
 }

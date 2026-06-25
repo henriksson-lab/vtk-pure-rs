@@ -52,8 +52,8 @@ pub fn aggregate_table_stats(tables: &[&Table]) -> Table {
     for name in &common_names {
         let mut total_sum = 0.0;
         let mut total_count = 0usize;
-        let mut global_min = f64::MAX;
-        let mut global_max = f64::MIN;
+        let mut global_min = f64::INFINITY;
+        let mut global_max = f64::NEG_INFINITY;
 
         for table in tables {
             let col = table.column_by_name(name).unwrap();
@@ -70,6 +70,8 @@ pub fn aggregate_table_stats(tables: &[&Table]) -> Table {
         let mean = if total_count > 0 {
             total_sum / total_count as f64
         } else {
+            global_min = 0.0;
+            global_max = 0.0;
             0.0
         };
 
@@ -195,5 +197,16 @@ mod tests {
             Table::new().with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![3.0], 1)));
         let result = aggregate_tables_vertical(&[&t1, &t2]);
         assert_eq!(result.num_rows(), 3);
+    }
+
+    #[test]
+    fn table_stats_empty_columns_are_finite() {
+        let t1 = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![], 1)));
+        let t2 = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![], 1)));
+        let stats = aggregate_table_stats(&[&t1, &t2]);
+        assert_eq!(stats.value_f64(0, "x_count"), Some(0.0));
+        assert_eq!(stats.value_f64(0, "x_min"), Some(0.0));
+        assert_eq!(stats.value_f64(0, "x_max"), Some(0.0));
+        assert_eq!(stats.value_f64(0, "x_mean"), Some(0.0));
     }
 }

@@ -4,11 +4,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 ///
 /// All voxels with value above `threshold` are set to 1.0, and those at or
 /// below are set to 0.0. Adds a "BinaryMask" point data array.
-pub fn image_threshold_binary(
-    input: &ImageData,
-    scalars: &str,
-    threshold: f64,
-) -> ImageData {
+pub fn image_threshold_binary(input: &ImageData, scalars: &str, threshold: f64) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -23,9 +19,12 @@ pub fn image_threshold_binary(
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BinaryMask", mask, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BinaryMask",
+            mask,
+            1,
+        )));
     img
 }
 
@@ -52,9 +51,12 @@ pub fn image_threshold_binary_inverse(
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("BinaryMask", mask, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "BinaryMask",
+            mask,
+            1,
+        )));
     img
 }
 
@@ -65,9 +67,8 @@ mod tests {
     fn make_image() -> ImageData {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         let values: Vec<f64> = (0..9).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 

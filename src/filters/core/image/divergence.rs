@@ -2,8 +2,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Compute the divergence of a vector field on ImageData.
 ///
-/// Takes a 3-component array (specified by `vector_array`) and produces a
-/// scalar "Divergence" point data array using central finite differences:
+/// Takes a 1- to 3-component array (specified by `vector_array`) and produces a
+/// scalar "Divergence" point data array using VTK-style central differences:
 ///   div(V) = dVx/dx + dVy/dy + dVz/dz
 pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
     let arr = match input.point_data().get_array(vector_array) {
@@ -11,7 +11,8 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
         None => return input.clone(),
     };
 
-    if arr.num_components() != 3 {
+    let max_c = arr.num_components().min(3);
+    if max_c == 0 {
         return input.clone();
     }
 
@@ -22,63 +23,61 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
     let spacing = input.spacing();
     let n: usize = nx * ny * nz;
 
-    // Extract vector components
-    let mut vx: Vec<f64> = vec![0.0; n];
-    let mut vy: Vec<f64> = vec![0.0; n];
-    let mut vz: Vec<f64> = vec![0.0; n];
+    let mut values: Vec<f64> = vec![0.0; n * max_c];
     let mut buf: [f64; 3] = [0.0, 0.0, 0.0];
     for idx in 0..n {
         arr.tuple_as_f64(idx, &mut buf);
-        vx[idx] = buf[0];
-        vy[idx] = buf[1];
-        vz[idx] = buf[2];
+        for c in 0..max_c {
+            values[idx * max_c + c] = buf[c];
+        }
     }
 
-    let index = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let index = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let mut divergence: Vec<f64> = vec![0.0; n];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let im: usize = if i > 0 { i - 1 } else { 0 };
-                let ip: usize = if i + 1 < nx { i + 1 } else { nx - 1 };
-                let jm: usize = if j > 0 { j - 1 } else { 0 };
-                let jp: usize = if j + 1 < ny { j + 1 } else { ny - 1 };
-                let km: usize = if k > 0 { k - 1 } else { 0 };
-                let kp: usize = if k + 1 < nz { k + 1 } else { nz - 1 };
+                let center = index(i, j, k);
+                let mut sum = 0.0;
 
-                let dx_span: f64 = (ip - im) as f64 * spacing[0];
-                let dy_span: f64 = (jp - jm) as f64 * spacing[1];
-                let dz_span: f64 = (kp - km) as f64 * spacing[2];
+                for c in 0..max_c {
+                    if spacing[c].abs() <= 1e-15 {
+                        continue;
+                    }
 
-                let dvx_dx: f64 = if dx_span > 1e-15 {
-                    (vx[index(ip, j, k)] - vx[index(im, j, k)]) / dx_span
-                } else {
-                    0.0
-                };
-                let dvy_dy: f64 = if dy_span > 1e-15 {
-                    (vy[index(i, jp, k)] - vy[index(i, jm, k)]) / dy_span
-                } else {
-                    0.0
-                };
-                let dvz_dz: f64 = if dz_span > 1e-15 {
-                    (vz[index(i, j, kp)] - vz[index(i, j, km)]) / dz_span
-                } else {
-                    0.0
-                };
+                    let (minus, plus) = match c {
+                        0 => (
+                            index(if i > 0 { i - 1 } else { i }, j, k),
+                            index(if i + 1 < nx { i + 1 } else { i }, j, k),
+                        ),
+                        1 => (
+                            index(i, if j > 0 { j - 1 } else { j }, k),
+                            index(i, if j + 1 < ny { j + 1 } else { j }, k),
+                        ),
+                        _ => (
+                            index(i, j, if k > 0 { k - 1 } else { k }),
+                            index(i, j, if k + 1 < nz { k + 1 } else { k }),
+                        ),
+                    };
 
-                divergence[index(i, j, k)] = dvx_dx + dvy_dy + dvz_dz;
+                    sum +=
+                        (values[plus * max_c + c] - values[minus * max_c + c]) * 0.5 / spacing[c];
+                }
+
+                divergence[center] = sum;
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Divergence", divergence, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Divergence",
+            divergence,
+            1,
+        )));
     img
 }
 
@@ -99,9 +98,8 @@ mod tests {
             data.push(2.0);
             data.push(3.0);
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Velocity", data, 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Velocity", data, 3)));
 
         let result = compute_divergence(&img, "Velocity");
         let div_arr = result.point_data().get_array("Divergence").unwrap();
@@ -130,9 +128,8 @@ mod tests {
             data.push(0.0);
             data.push(0.0);
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("V", data, 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("V", data, 3)));
 
         let result = compute_divergence(&img, "V");
         let div_arr = result.point_data().get_array("Divergence").unwrap();
@@ -143,6 +140,48 @@ mod tests {
             div_arr.tuple_as_f64(i, &mut buf);
             assert!((buf[0] - 1.0).abs() < 1e-10, "Expected 1.0, got {}", buf[0]);
         }
+    }
+
+    #[test]
+    fn boundary_uses_replicated_pixel_half_difference() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "V",
+                vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0],
+                3,
+            )));
+
+        let result = compute_divergence(&img, "V");
+        let div_arr = result.point_data().get_array("Divergence").unwrap();
+        let mut buf: [f64; 1] = [0.0];
+
+        div_arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.5).abs() < 1e-10, "Expected 0.5, got {}", buf[0]);
+        div_arr.tuple_as_f64(2, &mut buf);
+        assert!((buf[0] - 0.5).abs() < 1e-10, "Expected 0.5, got {}", buf[0]);
+    }
+
+    #[test]
+    fn two_component_field_uses_xy_components() {
+        let mut img = ImageData::with_dimensions(3, 3, 1);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        let mut data: Vec<f64> = Vec::new();
+        for j in 0..3 {
+            for i in 0..3 {
+                data.push(i as f64);
+                data.push(j as f64);
+            }
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("V", data, 2)));
+
+        let result = compute_divergence(&img, "V");
+        let div_arr = result.point_data().get_array("Divergence").unwrap();
+        let mut buf: [f64; 1] = [0.0];
+        div_arr.tuple_as_f64(4, &mut buf);
+        assert!((buf[0] - 2.0).abs() < 1e-10, "Expected 2.0, got {}", buf[0]);
     }
 
     #[test]

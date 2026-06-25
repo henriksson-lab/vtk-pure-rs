@@ -51,11 +51,46 @@ pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyDa
         return PolyData::new();
     }
 
-    let mut out_points = Points::<f64>::new();
+    let mut out_points = input.points.clone();
+    let mut out_point_scalars = scalar_data.clone();
+    let mut out_verts = CellArray::new();
+    let mut out_lines = CellArray::new();
     let mut out_polys = CellArray::new();
     let mut band_ids: Vec<f64> = Vec::new();
+    let mut vtk_scalars: Vec<f32> = Vec::new();
 
-    for cell in input.polys.iter() {
+    for cell in input.verts.iter() {
+        for &pid in cell {
+            let idx = compute_clipped_index(scalar_data[pid as usize], &clip_values);
+            out_verts.push_cell(&[pid]);
+            band_ids.push(idx as f64);
+            vtk_scalars.push(idx as f32);
+        }
+    }
+
+    for cell in input.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() - 1 {
+            insert_banded_line_segment(
+                cell[i],
+                cell[i + 1],
+                input,
+                &scalar_data,
+                &clip_values,
+                &mut out_points,
+                &mut out_point_scalars,
+                &mut out_lines,
+                &mut band_ids,
+                &mut vtk_scalars,
+            );
+        }
+    }
+
+    let work_polys = polys_with_decomposed_strips(input);
+
+    for cell in work_polys.iter() {
         if cell.len() < 3 {
             continue;
         }
@@ -79,17 +114,19 @@ pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyDa
                 let lo = clip_values[bi];
                 let hi = clip_values[bi + 1];
 
-                let clipped = clip_triangle_to_band(v0, v1, v2, s0, s1, s2, lo, hi);
+                let clipped = clip_triangle_to_band(
+                    [cell[0], cell[i], cell[i + 1]],
+                    [v0, v1, v2],
+                    [s0, s1, s2],
+                    lo,
+                    hi,
+                    &mut out_points,
+                    &mut out_point_scalars,
+                );
                 if clipped.len() >= 3 {
-                    let base = out_points.len() as i64;
-                    for p in &clipped {
-                        out_points.push(*p);
-                    }
-                    // Fan-triangulate the clipped polygon
-                    for j in 1..clipped.len() - 1 {
-                        out_polys.push_cell(&[base, base + j as i64, base + (j + 1) as i64]);
-                        band_ids.push(bi as f64);
-                    }
+                    out_polys.push_cell(&clipped);
+                    band_ids.push(bi as f64);
+                    vtk_scalars.push(bi as f32);
                 }
             }
         }
@@ -97,52 +134,83 @@ pub fn banded_contour(input: &PolyData, scalars: &str, values: &[f64]) -> PolyDa
 
     let mut pd = PolyData::new();
     pd.points = out_points;
+    pd.verts = out_verts;
+    pd.lines = out_lines;
     pd.polys = out_polys;
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars,
+            out_point_scalars,
+            1,
+        )));
+    pd.point_data_mut().set_active_scalars(scalars);
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "BandIndex",
             band_ids,
             1,
         )));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F32(DataArray::from_vec(
+            "Scalars",
+            vtk_scalars,
+            1,
+        )));
+    pd.cell_data_mut().set_active_scalars("Scalars");
     pd
 }
 
 /// Clip a triangle to the scalar band [lo, hi].
 /// Returns the polygon vertices that lie within the band.
 fn clip_triangle_to_band(
-    v0: [f64; 3],
-    v1: [f64; 3],
-    v2: [f64; 3],
-    s0: f64,
-    s1: f64,
-    s2: f64,
+    ids: [i64; 3],
+    verts: [[f64; 3]; 3],
+    scalars: [f64; 3],
     lo: f64,
     hi: f64,
-) -> Vec<[f64; 3]> {
+    out_points: &mut Points<f64>,
+    out_point_scalars: &mut Vec<f64>,
+) -> Vec<i64> {
     // Start with the triangle, then clip by lo (keep >= lo), then by hi (keep <= hi)
-    let verts = vec![v0, v1, v2];
-    let scalars = vec![s0, s1, s2];
+    let mut polygon = vec![
+        BandPoint {
+            id: ids[0],
+            point: verts[0],
+            scalar: scalars[0],
+        },
+        BandPoint {
+            id: ids[1],
+            point: verts[1],
+            scalar: scalars[1],
+        },
+        BandPoint {
+            id: ids[2],
+            point: verts[2],
+            scalar: scalars[2],
+        },
+    ];
 
-    let (verts, scalars) = clip_polygon_by_threshold(&verts, &scalars, lo, true);
-    if verts.len() < 3 {
+    polygon = clip_polygon_by_threshold(&polygon, lo, true, out_points, out_point_scalars);
+    if polygon.len() < 3 {
         return vec![];
     }
-    let (verts, _) = clip_polygon_by_threshold(&verts, &scalars, hi, false);
-    verts
+    polygon = clip_polygon_by_threshold(&polygon, hi, false, out_points, out_point_scalars);
+    polygon.into_iter().map(|p| p.id).collect()
 }
 
 /// Sutherland-Hodgman clip of a polygon by a scalar threshold.
 /// If `keep_above` is true, keeps vertices where scalar >= threshold.
 /// If false, keeps vertices where scalar <= threshold.
 fn clip_polygon_by_threshold(
-    verts: &[[f64; 3]],
-    scalars: &[f64],
+    polygon: &[BandPoint],
     threshold: f64,
     keep_above: bool,
-) -> (Vec<[f64; 3]>, Vec<f64>) {
-    let n = verts.len();
+    out_points: &mut Points<f64>,
+    out_point_scalars: &mut Vec<f64>,
+) -> Vec<BandPoint> {
+    let n = polygon.len();
     if n == 0 {
-        return (vec![], vec![]);
+        return vec![];
     }
 
     let inside = |s: f64| -> bool {
@@ -153,22 +221,20 @@ fn clip_polygon_by_threshold(
         }
     };
 
-    let mut out_verts = Vec::new();
-    let mut out_scalars = Vec::new();
+    let mut out = Vec::new();
 
     for i in 0..n {
         let j = (i + 1) % n;
-        let si = scalars[i];
-        let sj = scalars[j];
-        let vi = verts[i];
-        let vj = verts[j];
+        let pi = polygon[i];
+        let pj = polygon[j];
+        let si = pi.scalar;
+        let sj = pj.scalar;
 
         let i_in = inside(si);
         let j_in = inside(sj);
 
         if i_in {
-            out_verts.push(vi);
-            out_scalars.push(si);
+            out.push(pi);
         }
 
         if i_in != j_in {
@@ -177,13 +243,111 @@ fn clip_polygon_by_threshold(
             if ds.abs() > 1e-15 {
                 let t = (threshold - si) / ds;
                 let t = t.clamp(0.0, 1.0);
-                out_verts.push(lerp3(vi, vj, t));
-                out_scalars.push(threshold);
+                let point = lerp3(pi.point, pj.point, t);
+                let id = out_points.len() as i64;
+                out_points.push(point);
+                out_point_scalars.push(threshold);
+                out.push(BandPoint {
+                    id,
+                    point,
+                    scalar: threshold,
+                });
             }
         }
     }
 
-    (out_verts, out_scalars)
+    out
+}
+
+#[derive(Clone, Copy)]
+struct BandPoint {
+    id: i64,
+    point: [f64; 3],
+    scalar: f64,
+}
+
+fn insert_banded_line_segment(
+    p1: i64,
+    p2: i64,
+    input: &PolyData,
+    scalar_data: &[f64],
+    clip_values: &[f64],
+    out_points: &mut Points<f64>,
+    out_point_scalars: &mut Vec<f64>,
+    out_lines: &mut CellArray,
+    band_ids: &mut Vec<f64>,
+    vtk_scalars: &mut Vec<f32>,
+) {
+    let s1 = scalar_data[p1 as usize];
+    let s2 = scalar_data[p2 as usize];
+    let mut pts = vec![(p1, s1)];
+    let low = s1.min(s2);
+    let high = s1.max(s2);
+
+    for &value in clip_values {
+        if value <= low || value >= high {
+            continue;
+        }
+        let t = (value - s1) / (s2 - s1);
+        let new_id = out_points.len() as i64;
+        out_points.push(lerp3(
+            input.points.get(p1 as usize),
+            input.points.get(p2 as usize),
+            t,
+        ));
+        out_point_scalars.push(value);
+        pts.push((new_id, value));
+    }
+    pts.push((p2, s2));
+    pts.sort_by(|a, b| {
+        let ta = if (s2 - s1).abs() > 1e-15 {
+            (a.1 - s1) / (s2 - s1)
+        } else {
+            0.0
+        };
+        let tb = if (s2 - s1).abs() > 1e-15 {
+            (b.1 - s1) / (s2 - s1)
+        } else {
+            0.0
+        };
+        ta.partial_cmp(&tb).unwrap()
+    });
+
+    for pair in pts.windows(2) {
+        let value = pair[0].1.min(pair[1].1);
+        let idx = compute_clipped_index(value, clip_values);
+        out_lines.push_cell(&[pair[0].0, pair[1].0]);
+        band_ids.push(idx as f64);
+        vtk_scalars.push(idx as f32);
+    }
+}
+
+fn compute_clipped_index(scalar: f64, clip_values: &[f64]) -> usize {
+    match clip_values.binary_search_by(|v| v.partial_cmp(&scalar).unwrap()) {
+        Ok(i) => i.min(clip_values.len().saturating_sub(2)),
+        Err(i) => i.saturating_sub(1).min(clip_values.len().saturating_sub(2)),
+    }
+}
+
+fn polys_with_decomposed_strips(input: &PolyData) -> CellArray {
+    if input.strips.is_empty() {
+        return input.polys.clone();
+    }
+
+    let mut polys = input.polys.clone();
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            if i % 2 == 0 {
+                polys.push_cell(&[strip[i], strip[i + 1], strip[i + 2]]);
+            } else {
+                polys.push_cell(&[strip[i + 1], strip[i], strip[i + 2]]);
+            }
+        }
+    }
+    polys
 }
 
 fn lerp3(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {

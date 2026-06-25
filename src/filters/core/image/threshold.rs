@@ -35,9 +35,11 @@ pub fn image_threshold(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, values.clone(), 1),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                values.clone(),
+                1,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -65,13 +67,16 @@ pub fn image_binary_threshold(
     let mut buf = [0.0f64];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        mask[i] = if buf[0] >= lower && buf[0] <= upper { 1.0 } else { 0.0 };
+        mask[i] = if buf[0] >= lower && buf[0] <= upper {
+            1.0
+        } else {
+            0.0
+        };
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Mask", mask, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Mask", mask, 1)));
     img
 }
 
@@ -82,9 +87,8 @@ mod tests {
     fn make_image() -> ImageData {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         let values: Vec<f64> = (0..9).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 

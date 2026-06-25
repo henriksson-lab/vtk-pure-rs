@@ -26,9 +26,12 @@ pub fn compute_magnitude(input: &ImageData, array_name: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Magnitude", magnitudes, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Magnitude",
+            magnitudes,
+            1,
+        )));
     img
 }
 
@@ -40,9 +43,12 @@ mod tests {
     fn three_four_five() {
         let mut img = ImageData::with_dimensions(2, 1, 1);
         // Two vectors: (3,4,0) and (0,0,5)
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Vectors", vec![3.0, 4.0, 0.0, 0.0, 0.0, 5.0], 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Vectors",
+                vec![3.0, 4.0, 0.0, 0.0, 0.0, 5.0],
+                3,
+            )));
         let result = compute_magnitude(&img, "Vectors");
         let mag = result.point_data().get_array("Magnitude").unwrap();
         assert_eq!(mag.num_components(), 1);
@@ -57,9 +63,12 @@ mod tests {
     #[test]
     fn single_component_is_abs() {
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", vec![-2.0, 0.0, 3.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Scalars",
+                vec![-2.0, 0.0, 3.0],
+                1,
+            )));
         let result = compute_magnitude(&img, "Scalars");
         let mag = result.point_data().get_array("Magnitude").unwrap();
         let mut val = [0.0f64];

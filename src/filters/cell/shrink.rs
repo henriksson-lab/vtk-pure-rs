@@ -2,35 +2,104 @@ use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points,
 
 /// Shrink each cell toward its centroid.
 ///
-/// Each cell gets its own copy of its vertices, so the output has no shared
-/// vertices between cells. The cell arrays and cell data are preserved.
+/// Each output cell gets its own copy of its vertices, so the output has no
+/// shared vertices between cells. Polylines are split into shrunk line
+/// segments, and triangle strips are split into triangle polygons.
 pub fn shrink(input: &PolyData, factor: f64) -> PolyData {
+    let factor = factor.clamp(0.0, 1.0);
     let pts = input.points.as_flat_slice();
     let total_out_pts = input.verts.connectivity_len()
-        + input.lines.connectivity_len()
+        + input
+            .lines
+            .iter()
+            .map(|cell| cell.len().saturating_sub(1) * 2)
+            .sum::<usize>()
         + input.polys.connectivity_len()
-        + input.strips.connectivity_len();
+        + input
+            .strips
+            .iter()
+            .map(|cell| cell.len().saturating_sub(2) * 3)
+            .sum::<usize>();
     let mut out_flat = Vec::with_capacity(total_out_pts * 3);
     let mut old_point_ids = Vec::with_capacity(total_out_pts);
 
     let mut pd = PolyData::new();
-    pd.verts = shrink_cells(&input.verts, pts, factor, &mut out_flat, &mut old_point_ids);
-    pd.lines = shrink_cells(&input.lines, pts, factor, &mut out_flat, &mut old_point_ids);
-    pd.polys = shrink_cells(&input.polys, pts, factor, &mut out_flat, &mut old_point_ids);
-    pd.strips = shrink_cells(
+    pd.verts = copy_vertices(&input.verts, pts, &mut out_flat, &mut old_point_ids);
+    pd.lines = shrink_lines(&input.lines, pts, factor, &mut out_flat, &mut old_point_ids);
+    pd.polys = shrink_polys(&input.polys, pts, factor, &mut out_flat, &mut old_point_ids);
+    append_shrunk_strips_to_polys(
         &input.strips,
         pts,
         factor,
         &mut out_flat,
         &mut old_point_ids,
+        &mut pd.polys,
     );
     pd.points = Points::from_flat_vec(out_flat);
     *pd.point_data_mut() = copy_point_data(input.point_data(), &old_point_ids);
     *pd.cell_data_mut() = input.cell_data().clone();
+    *pd.field_data_mut() = input.field_data().clone();
     pd
 }
 
-fn shrink_cells(
+fn copy_vertices(
+    cells: &CellArray,
+    pts: &[f64],
+    out_flat: &mut Vec<f64>,
+    old_point_ids: &mut Vec<usize>,
+) -> CellArray {
+    let mut out = CellArray::new();
+    for cell in cells.iter() {
+        let mut new_ids = Vec::with_capacity(cell.len());
+        for &pid in cell {
+            let new_id = copy_point(pts, pid as usize, out_flat, old_point_ids);
+            new_ids.push(new_id);
+        }
+        out.push_cell(&new_ids);
+    }
+    out
+}
+
+fn shrink_lines(
+    cells: &CellArray,
+    pts: &[f64],
+    factor: f64,
+    out_flat: &mut Vec<f64>,
+    old_point_ids: &mut Vec<usize>,
+) -> CellArray {
+    let mut out = CellArray::new();
+    for cell in cells.iter() {
+        for segment in cell.windows(2) {
+            let p1 = point(pts, segment[0] as usize);
+            let p2 = point(pts, segment[1] as usize);
+            let center = [
+                (p1[0] + p2[0]) / 2.0,
+                (p1[1] + p2[1]) / 2.0,
+                (p1[2] + p2[2]) / 2.0,
+            ];
+            let id1 = push_shrunk_point(
+                p1,
+                center,
+                factor,
+                segment[0] as usize,
+                out_flat,
+                old_point_ids,
+            );
+            let id2 = push_shrunk_point(
+                p2,
+                center,
+                factor,
+                segment[1] as usize,
+                out_flat,
+                old_point_ids,
+            );
+            out.push_cell(&[id1, id2]);
+        }
+    }
+    out
+}
+
+fn shrink_polys(
     cells: &CellArray,
     pts: &[f64],
     factor: f64,
@@ -76,6 +145,96 @@ fn shrink_cells(
     }
 
     CellArray::from_raw(out_off, out_conn)
+}
+
+fn append_shrunk_strips_to_polys(
+    strips: &CellArray,
+    pts: &[f64],
+    factor: f64,
+    out_flat: &mut Vec<f64>,
+    old_point_ids: &mut Vec<usize>,
+    out_polys: &mut CellArray,
+) {
+    for cell in strips.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        for i in 0..cell.len() - 2 {
+            let p1 = point(pts, cell[i] as usize);
+            let p2 = point(pts, cell[i + 1] as usize);
+            let p3 = point(pts, cell[i + 2] as usize);
+            let center = [
+                (p1[0] + p2[0] + p3[0]) / 3.0,
+                (p1[1] + p2[1] + p3[1]) / 3.0,
+                (p1[2] + p2[2] + p3[2]) / 3.0,
+            ];
+
+            let id1 = push_shrunk_point(
+                p1,
+                center,
+                factor,
+                cell[i] as usize,
+                out_flat,
+                old_point_ids,
+            );
+            let id2 = push_shrunk_point(
+                p2,
+                center,
+                factor,
+                cell[i + 1] as usize,
+                out_flat,
+                old_point_ids,
+            );
+            let id3 = push_shrunk_point(
+                p3,
+                center,
+                factor,
+                cell[i + 2] as usize,
+                out_flat,
+                old_point_ids,
+            );
+
+            if i % 2 == 0 {
+                out_polys.push_cell(&[id1, id2, id3]);
+            } else {
+                out_polys.push_cell(&[id2, id1, id3]);
+            }
+        }
+    }
+}
+
+fn point(pts: &[f64], point_id: usize) -> [f64; 3] {
+    let base = point_id * 3;
+    [pts[base], pts[base + 1], pts[base + 2]]
+}
+
+fn copy_point(
+    pts: &[f64],
+    old_id: usize,
+    out_flat: &mut Vec<f64>,
+    old_point_ids: &mut Vec<usize>,
+) -> i64 {
+    let p = point(pts, old_id);
+    let new_id = (out_flat.len() / 3) as i64;
+    out_flat.extend_from_slice(&p);
+    old_point_ids.push(old_id);
+    new_id
+}
+
+fn push_shrunk_point(
+    p: [f64; 3],
+    center: [f64; 3],
+    factor: f64,
+    old_id: usize,
+    out_flat: &mut Vec<f64>,
+    old_point_ids: &mut Vec<usize>,
+) -> i64 {
+    let new_id = (out_flat.len() / 3) as i64;
+    out_flat.push(center[0] + factor * (p[0] - center[0]));
+    out_flat.push(center[1] + factor * (p[1] - center[1]));
+    out_flat.push(center[2] + factor * (p[2] - center[2]));
+    old_point_ids.push(old_id);
+    new_id
 }
 
 fn copy_point_data(input: &DataSetAttributes, old_point_ids: &[usize]) -> DataSetAttributes {
@@ -178,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn shrink_preserves_cell_arrays() {
+    fn shrink_uses_vtk_polydata_topology() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
@@ -189,8 +348,56 @@ mod tests {
 
         let result = shrink(&pd, 0.5);
         assert_eq!(result.lines.num_cells(), 1);
-        assert_eq!(result.polys.num_cells(), 1);
-        assert_eq!(result.strips.num_cells(), 1);
+        assert_eq!(result.polys.num_cells(), 2);
+        assert_eq!(result.strips.num_cells(), 0);
         assert_eq!(result.points.len(), 8);
+    }
+
+    #[test]
+    fn shrink_splits_polyline_segments() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let result = shrink(&pd, 1.0);
+        assert_eq!(result.lines.num_cells(), 2);
+        assert_eq!(result.points.len(), 4);
+        assert_eq!(result.lines.cell(0), &[0, 1]);
+        assert_eq!(result.lines.cell(1), &[2, 3]);
+    }
+
+    #[test]
+    fn shrink_converts_strips_to_polys() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let result = shrink(&pd, 1.0);
+        assert_eq!(result.strips.num_cells(), 0);
+        assert_eq!(result.polys.num_cells(), 2);
+        assert_eq!(result.points.len(), 6);
+        assert_eq!(result.polys.cell(0), &[0, 1, 2]);
+        assert_eq!(result.polys.cell(1), &[4, 3, 5]);
+    }
+
+    #[test]
+    fn shrink_factor_is_clamped() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 3.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+
+        let below = shrink(&pd, -1.0);
+        let p = below.points.get(0);
+        assert!((p[0] - 1.0).abs() < 1e-10);
+        assert!((p[1] - 1.0).abs() < 1e-10);
+
+        let above = shrink(&pd, 2.0);
+        assert_eq!(above.points.get(0), [0.0, 0.0, 0.0]);
     }
 }

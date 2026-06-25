@@ -3,7 +3,7 @@
 //! Creates a point at each grid location of the ImageData, optionally
 //! filtering by scalar threshold and transferring all point data arrays.
 
-use crate::data::{AnyDataArray, DataArray, Points, PolyData, ImageData};
+use crate::data::{AnyDataArray, DataArray, ImageData, Points, PolyData};
 
 /// Convert an ImageData to a PolyData point cloud.
 ///
@@ -42,9 +42,9 @@ pub fn image_to_points(image: &ImageData) -> PolyData {
                 arr.tuple_as_f64(i, &mut buf);
                 data.extend_from_slice(&buf);
             }
-            result.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec(&name, data, nc),
-            ));
+            result
+                .point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
         }
     }
 
@@ -53,11 +53,7 @@ pub fn image_to_points(image: &ImageData) -> PolyData {
 
 /// Convert an ImageData to a point cloud, keeping only points where
 /// a scalar array exceeds a threshold.
-pub fn image_to_points_threshold(
-    image: &ImageData,
-    array_name: &str,
-    threshold: f64,
-) -> PolyData {
+pub fn image_to_points_threshold(image: &ImageData, array_name: &str, threshold: f64) -> PolyData {
     let dims = image.dimensions();
     let spacing = image.spacing();
     let origin = image.origin();
@@ -105,9 +101,9 @@ pub fn image_to_points_threshold(
                 arr.tuple_as_f64(idx, &mut buf);
                 data.extend_from_slice(&buf);
             }
-            result.point_data_mut().add_array(AnyDataArray::F64(
-                DataArray::from_vec(&name, data, nc),
-            ));
+            result
+                .point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
         }
     }
 
@@ -121,8 +117,11 @@ mod tests {
     #[test]
     fn basic_conversion() {
         let image = ImageData::from_function(
-            [3, 3, 3], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0],
-            "density", |x, y, z| x + y + z,
+            [3, 3, 3],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "density",
+            |x, y, z| x + y + z,
         );
         let points = image_to_points(&image);
         assert_eq!(points.points.len(), 27);
@@ -132,8 +131,11 @@ mod tests {
     #[test]
     fn threshold_filter() {
         let image = ImageData::from_function(
-            [5, 5, 1], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0],
-            "value", |x, _y, _z| x,
+            [5, 5, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "value",
+            |x, _y, _z| x,
         );
         let points = image_to_points_threshold(&image, "value", 3.0);
         // Only points with x >= 3.0 should remain

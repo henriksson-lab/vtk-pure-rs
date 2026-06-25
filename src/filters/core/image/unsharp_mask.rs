@@ -11,7 +11,12 @@ pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, amount: f64
     let dims = input.dimensions();
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let vals: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
 
     let r = radius as isize;
     let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
@@ -28,7 +33,13 @@ pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, amount: f64
                             let sx = ix as isize + dx;
                             let sy = iy as isize + dy;
                             let sz = iz as isize + dz;
-                            if sx >= 0 && sx < nx as isize && sy >= 0 && sy < ny as isize && sz >= 0 && sz < nz as isize {
+                            if sx >= 0
+                                && sx < nx as isize
+                                && sy >= 0
+                                && sy < ny as isize
+                                && sz >= 0
+                                && sz < nz as isize
+                            {
                                 sum += vals[sx as usize + sy as usize * nx + sz as usize * nx * ny];
                                 count += 1.0;
                             }
@@ -40,7 +51,9 @@ pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, amount: f64
         }
     }
 
-    let data: Vec<f64> = (0..n).map(|i| vals[i] + amount * (vals[i] - blurred[i])).collect();
+    let data: Vec<f64> = (0..n)
+        .map(|i| vals[i] + amount * (vals[i] - blurred[i]))
+        .collect();
 
     ImageData::with_dimensions(nx, ny, nz)
         .with_spacing(input.spacing())
@@ -53,9 +66,19 @@ mod tests {
     use super::*;
     #[test]
     fn test_unsharp() {
-        let img = ImageData::from_function([8, 8, 1], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0], "v", |x, y, _| {
-            if (x - 4.0).abs() < 0.5 && (y - 4.0).abs() < 0.5 { 100.0 } else { 0.0 }
-        });
+        let img = ImageData::from_function(
+            [8, 8, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, _| {
+                if (x - 4.0).abs() < 0.5 && (y - 4.0).abs() < 0.5 {
+                    100.0
+                } else {
+                    0.0
+                }
+            },
+        );
         let result = unsharp_mask(&img, "v", 1, 1.0);
         assert_eq!(result.dimensions(), [8, 8, 1]);
         // The peak should be enhanced

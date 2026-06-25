@@ -4,8 +4,9 @@ use crate::types::ImplicitFunction;
 /// Clip ImageData by an implicit function.
 ///
 /// For each voxel, evaluates the implicit function at its world-space position.
-/// Voxels where `f(x,y,z) < 0` are masked (set to 0.0). Voxels where
-/// `f(x,y,z) >= 0` retain their original scalar value.
+/// Samples where `f(x,y,z) <= 0` are masked (set to 0.0). Samples where
+/// `f(x,y,z) > 0` retain their original scalar value, matching
+/// vtkClipVolume's default InsideOut=off sense.
 ///
 /// Returns a new ImageData with a "Clipped" scalar array.
 pub fn clip_volume(input: &ImageData, scalars: &str, func: &dyn ImplicitFunction) -> ImageData {
@@ -31,7 +32,7 @@ pub fn clip_volume(input: &ImageData, scalars: &str, func: &dyn ImplicitFunction
                 let idx = k * ny * nx + j * nx + i;
                 arr.tuple_as_f64(idx, &mut buf);
 
-                if fval >= 0.0 {
+                if fval > 0.0 {
                     output_values.push(buf[0]);
                 } else {
                     output_values.push(0.0);
@@ -66,7 +67,7 @@ mod tests {
         );
 
         // Plane at x=2, normal +X: f(x,y,z) = x - 2
-        // Points at x=0,1 are outside (f<0), x=2,3,4 are inside (f>=0)
+        // Points at x=0,1,2 are outside (f<=0), x=3,4 are inside (f>0).
         let plane = ImplicitPlane::new([2.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         let result = clip_volume(&img, "val", &plane);
 
@@ -80,7 +81,7 @@ mod tests {
         assert_eq!(buf[0], 0.0); // x=1, clipped
 
         arr.tuple_as_f64(2, &mut buf);
-        assert!((buf[0] - 3.0).abs() < 1e-10); // x=2, kept
+        assert_eq!(buf[0], 0.0); // x=2, clipped
 
         arr.tuple_as_f64(4, &mut buf);
         assert!((buf[0] - 5.0).abs() < 1e-10); // x=4, kept

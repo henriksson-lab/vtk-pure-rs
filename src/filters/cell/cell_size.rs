@@ -9,22 +9,27 @@ pub fn cell_size(input: &PolyData) -> PolyData {
     let mut lengths = vec![0.0; num_cells];
     let mut areas = vec![0.0; num_cells];
     let volumes = vec![0.0; num_cells];
+    let mut cell_sizes = vec![0.0; num_cells];
 
     let mut cell_id = 0usize;
     for cell in input.verts.iter() {
         vertex_counts[cell_id] = cell.len() as f64;
+        cell_sizes[cell_id] = vertex_counts[cell_id];
         cell_id += 1;
     }
     for cell in input.lines.iter() {
         lengths[cell_id] = polyline_length(input, cell);
+        cell_sizes[cell_id] = lengths[cell_id];
         cell_id += 1;
     }
     for cell in input.polys.iter() {
         areas[cell_id] = polygon_area(input, cell);
+        cell_sizes[cell_id] = areas[cell_id];
         cell_id += 1;
     }
     for cell in input.strips.iter() {
         areas[cell_id] = triangle_strip_area(input, cell);
+        cell_sizes[cell_id] = areas[cell_id];
         cell_id += 1;
     }
 
@@ -41,6 +46,10 @@ pub fn cell_size(input: &PolyData) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("Area", areas, 1)));
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("Volume", volumes, 1)));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CellSize", cell_sizes, 1,
+        )));
     pd
 }
 
@@ -174,5 +183,6 @@ mod tests {
         assert!(result.cell_data().get_array("Length").is_some());
         assert!(result.cell_data().get_array("Area").is_some());
         assert!(result.cell_data().get_array("Volume").is_some());
+        assert!(result.cell_data().get_array("CellSize").is_some());
     }
 }

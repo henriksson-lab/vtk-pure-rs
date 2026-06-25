@@ -1,5 +1,62 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+fn compute_kernel(min: isize, max: isize, sigma: f64) -> Vec<f64> {
+    if sigma == 0.0 {
+        return vec![1.0];
+    }
+
+    let mut kernel = Vec::with_capacity((max - min + 1) as usize);
+    let mut sum = 0.0;
+    for x in min..=max {
+        let weight = (-(x * x) as f64 / (sigma * sigma * 2.0)).exp();
+        kernel.push(weight);
+        sum += weight;
+    }
+    for weight in &mut kernel {
+        *weight /= sum;
+    }
+    kernel
+}
+
+fn convolve_axis(
+    input: &[f64],
+    output: &mut [f64],
+    dims: [usize; 3],
+    axis: usize,
+    radius: usize,
+    sigma: f64,
+) {
+    if sigma == 0.0 || radius == 0 {
+        output.copy_from_slice(input);
+        return;
+    }
+
+    let [nx, ny, nz] = dims;
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
+    let axis_len = dims[axis];
+
+    for k in 0..nz {
+        for j in 0..ny {
+            for i in 0..nx {
+                let coord = [i, j, k][axis];
+                let left_clip = radius.saturating_sub(coord);
+                let right_clip = (coord + radius).saturating_sub(axis_len - 1);
+                let min = -(radius as isize) + left_clip as isize;
+                let max = radius as isize - right_clip as isize;
+                let kernel = compute_kernel(min, max, sigma);
+
+                let mut acc = 0.0;
+                for (offset, weight) in (min..=max).zip(kernel.iter()) {
+                    let mut pos = [i, j, k];
+                    pos[axis] = (coord as isize + offset) as usize;
+                    acc += input[idx(pos[0], pos[1], pos[2])] * weight;
+                }
+                output[idx(i, j, k)] = acc;
+            }
+        }
+    }
+}
+
 /// Apply a Gaussian blur to a named scalar array on an ImageData.
 ///
 /// Uses a separable 1D Gaussian kernel along each axis. The kernel radius
@@ -25,70 +82,16 @@ pub fn gaussian_blur(input: &ImageData, scalars: &str, sigma: f64) -> ImageData 
         values[i] = buf[0];
     }
 
-    // Build 1D Gaussian kernel
-    let sigma: f64 = sigma.max(0.1);
+    let sigma: f64 = sigma.max(0.0);
     let r: usize = (3.0 * sigma).ceil() as usize;
-    let r: usize = r.max(1);
-    let kernel_size: usize = 2 * r + 1;
-    let mut kernel: Vec<f64> = vec![0.0; kernel_size];
-    let mut ksum: f64 = 0.0;
-    for i in 0..kernel_size {
-        let x: f64 = i as f64 - r as f64;
-        let w: f64 = (-x * x / (2.0 * sigma * sigma)).exp();
-        kernel[i] = w;
-        ksum += w;
-    }
-    for w in &mut kernel {
-        *w /= ksum;
-    }
 
-    // Separable: X pass
     let mut tmp: Vec<f64> = vec![0.0; n];
-    for k in 0..nz {
-        for j in 0..ny {
-            for i in 0..nx {
-                let mut acc: f64 = 0.0;
-                for ki in 0..kernel_size {
-                    let ii: usize =
-                        (i as i64 + ki as i64 - r as i64).clamp(0, nx as i64 - 1) as usize;
-                    acc += values[k * ny * nx + j * nx + ii] * kernel[ki];
-                }
-                tmp[k * ny * nx + j * nx + i] = acc;
-            }
-        }
-    }
-
-    // Y pass
     let mut tmp2: Vec<f64> = vec![0.0; n];
-    for k in 0..nz {
-        for j in 0..ny {
-            for i in 0..nx {
-                let mut acc: f64 = 0.0;
-                for ki in 0..kernel_size {
-                    let jj: usize =
-                        (j as i64 + ki as i64 - r as i64).clamp(0, ny as i64 - 1) as usize;
-                    acc += tmp[k * ny * nx + jj * nx + i] * kernel[ki];
-                }
-                tmp2[k * ny * nx + j * nx + i] = acc;
-            }
-        }
-    }
-
-    // Z pass
     let mut result: Vec<f64> = vec![0.0; n];
-    for k in 0..nz {
-        for j in 0..ny {
-            for i in 0..nx {
-                let mut acc: f64 = 0.0;
-                for ki in 0..kernel_size {
-                    let kk: usize =
-                        (k as i64 + ki as i64 - r as i64).clamp(0, nz as i64 - 1) as usize;
-                    acc += tmp2[kk * ny * nx + j * nx + i] * kernel[ki];
-                }
-                result[k * ny * nx + j * nx + i] = acc;
-            }
-        }
-    }
+    let dims = [nx, ny, nz];
+    convolve_axis(&values, &mut tmp, dims, 2, r, sigma);
+    convolve_axis(&tmp, &mut tmp2, dims, 1, r, sigma);
+    convolve_axis(&tmp2, &mut result, dims, 0, r, sigma);
 
     let mut output = input.clone();
     output
@@ -155,5 +158,21 @@ mod tests {
         // Peak should be reduced significantly
         assert!(buf[0] < 50.0);
         assert!(buf[0] > 0.0);
+    }
+
+    #[test]
+    fn zero_sigma_is_identity() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        let scalars = vec![1.0, 5.0, 9.0];
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("S", scalars, 1)));
+
+        let out = gaussian_blur(&img, "S", 0.0);
+        let blurred = out.point_data().get_array("Blurred").unwrap();
+        let mut buf = [0.0f64];
+        for (idx, expected) in [1.0, 5.0, 9.0].into_iter().enumerate() {
+            blurred.tuple_as_f64(idx, &mut buf);
+            assert_eq!(buf[0], expected);
+        }
     }
 }

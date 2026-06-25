@@ -4,11 +4,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 ///
 /// Creates a new ImageData with the specified dimensions that covers the same
 /// spatial extent as the input. Scalar values are trilinearly interpolated.
-pub fn image_resample(
-    input: &ImageData,
-    scalars: &str,
-    new_dims: [usize; 3],
-) -> ImageData {
+pub fn image_resample(input: &ImageData, scalars: &str, new_dims: [usize; 3]) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -65,13 +61,13 @@ pub fn image_resample(
         };
 
         let c000 = get(ix, iy, iz);
-        let c100 = get(ix+1, iy, iz);
-        let c010 = get(ix, iy+1, iz);
-        let c110 = get(ix+1, iy+1, iz);
-        let c001 = get(ix, iy, iz+1);
-        let c101 = get(ix+1, iy, iz+1);
-        let c011 = get(ix, iy+1, iz+1);
-        let c111 = get(ix+1, iy+1, iz+1);
+        let c100 = get(ix + 1, iy, iz);
+        let c010 = get(ix, iy + 1, iz);
+        let c110 = get(ix + 1, iy + 1, iz);
+        let c001 = get(ix, iy, iz + 1);
+        let c101 = get(ix + 1, iy, iz + 1);
+        let c011 = get(ix, iy + 1, iz + 1);
+        let c111 = get(ix + 1, iy + 1, iz + 1);
 
         let c00 = c000 * (1.0 - tx) + c100 * tx;
         let c10 = c010 * (1.0 - tx) + c110 * tx;
@@ -101,9 +97,10 @@ pub fn image_resample(
     let mut img = ImageData::with_dimensions(nnx, nny, nnz);
     img.set_origin(origin);
     img.set_spacing(new_spacing);
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(scalars, new_values, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, new_values, 1,
+        )));
     img.point_data_mut().set_active_scalars(scalars);
     img
 }
@@ -116,9 +113,8 @@ mod tests {
     fn upsample() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
         let values: Vec<f64> = (0..27).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
 
         let result = image_resample(&img, "val", [5, 5, 5]);
         assert_eq!(result.dimensions(), [5, 5, 5]);
@@ -129,9 +125,8 @@ mod tests {
     fn downsample() {
         let mut img = ImageData::with_dimensions(10, 10, 10);
         let values: Vec<f64> = (0..1000).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
 
         let result = image_resample(&img, "val", [3, 3, 3]);
         assert_eq!(result.dimensions(), [3, 3, 3]);
@@ -140,9 +135,12 @@ mod tests {
     #[test]
     fn preserves_corners() {
         let mut img = ImageData::with_dimensions(2, 2, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![0.0, 10.0, 20.0, 30.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 10.0, 20.0, 30.0],
+                1,
+            )));
 
         let result = image_resample(&img, "val", [3, 3, 1]);
         let arr = result.point_data().get_array("val").unwrap();

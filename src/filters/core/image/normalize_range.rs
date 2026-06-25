@@ -13,6 +13,9 @@ pub fn normalize_to_unit(input: &ImageData, scalars: &str) -> ImageData {
 
     let nc: usize = arr.num_components();
     let nt: usize = arr.num_tuples();
+    if nt == 0 {
+        return input.clone();
+    }
 
     // Read all values to find min and max.
     let total: usize = nt * nc;
@@ -26,7 +29,7 @@ pub fn normalize_to_unit(input: &ImageData, scalars: &str) -> ImageData {
     }
 
     let mut vmin: f64 = f64::MAX;
-    let mut vmax: f64 = f64::MIN;
+    let mut vmax: f64 = f64::NEG_INFINITY;
     for &v in &values {
         if v < vmin {
             vmin = v;
@@ -44,9 +47,13 @@ pub fn normalize_to_unit(input: &ImageData, scalars: &str) -> ImageData {
     };
 
     let mut result = input.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Normalized", normalized, nc),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Normalized",
+            normalized,
+            nc,
+        )));
     result
 }
 

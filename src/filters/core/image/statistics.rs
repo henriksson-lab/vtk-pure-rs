@@ -17,7 +17,9 @@ pub struct ImageStats {
 pub fn image_statistics(input: &ImageData, scalars: &str) -> Option<ImageStats> {
     let arr = input.point_data().get_array(scalars)?;
     let n = arr.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
 
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
@@ -33,7 +35,9 @@ pub fn image_statistics(input: &ImageData, scalars: &str) -> Option<ImageStats> 
         max_v = max_v.max(v);
         sum += v;
         sum_sq += v * v;
-        if v.abs() > 1e-15 { nonzero += 1; }
+        if v.abs() > 1e-15 {
+            nonzero += 1;
+        }
     }
 
     let mean = sum / n as f64;
@@ -54,10 +58,16 @@ pub fn image_statistics(input: &ImageData, scalars: &str) -> Option<ImageStats> 
 /// Compute a histogram of an ImageData scalar field.
 ///
 /// Returns (bin_centers, counts) with `n_bins` bins spanning [min, max].
-pub fn image_histogram(input: &ImageData, scalars: &str, n_bins: usize) -> Option<(Vec<f64>, Vec<usize>)> {
+pub fn image_histogram(
+    input: &ImageData,
+    scalars: &str,
+    n_bins: usize,
+) -> Option<(Vec<f64>, Vec<usize>)> {
     let arr = input.point_data().get_array(scalars)?;
     let n = arr.num_tuples();
-    if n == 0 { return None; }
+    if n == 0 {
+        return None;
+    }
     let n_bins = n_bins.max(1);
 
     let mut buf = [0.0f64];
@@ -92,9 +102,8 @@ mod tests {
     fn make_img() -> ImageData {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         let values: Vec<f64> = (1..=9).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 

@@ -22,10 +22,10 @@ pub fn image_data_to_surface(image: &ImageData) -> PolyData {
 
     // Helper: add a grid face and return the base point index
     let add_face = |i_range: std::ops::Range<usize>,
-                         j_range: std::ops::Range<usize>,
-                         make_ijk: &dyn Fn(usize, usize) -> (usize, usize, usize),
-                         pts: &mut Points<f64>,
-                         polys: &mut CellArray| {
+                    j_range: std::ops::Range<usize>,
+                    make_ijk: &dyn Fn(usize, usize) -> (usize, usize, usize),
+                    pts: &mut Points<f64>,
+                    polys: &mut CellArray| {
         let base = pts.len();
         let ni = i_range.len();
         let nj = j_range.len();
@@ -51,15 +51,33 @@ pub fn image_data_to_surface(image: &ImageData) -> PolyData {
     // -Z face (k=0)
     add_face(0..nx, 0..ny, &|i, j| (i, j, 0), &mut points, &mut polys);
     // +Z face (k=nz-1)
-    add_face(0..nx, 0..ny, &|i, j| (i, j, nz - 1), &mut points, &mut polys);
+    add_face(
+        0..nx,
+        0..ny,
+        &|i, j| (i, j, nz - 1),
+        &mut points,
+        &mut polys,
+    );
     // -Y face (j=0)
     add_face(0..nx, 0..nz, &|i, k| (i, 0, k), &mut points, &mut polys);
     // +Y face (j=ny-1)
-    add_face(0..nx, 0..nz, &|i, k| (i, ny - 1, k), &mut points, &mut polys);
+    add_face(
+        0..nx,
+        0..nz,
+        &|i, k| (i, ny - 1, k),
+        &mut points,
+        &mut polys,
+    );
     // -X face (i=0)
     add_face(0..ny, 0..nz, &|j, k| (0, j, k), &mut points, &mut polys);
     // +X face (i=nx-1)
-    add_face(0..ny, 0..nz, &|j, k| (nx - 1, j, k), &mut points, &mut polys);
+    add_face(
+        0..ny,
+        0..nz,
+        &|j, k| (nx - 1, j, k),
+        &mut points,
+        &mut polys,
+    );
 
     let mut pd = PolyData::new();
     pd.points = points;

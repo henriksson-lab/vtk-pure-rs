@@ -12,11 +12,16 @@ pub fn close_holes(input: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
-        for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(key).or_insert(0) += 1;
+        count_cell_edges(cell, &mut edge_count);
+    }
+
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = [strip[i], strip[i + 1], strip[i + 2]];
+            count_cell_edges(&tri, &mut edge_count);
         }
     }
 
@@ -85,6 +90,15 @@ pub fn close_holes(input: &PolyData) -> PolyData {
     pd.strips = input.strips.clone();
     *pd.point_data_mut() = input.point_data().clone();
     pd
+}
+
+fn count_cell_edges(cell: &[i64], edge_count: &mut HashMap<(i64, i64), usize>) {
+    for i in 0..cell.len() {
+        let a = cell[i];
+        let b = cell[(i + 1) % cell.len()];
+        let key = if a < b { (a, b) } else { (b, a) };
+        *edge_count.entry(key).or_insert(0) += 1;
+    }
 }
 
 fn is_simple_loop(polygon: &[i64]) -> bool {

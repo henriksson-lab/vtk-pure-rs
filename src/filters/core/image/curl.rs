@@ -37,9 +37,7 @@ pub fn compute_curl(input: &ImageData, vector_array: &str) -> ImageData {
         vz[i] = buf[2];
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     let mut curl_data: Vec<f64> = vec![0.0; n * 3];
 
@@ -105,9 +103,8 @@ pub fn compute_curl(input: &ImageData, vector_array: &str) -> ImageData {
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Curl", curl_data, 3),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Curl", curl_data, 3)));
     img
 }
 
@@ -126,9 +123,8 @@ mod tests {
             data.push(2.0);
             data.push(3.0);
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("V", data, 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("V", data, 3)));
         let result = compute_curl(&img, "V");
         let curl = result.point_data().get_array("Curl").unwrap();
         let mut buf = [0.0f64; 3];
@@ -153,13 +149,12 @@ mod tests {
                 let x: f64 = i as f64;
                 let y: f64 = j as f64;
                 data.push(-y); // Vx = -y
-                data.push(x);  // Vy = x
+                data.push(x); // Vy = x
                 data.push(0.0);
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("V", data, 3),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("V", data, 3)));
         let result = compute_curl(&img, "V");
         let curl = result.point_data().get_array("Curl").unwrap();
         let mut buf = [0.0f64; 3];

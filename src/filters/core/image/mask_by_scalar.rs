@@ -18,18 +18,15 @@ pub fn mask_by_scalar_range(
 
     let n: usize = arr.num_tuples();
     let nc: usize = arr.num_components();
-    let mut result: Vec<f64> = vec![fill; n * nc];
+    let mut result: Vec<f64> = Vec::with_capacity(n * nc);
     let mut buf: Vec<f64> = vec![0.0; nc];
 
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        // Use first component for the range test
-        let val: f64 = buf[0];
-        if val >= min && val <= max {
-            for c in 0..nc {
-                result[i * nc + c] = buf[c];
-            }
-        }
+        result.extend(
+            buf.iter()
+                .map(|&val| if val >= min && val <= max { val } else { fill }),
+        );
     }
 
     let mut img = input.clone();
@@ -37,9 +34,11 @@ pub fn mask_by_scalar_range(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(
-                DataArray::from_vec(scalars, result.clone(), nc),
-            ));
+            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                scalars,
+                result.clone(),
+                nc,
+            )));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -56,9 +55,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(3, 3, 1);
         // Values 1..9
         let values: Vec<f64> = (1..=9).map(|x| x as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("scalars", values, 1)));
         img
     }
 
@@ -103,5 +101,24 @@ mod tests {
         let img = make_test_image();
         let result = mask_by_scalar_range(&img, "nope", 0.0, 10.0, 0.0);
         assert!(result.point_data().get_array("scalars").is_some());
+    }
+
+    #[test]
+    fn multi_component_thresholds_each_component() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "scalars",
+                vec![1.0, 5.0, 8.0, 3.0],
+                2,
+            )));
+        let result = mask_by_scalar_range(&img, "scalars", 3.0, 7.0, -1.0);
+        let arr = result.point_data().get_array("scalars").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut val = [0.0f64; 2];
+        arr.tuple_as_f64(0, &mut val);
+        assert_eq!(val, [-1.0, 5.0]);
+        arr.tuple_as_f64(1, &mut val);
+        assert_eq!(val, [-1.0, 3.0]);
     }
 }

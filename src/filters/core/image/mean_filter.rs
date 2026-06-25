@@ -16,21 +16,22 @@ pub fn mean_filter(input: &ImageData, scalars: &str, radius: usize) -> ImageData
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
     let n: usize = nx * ny * nz;
+    let num_components = arr.num_components();
 
-    let mut values: Vec<f64> = vec![0.0; n];
-    let mut buf: [f64; 1] = [0.0];
+    let mut values: Vec<f64> = vec![0.0; n * num_components];
+    let mut buf = vec![0.0f64; num_components];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = buf[0];
+        values[i * num_components..(i + 1) * num_components].copy_from_slice(&buf);
     }
 
     let r: i64 = radius as i64;
-    let mut result: Vec<f64> = vec![0.0; n];
+    let mut result: Vec<f64> = vec![0.0; n * num_components];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let mut sum: f64 = 0.0;
+                let mut sum = vec![0.0f64; num_components];
                 let mut count: f64 = 0.0;
 
                 for dk in -r..=r {
@@ -48,16 +49,20 @@ pub fn mean_filter(input: &ImageData, scalars: &str, radius: usize) -> ImageData
                             if ii < 0 || ii >= nx as i64 {
                                 continue;
                             }
-                            let idx: usize =
-                                kk as usize * ny * nx + jj as usize * nx + ii as usize;
-                            sum += values[idx];
+                            let idx: usize = kk as usize * ny * nx + jj as usize * nx + ii as usize;
+                            for c in 0..num_components {
+                                sum[c] += values[idx * num_components + c];
+                            }
                             count += 1.0;
                         }
                     }
                 }
 
                 let out_idx: usize = k * ny * nx + j * nx + i;
-                result[out_idx] = if count > 0.0 { sum / count } else { 0.0 };
+                for c in 0..num_components {
+                    result[out_idx * num_components + c] =
+                        if count > 0.0 { sum[c] / count } else { 0.0 };
+                }
             }
         }
     }
@@ -70,7 +75,7 @@ pub fn mean_filter(input: &ImageData, scalars: &str, radius: usize) -> ImageData
             new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
                 scalars,
                 result.clone(),
-                1,
+                num_components,
             )));
         } else {
             new_attrs.add_array(a.clone());
@@ -90,9 +95,8 @@ mod tests {
         let mut values: Vec<f64> = vec![0.0; n];
         // Spike at center (2,2,2) -> index = 2*25 + 2*5 + 2 = 62
         values[62] = 125.0;
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 
@@ -122,9 +126,12 @@ mod tests {
     #[test]
     fn mean_filter_preserves_uniform() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![7.0; 27], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![7.0; 27],
+                1,
+            )));
         let result = mean_filter(&img, "val", 1);
         let arr = result.point_data().get_array("val").unwrap();
         let mut buf: [f64; 1] = [0.0];

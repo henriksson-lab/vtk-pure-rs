@@ -1,5 +1,6 @@
 use crate::data::{
-    CellArray, ImageData, Points, PolyData, RectilinearGrid, StructuredGrid, UnstructuredGrid,
+    AnyDataArray, CellArray, DataArray, ImageData, Points, PolyData, RectilinearGrid,
+    StructuredGrid, UnstructuredGrid,
 };
 use crate::types::CellType;
 
@@ -22,7 +23,7 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         |i: usize, j: usize, k: usize| -> i64 { (k * dims[1] * dims[0] + j * dims[0] + i) as i64 };
 
     // Z-min face (k=0)
-    if dims[2] > 0 {
+    if dims[0] > 1 && dims[1] > 1 && dims[2] > 0 {
         for j in 0..dims[1] - 1 {
             for i in 0..dims[0] - 1 {
                 polys.push_cell(&[
@@ -35,7 +36,7 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         }
     }
     // Z-max face
-    if dims[2] > 1 {
+    if dims[0] > 1 && dims[1] > 1 && dims[2] > 1 {
         let k = dims[2] - 1;
         for j in 0..dims[1] - 1 {
             for i in 0..dims[0] - 1 {
@@ -49,7 +50,7 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         }
     }
     // Y-min face
-    if dims[1] > 0 {
+    if dims[0] > 1 && dims[1] > 0 && dims[2] > 1 {
         for k in 0..dims[2] - 1 {
             for i in 0..dims[0] - 1 {
                 polys.push_cell(&[
@@ -62,7 +63,7 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         }
     }
     // Y-max face
-    if dims[1] > 1 {
+    if dims[0] > 1 && dims[1] > 1 && dims[2] > 1 {
         let j = dims[1] - 1;
         for k in 0..dims[2] - 1 {
             for i in 0..dims[0] - 1 {
@@ -76,7 +77,7 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         }
     }
     // X-min face
-    if dims[0] > 0 {
+    if dims[0] > 0 && dims[1] > 1 && dims[2] > 1 {
         for k in 0..dims[2] - 1 {
             for j in 0..dims[1] - 1 {
                 polys.push_cell(&[
@@ -89,7 +90,7 @@ pub fn image_data_surface_to_poly_data(img: &ImageData) -> PolyData {
         }
     }
     // X-max face
-    if dims[0] > 1 {
+    if dims[0] > 1 && dims[1] > 1 && dims[2] > 1 {
         let i = dims[0] - 1;
         for k in 0..dims[2] - 1 {
             for j in 0..dims[1] - 1 {
@@ -114,11 +115,11 @@ pub fn poly_data_to_unstructured_grid(pd: &PolyData) -> UnstructuredGrid {
     let mut ug = UnstructuredGrid::new();
     ug.points = pd.points.clone();
 
-    for cell in pd.polys.iter() {
-        let ct = match cell.len() {
-            3 => CellType::Triangle,
-            4 => CellType::Quad,
-            _ => CellType::Polygon,
+    for cell in pd.verts.iter() {
+        let ct = if cell.len() == 1 {
+            CellType::Vertex
+        } else {
+            CellType::PolyVertex
         };
         ug.push_cell(ct, cell);
     }
@@ -130,21 +131,22 @@ pub fn poly_data_to_unstructured_grid(pd: &PolyData) -> UnstructuredGrid {
         };
         ug.push_cell(ct, cell);
     }
-    for cell in pd.verts.iter() {
-        let ct = if cell.len() == 1 {
-            CellType::Vertex
-        } else {
-            CellType::PolyVertex
+    for cell in pd.polys.iter() {
+        let ct = match cell.len() {
+            3 => CellType::Triangle,
+            4 => CellType::Quad,
+            _ => CellType::Polygon,
         };
         ug.push_cell(ct, cell);
     }
-
-    // Copy point data
-    for i in 0..pd.point_data().num_arrays() {
-        if let Some(arr) = pd.point_data().get_array_by_index(i) {
-            ug.point_data_mut().add_array(arr.clone());
-        }
+    for cell in pd.strips.iter() {
+        ug.push_cell(CellType::TriangleStrip, cell);
     }
+
+    // Copy point and cell data in VTK's vtkPolyData cell order:
+    // verts, lines, polys, strips.
+    *ug.point_data_mut() = pd.point_data().clone();
+    *ug.cell_data_mut() = pd.cell_data().clone();
 
     ug
 }
@@ -153,22 +155,42 @@ pub fn poly_data_to_unstructured_grid(pd: &PolyData) -> UnstructuredGrid {
 pub fn unstructured_grid_to_poly_data(ug: &UnstructuredGrid) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = ug.points.clone();
+    let mut included_cell_ids = Vec::new();
 
     for i in 0..ug.cells().num_cells() {
         let ct = ug.cell_type(i);
         let pts = ug.cell_points(i);
-        match ct.dimension() {
-            0 => pd.verts.push_cell(pts),
-            1 => pd.lines.push_cell(pts),
-            2 | 3 => pd.polys.push_cell(pts),
+        match ct {
+            CellType::Vertex | CellType::PolyVertex => {
+                pd.verts.push_cell(pts);
+                included_cell_ids.push(i);
+            }
+            CellType::Line | CellType::PolyLine => {
+                pd.lines.push_cell(pts);
+                included_cell_ids.push(i);
+            }
+            CellType::TriangleStrip => {
+                pd.strips.push_cell(pts);
+                included_cell_ids.push(i);
+            }
+            _ if ct.dimension() == 2 => {
+                pd.polys.push_cell(pts);
+                included_cell_ids.push(i);
+            }
             _ => {}
         }
     }
 
-    // Copy point data
-    for i in 0..ug.point_data().num_arrays() {
-        if let Some(arr) = ug.point_data().get_array_by_index(i) {
-            pd.point_data_mut().add_array(arr.clone());
+    *pd.point_data_mut() = ug.point_data().clone();
+    if included_cell_ids.len() == ug.cells().num_cells() {
+        *pd.cell_data_mut() = ug.cell_data().clone();
+    } else {
+        for i in 0..ug.cell_data().num_arrays() {
+            if let Some(arr) = ug.cell_data().get_array_by_index(i) {
+                if let Some(subset) = subset_array(arr, &included_cell_ids) {
+                    pd.cell_data_mut().add_array(subset);
+                }
+            }
         }
     }
 
@@ -194,6 +216,14 @@ pub fn rectilinear_grid_to_poly_data(rg: &RectilinearGrid) -> PolyData {
     let mut polys = CellArray::new();
     let idx =
         |i: usize, j: usize, k: usize| -> i64 { (k * dims[1] * dims[0] + j * dims[0] + i) as i64 };
+
+    if push_flat_grid_polys(dims, idx, &mut polys) {
+        let mut pd = PolyData::new();
+        pd.points = points;
+        pd.polys = polys;
+        *pd.point_data_mut() = rg.point_data().clone();
+        return pd;
+    }
 
     // Just do all faces of all cells (no shared face elimination)
     for k in 0..dims[2].saturating_sub(1) {
@@ -257,6 +287,7 @@ pub fn rectilinear_grid_to_poly_data(rg: &RectilinearGrid) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = points;
     pd.polys = polys;
+    *pd.point_data_mut() = rg.point_data().clone();
     pd
 }
 
@@ -272,6 +303,11 @@ pub fn structured_grid_to_poly_data(sg: &StructuredGrid) -> PolyData {
 
     let idx =
         |i: usize, j: usize, k: usize| -> i64 { (k * dims[1] * dims[0] + j * dims[0] + i) as i64 };
+
+    if push_flat_grid_polys(dims, idx, &mut pd.polys) {
+        *pd.point_data_mut() = sg.point_data().clone();
+        return pd;
+    }
 
     // Outer faces only
     for k in 0..dims[2].saturating_sub(1) {
@@ -329,6 +365,7 @@ pub fn structured_grid_to_poly_data(sg: &StructuredGrid) -> PolyData {
         }
     }
 
+    *pd.point_data_mut() = sg.point_data().clone();
     pd
 }
 
@@ -371,6 +408,90 @@ pub fn structured_grid_to_image_data(sg: &StructuredGrid) -> Option<ImageData> {
         .with_spacing(spacing)
         .with_origin(p000);
     Some(img)
+}
+
+fn push_flat_grid_polys<F>(dims: [usize; 3], idx: F, polys: &mut CellArray) -> bool
+where
+    F: Fn(usize, usize, usize) -> i64,
+{
+    match (dims[0] > 1, dims[1] > 1, dims[2] > 1) {
+        (true, true, false) if dims[2] == 1 => {
+            for j in 0..dims[1] - 1 {
+                for i in 0..dims[0] - 1 {
+                    polys.push_cell(&[
+                        idx(i, j, 0),
+                        idx(i + 1, j, 0),
+                        idx(i + 1, j + 1, 0),
+                        idx(i, j + 1, 0),
+                    ]);
+                }
+            }
+            true
+        }
+        (true, false, true) if dims[1] == 1 => {
+            for k in 0..dims[2] - 1 {
+                for i in 0..dims[0] - 1 {
+                    polys.push_cell(&[
+                        idx(i, 0, k),
+                        idx(i + 1, 0, k),
+                        idx(i + 1, 0, k + 1),
+                        idx(i, 0, k + 1),
+                    ]);
+                }
+            }
+            true
+        }
+        (false, true, true) if dims[0] == 1 => {
+            for k in 0..dims[2] - 1 {
+                for j in 0..dims[1] - 1 {
+                    polys.push_cell(&[
+                        idx(0, j, k),
+                        idx(0, j, k + 1),
+                        idx(0, j + 1, k + 1),
+                        idx(0, j + 1, k),
+                    ]);
+                }
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn subset_array(array: &AnyDataArray, tuple_ids: &[usize]) -> Option<AnyDataArray> {
+    macro_rules! subset_variant {
+        ($variant:ident) => {{
+            let AnyDataArray::$variant(a) = array else {
+                unreachable!();
+            };
+            let nc = a.num_components();
+            let mut data = Vec::with_capacity(tuple_ids.len() * nc);
+            for &tuple_id in tuple_ids {
+                if tuple_id >= a.num_tuples() {
+                    return None;
+                }
+                data.extend_from_slice(a.tuple(tuple_id));
+            }
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                a.name(),
+                data,
+                nc,
+            )))
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(_) => subset_variant!(F32),
+        AnyDataArray::F64(_) => subset_variant!(F64),
+        AnyDataArray::I8(_) => subset_variant!(I8),
+        AnyDataArray::I16(_) => subset_variant!(I16),
+        AnyDataArray::I32(_) => subset_variant!(I32),
+        AnyDataArray::I64(_) => subset_variant!(I64),
+        AnyDataArray::U8(_) => subset_variant!(U8),
+        AnyDataArray::U16(_) => subset_variant!(U16),
+        AnyDataArray::U32(_) => subset_variant!(U32),
+        AnyDataArray::U64(_) => subset_variant!(U64),
+    }
 }
 
 #[cfg(test)]
@@ -461,5 +582,142 @@ mod tests {
         let ug = poly_data_to_unstructured_grid(&pd);
         let pd2 = unstructured_grid_to_poly_data(&ug);
         assert_eq!(pd2.polys.num_cells(), 2);
+    }
+
+    #[test]
+    fn poly_to_unstructured_preserves_vtk_cell_order_and_strips() {
+        let mut pd = PolyData::new();
+        pd.points = Points::from_vec(vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.verts.push_cell(&[0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+        pd.lines.push_cell(&[1, 2]);
+
+        let ug = poly_data_to_unstructured_grid(&pd);
+
+        assert_eq!(
+            ug.cell_types(),
+            &[
+                CellType::Vertex,
+                CellType::Line,
+                CellType::Triangle,
+                CellType::TriangleStrip,
+            ]
+        );
+        assert_eq!(ug.cell_points(3), &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn poly_to_unstructured_copies_cell_data() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.cell_data_mut().add_array(crate::data::AnyDataArray::I32(
+            crate::data::DataArray::from_vec("cell_ids", vec![7], 1),
+        ));
+
+        let ug = poly_data_to_unstructured_grid(&pd);
+
+        let ids = ug.cell_data().get_array("cell_ids").unwrap();
+        let mut value = [0.0];
+        ids.tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 7.0);
+    }
+
+    #[test]
+    fn unstructured_to_poly_preserves_triangle_strips() {
+        let mut ug = UnstructuredGrid::new();
+        ug.points = Points::from_vec(vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]);
+        ug.push_cell(CellType::TriangleStrip, &[0, 1, 2, 3]);
+
+        let pd = unstructured_grid_to_poly_data(&ug);
+
+        assert_eq!(pd.strips.num_cells(), 1);
+        assert_eq!(pd.polys.num_cells(), 0);
+        assert_eq!(pd.strips.cell(0), &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn unstructured_to_poly_copies_cell_data_for_supported_cells() {
+        let mut ug = UnstructuredGrid::new();
+        ug.points = Points::from_vec(vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]);
+        ug.push_cell(CellType::Triangle, &[0, 1, 2]);
+        ug.push_cell(CellType::Tetra, &[0, 1, 2, 3]);
+        ug.cell_data_mut().add_array(crate::data::AnyDataArray::I32(
+            crate::data::DataArray::from_vec("ids", vec![11, 22], 1),
+        ));
+
+        let pd = unstructured_grid_to_poly_data(&ug);
+
+        assert_eq!(pd.polys.num_cells(), 1);
+        let ids = pd.cell_data().get_array("ids").unwrap();
+        let mut value = [0.0];
+        ids.tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 11.0);
+    }
+
+    #[test]
+    fn unstructured_to_poly_does_not_emit_volume_cells_as_polygons() {
+        let ug = UnstructuredGrid::from_tetrahedra(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 1, 2, 3]],
+        );
+
+        let pd = unstructured_grid_to_poly_data(&ug);
+
+        assert_eq!(pd.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn image_surface_handles_flat_dimensions() {
+        let img = ImageData::with_dimensions(3, 3, 1);
+        let pd = image_data_surface_to_poly_data(&img);
+        assert_eq!(pd.points.len(), 9);
+        assert_eq!(pd.polys.num_cells(), 4);
+    }
+
+    #[test]
+    fn image_surface_handles_empty_dimensions() {
+        let img = ImageData::with_dimensions(0, 3, 3);
+        let pd = image_data_surface_to_poly_data(&img);
+        assert_eq!(pd.points.len(), 0);
+        assert_eq!(pd.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn rectilinear_surface_handles_flat_dimensions() {
+        let rg = RectilinearGrid::from_coords(vec![0.0, 1.0, 2.0], vec![0.0, 1.0, 2.0], vec![0.0]);
+        let pd = rectilinear_grid_to_poly_data(&rg);
+        assert_eq!(pd.points.len(), 9);
+        assert_eq!(pd.polys.num_cells(), 4);
+    }
+
+    #[test]
+    fn structured_surface_handles_flat_dimensions() {
+        let sg = StructuredGrid::uniform([3, 3, 1], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]);
+        let pd = structured_grid_to_poly_data(&sg);
+        assert_eq!(pd.points.len(), 9);
+        assert_eq!(pd.polys.num_cells(), 4);
     }
 }

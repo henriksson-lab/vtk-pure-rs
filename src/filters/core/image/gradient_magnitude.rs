@@ -3,12 +3,12 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Compute gradient magnitude from a scalar array on ImageData using central differences.
 ///
 /// Adds a "GradientMagnitude" point data array to the output. At each grid
-/// point, the gradient is computed via central differences along each axis,
-/// and the magnitude sqrt(gx^2 + gy^2 + gz^2) is stored.
+/// point, the gradient is computed via duplicated-boundary central differences
+/// in XY, matching vtkImageGradientMagnitude's default dimensionality.
 pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
-        None => return input.clone(),
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -17,20 +17,20 @@ pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
     let nz: usize = dims[2] as usize;
     let spacing = input.spacing();
     let n: usize = nx * ny * nz;
+    let num_components = arr.num_components();
 
     // Read scalar values into a flat array.
-    let mut values = vec![0.0f64; n];
-    let mut buf = [0.0f64];
+    let mut values = vec![0.0f64; n * num_components];
+    let mut buf = vec![0.0f64; num_components];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = buf[0];
+        let base = i * num_components;
+        values[base..base + num_components].copy_from_slice(&buf);
     }
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
-    let mut mag = vec![0.0f64; n];
+    let mut mag = vec![0.0f64; n * num_components];
 
     for k in 0..nz {
         for j in 0..ny {
@@ -39,39 +39,36 @@ pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
                 let ip: usize = if i + 1 < nx { i + 1 } else { nx - 1 };
                 let jm: usize = if j > 0 { j - 1 } else { 0 };
                 let jp: usize = if j + 1 < ny { j + 1 } else { ny - 1 };
-                let km: usize = if k > 0 { k - 1 } else { 0 };
-                let kp: usize = if k + 1 < nz { k + 1 } else { nz - 1 };
-
-                let dx_span: f64 = (ip - im) as f64 * spacing[0];
-                let dy_span: f64 = (jp - jm) as f64 * spacing[1];
-                let dz_span: f64 = (kp - km) as f64 * spacing[2];
-
-                let gx: f64 = if dx_span > 1e-15 {
-                    (values[idx(ip, j, k)] - values[idx(im, j, k)]) / dx_span
-                } else {
-                    0.0
-                };
-                let gy: f64 = if dy_span > 1e-15 {
-                    (values[idx(i, jp, k)] - values[idx(i, jm, k)]) / dy_span
-                } else {
-                    0.0
-                };
-                let gz: f64 = if dz_span > 1e-15 {
-                    (values[idx(i, j, kp)] - values[idx(i, j, km)]) / dz_span
-                } else {
-                    0.0
-                };
-
                 let pi: usize = idx(i, j, k);
-                mag[pi] = (gx * gx + gy * gy + gz * gz).sqrt();
+                let x_min = idx(im, j, k) * num_components;
+                let x_max = idx(ip, j, k) * num_components;
+                let y_min = idx(i, jm, k) * num_components;
+                let y_max = idx(i, jp, k) * num_components;
+                let out = pi * num_components;
+                for component in 0..num_components {
+                    let gx: f64 = if spacing[0].abs() > 1e-15 {
+                        (values[x_max + component] - values[x_min + component]) * 0.5 / spacing[0]
+                    } else {
+                        0.0
+                    };
+                    let gy: f64 = if spacing[1].abs() > 1e-15 {
+                        (values[y_max + component] - values[y_min + component]) * 0.5 / spacing[1]
+                    } else {
+                        0.0
+                    };
+                    mag[out + component] = (gx * gx + gy * gy).sqrt();
+                }
             }
         }
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GradientMagnitude", mag, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientMagnitude",
+            mag,
+            num_components,
+        )));
     img
 }
 
@@ -84,9 +81,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         img.set_spacing([1.0, 1.0, 1.0]);
         let values: Vec<f64> = (0..5).map(|i| i as f64).collect();
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
 
         let result = image_gradient_magnitude(&img, "Scalars");
         let arr = result.point_data().get_array("GradientMagnitude").unwrap();
@@ -108,9 +104,8 @@ mod tests {
                 values.push(i as f64 + j as f64);
             }
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("S", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("S", values, 1)));
 
         let result = image_gradient_magnitude(&img, "S");
         let arr = result.point_data().get_array("GradientMagnitude").unwrap();
@@ -125,5 +120,25 @@ mod tests {
         let img = ImageData::with_dimensions(3, 3, 3);
         let result = image_gradient_magnitude(&img, "nonexistent");
         assert!(result.point_data().get_array("GradientMagnitude").is_none());
+    }
+
+    #[test]
+    fn multi_component_field_preserves_components() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "uv",
+                vec![0.0, 0.0, 1.0, 2.0, 2.0, 4.0],
+                2,
+            )));
+
+        let result = image_gradient_magnitude(&img, "uv");
+        let arr = result.point_data().get_array("GradientMagnitude").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64; 2];
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
+        assert!((buf[1] - 2.0).abs() < 1e-10);
     }
 }

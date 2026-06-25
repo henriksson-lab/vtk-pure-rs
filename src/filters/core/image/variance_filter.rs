@@ -59,9 +59,10 @@ pub fn variance_filter(input: &ImageData, scalars: &str, radius: usize) -> Image
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Variance", variance, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Variance", variance, 1,
+        )));
     img
 }
 
@@ -73,9 +74,8 @@ mod tests {
         let mut img = ImageData::with_dimensions(3, 3, 3);
         let n: usize = 27;
         let values: Vec<f64> = vec![5.0; n];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
         img
     }
 
@@ -86,9 +86,8 @@ mod tests {
         for i in 0..n {
             values.push(i as f64);
         }
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Scalars", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("Scalars", values, 1)));
         img
     }
 
@@ -100,7 +99,12 @@ mod tests {
         let mut buf: [f64; 1] = [0.0];
         for i in 0..27 {
             var_arr.tuple_as_f64(i, &mut buf);
-            assert!(buf[0].abs() < 1e-10, "variance at {} should be 0, got {}", i, buf[0]);
+            assert!(
+                buf[0].abs() < 1e-10,
+                "variance at {} should be 0, got {}",
+                i,
+                buf[0]
+            );
         }
     }
 
@@ -112,7 +116,11 @@ mod tests {
         let mut buf: [f64; 1] = [0.0];
         // Center voxel (2,2,0) index=12 should have nonzero variance
         var_arr.tuple_as_f64(12, &mut buf);
-        assert!(buf[0] > 0.0, "center variance should be positive, got {}", buf[0]);
+        assert!(
+            buf[0] > 0.0,
+            "center variance should be positive, got {}",
+            buf[0]
+        );
     }
 
     #[test]

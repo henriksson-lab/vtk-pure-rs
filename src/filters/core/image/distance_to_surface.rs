@@ -7,8 +7,6 @@ use crate::data::{AnyDataArray, DataArray, ImageData, PolyData};
 /// Adds a "DistanceToSurface" point data array to the returned ImageData.
 pub fn compute_distance_to_surface(image: &ImageData, surface: &PolyData) -> ImageData {
     let dims = image.dimensions();
-    let spacing = image.spacing();
-    let origin = image.origin();
 
     let nx: usize = dims[0] as usize;
     let ny: usize = dims[1] as usize;
@@ -27,15 +25,13 @@ pub fn compute_distance_to_surface(image: &ImageData, surface: &PolyData) -> Ima
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let vx: f64 = origin[0] + (i as f64) * spacing[0];
-                let vy: f64 = origin[1] + (j as f64) * spacing[1];
-                let vz: f64 = origin[2] + (k as f64) * spacing[2];
+                let voxel = image.point_from_ijk(i, j, k);
 
                 let mut min_dist_sq: f64 = f64::MAX;
                 for sp in &surf_pts {
-                    let dx: f64 = vx - sp[0];
-                    let dy: f64 = vy - sp[1];
-                    let dz: f64 = vz - sp[2];
+                    let dx: f64 = voxel[0] - sp[0];
+                    let dy: f64 = voxel[1] - sp[1];
+                    let dz: f64 = voxel[2] - sp[2];
                     let d2: f64 = dx * dx + dy * dy + dz * dz;
                     if d2 < min_dist_sq {
                         min_dist_sq = d2;
@@ -52,9 +48,13 @@ pub fn compute_distance_to_surface(image: &ImageData, surface: &PolyData) -> Ima
     }
 
     let mut result = image.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("DistanceToSurface", distances, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DistanceToSurface",
+            distances,
+            1,
+        )));
     result
 }
 
@@ -123,6 +123,25 @@ mod tests {
         assert!((val[0] - 0.0).abs() < 1e-10);
 
         // Second voxel at x=2.0
+        arr.tuple_as_f64(1, &mut val);
+        assert!((val[0] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn distance_respects_extent_minimum() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.set_extent([10, 11, 0, 0, 0, 0]);
+        img.set_spacing([2.0, 1.0, 1.0]);
+        img.set_origin([1.0, 0.0, 0.0]);
+
+        let surface = make_single_point_surface([21.0, 0.0, 0.0]);
+        let result = compute_distance_to_surface(&img, &surface);
+        let arr = result.point_data().get_array("DistanceToSurface").unwrap();
+
+        let mut val = [0.0f64];
+        arr.tuple_as_f64(0, &mut val);
+        assert!((val[0] - 0.0).abs() < 1e-10);
+
         arr.tuple_as_f64(1, &mut val);
         assert!((val[0] - 2.0).abs() < 1e-10);
     }

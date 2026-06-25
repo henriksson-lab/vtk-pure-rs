@@ -4,45 +4,83 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Apply bilateral filter (edge-preserving smooth).
 /// sigma_spatial controls spatial extent, sigma_range controls intensity sensitivity.
-pub fn bilateral_filter(input: &ImageData, scalars: &str, sigma_spatial: f64, sigma_range: f64) -> ImageData {
+pub fn bilateral_filter(
+    input: &ImageData,
+    scalars: &str,
+    sigma_spatial: f64,
+    sigma_range: f64,
+) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
     let n = arr.num_tuples();
+    if n != nx * ny * nz || sigma_spatial <= 0.0 || sigma_range <= 0.0 {
+        return input.clone();
+    }
+
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..n).map(|i| { arr.tuple_as_f64(i, &mut buf); buf[0] }).collect();
+    let vals: Vec<f64> = (0..n)
+        .map(|i| {
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
+        })
+        .collect();
 
     let radius = (3.0 * sigma_spatial).ceil() as isize;
     let ss2 = 2.0 * sigma_spatial * sigma_spatial;
     let sr2 = 2.0 * sigma_range * sigma_range;
+    let spacing = input.spacing();
 
-    let data: Vec<f64> = (0..n).map(|idx| {
-        let iy = idx / nx;
-        let ix = idx % nx;
-        let center = vals[idx];
-        let mut sum = 0.0;
-        let mut wsum = 0.0;
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                let sx = ix as isize + dx;
-                let sy = iy as isize + dy;
-                if sx < 0 || sx >= nx as isize || sy < 0 || sy >= ny as isize { continue; }
-                let v = vals[sx as usize + sy as usize * nx];
-                let ds2 = (dx * dx + dy * dy) as f64;
-                let dr2 = (v - center) * (v - center);
-                let w = (-ds2 / ss2 - dr2 / sr2).exp();
-                sum += w * v;
-                wsum += w;
+    let data: Vec<f64> = (0..n)
+        .map(|idx| {
+            let iz = idx / (nx * ny);
+            let rem = idx % (nx * ny);
+            let iy = rem / nx;
+            let ix = rem % nx;
+            let center = vals[idx];
+            let mut sum = 0.0;
+            let mut wsum = 0.0;
+            for dz in -radius..=radius {
+                let sz = iz as isize + dz;
+                if sz < 0 || sz >= nz as isize {
+                    continue;
+                }
+                for dy in -radius..=radius {
+                    let sy = iy as isize + dy;
+                    if sy < 0 || sy >= ny as isize {
+                        continue;
+                    }
+                    for dx in -radius..=radius {
+                        let sx = ix as isize + dx;
+                        if sx < 0 || sx >= nx as isize {
+                            continue;
+                        }
+                        let v = vals[sz as usize * ny * nx + sy as usize * nx + sx as usize];
+                        let wx = dx as f64 * spacing[0];
+                        let wy = dy as f64 * spacing[1];
+                        let wz = dz as f64 * spacing[2];
+                        let ds2 = wx * wx + wy * wy + wz * wz;
+                        let dr2 = (v - center) * (v - center);
+                        let w = (-ds2 / ss2 - dr2 / sr2).exp();
+                        sum += w * v;
+                        wsum += w;
+                    }
+                }
             }
-        }
-        if wsum > 1e-15 { sum / wsum } else { center }
-    }).collect();
+            if wsum > 1e-15 {
+                sum / wsum
+            } else {
+                center
+            }
+        })
+        .collect();
 
     ImageData::with_dimensions(nx, ny, dims[2])
-        .with_spacing(input.spacing()).with_origin(input.origin())
+        .with_spacing(input.spacing())
+        .with_origin(input.origin())
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
 }
 
@@ -51,9 +89,19 @@ mod tests {
     use super::*;
     #[test]
     fn test_bilateral() {
-        let img = ImageData::from_function([10, 10, 1], [1.0,1.0,1.0], [0.0,0.0,0.0], "v", |x, y, _| {
-            if x > 5.0 { 100.0 } else { 0.0 }
-        });
+        let img = ImageData::from_function(
+            [10, 10, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| {
+                if x > 5.0 {
+                    100.0
+                } else {
+                    0.0
+                }
+            },
+        );
         let r = bilateral_filter(&img, "v", 2.0, 50.0);
         assert_eq!(r.dimensions(), [10, 10, 1]);
         // Edge should be preserved (value near boundary shouldn't be averaged to 50)

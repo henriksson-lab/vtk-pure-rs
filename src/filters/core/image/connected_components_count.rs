@@ -22,8 +22,9 @@ pub fn label_connected_components(input: &ImageData, scalars: &str) -> ImageData
 
 fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageData, usize) {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return (input.clone(), 0),
+        _ => return (input.clone(), 0),
     };
 
     let dims = input.dimensions();
@@ -44,9 +45,7 @@ fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageD
     let mut labels: Vec<i64> = vec![0; n];
     let mut current_label: i64 = 0;
 
-    let idx = |i: usize, j: usize, k: usize| -> usize {
-        k * ny * nx + j * nx + i
-    };
+    let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
     for k in 0..nz {
         for j in 0..ny {
@@ -67,12 +66,24 @@ fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageD
                     labels[ci_idx] = current_label;
 
                     // 6-connected neighbors
-                    if ci > 0 { stack.push((ci - 1, cj, ck)); }
-                    if ci + 1 < nx { stack.push((ci + 1, cj, ck)); }
-                    if cj > 0 { stack.push((ci, cj - 1, ck)); }
-                    if cj + 1 < ny { stack.push((ci, cj + 1, ck)); }
-                    if ck > 0 { stack.push((ci, cj, ck - 1)); }
-                    if ck + 1 < nz { stack.push((ci, cj, ck + 1)); }
+                    if ci > 0 {
+                        stack.push((ci - 1, cj, ck));
+                    }
+                    if ci + 1 < nx {
+                        stack.push((ci + 1, cj, ck));
+                    }
+                    if cj > 0 {
+                        stack.push((ci, cj - 1, ck));
+                    }
+                    if cj + 1 < ny {
+                        stack.push((ci, cj + 1, ck));
+                    }
+                    if ck > 0 {
+                        stack.push((ci, cj, ck - 1));
+                    }
+                    if ck + 1 < nz {
+                        stack.push((ci, cj, ck + 1));
+                    }
                 }
             }
         }
@@ -80,9 +91,12 @@ fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageD
 
     let label_f64: Vec<f64> = labels.iter().map(|&l| l as f64).collect();
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ComponentLabel", label_f64, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ComponentLabel",
+            label_f64,
+            1,
+        )));
 
     (img, current_label as usize)
 }
@@ -93,9 +107,8 @@ mod tests {
 
     fn make_image(nx: usize, ny: usize, nz: usize, vals: Vec<f64>) -> ImageData {
         let mut img = ImageData::with_dimensions(nx, ny, nz);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("mask", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", vals, 1)));
         img
     }
 
@@ -136,5 +149,35 @@ mod tests {
         let img = make_image(3, 3, 1, vec![0.0; 9]);
         let count: usize = count_connected_components(&img, "mask");
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn threshold_is_inclusive() {
+        let img = make_image(1, 1, 1, vec![0.5]);
+        let count: usize = count_connected_components(&img, "mask");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn missing_array_count_is_zero() {
+        let img = ImageData::with_dimensions(1, 1, 1);
+        assert_eq!(count_connected_components(&img, "missing"), 0);
+    }
+
+    #[test]
+    fn multi_component_array_is_not_treated_as_scalar_mask() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                vec![1.0, 0.0, 1.0, 0.0],
+                2,
+            )));
+
+        assert_eq!(count_connected_components(&img, "mask"), 0);
+        assert!(label_connected_components(&img, "mask")
+            .point_data()
+            .get_array("ComponentLabel")
+            .is_none());
     }
 }

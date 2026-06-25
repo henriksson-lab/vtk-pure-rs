@@ -5,12 +5,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Computes `sharpened = original + alpha * (original - blurred)` where
 /// `blurred` is a box blur with the given `radius` (half-size in voxels).
 /// Adds a "Sharpened" array to the output point data.
-pub fn unsharp_mask(
-    input: &ImageData,
-    scalars: &str,
-    radius: usize,
-    alpha: f64,
-) -> ImageData {
+pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, alpha: f64) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -93,9 +88,12 @@ pub fn unsharp_mask(
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Sharpened", sharpened, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Sharpened",
+            sharpened,
+            1,
+        )));
     img
 }
 
@@ -108,9 +106,8 @@ mod tests {
         let n: usize = 125;
         let mut values = vec![0.0f64; n];
         values[62] = 100.0; // spike at center (2,2,2)
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", values, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
         img
     }
 
@@ -128,9 +125,12 @@ mod tests {
     #[test]
     fn uniform_image_unchanged() {
         let mut img = ImageData::with_dimensions(3, 3, 3);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("val", vec![5.0f64; 27], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![5.0f64; 27],
+                1,
+            )));
         let result = unsharp_mask(&img, "val", 1, 2.0);
         let arr = result.point_data().get_array("Sharpened").unwrap();
         let mut buf = [0.0f64];

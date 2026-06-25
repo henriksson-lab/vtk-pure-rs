@@ -55,9 +55,10 @@ pub fn image_variance(input: &ImageData, scalars: &str, radius: usize) -> ImageD
     }
 
     let mut img = input.clone();
-    img.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Variance", variance, 1),
-    ));
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Variance", variance, 1,
+        )));
     img
 }
 
@@ -68,9 +69,8 @@ mod tests {
     #[test]
     fn uniform_zero_variance() {
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![5.0; 9], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![5.0; 9], 1)));
 
         let result = image_variance(&img, "v", 1);
         let arr = result.point_data().get_array("Variance").unwrap();
@@ -84,9 +84,12 @@ mod tests {
     #[test]
     fn high_contrast_high_variance() {
         let mut img = ImageData::with_dimensions(3, 1, 1);
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("v", vec![0.0, 100.0, 0.0], 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 100.0, 0.0],
+                1,
+            )));
 
         let result = image_variance(&img, "v", 1);
         let arr = result.point_data().get_array("Variance").unwrap();
