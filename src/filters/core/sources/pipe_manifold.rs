@@ -35,7 +35,7 @@ pub fn pipe_manifold(
             };
             for i in 0..res {
                 let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
-                pts.push([x, branch_radius * a.cos() + bz, branch_radius * a.sin()]);
+                pts.push([x, branch_radius * a.cos(), bz + branch_radius * a.sin()]);
             }
         }
         for i in 0..res {

@@ -38,7 +38,12 @@ pub fn crossroads(road_width: f64, road_length: f64) -> PolyData {
         pts.push([sx + sw, sy + sw, sh]);
         pts.push([sx, sy + sw, sh]);
         let f = |i: usize| (cb + i) as i64;
+        polys.push_cell(&[f(0), f(3), f(2), f(1)]); // bottom
         polys.push_cell(&[f(4), f(5), f(6), f(7)]); // top
+        polys.push_cell(&[f(0), f(1), f(5), f(4)]); // front
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]); // right
+        polys.push_cell(&[f(2), f(3), f(7), f(6)]); // back
+        polys.push_cell(&[f(3), f(0), f(4), f(7)]); // left
     }
     let mut r = PolyData::new();
     r.points = pts;

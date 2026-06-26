@@ -67,6 +67,9 @@ pub fn normalized_cross_correlation(a: &ImageData, b: &ImageData, scalars: &str)
 /// Compute difference image (a - b).
 pub fn difference_image(a: &ImageData, b: &ImageData, scalars: &str) -> ImageData {
     let (va, vb) = read_pair(a, b, scalars);
+    if va.len() != a.num_points() {
+        return a.clone();
+    }
     let data: Vec<f64> = va.iter().zip(vb.iter()).map(|(x, y)| x - y).collect();
     let dims = a.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
@@ -80,6 +83,9 @@ pub fn difference_image(a: &ImageData, b: &ImageData, scalars: &str) -> ImageDat
 }
 
 fn read_pair(a: &ImageData, b: &ImageData, scalars: &str) -> (Vec<f64>, Vec<f64>) {
+    if a.dimensions() != b.dimensions() || a.spacing() != b.spacing() || a.origin() != b.origin() {
+        return (vec![], vec![]);
+    }
     let aa = match a.point_data().get_array(scalars) {
         Some(x) if x.num_components() == 1 => x,
         _ => return (vec![], vec![]),
@@ -88,18 +94,22 @@ fn read_pair(a: &ImageData, b: &ImageData, scalars: &str) -> (Vec<f64>, Vec<f64>
         Some(x) if x.num_components() == 1 => x,
         _ => return (vec![], vec![]),
     };
-    let n = aa.num_tuples().min(bb.num_tuples());
-    let mut buf = [0.0f64];
+    let n = a.num_points();
+    if aa.num_tuples() != n || bb.num_tuples() != n {
+        return (vec![], vec![]);
+    }
+    let mut buf_a = [0.0f64];
     let va: Vec<f64> = (0..n)
         .map(|i| {
-            aa.tuple_as_f64(i, &mut buf);
-            buf[0]
+            aa.tuple_as_f64(i, &mut buf_a);
+            buf_a[0]
         })
         .collect();
+    let mut buf_b = [0.0f64];
     let vb: Vec<f64> = (0..n)
         .map(|i| {
-            bb.tuple_as_f64(i, &mut buf);
-            buf[0]
+            bb.tuple_as_f64(i, &mut buf_b);
+            buf_b[0]
         })
         .collect();
     (va, vb)
@@ -139,5 +149,26 @@ mod tests {
         );
         assert!((mse(&a, &b, "v") - 100.0).abs() < 1e-10);
         assert!((mae(&a, &b, "v") - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn mismatched_geometry_is_not_compared_as_prefix() {
+        let a = ImageData::from_function(
+            [2, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 1.0,
+        );
+        let b = ImageData::from_function(
+            [3, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 2.0,
+        );
+        assert_eq!(mse(&a, &b, "v"), 0.0);
+        assert_eq!(mae(&a, &b, "v"), 0.0);
+        assert_eq!(difference_image(&a, &b, "v").dimensions(), a.dimensions());
     }
 }

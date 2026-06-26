@@ -18,8 +18,16 @@ pub fn armillary_sphere(radius: f64, na: usize) -> PolyData {
             radius * 0.85,
         ), // tropic of cancer (offset circle)
     ];
-    for (axis, _offset_angle, r) in &rings {
+    for (axis, offset_angle, r) in &rings {
         let rb = pts.len();
+        let axis_len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+        let axis = [axis[0] / axis_len, axis[1] / axis_len, axis[2] / axis_len];
+        let circle_radius = r * offset_angle.cos();
+        let center = [
+            axis[0] * r * offset_angle.sin(),
+            axis[1] * r * offset_angle.sin(),
+            axis[2] * r * offset_angle.sin(),
+        ];
         // Create ring perpendicular to axis
         // Find two orthogonal vectors to axis
         let up = if axis[0].abs() < 0.9 {
@@ -41,9 +49,9 @@ pub fn armillary_sphere(radius: f64, na: usize) -> PolyData {
         ];
         for j in 0..na {
             let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
-            let x = r * (u[0] * a.cos() + v[0] * a.sin());
-            let y = r * (u[1] * a.cos() + v[1] * a.sin());
-            let z = r * (u[2] * a.cos() + v[2] * a.sin());
+            let x = center[0] + circle_radius * (u[0] * a.cos() + v[0] * a.sin());
+            let y = center[1] + circle_radius * (u[1] * a.cos() + v[1] * a.sin());
+            let z = center[2] + circle_radius * (u[2] * a.cos() + v[2] * a.sin());
             pts.push([x, y, z]);
         }
         for j in 0..na {

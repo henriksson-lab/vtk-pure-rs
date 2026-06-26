@@ -7,11 +7,15 @@ use std::collections::{HashMap, HashSet};
 /// A sphere has Euler characteristic 2, a torus has 0.
 pub fn euler_characteristic(input: &PolyData) -> i64 {
     let v = input.points.len() as i64;
-    let f = input.polys.num_cells() as i64;
+    let mut f = 0i64;
 
     // Count unique edges
     let mut edges: HashSet<(i64, i64)> = HashSet::new();
     for cell in input.polys.iter() {
+        if !is_valid_polygon(&cell, input.points.len()) {
+            continue;
+        }
+        f += 1;
         for i in 0..cell.len() {
             let a = cell[i];
             let b = cell[(i + 1) % cell.len()];
@@ -35,9 +39,13 @@ pub fn genus(input: &PolyData) -> i64 {
 pub fn count_boundary_loops(input: &PolyData) -> usize {
     let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
     for cell in input.polys.iter() {
+        if !is_valid_polygon(&cell, input.points.len()) {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i]; let b = cell[(i+1)%cell.len()];
-            let key = if a < b { (a,b) } else { (b,a) };
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
+            let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
         }
     }
@@ -51,14 +59,18 @@ pub fn count_boundary_loops(input: &PolyData) -> usize {
         }
     }
 
-    if boundary.is_empty() { return 0; }
+    if boundary.is_empty() {
+        return 0;
+    }
 
     // Count connected loops
     let mut visited: HashSet<i64> = HashSet::new();
     let mut loops = 0;
 
     for &start in boundary.keys() {
-        if visited.contains(&start) { continue; }
+        if visited.contains(&start) {
+            continue;
+        }
         let mut cur = start;
         loop {
             visited.insert(cur);
@@ -72,6 +84,10 @@ pub fn count_boundary_loops(input: &PolyData) -> usize {
         loops += 1;
     }
     loops
+}
+
+fn is_valid_polygon(cell: &[i64], n_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 #[cfg(test)]
@@ -120,6 +136,17 @@ mod tests {
     fn empty_mesh() {
         let pd = PolyData::new();
         assert_eq!(euler_characteristic(&pd), 0);
+        assert_eq!(count_boundary_loops(&pd), 0);
+    }
+
+    #[test]
+    fn invalid_polygons_are_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        assert_eq!(euler_characteristic(&pd), 2);
         assert_eq!(count_boundary_loops(&pd), 0);
     }
 }

@@ -10,7 +10,7 @@ pub fn image_coating_capacitance(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            8.85e-12 * 4.0 * buf[0].abs().max(1e-6) / buf[0].abs().max(1e-6)
+            8.85e-12 * 4.0 / buf[0].abs().max(1e-6)
         })
         .collect();
     let dims = input.dimensions();

@@ -2,6 +2,29 @@
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+fn image_point_count(dims: [usize; 3]) -> Option<usize> {
+    dims[0].checked_mul(dims[1])?.checked_mul(dims[2])
+}
+
+fn shift_distance(shift: [i64; 3]) -> i64 {
+    shift[0].abs() + shift[1].abs() + shift[2].abs()
+}
+
+fn better_shift(
+    corr: f64,
+    count: usize,
+    shift: [i64; 3],
+    best_corr: f64,
+    best_count: usize,
+    best_shift: [i64; 3],
+) -> bool {
+    const EPS: f64 = 1e-12;
+    corr > best_corr + EPS
+        || ((corr - best_corr).abs() <= EPS
+            && (count > best_count
+                || (count == best_count && shift_distance(shift) < shift_distance(best_shift))))
+}
+
 /// Compute the optimal translation to align `moving` to `fixed` using
 /// normalized cross-correlation (NCC) on scalar arrays.
 ///
@@ -23,9 +46,21 @@ pub fn register_translation_3d(
 
     let f_dims = fixed.dimensions();
     let m_dims = moving.dimensions();
+    let f_points = match image_point_count(f_dims) {
+        Some(n) if n > 0 => n,
+        _ => return [0; 3],
+    };
+    let m_points = match image_point_count(m_dims) {
+        Some(n) if n > 0 => n,
+        _ => return [0; 3],
+    };
+    if f_arr.num_tuples() < f_points || m_arr.num_tuples() < m_points {
+        return [0; 3];
+    }
     let r = search_radius as i64;
 
     let mut best_corr = f64::MIN;
+    let mut best_count = 0usize;
     let mut best_shift = [0i64; 3];
     let mut f_buf = [0.0f64];
     let mut m_buf = [0.0f64];
@@ -33,10 +68,12 @@ pub fn register_translation_3d(
     for dz in -r..=r {
         for dy in -r..=r {
             for dx in -r..=r {
+                let mut sum_f = 0.0;
+                let mut sum_m = 0.0;
                 let mut sum_fm = 0.0;
                 let mut sum_ff = 0.0;
                 let mut sum_mm = 0.0;
-                let mut count = 0;
+                let mut count = 0usize;
 
                 let zr = 0..f_dims[2].min(m_dims[2]);
                 let yr = 0..f_dims[1].min(m_dims[1]);
@@ -68,6 +105,8 @@ pub fn register_translation_3d(
                             f_arr.tuple_as_f64(fi, &mut f_buf);
                             m_arr.tuple_as_f64(mi, &mut m_buf);
 
+                            sum_f += f_buf[0];
+                            sum_m += m_buf[0];
                             sum_fm += f_buf[0] * m_buf[0];
                             sum_ff += f_buf[0] * f_buf[0];
                             sum_mm += m_buf[0] * m_buf[0];
@@ -77,11 +116,17 @@ pub fn register_translation_3d(
                 }
 
                 if count > 0 {
-                    let denom = (sum_ff * sum_mm).sqrt();
-                    let ncc = if denom > 1e-15 { sum_fm / denom } else { 0.0 };
-                    if ncc > best_corr {
+                    let n = count as f64;
+                    let cov = sum_fm - (sum_f * sum_m / n);
+                    let var_f = sum_ff - (sum_f * sum_f / n);
+                    let var_m = sum_mm - (sum_m * sum_m / n);
+                    let denom = (var_f.max(0.0) * var_m.max(0.0)).sqrt();
+                    let ncc = if denom > 1e-15 { cov / denom } else { 0.0 };
+                    let shift = [dx, dy, dz];
+                    if better_shift(ncc, count, shift, best_corr, best_count, best_shift) {
                         best_corr = ncc;
-                        best_shift = [dx, dy, dz];
+                        best_count = count;
+                        best_shift = shift;
                     }
                 }
             }

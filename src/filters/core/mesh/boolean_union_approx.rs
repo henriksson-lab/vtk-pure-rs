@@ -3,7 +3,7 @@ use crate::data::{CellArray, Points, PolyData};
 /// Approximate boolean union of two triangle meshes.
 ///
 /// Combines both meshes, then removes faces from each that are "inside"
-/// the other using a ray-casting parity test on the face centroid.
+/// the other using a winding-number test on the face centroid.
 /// Both inputs should be closed, manifold triangle meshes for best results.
 pub fn boolean_union_approx(a: &PolyData, b: &PolyData) -> PolyData {
     let faces_a = collect_triangles(a);
@@ -47,10 +47,13 @@ type Triangle = ([f64; 3], [f64; 3], [f64; 3]);
 fn collect_triangles(pd: &PolyData) -> Vec<Triangle> {
     let mut tris = Vec::new();
     for cell in pd.polys.iter() {
-        if cell.len() >= 3 {
-            let p0 = pd.points.get(cell[0] as usize);
-            let p1 = pd.points.get(cell[1] as usize);
-            let p2 = pd.points.get(cell[2] as usize);
+        if cell.len() < 3 {
+            continue;
+        }
+        let p0 = pd.points.get(cell[0] as usize);
+        for i in 1..cell.len() - 1 {
+            let p1 = pd.points.get(cell[i] as usize);
+            let p2 = pd.points.get(cell[i + 1] as usize);
             tris.push((p0, p1, p2));
         }
     }
@@ -65,64 +68,53 @@ fn tri_centroid(p0: &[f64; 3], p1: &[f64; 3], p2: &[f64; 3]) -> [f64; 3] {
     ]
 }
 
-/// Ray-casting test: shoot a ray in +X direction from `point` and count
-/// intersections with the mesh triangles. Odd count = inside.
+/// Generalized winding-number test. Values near one are inside a consistently
+/// oriented closed surface, values near zero are outside.
 fn point_inside_mesh(point: &[f64; 3], tris: &[Triangle]) -> bool {
-    let mut count: u32 = 0;
+    let mut angle = 0.0;
     for (v0, v1, v2) in tris {
-        if ray_intersects_triangle(point, v0, v1, v2) {
-            count += 1;
-        }
+        angle += solid_angle(*point, [*v0, *v1, *v2]);
     }
-    count % 2 == 1
+    (angle / (4.0 * std::f64::consts::PI)).abs() > 0.5
 }
 
-/// Moller-Trumbore ray-triangle intersection for ray origin `o` in direction +X.
-fn ray_intersects_triangle(
-    o: &[f64; 3],
-    v0: &[f64; 3],
-    v1: &[f64; 3],
-    v2: &[f64; 3],
-) -> bool {
-    let dir = [1.0, 0.0, 0.0]; // +X ray direction
-    let eps: f64 = 1e-12;
-
-    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-
-    // h = dir x e2
-    let h = [
-        dir[1] * e2[2] - dir[2] * e2[1],
-        dir[2] * e2[0] - dir[0] * e2[2],
-        dir[0] * e2[1] - dir[1] * e2[0],
-    ];
-
-    let a: f64 = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
-    if a.abs() < eps {
-        return false;
+fn solid_angle(p: [f64; 3], tri: [[f64; 3]; 3]) -> f64 {
+    let a = sub(tri[0], p);
+    let b = sub(tri[1], p);
+    let c = sub(tri[2], p);
+    let la = norm(a);
+    let lb = norm(b);
+    let lc = norm(c);
+    if la < 1e-15 || lb < 1e-15 || lc < 1e-15 {
+        return 0.0;
     }
 
-    let f: f64 = 1.0 / a;
-    let s = [o[0] - v0[0], o[1] - v0[1], o[2] - v0[2]];
-    let u: f64 = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
-    if u < 0.0 || u > 1.0 {
-        return false;
+    let det = dot(a, cross(b, c));
+    let denom = la * lb * lc + dot(a, b) * lc + dot(a, c) * lb + dot(b, c) * la;
+    if denom.abs() < 1e-15 {
+        return 0.0;
     }
+    2.0 * det.atan2(denom)
+}
 
-    // q = s x e1
-    let q = [
-        s[1] * e1[2] - s[2] * e1[1],
-        s[2] * e1[0] - s[0] * e1[2],
-        s[0] * e1[1] - s[1] * e1[0],
-    ];
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
 
-    let v: f64 = f * (dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]);
-    if v < 0.0 || u + v > 1.0 {
-        return false;
-    }
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
 
-    let t: f64 = f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
-    t > eps
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn norm(a: [f64; 3]) -> f64 {
+    dot(a, a).sqrt()
 }
 
 #[cfg(test)]
@@ -146,17 +138,23 @@ mod tests {
         ];
         let faces: Vec<[i64; 3]> = vec![
             // -Z face
-            [0, 2, 1], [0, 3, 2],
+            [0, 2, 1],
+            [0, 3, 2],
             // +Z face
-            [4, 5, 6], [4, 6, 7],
+            [4, 5, 6],
+            [4, 6, 7],
             // -Y face
-            [0, 1, 5], [0, 5, 4],
+            [0, 1, 5],
+            [0, 5, 4],
             // +Y face
-            [2, 3, 7], [2, 7, 6],
+            [2, 3, 7],
+            [2, 7, 6],
             // -X face
-            [0, 4, 7], [0, 7, 3],
+            [0, 4, 7],
+            [0, 7, 3],
             // +X face
-            [1, 2, 6], [1, 6, 5],
+            [1, 2, 6],
+            [1, 6, 5],
         ];
         PolyData::from_triangles(verts, faces)
     }

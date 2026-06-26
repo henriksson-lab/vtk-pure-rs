@@ -8,6 +8,10 @@ use crate::data::{CellArray, Points, PolyData};
 /// Assumes the contour lies approximately in a plane. Uses the XY projection
 /// for the ear-clipping test.
 pub fn contour_triangulator(input: &PolyData) -> PolyData {
+    if input.lines.num_cells() == 0 {
+        return PolyData::new();
+    }
+
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
@@ -34,18 +38,10 @@ pub fn contour_triangulator(input: &PolyData) -> PolyData {
         ear_clip(&out_points, &mut indices, &mut out_polys);
     }
 
-    // Also process polys as contours
-    for cell in input.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let mut indices: Vec<usize> = cell.iter().map(|&id| id as usize).collect();
-        ear_clip(&out_points, &mut indices, &mut out_polys);
-    }
-
     let mut result = PolyData::new();
     result.points = out_points;
     result.polys = out_polys;
+    *result.point_data_mut() = input.point_data().clone();
     result
 }
 
@@ -118,7 +114,7 @@ fn signed_area_2d(points: &Points<f64>, indices: &[usize]) -> f64 {
     for i in 0..n {
         let a = points.get(indices[i]);
         let b = points.get(indices[(i + 1) % n]);
-        area += (b[0] - a[0]) * (b[1] + a[1]);
+        area += a[0] * b[1] - b[0] * a[1];
     }
     area * 0.5
 }

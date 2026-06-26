@@ -58,6 +58,16 @@ pub fn mangrove_tree(trunk_height: f64, canopy_radius: f64, n_roots: usize) -> P
             polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
+    let bottom = pts.len();
+    pts.push([0.0, 0.0, canopy_z - canopy_radius]);
+    let bottom_ring = top + 1 + (np - 1) * na;
+    for j in 0..na {
+        polys.push_cell(&[
+            bottom as i64,
+            (bottom_ring + (j + 1) % na) as i64,
+            (bottom_ring + j) as i64,
+        ]);
+    }
     let mut m = PolyData::new();
     m.points = pts;
     m.polys = polys;

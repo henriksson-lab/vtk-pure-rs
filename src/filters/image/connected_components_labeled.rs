@@ -1,4 +1,4 @@
-//! Connected component labeling for 2D binary images.
+//! Connected component labeling for binary images.
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
@@ -10,30 +10,39 @@ pub fn label_components(input: &ImageData, scalars: &str) -> ImageData {
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
-    let n = nx * ny;
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
+    let n = nx * ny * nz;
     let mut buf = [0.0f64];
     let vals: Vec<bool> = (0..n)
         .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0] > 0.5
+            if i < arr.num_tuples() {
+                arr.tuple_as_f64(i, &mut buf);
+                buf[0] > 0.5
+            } else {
+                false
+            }
         })
         .collect();
 
     let mut parent: Vec<usize> = (0..n).collect();
     let mut rank = vec![0u8; n];
 
-    for iy in 0..ny {
-        for ix in 0..nx {
-            let idx = ix + iy * nx;
-            if !vals[idx] {
-                continue;
-            }
-            if ix > 0 && vals[idx - 1] {
-                union(&mut parent, &mut rank, idx, idx - 1);
-            }
-            if iy > 0 && vals[idx - nx] {
-                union(&mut parent, &mut rank, idx, idx - nx);
+    for iz in 0..nz {
+        for iy in 0..ny {
+            for ix in 0..nx {
+                let idx = ix + iy * nx + iz * nx * ny;
+                if !vals[idx] {
+                    continue;
+                }
+                if ix > 0 && vals[idx - 1] {
+                    union(&mut parent, &mut rank, idx, idx - 1);
+                }
+                if iy > 0 && vals[idx - nx] {
+                    union(&mut parent, &mut rank, idx, idx - nx);
+                }
+                if iz > 0 && vals[idx - nx * ny] {
+                    union(&mut parent, &mut rank, idx, idx - nx * ny);
+                }
             }
         }
     }
@@ -55,7 +64,7 @@ pub fn label_components(input: &ImageData, scalars: &str) -> ImageData {
         })
         .collect();
 
-    ImageData::with_dimensions(nx, ny, dims[2])
+    ImageData::with_dimensions(nx, ny, nz)
         .with_spacing(input.spacing())
         .with_origin(input.origin())
         .with_point_array(AnyDataArray::F64(DataArray::from_vec("Labels", data, 1)))
@@ -140,5 +149,20 @@ mod tests {
             |_, _, _| 0.0,
         );
         assert_eq!(count_components(&img, "v"), 0);
+    }
+
+    #[test]
+    fn test_3d_components() {
+        let mut img = ImageData::with_dimensions(2, 1, 2);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 0.0, 1.0, 0.0],
+                1,
+            )));
+
+        let labeled = label_components(&img, "v");
+        assert_eq!(labeled.dimensions(), [2, 1, 2]);
+        assert_eq!(count_components(&img, "v"), 1);
     }
 }

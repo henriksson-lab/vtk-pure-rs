@@ -5,6 +5,8 @@
 
 use crate::data::{AnyDataArray, DataArray, PolyData, TemporalDataSet};
 
+use super::interpolate::interpolate_dataset_attributes;
+
 /// Interpolation mode for temporal data.
 #[derive(Debug, Clone, Copy)]
 pub enum TemporalInterpolation {
@@ -24,18 +26,38 @@ pub fn interpolate_at_time(
 ) -> Option<PolyData> {
     match mode {
         TemporalInterpolation::Nearest => temporal.at_time(time).cloned(),
-        TemporalInterpolation::Linear => temporal.interpolate_positions(time),
+        TemporalInterpolation::Linear => interpolate_temporal_linear(temporal, time),
         TemporalInterpolation::Cubic => {
             // Fall back to linear if not enough steps
             let times = temporal.times();
             if times.len() < 4 {
-                return temporal.interpolate_positions(time);
+                return interpolate_temporal_linear(temporal, time);
             }
             // Use linear for now — cubic needs 4 point access which
             // TemporalDataSet doesn't directly expose
-            temporal.interpolate_positions(time)
+            interpolate_temporal_linear(temporal, time)
         }
     }
+}
+
+fn interpolate_temporal_linear(temporal: &TemporalDataSet, time: f64) -> Option<PolyData> {
+    let (low, high, t) = temporal.bracket(time)?;
+    let mut output = interpolate_dataset_attributes(low, high, t)?;
+
+    for point_id in 0..output.points.len() {
+        let p0 = low.points.get(point_id);
+        let p1 = high.points.get(point_id);
+        output.points.set(
+            point_id,
+            [
+                p0[0] + t * (p1[0] - p0[0]),
+                p0[1] + t * (p1[1] - p0[1]),
+                p0[2] + t * (p1[2] - p0[2]),
+            ],
+        );
+    }
+
+    Some(output)
 }
 
 /// Generate interpolated frames between time steps for animation.
@@ -77,6 +99,10 @@ pub fn compute_temporal_velocity(
     time: f64,
     dt: f64,
 ) -> Option<PolyData> {
+    if dt.abs() <= f64::EPSILON {
+        return None;
+    }
+
     let mesh_t0 = temporal.at_time(time)?.clone();
     let mesh_t1 = interpolate_at_time(temporal, time + dt, TemporalInterpolation::Linear)?;
 
@@ -127,6 +153,23 @@ mod tests {
         let ts = make_temporal();
         let mesh = interpolate_at_time(&ts, 1.5, TemporalInterpolation::Linear);
         assert!(mesh.is_some());
+    }
+
+    #[test]
+    fn linear_interpolates_point_data() {
+        let mut ts = TemporalDataSet::new();
+        for (time, value) in [(0.0, 10.0), (1.0, 30.0)] {
+            let mut mesh = PolyData::from_points(vec![[time, 0.0, 0.0]]);
+            mesh.point_data_mut()
+                .add_array(DataArray::from_vec("temp", vec![value], 1).into());
+            ts.add_step(time, mesh);
+        }
+
+        let mesh = interpolate_at_time(&ts, 0.5, TemporalInterpolation::Linear).unwrap();
+        let arr = mesh.point_data().get_array("temp").unwrap();
+        let mut value = [0.0f64];
+        arr.tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 20.0);
     }
 
     #[test]

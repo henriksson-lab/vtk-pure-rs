@@ -5,8 +5,8 @@ use crate::data::{CellArray, Points, PolyData};
 /// Create a rounded cube by projecting a sphere onto a rounded-corner shape.
 pub fn rounded_cube(size: f64, corner_radius: f64, resolution: usize) -> PolyData {
     let res = resolution.max(3);
-    let half = size * 0.5;
-    let r = corner_radius.min(half);
+    let half = size.abs() * 0.5;
+    let r = corner_radius.clamp(0.0, half);
     let inner = half - r;
 
     let mut pts = Points::<f64>::new();
@@ -20,10 +20,15 @@ pub fn rounded_cube(size: f64, corner_radius: f64, resolution: usize) -> PolyDat
             let sx = v.sin() * u.cos();
             let sy = v.sin() * u.sin();
             let sz = v.cos();
-            // Project sphere direction onto rounded box
-            let x = clamp_abs(sx, 1.0).signum() * inner + sx * r;
-            let y = clamp_abs(sy, 1.0).signum() * inner + sy * r;
-            let z = clamp_abs(sz, 1.0).signum() * inner + sz * r;
+            let max_component = sx.abs().max(sy.abs()).max(sz.abs());
+            let scale = if max_component > 0.0 {
+                inner / max_component + r
+            } else {
+                r
+            };
+            let x = sx * scale;
+            let y = sy * scale;
+            let z = sz * scale;
             pts.push([x, y, z]);
         }
     }
@@ -42,10 +47,6 @@ pub fn rounded_cube(size: f64, corner_radius: f64, resolution: usize) -> PolyDat
     result.points = pts;
     result.polys = polys;
     result
-}
-
-fn clamp_abs(v: f64, max: f64) -> f64 {
-    v.clamp(-max, max)
 }
 
 #[cfg(test)]

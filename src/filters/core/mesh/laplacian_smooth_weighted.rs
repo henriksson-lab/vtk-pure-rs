@@ -14,7 +14,9 @@ pub fn weighted_laplacian_smooth(
     let weights = match mesh.point_data().get_array(weight_array) {
         Some(a) if a.num_components()==1 => {
             let mut buf=[0.0f64];
-            (0..n).map(|i| { a.tuple_as_f64(i, &mut buf); buf[0].clamp(0.0, 1.0) }).collect::<Vec<f64>>()
+            (0..n).map(|i| {
+                if i < a.num_tuples() { a.tuple_as_f64(i, &mut buf); buf[0].clamp(0.0, 1.0) } else { 1.0 }
+            }).collect::<Vec<f64>>()
         }
         _ => vec![1.0; n],
     };
@@ -46,7 +48,9 @@ pub fn conditional_smooth(
     let should_smooth = match mesh.point_data().get_array(condition_array) {
         Some(a) if a.num_components()==1 => {
             let mut buf=[0.0f64];
-            (0..n).map(|i| { a.tuple_as_f64(i,&mut buf); buf[0] >= threshold }).collect::<Vec<bool>>()
+            (0..n).map(|i| {
+                if i < a.num_tuples() { a.tuple_as_f64(i,&mut buf); buf[0] >= threshold } else { true }
+            }).collect::<Vec<bool>>()
         }
         _ => vec![true; n],
     };

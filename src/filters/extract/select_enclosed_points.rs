@@ -6,7 +6,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// times a ray in the +X direction intersects the surface triangles.
 /// An odd count means the point is inside.
 ///
-/// Adds a "InsideOut" scalar array (1.0 = inside, 0.0 = outside) to
+/// Adds a "SelectedPoints" scalar array (1 = inside, 0 = outside) to
 /// the probe's point data.
 pub fn select_enclosed_points(surface: &PolyData, probe: &PolyData) -> PolyData {
     let mut pd = probe.clone();
@@ -16,6 +16,7 @@ pub fn select_enclosed_points(surface: &PolyData, probe: &PolyData) -> PolyData 
     let tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = surface
         .polys
         .iter()
+        .filter(|cell| cell.len() >= 3)
         .flat_map(|cell| {
             let p0 = surface.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {
@@ -28,7 +29,7 @@ pub fn select_enclosed_points(surface: &PolyData, probe: &PolyData) -> PolyData 
         })
         .collect();
 
-    let mut inside = vec![0.0f64; n];
+    let mut inside = vec![0u8; n];
 
     for (pi, val) in inside.iter_mut().enumerate() {
         let p = probe.points.get(pi);
@@ -41,13 +42,13 @@ pub fn select_enclosed_points(surface: &PolyData, probe: &PolyData) -> PolyData 
         }
 
         if count % 2 == 1 {
-            *val = 1.0;
+            *val = 1;
         }
     }
 
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "InsideOut",
+        .add_array(AnyDataArray::U8(DataArray::from_vec(
+            "SelectedPoints",
             inside,
             1,
         )));
@@ -118,7 +119,7 @@ mod tests {
         probe.points.push([10.0, 10.0, 10.0]); // far outside
 
         let result = select_enclosed_points(&surface, &probe);
-        let arr = result.point_data().get_array("InsideOut").unwrap();
+        let arr = result.point_data().get_array("SelectedPoints").unwrap();
         assert_eq!(arr.num_tuples(), 2);
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
@@ -137,7 +138,7 @@ mod tests {
         probe.points.push([10.0, 10.0, 10.0]);
 
         let result = select_enclosed_points(&surface, &probe);
-        let arr = result.point_data().get_array("InsideOut").unwrap();
+        let arr = result.point_data().get_array("SelectedPoints").unwrap();
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
         assert!((val[0]).abs() < 1e-10);

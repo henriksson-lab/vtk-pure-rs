@@ -1,5 +1,5 @@
-use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet};
 
 use crate::data::{CellArray, Points, PolyData};
 
@@ -18,10 +18,16 @@ impl Quadric {
     fn from_plane(nx: f64, ny: f64, nz: f64, d: f64) -> Self {
         Quadric {
             a: [
-                nx * nx, nx * ny, nx * nz, nx * d,
-                         ny * ny, ny * nz, ny * d,
-                                  nz * nz, nz * d,
-                                            d * d,
+                nx * nx,
+                nx * ny,
+                nx * nz,
+                nx * d,
+                ny * ny,
+                ny * nz,
+                ny * d,
+                nz * nz,
+                nz * d,
+                d * d,
             ],
         }
     }
@@ -43,9 +49,15 @@ impl Quadric {
         //     [a1 a4 a5 a6]   error = v^T Q v
         //     [a2 a5 a7 a8]
         //     [a3 a6 a8 a9]
-        self.a[0] * x * x + 2.0 * self.a[1] * x * y + 2.0 * self.a[2] * x * z
-            + 2.0 * self.a[3] * x + self.a[4] * y * y + 2.0 * self.a[5] * y * z
-            + 2.0 * self.a[6] * y + self.a[7] * z * z + 2.0 * self.a[8] * z
+        self.a[0] * x * x
+            + 2.0 * self.a[1] * x * y
+            + 2.0 * self.a[2] * x * z
+            + 2.0 * self.a[3] * x
+            + self.a[4] * y * y
+            + 2.0 * self.a[5] * y * z
+            + 2.0 * self.a[6] * y
+            + self.a[7] * z * z
+            + 2.0 * self.a[8] * z
             + self.a[9]
     }
 }
@@ -75,7 +87,10 @@ impl PartialOrd for EdgeCollapse {
 impl Ord for EdgeCollapse {
     fn cmp(&self, other: &Self) -> Ordering {
         // Min-heap: reverse ordering so smallest cost comes first.
-        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 
@@ -177,7 +192,12 @@ pub fn decimate_qem(input: &PolyData, target_ratio: f64) -> PolyData {
             (positions[a][2] + positions[b][2]) * 0.5,
         ];
         let cost: f64 = q.evaluate(mid).abs();
-        heap.push(EdgeCollapse { cost, v0: a, v1: b, target: mid });
+        heap.push(EdgeCollapse {
+            cost,
+            v0: a,
+            v1: b,
+            target: mid,
+        });
     }
 
     // Collapse loop.
@@ -238,7 +258,12 @@ pub fn decimate_qem(input: &PolyData, target_ratio: f64) -> PolyData {
                 (positions[ra][2] + positions[nb][2]) * 0.5,
             ];
             let cost: f64 = q.evaluate(mid).abs();
-            heap.push(EdgeCollapse { cost, v0: ra, v1: nb, target: mid });
+            heap.push(EdgeCollapse {
+                cost,
+                v0: ra,
+                v1: nb,
+                target: mid,
+            });
         }
     }
 

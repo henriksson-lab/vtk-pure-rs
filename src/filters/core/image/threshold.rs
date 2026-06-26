@@ -18,33 +18,29 @@ pub fn image_threshold(
     };
 
     let n = arr.num_tuples();
-    let mut values = vec![0.0f64; n];
-    let mut buf = [0.0f64];
+    let num_components = arr.num_components();
+    let mut values = vec![0.0f64; n * num_components];
+    let mut buf = vec![0.0f64; num_components];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = if buf[0] >= lower && buf[0] <= upper {
-            buf[0]
-        } else {
-            replacement
-        };
+        let offset = i * num_components;
+        for component in 0..num_components {
+            let value = buf[component];
+            values[offset + component] = if value >= lower && value <= upper {
+                value
+            } else {
+                replacement
+            };
+        }
     }
 
     let mut img = input.clone();
-    // Replace the array
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            new_attrs.add_array(a.clone());
-        }
-    }
-    *img.point_data_mut() = new_attrs;
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars,
+            values,
+            num_components,
+        )));
     img
 }
 
@@ -63,20 +59,29 @@ pub fn image_binary_threshold(
     };
 
     let n = arr.num_tuples();
-    let mut mask = vec![0.0f64; n];
-    let mut buf = [0.0f64];
+    let num_components = arr.num_components();
+    let mut mask = vec![0.0f64; n * num_components];
+    let mut buf = vec![0.0f64; num_components];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        mask[i] = if buf[0] >= lower && buf[0] <= upper {
-            1.0
-        } else {
-            0.0
-        };
+        let offset = i * num_components;
+        for component in 0..num_components {
+            let value = buf[component];
+            mask[offset + component] = if value >= lower && value <= upper {
+                1.0
+            } else {
+                0.0
+            };
+        }
     }
 
     let mut img = input.clone();
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Mask", mask, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Mask",
+            mask,
+            num_components,
+        )));
     img
 }
 
@@ -123,5 +128,45 @@ mod tests {
         let img = make_image();
         let result = image_threshold(&img, "nope", 0.0, 1.0, 0.0);
         assert!(result.point_data().get_array("val").is_some());
+    }
+
+    #[test]
+    fn threshold_all_components() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "vec",
+                vec![1.0, 4.0, 7.0, 3.0, 5.0, 9.0],
+                3,
+            )));
+
+        let result = image_threshold(&img, "vec", 3.0, 7.0, -1.0);
+        let arr = result.point_data().get_array("vec").unwrap();
+        assert_eq!(arr.num_components(), 3);
+        let mut buf = [0.0f64; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [-1.0, 4.0, 7.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [3.0, 5.0, -1.0]);
+    }
+
+    #[test]
+    fn binary_threshold_all_components() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "vec",
+                vec![1.0, 4.0, 7.0, 3.0, 5.0, 9.0],
+                3,
+            )));
+
+        let result = image_binary_threshold(&img, "vec", 3.0, 7.0);
+        let arr = result.point_data().get_array("Mask").unwrap();
+        assert_eq!(arr.num_components(), 3);
+        let mut buf = [0.0f64; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [0.0, 1.0, 1.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [1.0, 1.0, 0.0]);
     }
 }

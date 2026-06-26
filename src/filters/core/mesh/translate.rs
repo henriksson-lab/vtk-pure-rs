@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Translate all points of a PolyData by a constant offset vector.
 pub fn translate(input: &PolyData, offset: [f64; 3]) -> PolyData {
@@ -8,12 +8,8 @@ pub fn translate(input: &PolyData, offset: [f64; 3]) -> PolyData {
         out_points.push([p[0] + offset[0], p[1] + offset[1], p[2] + offset[2]]);
     }
 
-    let mut pd = PolyData::new();
+    let mut pd = input.clone();
     pd.points = out_points;
-    pd.polys = copy_cell_array(&input.polys);
-    pd.lines = copy_cell_array(&input.lines);
-    pd.verts = copy_cell_array(&input.verts);
-    pd.strips = copy_cell_array(&input.strips);
     pd
 }
 
@@ -26,18 +22,30 @@ pub fn translate_to_origin(input: &PolyData) -> PolyData {
     let mut min_x: f64 = f64::MAX;
     let mut min_y: f64 = f64::MAX;
     let mut min_z: f64 = f64::MAX;
-    let mut max_x: f64 = f64::MIN;
-    let mut max_y: f64 = f64::MIN;
-    let mut max_z: f64 = f64::MIN;
+    let mut max_x: f64 = f64::NEG_INFINITY;
+    let mut max_y: f64 = f64::NEG_INFINITY;
+    let mut max_z: f64 = f64::NEG_INFINITY;
 
     for i in 0..input.points.len() {
         let p = input.points.get(i);
-        if p[0] < min_x { min_x = p[0]; }
-        if p[1] < min_y { min_y = p[1]; }
-        if p[2] < min_z { min_z = p[2]; }
-        if p[0] > max_x { max_x = p[0]; }
-        if p[1] > max_y { max_y = p[1]; }
-        if p[2] > max_z { max_z = p[2]; }
+        if p[0] < min_x {
+            min_x = p[0];
+        }
+        if p[1] < min_y {
+            min_y = p[1];
+        }
+        if p[2] < min_z {
+            min_z = p[2];
+        }
+        if p[0] > max_x {
+            max_x = p[0];
+        }
+        if p[1] > max_y {
+            max_y = p[1];
+        }
+        if p[2] > max_z {
+            max_z = p[2];
+        }
     }
 
     let cx: f64 = (min_x + max_x) * 0.5;
@@ -47,17 +55,10 @@ pub fn translate_to_origin(input: &PolyData) -> PolyData {
     translate(input, [-cx, -cy, -cz])
 }
 
-fn copy_cell_array(src: &CellArray) -> CellArray {
-    let mut dst = CellArray::new();
-    for cell in src.iter() {
-        dst.push_cell(cell);
-    }
-    dst
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn translate_moves_all_points() {
@@ -97,14 +98,56 @@ mod tests {
         let mut max_y: f64 = f64::MIN;
         for i in 0..result.points.len() {
             let p = result.points.get(i);
-            if p[0] < min_x { min_x = p[0]; }
-            if p[0] > max_x { max_x = p[0]; }
-            if p[1] < min_y { min_y = p[1]; }
-            if p[1] > max_y { max_y = p[1]; }
+            if p[0] < min_x {
+                min_x = p[0];
+            }
+            if p[0] > max_x {
+                max_x = p[0];
+            }
+            if p[1] < min_y {
+                min_y = p[1];
+            }
+            if p[1] > max_y {
+                max_y = p[1];
+            }
         }
         let cx: f64 = (min_x + max_x) * 0.5;
         let cy: f64 = (min_y + max_y) * 0.5;
         assert!(cx.abs() < 1e-10);
         assert!(cy.abs() < 1e-10);
+    }
+
+    #[test]
+    fn translate_preserves_data_arrays() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "point_id",
+                vec![0.0, 1.0, 2.0],
+                1,
+            )));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "cell_id",
+                vec![7.0],
+                1,
+            )));
+
+        let result = translate(&pd, [1.0, 2.0, 3.0]);
+
+        assert!(result.point_data().get_array("point_id").is_some());
+        assert!(result.cell_data().get_array("cell_id").is_some());
+    }
+
+    #[test]
+    fn translate_to_origin_handles_all_negative_bounds() {
+        let pd = PolyData::from_points(vec![[-5.0, -4.0, -3.0], [-3.0, -2.0, -1.0]]);
+        let result = translate_to_origin(&pd);
+
+        assert_eq!(result.points.get(0), [-1.0, -1.0, -1.0]);
+        assert_eq!(result.points.get(1), [1.0, 1.0, 1.0]);
     }
 }

@@ -46,6 +46,9 @@ pub fn cell_areas(input: &PolyData) -> PolyData {
 pub fn compute_length(input: &PolyData) -> f64 {
     let mut total = 0.0;
     for cell in input.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() - 1 {
             let a = input.points.get(cell[i] as usize);
             let b = input.points.get(cell[i + 1] as usize);

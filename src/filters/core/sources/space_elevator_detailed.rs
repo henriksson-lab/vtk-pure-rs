@@ -34,6 +34,8 @@ pub fn detailed_space_elevator(
         polys.push_cell(&[f(4), f(5), f(6), f(7)]);
         polys.push_cell(&[f(0), f(1), f(5), f(4)]);
         polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]);
+        polys.push_cell(&[f(0), f(4), f(7), f(3)]);
     };
     // Tether (multiple cables)
     for &offset in &[-base_r * 0.001, base_r * 0.001] {

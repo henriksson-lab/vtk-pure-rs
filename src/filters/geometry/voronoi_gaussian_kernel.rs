@@ -1,6 +1,6 @@
 //! Voronoi and Gaussian kernel functions for point interpolation.
 //!
-//! Provides kernel evaluators and Voronoi-based natural neighbor interpolation.
+//! Provides kernel evaluators and Voronoi nearest-neighbor interpolation.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
@@ -9,14 +9,12 @@ pub fn gaussian_kernel_weight(r: f64, sigma: f64) -> f64 {
     (-r * r / (2.0 * sigma * sigma)).exp()
 }
 
-/// Voronoi kernel: 1/distance (natural neighbor approximation).
-///
-/// Each neighbor's weight is proportional to 1/distance.
+/// Voronoi kernel: closest point has unit weight.
 pub fn voronoi_kernel_weight(r: f64) -> f64 {
     if r < 1e-15 {
-        1e15
+        1.0
     } else {
-        1.0 / r
+        0.0
     }
 }
 
@@ -32,7 +30,7 @@ pub fn epanechnikov_kernel_weight(r: f64, bandwidth: f64) -> f64 {
 
 /// Interpolate using Gaussian kernel with automatic bandwidth estimation.
 ///
-/// Bandwidth is estimated as the average distance to k-th nearest neighbor.
+/// Uses the supplied `sigma` as the Gaussian bandwidth.
 pub fn gaussian_interpolate(
     source: &PolyData,
     target: &PolyData,
@@ -45,20 +43,14 @@ pub fn gaussian_interpolate(
     })
 }
 
-/// Interpolate using Voronoi (inverse-distance) kernel.
+/// Interpolate using the Voronoi kernel, i.e. the closest source point.
 pub fn voronoi_interpolate(
     source: &PolyData,
     target: &PolyData,
     array_name: &str,
-    max_radius: f64,
+    _max_radius: f64,
 ) -> PolyData {
-    kernel_interpolate_impl(
-        source,
-        target,
-        array_name,
-        max_radius,
-        voronoi_kernel_weight,
-    )
+    nearest_interpolate_impl(source, target, array_name)
 }
 
 /// Interpolate using Epanechnikov kernel.
@@ -140,16 +132,67 @@ fn kernel_interpolate_impl(
         let tp = target.points.get(ti);
         let mut sum_wv = 0.0;
         let mut sum_w = 0.0;
+        let mut exact_value = None;
         for si in 0..n_src {
             let r2 = dist2(tp, src_pts[si]);
             if r2 > r2_max {
                 continue;
             }
+            if r2 <= 256.0 * f64::EPSILON {
+                exact_value = Some(src_vals[si]);
+                break;
+            }
             let w = kernel_fn(r2.sqrt());
             sum_wv += w * src_vals[si];
             sum_w += w;
         }
-        out.push(if sum_w > 1e-15 { sum_wv / sum_w } else { 0.0 });
+        out.push(match exact_value {
+            Some(value) => value,
+            None if sum_w > 1e-15 => sum_wv / sum_w,
+            None => 0.0,
+        });
+    }
+
+    let mut result = target.clone();
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, out, 1)));
+    result
+}
+
+fn nearest_interpolate_impl(source: &PolyData, target: &PolyData, array_name: &str) -> PolyData {
+    let n_src = source.points.len();
+    let n_tgt = target.points.len();
+    if n_src == 0 || n_tgt == 0 {
+        return target.clone();
+    }
+
+    let arr = match source.point_data().get_array(array_name) {
+        Some(a) if a.num_components() == 1 => a,
+        _ => return target.clone(),
+    };
+
+    let src_pts: Vec<[f64; 3]> = (0..n_src).map(|i| source.points.get(i)).collect();
+    let mut src_vals = Vec::with_capacity(n_src);
+    let mut buf = [0.0f64];
+    for i in 0..n_src {
+        arr.tuple_as_f64(i, &mut buf);
+        src_vals.push(buf[0]);
+    }
+
+    let mut out = Vec::with_capacity(n_tgt);
+    for ti in 0..n_tgt {
+        let tp = target.points.get(ti);
+        let mut best_id = 0;
+        let mut best_dist2 = f64::INFINITY;
+        for (si, &sp) in src_pts.iter().enumerate() {
+            let r2 = dist2(tp, sp);
+            if r2 < best_dist2 {
+                best_dist2 = r2;
+                best_id = si;
+            }
+        }
+        out.push(src_vals[best_id]);
     }
 
     let mut result = target.clone();
@@ -194,7 +237,10 @@ mod tests {
     fn voronoi_interp() {
         let tgt = PolyData::from_points(vec![[0.5, 0.0, 0.0]]);
         let r = voronoi_interpolate(&make_source(), &tgt, "val", 5.0);
-        assert!(r.point_data().get_array("val").is_some());
+        let a = r.point_data().get_array("val").unwrap();
+        let mut b = [0.0f64];
+        a.tuple_as_f64(0, &mut b);
+        assert_eq!(b[0], 0.0);
     }
 
     #[test]

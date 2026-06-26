@@ -38,13 +38,8 @@ pub fn roller_skate(boot_length: f64, boot_height: f64, wheel_radius: f64, na: u
     pts.push([boot_length, hw * 0.8, wheel_radius * 2.0]);
     pts.push([0.0, hw * 0.8, wheel_radius * 2.0]);
     polys.push_cell(&[sb as i64, (sb + 1) as i64, (sb + 2) as i64, (sb + 3) as i64]);
-    // 4 wheels (circles on each side)
-    let wheel_positions = [
-        boot_length * 0.15,
-        boot_length * 0.4,
-        boot_length * 0.65,
-        boot_length * 0.9,
-    ];
+    // Four wheels total: two axles, one wheel on each side.
+    let wheel_positions = [boot_length * 0.25, boot_length * 0.75];
     for &wx in &wheel_positions {
         for &side in &[-hw * 0.9, hw * 0.9] {
             let wb = pts.len();
@@ -82,8 +77,8 @@ mod tests {
     #[test]
     fn test_skate() {
         let m = roller_skate(3.0, 1.5, 0.3, 10);
-        assert!(m.points.len() > 60);
+        assert_eq!(m.points.len(), 12 + 4 * 10 + 4);
         assert!(m.polys.num_cells() >= 5);
-        assert!(m.lines.num_cells() > 40);
+        assert_eq!(m.lines.num_cells(), 4 * 10 + 2);
     }
 }

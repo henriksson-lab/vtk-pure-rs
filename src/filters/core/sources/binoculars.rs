@@ -55,6 +55,13 @@ pub fn binoculars(tube_length: f64, tube_radius: f64, separation: f64, na: usize
         (bb + 7) as i64,
     ]);
     polys.push_cell(&[bb as i64, (bb + 4) as i64, (bb + 5) as i64, (bb + 1) as i64]);
+    polys.push_cell(&[bb as i64, (bb + 3) as i64, (bb + 7) as i64, (bb + 4) as i64]);
+    polys.push_cell(&[
+        (bb + 1) as i64,
+        (bb + 5) as i64,
+        (bb + 6) as i64,
+        (bb + 2) as i64,
+    ]);
     // Focus wheel
     let fw_r = tube_radius * 0.6;
     let fwb = pts.len();

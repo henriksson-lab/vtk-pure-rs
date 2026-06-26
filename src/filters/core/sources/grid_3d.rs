@@ -31,15 +31,15 @@ pub fn grid_3d_surface(nx: usize, ny: usize, nz: usize, spacing: [f64; 3]) -> Po
         for iy in 0..ny {
             polys.push_cell(&[
                 pt(0, iy, iz),
-                pt(0, iy + 1, iz),
-                pt(0, iy + 1, iz + 1),
                 pt(0, iy, iz + 1),
+                pt(0, iy + 1, iz + 1),
+                pt(0, iy + 1, iz),
             ]);
             polys.push_cell(&[
                 pt(nx, iy, iz),
-                pt(nx, iy, iz + 1),
-                pt(nx, iy + 1, iz + 1),
                 pt(nx, iy + 1, iz),
+                pt(nx, iy + 1, iz + 1),
+                pt(nx, iy, iz + 1),
             ]);
         }
     }
@@ -48,15 +48,15 @@ pub fn grid_3d_surface(nx: usize, ny: usize, nz: usize, spacing: [f64; 3]) -> Po
         for ix in 0..nx {
             polys.push_cell(&[
                 pt(ix, 0, iz),
-                pt(ix, 0, iz + 1),
-                pt(ix + 1, 0, iz + 1),
                 pt(ix + 1, 0, iz),
+                pt(ix + 1, 0, iz + 1),
+                pt(ix, 0, iz + 1),
             ]);
             polys.push_cell(&[
                 pt(ix, ny, iz),
-                pt(ix + 1, ny, iz),
-                pt(ix + 1, ny, iz + 1),
                 pt(ix, ny, iz + 1),
+                pt(ix + 1, ny, iz + 1),
+                pt(ix + 1, ny, iz),
             ]);
         }
     }
@@ -65,15 +65,15 @@ pub fn grid_3d_surface(nx: usize, ny: usize, nz: usize, spacing: [f64; 3]) -> Po
         for ix in 0..nx {
             polys.push_cell(&[
                 pt(ix, iy, 0),
-                pt(ix + 1, iy, 0),
-                pt(ix + 1, iy + 1, 0),
                 pt(ix, iy + 1, 0),
+                pt(ix + 1, iy + 1, 0),
+                pt(ix + 1, iy, 0),
             ]);
             polys.push_cell(&[
                 pt(ix, iy, nz),
-                pt(ix, iy + 1, nz),
-                pt(ix + 1, iy + 1, nz),
                 pt(ix + 1, iy, nz),
+                pt(ix + 1, iy + 1, nz),
+                pt(ix, iy + 1, nz),
             ]);
         }
     }
@@ -154,5 +154,43 @@ mod tests {
     fn wireframe() {
         let g = grid_3d_wireframe(2, 2, 2, [1.0, 1.0, 1.0]);
         assert!(g.lines.num_cells() > 10);
+    }
+
+    #[test]
+    fn surface_cube_faces_are_wound_outward() {
+        let g = grid_3d_surface(1, 1, 1, [1.0, 1.0, 1.0]);
+        let center = [0.5, 0.5, 0.5];
+
+        for cell in g.polys.iter() {
+            let p0 = g.points.get(cell[0] as usize);
+            let p1 = g.points.get(cell[1] as usize);
+            let p2 = g.points.get(cell[2] as usize);
+            let normal = cross(sub(p1, p0), sub(p2, p0));
+            let face_center = cell.iter().fold([0.0; 3], |mut acc, &id| {
+                let p = g.points.get(id as usize);
+                acc[0] += p[0] / cell.len() as f64;
+                acc[1] += p[1] / cell.len() as f64;
+                acc[2] += p[2] / cell.len() as f64;
+                acc
+            });
+            let outward = sub(face_center, center);
+            assert!(dot(normal, outward) > 0.0);
+        }
+    }
+
+    fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+        [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+    }
+
+    fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    }
+
+    fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+        a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
     }
 }

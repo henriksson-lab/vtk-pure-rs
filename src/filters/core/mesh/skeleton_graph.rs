@@ -8,23 +8,37 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 ///
 /// Repeatedly smooths the mesh while preserving connectivity until
 /// it collapses to a thin skeleton.
-pub fn extract_skeleton_graph(mesh: &PolyData, iterations: usize, contraction_rate: f64) -> PolyData {
+pub fn extract_skeleton_graph(
+    mesh: &PolyData,
+    iterations: usize,
+    contraction_rate: f64,
+) -> PolyData {
     let n = mesh.points.len();
-    if n < 3 { return mesh.clone(); }
+    if n < 3 {
+        return mesh.clone();
+    }
 
     let adj = build_adj(mesh, n);
     let mut positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
+    let contraction_rate = contraction_rate.clamp(0.0, 1.0);
 
     // Iterative contraction
     for _ in 0..iterations {
         let mut new_pos = positions.clone();
         for i in 0..n {
-            if adj[i].is_empty() { continue; }
+            if adj[i].is_empty() {
+                continue;
+            }
             let mut avg = [0.0; 3];
-            for &j in &adj[i] { for c in 0..3 { avg[c] += positions[j][c]; } }
+            for &j in &adj[i] {
+                for c in 0..3 {
+                    avg[c] += positions[j][c];
+                }
+            }
             let k = adj[i].len() as f64;
             for c in 0..3 {
-                new_pos[i][c] = positions[i][c] * (1.0 - contraction_rate) + (avg[c] / k) * contraction_rate;
+                new_pos[i][c] =
+                    positions[i][c] * (1.0 - contraction_rate) + (avg[c] / k) * contraction_rate;
             }
         }
         positions = new_pos;
@@ -39,17 +53,21 @@ pub fn extract_skeleton_graph(mesh: &PolyData, iterations: usize, contraction_ra
     let mut used = vec![false; n];
 
     for i in 0..n {
-        if used[i] { continue; }
+        if used[i] {
+            continue;
+        }
         let new_idx = skeleton_pts.len();
         skeleton_pts.push(positions[i]);
         mapping[i] = new_idx;
 
         // Merge nearby points
-        for j in i+1..n {
-            if used[j] { continue; }
-            let d2 = (positions[i][0]-positions[j][0]).powi(2)
-                + (positions[i][1]-positions[j][1]).powi(2)
-                + (positions[i][2]-positions[j][2]).powi(2);
+        for j in i + 1..n {
+            if used[j] {
+                continue;
+            }
+            let d2 = (positions[i][0] - positions[j][0]).powi(2)
+                + (positions[i][1] - positions[j][1]).powi(2)
+                + (positions[i][2] - positions[j][2]).powi(2);
             if d2 < merge_dist2 {
                 mapping[j] = new_idx;
                 used[j] = true;
@@ -64,8 +82,32 @@ pub fn extract_skeleton_graph(mesh: &PolyData, iterations: usize, contraction_ra
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = mapping[cell[i] as usize];
-            let b = mapping[cell[(i+1)%nc] as usize];
+            let Some(pa) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(pb) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            let a = mapping[pa];
+            let b = mapping[pb];
+            if a != b {
+                let edge = (a.min(b), a.max(b));
+                if edge_set.insert(edge) {
+                    lines.push_cell(&[a as i64, b as i64]);
+                }
+            }
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for i in 0..cell.len().saturating_sub(1) {
+            let Some(pa) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(pb) = valid_point_id(cell[i + 1], n) else {
+                continue;
+            };
+            let a = mapping[pa];
+            let b = mapping[pb];
             if a != b {
                 let edge = (a.min(b), a.max(b));
                 if edge_set.insert(edge) {
@@ -85,9 +127,9 @@ pub fn extract_skeleton_graph(mesh: &PolyData, iterations: usize, contraction_ra
     let mut result = PolyData::new();
     result.points = skeleton_pts;
     result.lines = lines;
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Degree", degree, 1),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Degree", degree, 1)));
     result
 }
 
@@ -102,8 +144,11 @@ pub fn skeleton_stats(skeleton: &PolyData) -> (usize, usize, usize, usize) {
         let mut buf = [0.0f64];
         for i in 0..deg.num_tuples() {
             deg.tuple_as_f64(i, &mut buf);
-            if buf[0] <= 1.0 { n_endpoints += 1; }
-            else if buf[0] >= 3.0 { n_junctions += 1; }
+            if buf[0] <= 1.0 {
+                n_endpoints += 1;
+            } else if buf[0] >= 3.0 {
+                n_junctions += 1;
+            }
         }
     }
 
@@ -115,8 +160,22 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize; let b = cell[(i+1)%nc] as usize;
-            if a < n && b < n { adj[a].insert(b); adj[b].insert(a); }
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[i], n),
+                valid_point_id(cell[(i + 1) % nc], n),
+            ) {
+                adj[a].insert(b);
+                adj[b].insert(a);
+            }
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for i in 0..cell.len().saturating_sub(1) {
+            if let (Some(a), Some(b)) = (valid_point_id(cell[i], n), valid_point_id(cell[i + 1], n))
+            {
+                adj[a].insert(b);
+                adj[b].insert(a);
+            }
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
@@ -128,13 +187,45 @@ fn compute_avg_edge_length(mesh: &PolyData) -> f64 {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = mesh.points.get(cell[i] as usize);
-            let b = mesh.points.get(cell[(i+1)%nc] as usize);
-            total += ((a[0]-b[0]).powi(2)+(a[1]-b[1]).powi(2)+(a[2]-b[2]).powi(2)).sqrt();
+            let Some(a_id) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b_id) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
+            let a = mesh.points.get(a_id);
+            let b = mesh.points.get(b_id);
+            total += ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
             count += 1;
         }
     }
-    if count > 0 { total / count as f64 } else { 1.0 }
+    for cell in mesh.lines.iter() {
+        for i in 0..cell.len().saturating_sub(1) {
+            let Some(a_id) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b_id) = valid_point_id(cell[i + 1], mesh.points.len()) else {
+                continue;
+            };
+            let a = mesh.points.get(a_id);
+            let b = mesh.points.get(b_id);
+            total += ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+            count += 1;
+        }
+    }
+    if count > 0 {
+        total / count as f64
+    } else {
+        1.0
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -145,7 +236,11 @@ mod tests {
     fn tube_skeleton() {
         // Create a simple tube-like mesh
         let mesh = crate::filters::core::sources::cylinder::cylinder(
-            &crate::filters::core::sources::cylinder::CylinderParams { height: 4.0, ..Default::default() });
+            &crate::filters::core::sources::cylinder::CylinderParams {
+                height: 4.0,
+                ..Default::default()
+            },
+        );
         let skel = extract_skeleton_graph(&mesh, 20, 0.8);
         assert!(skel.points.len() > 0);
         assert!(skel.lines.num_cells() > 0);
@@ -155,7 +250,8 @@ mod tests {
     #[test]
     fn stats() {
         let mesh = crate::filters::core::sources::cylinder::cylinder(
-            &crate::filters::core::sources::cylinder::CylinderParams::default());
+            &crate::filters::core::sources::cylinder::CylinderParams::default(),
+        );
         let skel = extract_skeleton_graph(&mesh, 10, 0.7);
         let (pts, edges, endpoints, _junctions) = skeleton_stats(&skel);
         assert!(pts > 0);
@@ -166,5 +262,31 @@ mod tests {
     fn empty() {
         let skel = extract_skeleton_graph(&PolyData::new(), 10, 0.5);
         assert_eq!(skel.points.len(), 0);
+    }
+
+    #[test]
+    fn skips_invalid_connectivity() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[0, 1, 99]);
+        mesh.polys.push_cell(&[0, -1, 2]);
+
+        let skel = extract_skeleton_graph(&mesh, 2, 0.5);
+        assert!(skel.point_data().get_array("Degree").is_some());
+    }
+
+    #[test]
+    fn preserves_polyline_connectivity() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([2.0, 0.0, 0.0]);
+        mesh.lines.push_cell(&[0, 1, 2]);
+
+        let skel = extract_skeleton_graph(&mesh, 0, 0.5);
+        assert_eq!(skel.lines.num_cells(), 2);
     }
 }

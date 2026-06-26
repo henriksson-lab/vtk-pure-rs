@@ -1,48 +1,48 @@
 use crate::data::{CellArray, Points, PolyData};
 
-/// Create a ruled surface between two polylines.
+/// Create a ruled surface between polylines.
 ///
-/// Connects corresponding points on two polyline cells with quads to
-/// create a surface "ruled" between them. If the polylines have different
-/// numbers of points, the shorter one is resampled to match.
-///
-/// `input` should contain exactly 2 polyline cells in its `lines` array.
+/// Connects corresponding arc-length samples on adjacent polyline cells with
+/// quads to create surfaces "ruled" between them. If paired polylines have
+/// different numbers of points, the shorter one is resampled to match.
 pub fn ruled_surface(input: &PolyData) -> PolyData {
     let lines: Vec<Vec<i64>> = input.lines.iter().map(|c| c.to_vec()).collect();
     if lines.len() < 2 {
         return PolyData::new();
     }
 
-    let line_a = &lines[0];
-    let line_b = &lines[1];
-
-    if line_a.len() < 2 || line_b.len() < 2 {
-        return PolyData::new();
-    }
-
-    // Resample both lines to the same number of points (the max of the two)
-    let n = line_a.len().max(line_b.len());
-    let pts_a = resample_line(input, line_a, n);
-    let pts_b = resample_line(input, line_b, n);
-
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
-    // Add all points for both lines
-    for p in &pts_a {
-        out_points.push(*p);
-    }
-    for p in &pts_b {
-        out_points.push(*p);
-    }
+    for pair in lines.windows(2) {
+        let line_a = &pair[0];
+        let line_b = &pair[1];
 
-    // Connect with quads
-    for i in 0..n - 1 {
-        let a0 = i as i64;
-        let a1 = (i + 1) as i64;
-        let b0 = (n + i) as i64;
-        let b1 = (n + i + 1) as i64;
-        out_polys.push_cell(&[a0, a1, b1, b0]);
+        if line_a.len() < 2 || line_b.len() < 2 {
+            continue;
+        }
+
+        // Resample both lines to the same number of points (the max of the two).
+        let n = line_a.len().max(line_b.len());
+        let pts_a = resample_line(input, line_a, n);
+        let pts_b = resample_line(input, line_b, n);
+        let offset = out_points.len() as i64;
+
+        for p in &pts_a {
+            out_points.push(*p);
+        }
+        for p in &pts_b {
+            out_points.push(*p);
+        }
+
+        // Connect with quads.
+        for i in 0..n - 1 {
+            let a0 = offset + i as i64;
+            let a1 = offset + (i + 1) as i64;
+            let b0 = offset + (n + i) as i64;
+            let b1 = offset + (n + i + 1) as i64;
+            out_polys.push_cell(&[a0, a1, b1, b0]);
+        }
     }
 
     let mut pd = PolyData::new();
@@ -169,6 +169,23 @@ mod tests {
 
         let result = ruled_surface(&pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn ruled_between_adjacent_line_pairs() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 2.0, 0.0]);
+        pd.points.push([1.0, 2.0, 0.0]);
+        pd.lines.push_cell(&[0, 1]);
+        pd.lines.push_cell(&[2, 3]);
+        pd.lines.push_cell(&[4, 5]);
+
+        let result = ruled_surface(&pd);
+        assert_eq!(result.polys.num_cells(), 2);
     }
 
     #[test]

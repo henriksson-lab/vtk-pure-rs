@@ -31,29 +31,24 @@ pub fn taper_mesh(
         let dist_along: f64 = dx * ax[0] + dy * ax[1] + dz * ax[2];
 
         // Component along axis
-        let along: [f64; 3] = [
-            dist_along * ax[0],
-            dist_along * ax[1],
-            dist_along * ax[2],
-        ];
+        let along: [f64; 3] = [dist_along * ax[0], dist_along * ax[1], dist_along * ax[2]];
 
         // Component perpendicular to axis
-        let perp: [f64; 3] = [
-            dx - along[0],
-            dy - along[1],
-            dz - along[2],
-        ];
+        let perp: [f64; 3] = [dx - along[0], dy - along[1], dz - along[2]];
 
         // Scale factor at this distance
         let scale: f64 = 1.0 + dist_along * taper_factor;
         let scale: f64 = scale.max(0.0); // clamp to avoid inversion
 
         // Reconstruct: center + along + scale * perp
-        pd.points.set(i, [
-            center[0] + along[0] + perp[0] * scale,
-            center[1] + along[1] + perp[1] * scale,
-            center[2] + along[2] + perp[2] * scale,
-        ]);
+        pd.points.set(
+            i,
+            [
+                center[0] + along[0] + perp[0] * scale,
+                center[1] + along[1] + perp[1] * scale,
+                center[2] + along[2] + perp[2] * scale,
+            ],
+        );
     }
 
     pd

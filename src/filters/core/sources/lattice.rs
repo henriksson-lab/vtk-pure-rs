@@ -44,6 +44,9 @@ pub fn cubic_lattice(nx: usize, ny: usize, nz: usize, spacing: f64) -> PolyData 
 
 /// Create a BCC (body-centered cubic) lattice.
 pub fn bcc_lattice(nx: usize, ny: usize, nz: usize, spacing: f64) -> PolyData {
+    let nx = nx.max(2);
+    let ny = ny.max(2);
+    let nz = nz.max(2);
     let mut pts = Points::<f64>::new();
     let mut lines = CellArray::new();
     let half = spacing / 2.0;

@@ -8,20 +8,22 @@ pub fn alpha_helix(
     resolution: usize,
 ) -> PolyData {
     let tres = resolution.max(4);
+    let residues = residues.max(1);
     let total = residues * 4;
+    let turns = residues as f64 / 3.6;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     for i in 0..=total {
         let t = i as f64 / total as f64;
-        let a = 2.0 * std::f64::consts::PI * 3.6 * t * residues as f64 / 3.6; // 3.6 residues per turn
+        let a = 2.0 * std::f64::consts::PI * t * turns;
         let cx = radius * a.cos();
         let cy = radius * a.sin();
-        let cz = t * pitch * residues as f64;
+        let cz = t * pitch * turns;
         let dt = 0.001;
-        let a2 = 2.0 * std::f64::consts::PI * 3.6 * (t + dt) * residues as f64 / 3.6;
+        let a2 = 2.0 * std::f64::consts::PI * (t + dt) * turns;
         let tx = radius * a2.cos() - cx;
         let ty = radius * a2.sin() - cy;
-        let tz = dt * pitch * residues as f64;
+        let tz = dt * pitch * turns;
         let tl = (tx * tx + ty * ty + tz * tz).sqrt().max(1e-15);
         let tang = [tx / tl, ty / tl, tz / tl];
         let up = if tang[0].abs() < 0.9 {
@@ -64,6 +66,8 @@ pub fn beta_sheet(
     spacing: f64,
     pleat_amplitude: f64,
 ) -> PolyData {
+    let strands = strands.max(1);
+    let strand_length = strand_length.max(1);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let residue_dist = 3.5; // angstroms between residues

@@ -87,7 +87,7 @@ pub fn aqueduct(
         }
     }
     // Top channel
-    let total_length = (na as f64 + 1.0) * bay;
+    let total_length = na as f64 * bay + pier_width;
     add_box(
         &mut pts,
         &mut polys,

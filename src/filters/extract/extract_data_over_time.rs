@@ -36,9 +36,18 @@ pub fn extract_data_over_time(temporal: &TemporalDataSet, probe_point: [f64; 3])
                     continue;
                 }
                 let name = arr.name().to_string();
+                let values = data_cols
+                    .entry(name)
+                    .or_insert_with(|| vec![f64::NAN; time_col.len() - 1]);
                 let mut buf = [0.0f64];
                 arr.tuple_as_f64(closest, &mut buf);
-                data_cols.entry(name).or_default().push(buf[0]);
+                values.push(buf[0]);
+            }
+        }
+
+        for values in data_cols.values_mut() {
+            if values.len() < time_col.len() {
+                values.push(f64::NAN);
             }
         }
     }

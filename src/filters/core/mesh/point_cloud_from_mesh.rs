@@ -1,165 +1,113 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 
-/// Sample random points on a triangle mesh surface.
+/// Controls how point-cloud vertex cells are generated.
 ///
-/// Points are distributed proportional to triangle face area.
-/// Returns a vertex-only PolyData (each point is a single vertex cell).
-/// Uses a simple linear congruential generator seeded with `seed`.
-pub fn random_sample_on_surface(input: &PolyData, num_points: usize, seed: u64) -> PolyData {
-    if num_points == 0 {
-        return PolyData::new();
-    }
+/// Mirrors `vtkConvertToPointCloud::CellGeneration`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointCloudCellGeneration {
+    /// Do not generate any cells.
+    NoCells,
+    /// Generate one polyvertex cell containing every point.
+    PolyVertexCell,
+    /// Generate one vertex cell per point.
+    VertexCells,
+}
 
-    // Collect triangles and compute areas
-    let mut triangles: Vec<[usize; 3]> = Vec::new();
-    let mut areas: Vec<f64> = Vec::new();
-    let mut total_area: f64 = 0.0;
+/// Convert a mesh to a point cloud using VTK's default polyvertex-cell mode.
+pub fn point_cloud_from_mesh(input: &PolyData) -> PolyData {
+    convert_to_point_cloud(input, PointCloudCellGeneration::PolyVertexCell)
+}
 
-    for cell in input.polys.iter() {
-        if cell.len() < 3 {
-            continue;
+/// Convert mesh points to a point-cloud `PolyData`.
+///
+/// This is the `PolyData` equivalent of VTK's `vtkConvertToPointCloud`: points,
+/// point data, and field data are preserved; topology is replaced according to
+/// the selected cell-generation mode.
+pub fn convert_to_point_cloud(input: &PolyData, mode: PointCloudCellGeneration) -> PolyData {
+    let mut output = PolyData::new();
+    output.points = input.points.clone();
+    *output.point_data_mut() = input.point_data().clone();
+    *output.field_data_mut() = input.field_data().clone();
+
+    match mode {
+        PointCloudCellGeneration::NoCells => {}
+        PointCloudCellGeneration::PolyVertexCell => {
+            let ids: Vec<i64> = (0..input.points.len()).map(|i| i as i64).collect();
+            output.verts.push_cell(&ids);
         }
-        // Triangulate fan for polygons with more than 3 vertices
-        let v0: usize = cell[0] as usize;
-        for k in 1..cell.len() - 1 {
-            let v1: usize = cell[k] as usize;
-            let v2: usize = cell[k + 1] as usize;
-            let p0 = input.points.get(v0);
-            let p1 = input.points.get(v1);
-            let p2 = input.points.get(v2);
-
-            let e1: [f64; 3] = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-            let e2: [f64; 3] = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-            let cross: [f64; 3] = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let area: f64 =
-                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
-
-            triangles.push([v0, v1, v2]);
-            areas.push(area);
-            total_area += area;
+        PointCloudCellGeneration::VertexCells => {
+            let mut verts = CellArray::new();
+            for i in 0..input.points.len() {
+                verts.push_cell(&[i as i64]);
+            }
+            output.verts = verts;
         }
     }
 
-    if triangles.is_empty() || total_area < 1e-30 {
-        return PolyData::new();
-    }
-
-    // Build CDF
-    let mut cdf: Vec<f64> = Vec::with_capacity(areas.len());
-    let mut cumulative: f64 = 0.0;
-    for a in &areas {
-        cumulative += a / total_area;
-        cdf.push(cumulative);
-    }
-    // Ensure last entry is exactly 1.0
-    if let Some(last) = cdf.last_mut() {
-        *last = 1.0;
-    }
-
-    // Simple LCG PRNG
-    let mut rng_state: u64 = seed;
-    let mut next_rand = || -> f64 {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        // Use upper bits for better quality
-        let val: u64 = (rng_state >> 11) & 0x1FFFFFFFFFFFFF; // 53 bits
-        val as f64 / (1u64 << 53) as f64
-    };
-
-    let mut points: Points<f64> = Points::new();
-    let mut verts = CellArray::new();
-
-    for _ in 0..num_points {
-        // Pick a triangle proportional to area
-        let r: f64 = next_rand();
-        let tri_idx: usize = match cdf.binary_search_by(|v| v.partial_cmp(&r).unwrap()) {
-            Ok(i) => i,
-            Err(i) => i.min(cdf.len() - 1),
-        };
-
-        let [v0, v1, v2] = triangles[tri_idx];
-        let p0 = input.points.get(v0);
-        let p1 = input.points.get(v1);
-        let p2 = input.points.get(v2);
-
-        // Random point in triangle using barycentric coordinates
-        let mut s: f64 = next_rand();
-        let mut t: f64 = next_rand();
-        if s + t > 1.0 {
-            s = 1.0 - s;
-            t = 1.0 - t;
-        }
-        let u: f64 = 1.0 - s - t;
-
-        let pt: [f64; 3] = [
-            u * p0[0] + s * p1[0] + t * p2[0],
-            u * p0[1] + s * p1[1] + t * p2[1],
-            u * p0[2] + s * p1[2] + t * p2[2],
-        ];
-
-        let idx: i64 = points.len() as i64;
-        points.push(pt);
-        verts.push_cell(&[idx]);
-    }
-
-    let mut pd = PolyData::new();
-    pd.points = points;
-    pd.verts = verts;
-    pd
+    output
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
-    fn make_unit_triangle() -> PolyData {
+    fn sample_mesh() -> PolyData {
         PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             vec![[0, 1, 2]],
         )
     }
 
     #[test]
-    fn correct_point_count() {
-        let pd = make_unit_triangle();
-        let result = random_sample_on_surface(&pd, 100, 42);
-        assert_eq!(result.points.len(), 100);
-        assert_eq!(result.verts.num_cells(), 100);
+    fn default_generates_single_polyvertex_cell() {
+        let mesh = sample_mesh();
+        let result = point_cloud_from_mesh(&mesh);
+        assert_eq!(result.points.len(), 3);
+        assert_eq!(result.verts.num_cells(), 1);
+        assert_eq!(result.verts.cell(0), &[0, 1, 2]);
+        assert_eq!(result.polys.num_cells(), 0);
     }
 
     #[test]
-    fn points_inside_triangle() {
-        let pd = make_unit_triangle();
-        let result = random_sample_on_surface(&pd, 200, 123);
-        for i in 0..result.points.len() {
-            let p = result.points.get(i);
-            // All points should be in the z=0 plane
-            assert!(p[2].abs() < 1e-10);
-            // x >= 0, y >= 0, x+y <= 1 (within triangle)
-            assert!(p[0] > -1e-10);
-            assert!(p[1] > -1e-10);
-            assert!(p[0] + p[1] < 1.0 + 1e-10);
-        }
+    fn no_cells_mode_preserves_points_without_topology() {
+        let mesh = sample_mesh();
+        let result = convert_to_point_cloud(&mesh, PointCloudCellGeneration::NoCells);
+        assert_eq!(result.points.len(), 3);
+        assert_eq!(result.verts.num_cells(), 0);
+        assert_eq!(result.total_cells(), 0);
     }
 
     #[test]
-    fn deterministic_with_same_seed() {
-        let pd = make_unit_triangle();
-        let r1 = random_sample_on_surface(&pd, 50, 999);
-        let r2 = random_sample_on_surface(&pd, 50, 999);
-        for i in 0..50 {
-            let a = r1.points.get(i);
-            let b = r2.points.get(i);
-            assert!((a[0] - b[0]).abs() < 1e-15);
-            assert!((a[1] - b[1]).abs() < 1e-15);
-            assert!((a[2] - b[2]).abs() < 1e-15);
-        }
+    fn vertex_cells_mode_generates_one_cell_per_point() {
+        let mesh = sample_mesh();
+        let result = convert_to_point_cloud(&mesh, PointCloudCellGeneration::VertexCells);
+        assert_eq!(result.verts.num_cells(), 3);
+        assert_eq!(result.verts.cell(0), &[0]);
+        assert_eq!(result.verts.cell(1), &[1]);
+        assert_eq!(result.verts.cell(2), &[2]);
+    }
+
+    #[test]
+    fn preserves_point_and_field_data() {
+        let mut mesh = sample_mesh();
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temperature",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
+        mesh.point_data_mut().set_active_scalars("temperature");
+        mesh.field_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "time",
+                vec![1.25],
+                1,
+            )));
+
+        let result = point_cloud_from_mesh(&mesh);
+        assert!(result.point_data().get_array("temperature").is_some());
+        assert!(result.point_data().scalars().is_some());
+        assert!(result.field_data().get_array("time").is_some());
     }
 }

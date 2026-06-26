@@ -6,6 +6,8 @@ pub fn totem_pole(
     num_sections: usize,
     resolution: usize,
 ) -> PolyData {
+    const RNG_MAX_31: f64 = ((1u64 << 31) - 1) as f64;
+
     let ns = num_sections.max(2);
     let res = resolution.max(6);
     let section_h = height / ns as f64;
@@ -18,12 +20,12 @@ pub fn totem_pole(
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let bulge = 0.8 + 0.4 * ((rng >> 33) as f64 / u32::MAX as f64);
+        let bulge = 0.8 + 0.4 * ((rng >> 33) as f64 / RNG_MAX_31);
         let r0 = base_radius * bulge;
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let r1 = base_radius * (0.8 + 0.4 * ((rng >> 33) as f64 / u32::MAX as f64));
+        let r1 = base_radius * (0.8 + 0.4 * ((rng >> 33) as f64 / RNG_MAX_31));
         let mid_r = base_radius * 1.1;
         // 3 rings per section (bottom, middle bulge, top)
         for (z, r) in [(z0, r0), (z0 + section_h * 0.5, mid_r), (z1, r1)] {

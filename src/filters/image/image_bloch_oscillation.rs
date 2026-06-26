@@ -10,7 +10,12 @@ pub fn image_bloch_oscillation(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (buf[0] * std::f64::consts::PI).sin() / (buf[0] * std::f64::consts::PI).max(0.01)
+            let phase = buf[0] * std::f64::consts::PI;
+            if phase.abs() < 1e-15 {
+                1.0
+            } else {
+                phase.sin() / phase
+            }
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +38,22 @@ mod tests {
         );
         let r = image_bloch_oscillation(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn preserves_sinc_symmetry_and_origin() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-0.5, 0.0, 0.5], 1),
+        ));
+        let r = image_bloch_oscillation(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut value = [0.0f64];
+
+        arr.tuple_as_f64(0, &mut value);
+        let negative = value[0];
+        arr.tuple_as_f64(1, &mut value);
+        assert_eq!(value[0], 1.0);
+        arr.tuple_as_f64(2, &mut value);
+        assert!((negative - value[0]).abs() < 1e-15);
     }
 }

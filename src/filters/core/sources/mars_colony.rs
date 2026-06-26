@@ -36,7 +36,7 @@ pub fn mars_colony(
         // Dome
         let dome_rings = 4;
         let dome_base = base + res;
-        for dr in 1..=dome_rings {
+        for dr in 1..dome_rings {
             let t = dr as f64 / dome_rings as f64;
             let a = t * std::f64::consts::FRAC_PI_2;
             let r = hab_r * a.cos();
@@ -46,7 +46,7 @@ pub fn mars_colony(
                 pts.push([hx + r * ang.cos(), r * ang.sin(), z]);
             }
         }
-        for dr in 0..dome_rings {
+        for dr in 0..(dome_rings - 1) {
             let r0 = if dr == 0 {
                 dome_base
             } else {
@@ -77,10 +77,10 @@ pub fn mars_colony(
         }
         let dc = pts.len();
         pts.push([hx, 0.0, hab_r * 0.5]);
-        let top = dome_base + res + (dome_rings - 1) * res;
+        let top = dome_base + res + (dome_rings - 2) * res;
         for i in 0..res {
             let j = (i + 1) % res;
-            polys.push_cell(&[dc as i64, (top + i) as i64, (top + j) as i64]);
+            polys.push_cell(&[dc as i64, (top + j) as i64, (top + i) as i64]);
         }
     }
     // Greenhouse (quonset hut)
@@ -116,8 +116,12 @@ pub fn mars_colony(
         pts.push([x1, tw, tw]);
         pts.push([x0, tw, tw]);
         let f = |i: usize| (tb + i) as i64;
+        polys.push_cell(&[f(0), f(3), f(2), f(1)]);
         polys.push_cell(&[f(4), f(5), f(6), f(7)]);
         polys.push_cell(&[f(0), f(1), f(5), f(4)]);
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]);
+        polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+        polys.push_cell(&[f(3), f(0), f(4), f(7)]);
     }
     let mut r = PolyData::new();
     r.points = pts;

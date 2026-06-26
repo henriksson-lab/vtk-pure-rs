@@ -11,6 +11,9 @@ pub fn gradient_vector_field(input: &ImageData, scalars: &str) -> ImageData {
     let dims = input.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
     let n = arr.num_tuples();
+    if n != nx * ny * dims[2] {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -22,8 +25,11 @@ pub fn gradient_vector_field(input: &ImageData, scalars: &str) -> ImageData {
 
     let mut data = Vec::with_capacity(n * 2);
     for idx in 0..n {
-        let iy = idx / nx;
-        let ix = idx % nx;
+        let slice = nx * ny;
+        let iz = idx / slice;
+        let rem = idx - iz * slice;
+        let iy = rem / nx;
+        let ix = rem % nx;
         let gx = if ix > 0 && ix + 1 < nx {
             (vals[idx + 1] - vals[idx - 1]) / (2.0 * sp[0])
         } else if ix + 1 < nx {
@@ -86,6 +92,9 @@ pub fn divergence_2d(input: &ImageData, array_name: &str) -> ImageData {
     let dims = input.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
     let n = arr.num_tuples();
+    if n != nx * ny * dims[2] {
+        return input.clone();
+    }
     let mut buf = [0.0f64; 2];
     let vecs: Vec<[f64; 2]> = (0..n)
         .map(|i| {
@@ -97,8 +106,11 @@ pub fn divergence_2d(input: &ImageData, array_name: &str) -> ImageData {
 
     let data: Vec<f64> = (0..n)
         .map(|idx| {
-            let iy = idx / nx;
-            let ix = idx % nx;
+            let slice = nx * ny;
+            let iz = idx / slice;
+            let rem = idx - iz * slice;
+            let iy = rem / nx;
+            let ix = rem % nx;
             let dfdx = if ix > 0 && ix + 1 < nx {
                 (vecs[idx + 1][0] - vecs[idx - 1][0]) / (2.0 * sp[0])
             } else {
@@ -164,5 +176,22 @@ mod tests {
         let g = gradient_vector_field(&img, "v");
         let d = divergence_2d(&g, "Gradient");
         assert!(d.point_data().get_array("Divergence").is_some());
+    }
+
+    #[test]
+    fn test_gvf_multiple_slices() {
+        let img = ImageData::from_function(
+            [4, 3, 2],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, z| x + y + z * 10.0,
+        );
+        let g = gradient_vector_field(&img, "v");
+        let arr = g.point_data().get_array("Gradient").unwrap();
+        let mut buf = [0.0f64; 2];
+        arr.tuple_as_f64(4 * 3 + 1 + 4, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
+        assert!((buf[1] - 1.0).abs() < 1e-10);
     }
 }

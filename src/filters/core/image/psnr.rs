@@ -13,8 +13,14 @@ pub fn image_psnr(a: &ImageData, b: &ImageData, scalars: &str, max_value: f64) -
         Some(x) => x,
         None => return (0.0, 0.0),
     };
-    let n = aa.num_tuples().min(ba.num_tuples());
-    let num_components = aa.num_components().min(ba.num_components());
+    if a.extent() != b.extent()
+        || aa.num_tuples() != ba.num_tuples()
+        || aa.num_components() != ba.num_components()
+    {
+        return (0.0, 0.0);
+    }
+    let n = aa.num_tuples();
+    let num_components = aa.num_components();
     if n == 0 || num_components == 0 {
         return (0.0, 0.0);
     }
@@ -49,8 +55,14 @@ pub fn image_mae(a: &ImageData, b: &ImageData, scalars: &str) -> f64 {
         Some(x) => x,
         None => return 0.0,
     };
-    let n = aa.num_tuples().min(ba.num_tuples());
-    let num_components = aa.num_components().min(ba.num_components());
+    if a.extent() != b.extent()
+        || aa.num_tuples() != ba.num_tuples()
+        || aa.num_components() != ba.num_components()
+    {
+        return 0.0;
+    }
+    let n = aa.num_tuples();
+    let num_components = aa.num_components();
     if n == 0 || num_components == 0 {
         return 0.0;
     }
@@ -142,5 +154,32 @@ mod tests {
         let img = ImageData::with_dimensions(3, 1, 1);
         let (psnr, _) = image_psnr(&img, &img, "nope", 255.0);
         assert_eq!(psnr, 0.0);
+    }
+
+    #[test]
+    fn mismatched_extent_or_components_returns_zero() {
+        let mut a = ImageData::with_dimensions(2, 1, 1);
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0, 2.0], 1)));
+        let mut b = ImageData::with_dimensions(1, 1, 1);
+        b.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0], 1)));
+
+        assert_eq!(image_psnr(&a, &b, "v", 255.0), (0.0, 0.0));
+        assert_eq!(image_mae(&a, &b, "v"), 0.0);
+
+        let mut c = ImageData::with_dimensions(1, 1, 1);
+        c.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0],
+                2,
+            )));
+        let mut d = ImageData::with_dimensions(1, 1, 1);
+        d.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0], 1)));
+
+        assert_eq!(image_psnr(&c, &d, "v", 255.0), (0.0, 0.0));
+        assert_eq!(image_mae(&c, &d, "v"), 0.0);
     }
 }

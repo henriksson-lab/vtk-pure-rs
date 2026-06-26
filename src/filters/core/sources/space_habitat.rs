@@ -8,7 +8,7 @@ pub fn oneill_cylinder(
 ) -> PolyData {
     let res = resolution.max(12);
     let hl = length / 2.0;
-    let nw = window_strips.max(0);
+    let nw = window_strips;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     // Main cylinder hull
@@ -22,7 +22,8 @@ pub fn oneill_cylinder(
     for i in 0..res {
         let j = (i + 1) % res;
         // Skip window strips
-        let is_window = nw > 0 && (i % (res / nw.max(1))) == 0;
+        let window_period = if nw > 0 { (res / nw).max(1) } else { res };
+        let is_window = nw > 0 && (i % window_period) == 0;
         if !is_window {
             polys.push_cell(&[i as i64, j as i64, (res + j) as i64, (res + i) as i64]);
         }

@@ -25,69 +25,76 @@ impl Default for CylinderParams {
 
 /// Generate a cylinder as PolyData, aligned along the Y axis.
 pub fn cylinder(params: &CylinderParams) -> PolyData {
-    let n = params.resolution.max(3);
-    let [cx, cy, cz] = params.center;
-    let h = params.height;
-    let r = params.radius;
-    let hy = h * 0.5;
+    let resolution = params.resolution.max(3);
+    let angle = 2.0 * PI / resolution as f64;
 
     let mut points = Points::new();
     let mut normals = DataArray::<f64>::new("Normals", 3);
+    let mut tcoords = DataArray::<f64>::new("TCoords", 2);
     let mut polys = CellArray::new();
 
-    // Bottom ring (points 0..n)
-    for i in 0..n {
-        let theta = 2.0 * PI * i as f64 / n as f64;
-        let ct = theta.cos();
-        let st = theta.sin();
-        points.push([cx + r * ct, cy - hy, cz + r * st]);
-        normals.push_tuple(&[ct, 0.0, st]);
+    for i in 0..resolution {
+        let theta = i as f64 * angle;
+        let nx = theta.cos();
+        let nz = -theta.sin();
+        let x = params.radius * nx + params.center[0];
+        let z = params.radius * nz + params.center[2];
+        let tcoord_x = (2.0 * i as f64 / resolution as f64 - 1.0).abs();
+
+        points.push([x, 0.5 * params.height + params.center[1], z]);
+        tcoords.push_tuple(&[tcoord_x, 0.0]);
+        normals.push_tuple(&[nx, 0.0, nz]);
+
+        points.push([x, -0.5 * params.height + params.center[1], z]);
+        tcoords.push_tuple(&[tcoord_x, 1.0]);
+        normals.push_tuple(&[nx, 0.0, nz]);
     }
 
-    // Top ring (points n..2n)
-    for i in 0..n {
-        let theta = 2.0 * PI * i as f64 / n as f64;
-        let ct = theta.cos();
-        let st = theta.sin();
-        points.push([cx + r * ct, cy + hy, cz + r * st]);
-        normals.push_tuple(&[ct, 0.0, st]);
+    for i in 0..resolution {
+        let pts0 = 2 * i;
+        let pts1 = pts0 + 1;
+        let pts2 = (pts1 + 2) % (2 * resolution);
+        let pts3 = pts2 - 1;
+        polys.push_cell(&[pts0 as i64, pts1 as i64, pts2 as i64, pts3 as i64]);
     }
 
-    // Side quads
-    for i in 0..n {
-        let next = (i + 1) % n;
-        polys.push_cell(&[i as i64, next as i64, (n + next) as i64, (n + i) as i64]);
-    }
-
-    // Caps
     if params.capping {
-        // Bottom cap
-        let base = points.len() as i64;
-        points.push([cx, cy - hy, cz]);
-        normals.push_tuple(&[0.0, -1.0, 0.0]);
-        for i in 0..n {
-            let theta = 2.0 * PI * i as f64 / n as f64;
-            points.push([cx + r * theta.cos(), cy - hy, cz + r * theta.sin()]);
-            normals.push_tuple(&[0.0, -1.0, 0.0]);
-        }
-        for i in 0..n {
-            let next = (i + 1) % n;
-            polys.push_cell(&[base, base + 1 + next as i64, base + 1 + i as i64]);
-        }
+        for i in 0..resolution {
+            let theta = i as f64 * angle;
+            let x = params.radius * theta.cos();
+            let z = -params.radius * theta.sin();
 
-        // Top cap
-        let base = points.len() as i64;
-        points.push([cx, cy + hy, cz]);
-        normals.push_tuple(&[0.0, 1.0, 0.0]);
-        for i in 0..n {
-            let theta = 2.0 * PI * i as f64 / n as f64;
-            points.push([cx + r * theta.cos(), cy + hy, cz + r * theta.sin()]);
+            points.push([
+                x + params.center[0],
+                0.5 * params.height + params.center[1],
+                z + params.center[2],
+            ]);
+            tcoords.push_tuple(&[x, z]);
             normals.push_tuple(&[0.0, 1.0, 0.0]);
         }
-        for i in 0..n {
-            let next = (i + 1) % n;
-            polys.push_cell(&[base, base + 1 + i as i64, base + 1 + next as i64]);
+        for i in (0..resolution).rev() {
+            let theta = i as f64 * angle;
+            let x = params.radius * theta.cos();
+            let z = -params.radius * theta.sin();
+
+            points.push([
+                x + params.center[0],
+                -0.5 * params.height + params.center[1],
+                z + params.center[2],
+            ]);
+            tcoords.push_tuple(&[x, z]);
+            normals.push_tuple(&[0.0, -1.0, 0.0]);
         }
+
+        let bottom: Vec<i64> = (0..resolution)
+            .map(|i| (2 * resolution + i) as i64)
+            .collect();
+        polys.push_cell(&bottom);
+
+        let top: Vec<i64> = (0..resolution)
+            .map(|i| (3 * resolution + i) as i64)
+            .collect();
+        polys.push_cell(&top);
     }
 
     let mut pd = PolyData::new();
@@ -95,6 +102,8 @@ pub fn cylinder(params: &CylinderParams) -> PolyData {
     pd.polys = polys;
     pd.point_data_mut().add_array(normals.into());
     pd.point_data_mut().set_active_normals("Normals");
+    pd.point_data_mut().add_array(tcoords.into());
+    pd.point_data_mut().set_active_tcoords("TCoords");
     pd
 }
 
@@ -106,8 +115,12 @@ mod tests {
     fn default_cylinder() {
         let pd = cylinder(&CylinderParams::default());
         assert!(pd.points.len() > 0);
-        // Side quads + top cap triangles + bottom cap triangles
-        assert_eq!(pd.polys.num_cells(), 16 + 16 + 16);
+        assert_eq!(pd.points.len(), 64);
+        assert_eq!(pd.polys.num_cells(), 16 + 2);
+        assert_eq!(pd.polys.cell(16).len(), 16);
+        assert_eq!(pd.polys.cell(17).len(), 16);
+        assert!(pd.point_data().normals().is_some());
+        assert!(pd.point_data().tcoords().is_some());
     }
 
     #[test]
@@ -118,5 +131,6 @@ mod tests {
         });
         assert_eq!(pd.points.len(), 32); // 16 bottom + 16 top ring
         assert_eq!(pd.polys.num_cells(), 16); // side quads only
+        assert_eq!(pd.polys.cell(0), &[0, 1, 3, 2]);
     }
 }

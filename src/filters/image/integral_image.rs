@@ -48,7 +48,6 @@ pub fn query_rect_sum(integral: &ImageData, x0: usize, y0: usize, x1: usize, y1:
         None => return 0.0,
     };
     let nx = integral.dimensions()[0];
-    let mut buf = [0.0f64];
     let mut buf2 = [0.0f64];
     let mut get = |x: usize, y: usize| -> f64 {
         arr.tuple_as_f64(x + y * nx, &mut buf2);

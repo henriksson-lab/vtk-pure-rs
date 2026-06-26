@@ -3,7 +3,7 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn cylinder_beveled(radius: f64, height: f64, bevel: f64, resolution: usize) -> PolyData {
     let res = resolution.max(3);
     let hh = height / 2.0;
-    let b = bevel.min(hh).min(radius);
+    let b = bevel.max(0.0).min(hh).min(radius);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     // 4 rings: bottom bevel, bottom main, top main, top bevel

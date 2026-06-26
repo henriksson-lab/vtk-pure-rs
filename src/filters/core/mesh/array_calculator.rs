@@ -15,7 +15,7 @@ pub fn array_multiply(input: &PolyData, a: &str, b: &str, result_name: &str) -> 
     binary_op(input, a, b, result_name, |x, y| x * y)
 }
 
-/// Divide array `a` by array `b` element-wise (0/0 → 0).
+/// Divide array `a` by array `b` element-wise (0/0 -> 0).
 pub fn array_divide(input: &PolyData, a: &str, b: &str, result_name: &str) -> PolyData {
     binary_op(input, a, b, result_name, |x, y| {
         if y.abs() < 1e-300 {
@@ -31,15 +31,20 @@ pub fn array_scale(input: &PolyData, a: &str, factor: f64, result_name: &str) ->
     unary_op(input, a, result_name, |x| x * factor)
 }
 
-/// Compute the element-wise square root of an array (negative values → 0).
+/// Compute the element-wise square root of an array (negative values -> 0).
 pub fn array_sqrt(input: &PolyData, a: &str, result_name: &str) -> PolyData {
-    unary_op(input, a, result_name, |x| {
-        if x < 0.0 {
-            0.0
-        } else {
-            x.sqrt()
-        }
-    })
+    unary_op(
+        input,
+        a,
+        result_name,
+        |x| {
+            if x < 0.0 {
+                0.0
+            } else {
+                x.sqrt()
+            }
+        },
+    )
 }
 
 /// Compute the element-wise absolute value of an array.
@@ -60,22 +65,39 @@ where
         None => return input.clone(),
     };
 
-    let nc = arr_a.num_components().min(arr_b.num_components());
-    let nt = arr_a.num_tuples().min(arr_b.num_tuples());
+    let nc_a = arr_a.num_components();
+    let nc_b = arr_b.num_components();
+    let nc = match (nc_a, nc_b) {
+        (a, b) if a == b => a,
+        (1, b) => b,
+        (a, 1) => a,
+        _ => return input.clone(),
+    };
+    let nt = arr_a.num_tuples();
+    if nt != arr_b.num_tuples() {
+        return input.clone();
+    }
+
     let mut data: Vec<f64> = Vec::with_capacity(nt * nc);
-    let mut buf_a = vec![0.0f64; nc];
-    let mut buf_b = vec![0.0f64; nc];
+    let mut buf_a = vec![0.0f64; nc_a];
+    let mut buf_b = vec![0.0f64; nc_b];
     for i in 0..nt {
         arr_a.tuple_as_f64(i, &mut buf_a);
         arr_b.tuple_as_f64(i, &mut buf_b);
         for c in 0..nc {
-            data.push(op(buf_a[c], buf_b[c]));
+            let x = buf_a[if nc_a == 1 { 0 } else { c }];
+            let y = buf_b[if nc_b == 1 { 0 } else { c }];
+            data.push(op(x, y));
         }
     }
 
     let mut pd = input.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, nc)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     pd
 }
 
@@ -101,7 +123,11 @@ where
 
     let mut pd = input.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, nc)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     pd
 }
 
@@ -115,9 +141,17 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([2.0, 0.0, 0.0]);
         pd.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec("a", vec![4.0, 9.0, 16.0], 1)));
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "a",
+                vec![4.0, 9.0, 16.0],
+                1,
+            )));
         pd.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec("b", vec![2.0, 3.0, 4.0], 1)));
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "b",
+                vec![2.0, 3.0, 4.0],
+                1,
+            )));
         pd
     }
 

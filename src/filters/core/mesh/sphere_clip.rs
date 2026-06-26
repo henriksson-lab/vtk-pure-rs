@@ -32,16 +32,22 @@ pub fn clip_by_sphere(
     let mut next_id: i64 = 0;
 
     for cell in input.polys.iter() {
-        let all_match = cell.iter().all(|&id| {
-            let flag = inside[id as usize];
-            if keep_inside { flag } else { !flag }
+        let Some(valid_cell) = valid_cell_point_ids(cell, n) else {
+            continue;
+        };
+        let all_match = valid_cell.iter().all(|&idx| {
+            let flag = inside[idx];
+            if keep_inside {
+                flag
+            } else {
+                !flag
+            }
         });
         if !all_match {
             continue;
         }
-        let mut new_cell = Vec::with_capacity(cell.len());
-        for &id in cell {
-            let idx = id as usize;
+        let mut new_cell = Vec::with_capacity(valid_cell.len());
+        for &idx in &valid_cell {
             if point_map[idx].is_none() {
                 new_points.push(input.points.get(idx));
                 point_map[idx] = Some(next_id);
@@ -56,6 +62,18 @@ pub fn clip_by_sphere(
     result.points = new_points;
     result.polys = new_polys;
     result
+}
+
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    let mut ids = Vec::with_capacity(cell.len());
+    for &point_id in cell {
+        ids.push(
+            usize::try_from(point_id)
+                .ok()
+                .filter(|&idx| idx < n_points)?,
+        );
+    }
+    Some(ids)
 }
 
 #[cfg(test)]
@@ -98,5 +116,16 @@ mod tests {
         let result = clip_by_sphere(&mesh, [10.0, 0.0, 0.0], 100.0, true);
         assert_eq!(result.polys.num_cells(), 2);
         assert_eq!(result.points.len(), 6);
+    }
+
+    #[test]
+    fn skips_invalid_cells() {
+        let mut mesh = sample_mesh();
+        mesh.polys.push_cell(&[0, 1, 99]);
+        mesh.polys.push_cell(&[0, -1, 2]);
+
+        let result = clip_by_sphere(&mesh, [0.0, 0.0, 0.0], 5.0, true);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.points.len(), 3);
     }
 }

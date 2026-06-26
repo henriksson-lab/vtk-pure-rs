@@ -77,11 +77,12 @@ pub fn amphora(height: f64, na: usize) -> PolyData {
         let hb = pts.len();
         for j in 0..=handle_na {
             let t = j as f64 / handle_na as f64;
-            let angle = -0.3 + 0.6 * t;
-            let hr = height * 0.15;
-            let hx = (height * 0.42 + hr * angle.sin()) * side.cos();
-            let hy = (height * 0.42 + hr * angle.sin()) * side.sin();
-            let hz = height * 0.4 + hr * angle.cos();
+            let bulge = (std::f64::consts::PI * t).sin();
+            let radius = height * (0.23 + 0.24 * bulge);
+            let z = height * (0.42 + 0.36 * t);
+            let hx = radius * side.cos();
+            let hy = radius * side.sin();
+            let hz = z;
             pts.push([hx, hy, hz]);
         }
         for j in 0..handle_na {

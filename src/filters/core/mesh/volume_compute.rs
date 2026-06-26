@@ -9,7 +9,7 @@ pub fn compute_signed_volume(input: &PolyData) -> f64 {
     let mut total: f64 = 0.0;
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(cell, input.points.len()) {
             continue;
         }
         let p0 = input.points.get(cell[0] as usize);
@@ -34,6 +34,10 @@ pub fn compute_volume(input: &PolyData) -> f64 {
     compute_signed_volume(input).abs()
 }
 
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,17 +57,23 @@ mod tests {
         // CCW winding when viewed from outside
         let tris: Vec<[i64; 3]> = vec![
             // -Z face
-            [0, 3, 2], [0, 2, 1],
+            [0, 3, 2],
+            [0, 2, 1],
             // +Z face
-            [4, 5, 6], [4, 6, 7],
+            [4, 5, 6],
+            [4, 6, 7],
             // -Y face
-            [0, 1, 5], [0, 5, 4],
+            [0, 1, 5],
+            [0, 5, 4],
             // +Y face
-            [2, 3, 7], [2, 7, 6],
+            [2, 3, 7],
+            [2, 7, 6],
             // -X face
-            [0, 4, 7], [0, 7, 3],
+            [0, 4, 7],
+            [0, 7, 3],
             // +X face
-            [1, 2, 6], [1, 6, 5],
+            [1, 2, 6],
+            [1, 6, 5],
         ];
         PolyData::from_triangles(pts, tris)
     }

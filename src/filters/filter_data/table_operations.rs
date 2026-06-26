@@ -23,12 +23,17 @@ pub fn table_inner_join(left: &Table, right: &Table, key_column: &str) -> Table 
         .filter(|n| *n != key_column)
         .collect();
 
-    // Build index of right key values
-    let mut r_index: std::collections::HashMap<i64, Vec<usize>> = std::collections::HashMap::new();
+    // Build index of right key values.
+    //
+    // VTK's vtkJoinTables compares numeric key columns as doubles. Preserve
+    // that behavior instead of truncating fractional keys to integers.
+    let mut r_index: std::collections::HashMap<u64, Vec<usize>> = std::collections::HashMap::new();
     let mut buf = [0.0f64];
     for i in 0..r_key.num_tuples() {
         r_key.tuple_as_f64(i, &mut buf);
-        r_index.entry(buf[0] as i64).or_default().push(i);
+        if let Some(key) = numeric_join_key(buf[0]) {
+            r_index.entry(key).or_default().push(i);
+        }
     }
 
     // Collect matched rows
@@ -37,7 +42,9 @@ pub fn table_inner_join(left: &Table, right: &Table, key_column: &str) -> Table 
 
     for li in 0..l_key.num_tuples() {
         l_key.tuple_as_f64(li, &mut buf);
-        let key = buf[0] as i64;
+        let Some(key) = numeric_join_key(buf[0]) else {
+            continue;
+        };
         if let Some(rights) = r_index.get(&key) {
             for &ri in rights {
                 matched_left.push(li);
@@ -86,6 +93,16 @@ pub fn table_inner_join(left: &Table, right: &Table, key_column: &str) -> Table 
     }
 
     result
+}
+
+fn numeric_join_key(value: f64) -> Option<u64> {
+    if value.is_nan() {
+        None
+    } else if value == 0.0 {
+        Some(0.0f64.to_bits())
+    } else {
+        Some(value.to_bits())
+    }
 }
 
 /// Horizontal merge: combine columns from two tables (must have same row count).
@@ -226,6 +243,34 @@ mod tests {
         let result = table_inner_join(&left, &right, "id");
         assert_eq!(result.num_rows(), 2); // ids 2 and 3
         assert!(result.column_by_name("val_b").is_some());
+    }
+
+    #[test]
+    fn inner_join_keeps_fractional_keys_distinct() {
+        let left = Table::new()
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "id",
+                vec![1.2, 1.8],
+                1,
+            )))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "val_a",
+                vec![12.0, 18.0],
+                1,
+            )));
+        let right = Table::new()
+            .with_column(AnyDataArray::F64(DataArray::from_vec("id", vec![1.8], 1)))
+            .with_column(AnyDataArray::F64(DataArray::from_vec(
+                "val_b",
+                vec![180.0],
+                1,
+            )));
+
+        let result = table_inner_join(&left, &right, "id");
+
+        assert_eq!(result.num_rows(), 1);
+        assert_eq!(result.value_f64(0, "id"), Some(1.8));
+        assert_eq!(result.value_f64(0, "val_a"), Some(18.0));
     }
 
     #[test]

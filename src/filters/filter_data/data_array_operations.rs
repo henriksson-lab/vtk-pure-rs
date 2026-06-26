@@ -79,6 +79,10 @@ pub fn min_max_normalize(mesh: &PolyData, array_name: &str) -> PolyData {
 
 /// Bin scalar values into discrete categories.
 pub fn bin_array(mesh: &PolyData, array_name: &str, n_bins: usize) -> PolyData {
+    if n_bins == 0 {
+        return mesh.clone();
+    }
+
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return mesh.clone(),
@@ -144,6 +148,10 @@ pub fn cumulative_sum(mesh: &PolyData, array_name: &str) -> PolyData {
 
 /// Compute rolling mean with window size.
 pub fn rolling_mean(mesh: &PolyData, array_name: &str, window: usize) -> PolyData {
+    if window == 0 {
+        return mesh.clone();
+    }
+
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return mesh.clone(),
@@ -216,6 +224,12 @@ mod tests {
     }
 
     #[test]
+    fn zero_bins_is_noop() {
+        let result = bin_array(&make_mesh(), "val", 0);
+        assert!(result.point_data().get_array("val_bin").is_none());
+    }
+
+    #[test]
     fn cumsum() {
         let result = cumulative_sum(&make_mesh(), "val");
         let arr = result.point_data().get_array("val_cumsum").unwrap();
@@ -228,5 +242,11 @@ mod tests {
     fn rolling() {
         let result = rolling_mean(&make_mesh(), "val", 3);
         assert!(result.point_data().get_array("val_rolling").is_some());
+    }
+
+    #[test]
+    fn rolling_zero_window_is_noop() {
+        let result = rolling_mean(&make_mesh(), "val", 0);
+        assert!(result.point_data().get_array("val_rolling").is_none());
     }
 }

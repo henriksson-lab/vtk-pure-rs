@@ -11,11 +11,12 @@ use crate::data::{AnyDataArray, DataArray, Points, PolyData};
 pub fn points_inside_surface(probe: &PolyData, surface: &PolyData) -> Vec<bool> {
     let n = probe.points.len();
     let tris = collect_triangles(surface);
+    let bounds = surface_bounds(surface);
 
     (0..n)
         .map(|i| {
             let p = probe.points.get(i);
-            is_inside_ray_cast(p, &tris)
+            is_inside_ray_cast(p, &tris, bounds)
         })
         .collect()
 }
@@ -71,38 +72,90 @@ fn collect_triangles(mesh: &PolyData) -> Vec<Triangle> {
     tris
 }
 
-fn is_inside_ray_cast(point: [f64; 3], triangles: &[Triangle]) -> bool {
-    // Cast ray in +X direction and count intersections
-    let mut count = 0;
-    for tri in triangles {
-        if ray_triangle_intersect(point, [1.0, 0.0, 0.0], tri) {
-            count += 1;
+fn surface_bounds(mesh: &PolyData) -> Option<([f64; 3], [f64; 3])> {
+    if mesh.points.len() == 0 {
+        return None;
+    }
+    let mut min = mesh.points.get(0);
+    let mut max = min;
+    for i in 1..mesh.points.len() {
+        let p = mesh.points.get(i);
+        for j in 0..3 {
+            min[j] = min[j].min(p[j]);
+            max[j] = max[j].max(p[j]);
         }
     }
-    count % 2 == 1
+    Some((min, max))
 }
 
-fn ray_triangle_intersect(origin: [f64; 3], dir: [f64; 3], tri: &Triangle) -> bool {
+fn is_inside_ray_cast(
+    point: [f64; 3],
+    triangles: &[Triangle],
+    bounds: Option<([f64; 3], [f64; 3])>,
+) -> bool {
+    if triangles.is_empty() {
+        return false;
+    }
+    if let Some((min, max)) = bounds {
+        let tol = 1e-10;
+        if (0..3).any(|i| point[i] < min[i] - tol || point[i] > max[i] + tol) {
+            return false;
+        }
+    }
+
+    let directions = [
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.7853981633974483, 0.5, 0.3535533905932738],
+        [0.3713906763541037, 0.7427813527082074, 0.5570860145311556],
+    ];
+    let inside_votes = directions
+        .iter()
+        .filter(|&&dir| count_ray_intersections(point, dir, triangles) % 2 == 1)
+        .count();
+    inside_votes > directions.len() / 2
+}
+
+fn count_ray_intersections(origin: [f64; 3], dir: [f64; 3], triangles: &[Triangle]) -> usize {
+    let mut hits: Vec<f64> = triangles
+        .iter()
+        .filter_map(|tri| ray_triangle_intersect(origin, dir, tri))
+        .collect();
+    hits.sort_by(|a, b| a.total_cmp(b));
+
+    let mut count = 0;
+    let mut last: Option<f64> = None;
+    for t in hits {
+        if last.map_or(true, |prev| (t - prev).abs() > 1e-8) {
+            count += 1;
+            last = Some(t);
+        }
+    }
+    count
+}
+
+fn ray_triangle_intersect(origin: [f64; 3], dir: [f64; 3], tri: &Triangle) -> Option<f64> {
     let e1 = sub(tri[1], tri[0]);
     let e2 = sub(tri[2], tri[0]);
     let h = cross(dir, e2);
     let a = dot(e1, h);
     if a.abs() < 1e-12 {
-        return false;
+        return None;
     }
     let f = 1.0 / a;
     let s = sub(origin, tri[0]);
     let u = f * dot(s, h);
     if u < 0.0 || u > 1.0 {
-        return false;
+        return None;
     }
     let q = cross(s, e1);
     let v = f * dot(dir, q);
     if v < 0.0 || u + v > 1.0 {
-        return false;
+        return None;
     }
     let t = f * dot(e2, q);
-    t > 1e-8 // intersection ahead of ray
+    (t > 1e-8).then_some(t)
 }
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {

@@ -10,25 +10,22 @@ use crate::data::{AnyDataArray, DataArray, ImageData, Points, PolyData};
 /// Creates one point per voxel with all point data arrays transferred.
 pub fn image_to_points(image: &ImageData) -> PolyData {
     let dims = image.dimensions();
-    let spacing = image.spacing();
-    let origin = image.origin();
     let n = dims[0] * dims[1] * dims[2];
 
     let mut points = Points::<f64>::new();
     for iz in 0..dims[2] {
         for iy in 0..dims[1] {
             for ix in 0..dims[0] {
-                points.push([
-                    origin[0] + ix as f64 * spacing[0],
-                    origin[1] + iy as f64 * spacing[1],
-                    origin[2] + iz as f64 * spacing[2],
-                ]);
+                points.push(image.point_from_ijk(ix, iy, iz));
             }
         }
     }
 
     let mut result = PolyData::new();
     result.points = points;
+    for i in 0..n {
+        result.verts.push_cell(&[i as i64]);
+    }
 
     // Transfer point data
     let pd = image.point_data();
@@ -52,11 +49,9 @@ pub fn image_to_points(image: &ImageData) -> PolyData {
 }
 
 /// Convert an ImageData to a point cloud, keeping only points where
-/// a scalar array exceeds a threshold.
+/// a scalar array meets or exceeds a threshold.
 pub fn image_to_points_threshold(image: &ImageData, array_name: &str, threshold: f64) -> PolyData {
     let dims = image.dimensions();
-    let spacing = image.spacing();
-    let origin = image.origin();
     let n = dims[0] * dims[1] * dims[2];
 
     let scalar_arr = match image.point_data().get_array(array_name) {
@@ -79,15 +74,14 @@ pub fn image_to_points_threshold(image: &ImageData, array_name: &str, threshold:
         let rem = idx % (dims[0] * dims[1]);
         let iy = rem / dims[0];
         let ix = rem % dims[0];
-        points.push([
-            origin[0] + ix as f64 * spacing[0],
-            origin[1] + iy as f64 * spacing[1],
-            origin[2] + iz as f64 * spacing[2],
-        ]);
+        points.push(image.point_from_ijk(ix, iy, iz));
     }
 
     let mut result = PolyData::new();
     result.points = points;
+    for i in 0..indices.len() {
+        result.verts.push_cell(&[i as i64]);
+    }
 
     // Transfer arrays for selected points
     let pd = image.point_data();
@@ -125,6 +119,7 @@ mod tests {
         );
         let points = image_to_points(&image);
         assert_eq!(points.points.len(), 27);
+        assert_eq!(points.verts.num_cells(), 27);
         assert!(points.point_data().get_array("density").is_some());
     }
 
@@ -141,6 +136,7 @@ mod tests {
         // Only points with x >= 3.0 should remain
         assert!(points.points.len() < 25);
         assert!(points.points.len() > 0);
+        assert_eq!(points.verts.num_cells(), points.points.len());
     }
 
     #[test]
@@ -161,5 +157,6 @@ mod tests {
         let image = ImageData::new();
         let points = image_to_points(&image);
         assert_eq!(points.points.len(), 1);
+        assert_eq!(points.verts.num_cells(), 1);
     }
 }

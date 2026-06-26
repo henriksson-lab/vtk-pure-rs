@@ -16,6 +16,10 @@ pub struct PieceExtent {
 
 /// Split an ImageData extent into N pieces along the longest axis.
 pub fn compute_pieces(dims: [usize; 3], n_pieces: usize) -> Vec<PieceExtent> {
+    if n_pieces == 0 {
+        return Vec::new();
+    }
+
     let longest = if dims[0] >= dims[1] && dims[0] >= dims[2] {
         0
     } else if dims[1] >= dims[2] {
@@ -149,6 +153,12 @@ mod tests {
         assert_eq!(pieces[0].start[0], 0);
         assert_eq!(pieces[0].end[0], 5);
         assert_eq!(pieces[3].end[0], 20);
+    }
+
+    #[test]
+    fn compute_zero_pieces() {
+        let pieces = compute_pieces([20, 10, 10], 0);
+        assert!(pieces.is_empty());
     }
 
     #[test]

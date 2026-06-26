@@ -2,22 +2,15 @@
 use crate::data::{CellArray, Points, PolyData};
 pub fn boy_surface(scale: f64, resolution: usize) -> PolyData {
     let res = resolution.max(8);
+    let z_scale = 0.125;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     for iv in 0..=res {
-        let v = std::f64::consts::FRAC_PI_2 * iv as f64 / res as f64;
-        let sv = v.sin();
-        let cv = v.cos();
+        let v = std::f64::consts::PI * iv as f64 / res as f64;
         for iu in 0..=res {
-            let u = 2.0 * std::f64::consts::PI * iu as f64 / res as f64;
-            let sqrt2 = std::f64::consts::SQRT_2;
-            let denom = 2.0 - sqrt2 * (3.0 * u).sin() * v.sin().powi(2) * 2.0f64.max(0.5);
-            let x = scale * (cv * cv * (u).cos() + (sv * sv * 2.0 * u).cos() * (1.0 / sqrt2))
-                / denom.max(0.1);
-            let y = scale * (cv * cv * (u).sin() - (sv * sv * 2.0 * u).sin() * (1.0 / sqrt2))
-                / denom.max(0.1);
-            let z = scale * 3.0 * cv * sv / denom.max(0.1);
-            pts.push([x, y, z]);
+            let u = std::f64::consts::PI * iu as f64 / res as f64;
+            let (point, _, _) = super::boy_surface::evaluate_boy(u, v, z_scale);
+            pts.push([scale * point[0], scale * point[1], scale * point[2]]);
         }
     }
     let w = res + 1;

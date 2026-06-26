@@ -15,10 +15,11 @@ pub fn runway(length: f64, width: f64, marking_count: usize) -> PolyData {
     // Center line markings
     let mw = width * 0.02;
     let ml = length * 0.04;
-    let _gap = length * 0.03;
     let nm = marking_count.max(1);
+    let marking_span = length * 0.8;
+    let pitch = marking_span / nm as f64;
     for mi in 0..nm {
-        let x = -hl * 0.8 + (mi as f64 / (nm as f64)) * (length * 0.8);
+        let x = -marking_span / 2.0 + pitch * (mi as f64 + 0.5) - ml / 2.0;
         let mb = pts.len();
         pts.push([x, -mw, 0.01]);
         pts.push([x + ml, -mw, 0.01]);
@@ -33,11 +34,13 @@ pub fn runway(length: f64, width: f64, marking_count: usize) -> PolyData {
         let x = side * (hl - tl * 2.0);
         for si in 0..4 {
             let y = -hw * 0.6 + si as f64 * width * 0.3;
+            let x0 = x.min(x + tl * side);
+            let x1 = x.max(x + tl * side);
             let tb = pts.len();
-            pts.push([x, y, 0.01]);
-            pts.push([x + tl * side, y, 0.01]);
-            pts.push([x + tl * side, y + tw, 0.01]);
-            pts.push([x, y + tw, 0.01]);
+            pts.push([x0, y, 0.01]);
+            pts.push([x1, y, 0.01]);
+            pts.push([x1, y + tw, 0.01]);
+            pts.push([x0, y + tw, 0.01]);
             polys.push_cell(&[tb as i64, (tb + 1) as i64, (tb + 2) as i64, (tb + 3) as i64]);
         }
     }

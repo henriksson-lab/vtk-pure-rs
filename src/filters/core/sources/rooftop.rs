@@ -23,19 +23,35 @@ pub fn gable_roof(width: f64, length: f64, height: f64) -> PolyData {
 pub fn hip_roof(width: f64, length: f64, height: f64) -> PolyData {
     let hw = width / 2.0;
     let hl = length / 2.0;
-    let ridge_offset = hl - hw;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     pts.push([-hw, -hl, 0.0]);
     pts.push([hw, -hl, 0.0]);
     pts.push([hw, hl, 0.0]);
     pts.push([-hw, hl, 0.0]);
-    pts.push([0.0, -ridge_offset, height]);
-    pts.push([0.0, ridge_offset, height]);
-    polys.push_cell(&[0, 1, 4]);
-    polys.push_cell(&[2, 3, 5]);
-    polys.push_cell(&[0, 4, 5, 3]);
-    polys.push_cell(&[1, 2, 5, 4]);
+    if length > width {
+        let ridge_offset = hl - hw;
+        pts.push([0.0, -ridge_offset, height]);
+        pts.push([0.0, ridge_offset, height]);
+        polys.push_cell(&[0, 1, 4]);
+        polys.push_cell(&[2, 3, 5]);
+        polys.push_cell(&[0, 4, 5, 3]);
+        polys.push_cell(&[1, 2, 5, 4]);
+    } else if width > length {
+        let ridge_offset = hw - hl;
+        pts.push([-ridge_offset, 0.0, height]);
+        pts.push([ridge_offset, 0.0, height]);
+        polys.push_cell(&[1, 2, 5]);
+        polys.push_cell(&[3, 0, 4]);
+        polys.push_cell(&[0, 1, 5, 4]);
+        polys.push_cell(&[2, 3, 4, 5]);
+    } else {
+        pts.push([0.0, 0.0, height]);
+        polys.push_cell(&[0, 1, 4]);
+        polys.push_cell(&[1, 2, 4]);
+        polys.push_cell(&[2, 3, 4]);
+        polys.push_cell(&[3, 0, 4]);
+    }
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;
@@ -91,6 +107,19 @@ mod tests {
     fn test_hip() {
         let r = hip_roof(4.0, 8.0, 2.0);
         assert_eq!(r.polys.num_cells(), 4);
+        assert_eq!(r.points.len(), 6);
+    }
+    #[test]
+    fn test_hip_wide() {
+        let r = hip_roof(8.0, 4.0, 2.0);
+        assert_eq!(r.polys.num_cells(), 4);
+        assert_eq!(r.points.len(), 6);
+    }
+    #[test]
+    fn test_hip_square() {
+        let r = hip_roof(4.0, 4.0, 2.0);
+        assert_eq!(r.polys.num_cells(), 4);
+        assert_eq!(r.points.len(), 5);
     }
     #[test]
     fn test_flat() {

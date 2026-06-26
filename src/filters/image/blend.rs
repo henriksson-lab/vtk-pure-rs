@@ -1,8 +1,11 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::types::ScalarType;
 
 /// Alpha-blend two ImageData fields.
 ///
-/// result = alpha * a + (1 - alpha) * b.
+/// This follows vtkImageBlend normal mode for two inputs: the first image is
+/// copied to the output, then the second image is blended over it with
+/// `opacity`.
 pub fn image_blend(
     a: &ImageData,
     b: &ImageData,
@@ -18,21 +21,85 @@ pub fn image_blend(
         Some(x) => x,
         None => return a.clone(),
     };
+    let out_components = arr_a.num_components();
+    let in_components = arr_b.num_components();
+    if out_components == 0 || in_components == 0 {
+        return a.clone();
+    }
     let n = arr_a.num_tuples().min(arr_b.num_tuples());
-    let al = alpha.clamp(0.0, 1.0);
-    let mut ba = [0.0f64];
-    let mut bb = [0.0f64];
-    let values: Vec<f64> = (0..n)
-        .map(|i| {
-            arr_a.tuple_as_f64(i, &mut ba);
-            arr_b.tuple_as_f64(i, &mut bb);
-            al * ba[0] + (1.0 - al) * bb[0]
-        })
-        .collect();
+    let opacity = alpha.clamp(0.0, 1.0);
+    let (min_alpha, max_alpha) = scalar_alpha_range(arr_b.scalar_type());
+    let alpha_scale = opacity / (max_alpha - min_alpha);
+    let mut out_tuple = vec![0.0f64; out_components];
+    let mut in_tuple = vec![0.0f64; in_components];
+    let mut values = Vec::with_capacity(n * out_components);
+
+    for i in 0..n {
+        arr_a.tuple_as_f64(i, &mut out_tuple);
+        arr_b.tuple_as_f64(i, &mut in_tuple);
+
+        if out_components == 4 && in_components == 4 {
+            let r = alpha_scale * (in_tuple[3] - min_alpha);
+            let f = 1.0 - r;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * r;
+            out_tuple[1] = out_tuple[1] * f + in_tuple[1] * r;
+            out_tuple[2] = out_tuple[2] * f + in_tuple[2] * r;
+        } else if out_components >= 3 && in_components >= 4 {
+            let r = alpha_scale * (in_tuple[3] - min_alpha);
+            let f = 1.0 - r;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * r;
+            out_tuple[1] = out_tuple[1] * f + in_tuple[1] * r;
+            out_tuple[2] = out_tuple[2] * f + in_tuple[2] * r;
+        } else if out_components >= 3 && in_components == 3 {
+            let f = 1.0 - opacity;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * opacity;
+            out_tuple[1] = out_tuple[1] * f + in_tuple[1] * opacity;
+            out_tuple[2] = out_tuple[2] * f + in_tuple[2] * opacity;
+        } else if out_components >= 3 && in_components == 2 {
+            let r = alpha_scale * (in_tuple[1] - min_alpha);
+            let f = 1.0 - r;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * r;
+            out_tuple[1] = out_tuple[1] * f + in_tuple[0] * r;
+            out_tuple[2] = out_tuple[2] * f + in_tuple[0] * r;
+        } else if out_components >= 3 && in_components == 1 {
+            let f = 1.0 - opacity;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * opacity;
+            out_tuple[1] = out_tuple[1] * f + in_tuple[0] * opacity;
+            out_tuple[2] = out_tuple[2] * f + in_tuple[0] * opacity;
+        } else if in_components == 2 {
+            let r = alpha_scale * (in_tuple[1] - min_alpha);
+            let f = 1.0 - r;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * r;
+        } else {
+            let f = 1.0 - opacity;
+            out_tuple[0] = out_tuple[0] * f + in_tuple[0] * opacity;
+        }
+
+        values.extend_from_slice(&out_tuple);
+    }
+
     let mut img = a.clone();
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(output, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            output,
+            values,
+            out_components,
+        )));
     img
+}
+
+fn scalar_alpha_range(scalar_type: ScalarType) -> (f64, f64) {
+    match scalar_type {
+        ScalarType::F32 | ScalarType::F64 => (0.0, 1.0),
+        ScalarType::I8 => (i8::MIN as f64, i8::MAX as f64),
+        ScalarType::I16 => (i16::MIN as f64, i16::MAX as f64),
+        ScalarType::I32 => (i32::MIN as f64, i32::MAX as f64),
+        ScalarType::I64 => (i64::MIN as f64, i64::MAX as f64),
+        ScalarType::U8 => (u8::MIN as f64, u8::MAX as f64),
+        ScalarType::U16 => (u16::MIN as f64, u16::MAX as f64),
+        ScalarType::U32 => (u32::MIN as f64, u32::MAX as f64),
+        ScalarType::U64 => (u64::MIN as f64, u64::MAX as f64),
+    }
 }
 
 /// Weighted blend of multiple ImageData fields.
@@ -104,14 +171,38 @@ mod tests {
     }
 
     #[test]
-    fn blend_all_a() {
+    fn blend_all_b() {
         let a = make_img(vec![100.0]);
         let b = make_img(vec![0.0]);
         let r = image_blend(&a, &b, "v", 1.0, "out");
         let arr = r.point_data().get_array("out").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert_eq!(buf[0], 100.0);
+        assert_eq!(buf[0], 0.0);
+    }
+
+    #[test]
+    fn rgba_uses_foreground_alpha_and_preserves_background_alpha() {
+        let mut a = ImageData::with_dimensions(1, 1, 1);
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgba",
+                vec![0.0, 0.0, 0.0, 0.25],
+                4,
+            )));
+        let mut b = ImageData::with_dimensions(1, 1, 1);
+        b.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgba",
+                vec![1.0, 0.0, 0.0, 0.5],
+                4,
+            )));
+
+        let r = image_blend(&a, &b, "rgba", 1.0, "out");
+        let arr = r.point_data().get_array("out").unwrap();
+        let mut buf = [0.0f64; 4];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [0.5, 0.0, 0.0, 0.25]);
     }
 
     #[test]

@@ -126,13 +126,9 @@ pub fn particle_trace_temporal(
     steps_per_field: usize,
     step_size: f64,
 ) -> PolyData {
-    if fields.is_empty() {
+    if fields.is_empty() || seeds.is_empty() || steps_per_field == 0 {
         return PolyData::new();
     }
-
-    let dims = fields[0].dimensions();
-    let spacing = fields[0].spacing();
-    let origin = fields[0].origin();
 
     let mut out_points = Points::<f64>::new();
     let mut out_lines = CellArray::new();
@@ -149,6 +145,9 @@ pub fn particle_trace_temporal(
             Some(v) if v.num_components() == 3 => v,
             _ => continue,
         };
+        let dims = field.dimensions();
+        let spacing = field.spacing();
+        let origin = field.origin();
 
         let t_base = fi as f64;
 
@@ -229,9 +228,14 @@ pub fn particle_trace_temporal(
 }
 
 fn in_bounds(pos: [f64; 3], origin: [f64; 3], spacing: [f64; 3], dims: [usize; 3]) -> bool {
+    if dims.iter().any(|&d| d == 0) || spacing.iter().any(|&s| s == 0.0) {
+        return false;
+    }
     for i in 0..3 {
-        let max = origin[i] + (dims[i] as f64 - 1.0) * spacing[i];
-        if pos[i] < origin[i] || pos[i] > max {
+        let end = origin[i] + (dims[i] as f64 - 1.0) * spacing[i];
+        let lo = origin[i].min(end);
+        let hi = origin[i].max(end);
+        if pos[i] < lo || pos[i] > hi {
             return false;
         }
     }
@@ -245,34 +249,66 @@ fn interpolate_vector_field(
     spacing: [f64; 3],
     dims: [usize; 3],
 ) -> [f64; 3] {
+    if dims.iter().any(|&d| d == 0) || spacing.iter().any(|&s| s == 0.0) {
+        return [0.0; 3];
+    }
+
     // Compute fractional grid coordinates
     let fx = (pos[0] - origin[0]) / spacing[0];
     let fy = (pos[1] - origin[1]) / spacing[1];
     let fz = (pos[2] - origin[2]) / spacing[2];
+    if fx < 0.0
+        || fy < 0.0
+        || fz < 0.0
+        || fx > (dims[0] - 1) as f64
+        || fy > (dims[1] - 1) as f64
+        || fz > (dims[2] - 1) as f64
+    {
+        return [0.0; 3];
+    }
 
-    let ix = fx.floor() as usize;
-    let iy = fy.floor() as usize;
-    let iz = fz.floor() as usize;
+    let ix = if dims[0] > 1 {
+        (fx.floor() as usize).min(dims[0] - 2)
+    } else {
+        0
+    };
+    let iy = if dims[1] > 1 {
+        (fy.floor() as usize).min(dims[1] - 2)
+    } else {
+        0
+    };
+    let iz = if dims[2] > 1 {
+        (fz.floor() as usize).min(dims[2] - 2)
+    } else {
+        0
+    };
 
-    let ix = ix.min(dims[0].saturating_sub(2));
-    let iy = iy.min(dims[1].saturating_sub(2));
-    let iz = iz.min(dims[2].saturating_sub(2));
-
-    let tx = fx - ix as f64;
-    let ty = fy - iy as f64;
-    let tz = fz - iz as f64;
-
-    let tx = tx.clamp(0.0, 1.0);
-    let ty = ty.clamp(0.0, 1.0);
-    let tz = tz.clamp(0.0, 1.0);
+    let tx = if dims[0] > 1 {
+        (fx - ix as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let ty = if dims[1] > 1 {
+        (fy - iy as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let tz = if dims[2] > 1 {
+        (fz - iz as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
 
     // Trilinear interpolation
     let mut result = [0.0; 3];
     let mut buf = [0.0f64; 3];
 
-    for dz in 0..2usize {
-        for dy in 0..2usize {
-            for dx in 0..2usize {
+    let nz = if dims[2] > 1 { 2 } else { 1 };
+    let ny = if dims[1] > 1 { 2 } else { 1 };
+    let nx = if dims[0] > 1 { 2 } else { 1 };
+    for dz in 0..nz {
+        for dy in 0..ny {
+            for dx in 0..nx {
                 let idx = (ix + dx) + (iy + dy) * dims[0] + (iz + dz) * dims[0] * dims[1];
                 if idx < vectors.num_tuples() {
                     vectors.tuple_as_f64(idx, &mut buf);
@@ -356,6 +392,25 @@ mod tests {
         assert!(result.lines.num_cells() >= 1);
         assert!(result.point_data().get_array("Time").is_some());
         assert!(result.point_data().get_array("ParticleId").is_some());
+    }
+
+    #[test]
+    fn steady_flat_image_flow() {
+        let mut field = make_uniform_field();
+        field.set_extent([0, 9, 0, 9, 0, 0]);
+        let seeds = vec![[1.0, 5.0, 0.0]];
+        let result = particle_trace_steady(
+            &field,
+            &seeds,
+            &ParticleTracerParams {
+                max_steps: 20,
+                step_size: 0.1,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(result.lines.num_cells(), 1);
+        assert!(result.points.get(result.points.len() - 1)[0] > 1.5);
     }
 
     #[test]

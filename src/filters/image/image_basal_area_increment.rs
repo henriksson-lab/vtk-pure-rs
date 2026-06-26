@@ -10,7 +10,9 @@ pub fn image_basal_area_increment(input: &ImageData, scalars: &str) -> ImageData
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            std::f64::consts::PI * ((buf[0] + buf[0] * 0.01).powi(2) - buf[0].powi(2))
+            let diameter = buf[0] / 100.0;
+            let next_diameter = diameter * 1.01;
+            std::f64::consts::PI / 4.0 * (next_diameter.powi(2) - diameter.powi(2))
         })
         .collect();
     let dims = input.dimensions();

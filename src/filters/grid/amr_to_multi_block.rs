@@ -6,7 +6,7 @@ use crate::data::*;
 /// becomes a separate ImageData block.
 pub fn amr_to_multi_block(htg: &HyperTreeGrid) -> MultiBlockDataSet {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -91,21 +91,21 @@ mod tests {
 
     #[test]
     fn htg_to_multiblock() {
-        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([4, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let mb = amr_to_multi_block(&htg);
         assert_eq!(mb.num_blocks(), 9); // 3*3
     }
 
     #[test]
     fn htg_3d_to_multiblock() {
-        let htg = HyperTreeGrid::new([2, 2, 2], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([3, 3, 3], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let mb = amr_to_multi_block(&htg);
         assert_eq!(mb.num_blocks(), 8);
     }
 
     #[test]
     fn multiblock_to_image() {
-        let htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let mb = amr_to_multi_block(&htg);
         let img = multi_block_to_image(&mb).unwrap();
         assert!(img.dimensions()[0] > 0);

@@ -19,7 +19,7 @@ pub fn digital_display(digit: u8, size: f64) -> PolyData {
     ];
     // Which segments are on for each digit
     let patterns: [u8; 10] = [
-        0b1110111, 0b0010010, 0b1011101, 0b1011011, 0b0111010, 0b1101011, 0b1101111, 0b1010010,
+        0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011, 0b1011011, 0b1011111, 0b1110000,
         0b1111111, 0b1111011,
     ];
     let pattern = if (digit as usize) < 10 {
@@ -61,5 +61,7 @@ mod tests {
         assert_eq!(m.polys.num_cells(), 7);
         let m0 = digital_display(1, 2.0); // 2 segments
         assert_eq!(m0.polys.num_cells(), 2);
+        let m7 = digital_display(7, 2.0); // 3 segments
+        assert_eq!(m7.polys.num_cells(), 3);
     }
 }

@@ -1,6 +1,6 @@
 //! Offshore oil rig/platform geometry.
 use crate::data::{CellArray, Points, PolyData};
-pub fn oil_platform(
+pub fn oil_rig(
     deck_w: f64,
     deck_d: f64,
     deck_h: f64,
@@ -31,7 +31,6 @@ pub fn oil_platform(
     polys.push_cell(&[f(1), f(2), f(6), f(5)]);
     // Legs
     let nl = num_legs.max(4);
-    let _leg_r = deck_w.min(deck_d) * 0.05;
     for li in 0..nl {
         let t = li as f64 / (nl - 1).max(1) as f64;
         let x = -hw * 0.8 + deck_w * 0.8 * t;
@@ -78,7 +77,7 @@ mod tests {
     use super::*;
     #[test]
     fn test() {
-        let p = oil_platform(20.0, 15.0, 3.0, 25.0, 4);
+        let p = oil_rig(20.0, 15.0, 3.0, 25.0, 4);
         assert!(p.polys.num_cells() > 10);
         assert!(p.lines.num_cells() > 5);
     }

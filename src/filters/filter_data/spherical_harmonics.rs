@@ -1,97 +1,112 @@
-//! Compute real spherical harmonics Y_l^m(theta, phi) on mesh points.
-//!
-//! Evaluates spherical harmonics for l=0,1,2 (s, p, d orbitals) and adds
-//! the result as a scalar point data array.
+//! Compute spherical harmonics coefficients from an equirectangular RGB image.
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, DataArray, ImageData, Table};
+use crate::types::ScalarType;
 
-/// Compute the real spherical harmonic Y_l^m evaluated at each mesh point.
+/// Compute third-degree spherical harmonics coefficients for a 2D RGB/RGBA image.
 ///
-/// Points are converted to spherical coordinates (r, theta, phi) centered
-/// at the mesh centroid, and the harmonic value is stored as a point data
-/// array named "Y_{l}_{m}".
-///
-/// Supports l = 0, 1, 2 with corresponding m in [-l, l].
-///
-/// # Panics
-///
-/// Panics if l > 2 or |m| > l.
-pub fn spherical_harmonics(input: &PolyData, l: i32, m: i32) -> PolyData {
-    assert!(l >= 0 && l <= 2, "only l = 0, 1, 2 supported");
-    assert!(m.abs() <= l, "|m| must be <= l");
+/// This mirrors `vtkSphericalHarmonics`: the input must be a 2D image with an
+/// active point scalar array containing either 3 or 4 components. Alpha, when
+/// present, is ignored. The output table has one 9-component column named
+/// `"SphericalHarmonics"` and three rows, one row per RGB channel.
+pub fn spherical_harmonics(input: &ImageData) -> Result<Table, String> {
+    let dimensions = input.dimensions();
+    let width = dimensions[0];
+    let height = dimensions[1];
 
-    let n = input.points.len();
-    // Compute centroid
-    let mut cx = 0.0;
-    let mut cy = 0.0;
-    let mut cz = 0.0;
-    for i in 0..n {
-        let p = input.points.get(i);
-        cx += p[0];
-        cy += p[1];
-        cz += p[2];
-    }
-    if n > 0 {
-        let nf = n as f64;
-        cx /= nf;
-        cy /= nf;
-        cz /= nf;
+    let scalars = input
+        .point_data()
+        .scalars()
+        .ok_or_else(|| "No scalars found in image point data.".to_string())?;
+
+    let num_components = scalars.num_components();
+    if (num_components != 3 && num_components != 4) || dimensions[2] > 1 {
+        return Err("Only 2D images with RGB or RGBA attributes are supported.".to_string());
     }
 
-    let mut values = Vec::with_capacity(n);
-    for i in 0..n {
-        let p = input.points.get(i);
-        let x = p[0] - cx;
-        let y = p[1] - cy;
-        let z = p[2] - cz;
-        let r = (x * x + y * y + z * z).sqrt();
-
-        // Spherical coordinates
-        let theta = if r > 1e-15 { (z / r).acos() } else { 0.0 };
-        let phi = y.atan2(x);
-
-        let val = eval_real_ylm(l, m, theta, phi);
-        values.push(val);
+    let mut harmonics = [[0.0f64; 9]; 3];
+    if width == 0 || height == 0 {
+        return Ok(output_table(harmonics));
     }
 
-    let name = format!("Y_{}_{}", l, m);
-    let mut output = input.clone();
-    output
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(&name, values, 1)));
-    output
+    let solid_angle = 2.0 * std::f64::consts::PI * std::f64::consts::PI / ((width * height) as f64);
+    let mut weight_sum = 0.0f64;
+    let mut tuple = vec![0.0f64; num_components];
+
+    for i in 0..height {
+        let theta = ((i as f64 + 0.5) / height as f64) * std::f64::consts::PI;
+        let ct = theta.cos();
+        let st = theta.sin();
+        let weight = solid_angle * st;
+
+        for j in 0..width {
+            let phi = (((j as f64 + 0.5) / width as f64) * 2.0 - 1.0) * std::f64::consts::PI;
+            let cp = phi.cos();
+            let sp = phi.sin();
+
+            // VTK/OpenGL coordinates: Y up, so rotate the equirectangular normal.
+            let n = [st * cp, -ct, st * sp];
+            let basis = [
+                0.282095,
+                -0.488603 * n[1],
+                0.488603 * n[2],
+                -0.488603 * n[0],
+                1.092548 * n[0] * n[1],
+                -1.092548 * n[1] * n[2],
+                0.315392 * (3.0 * n[2] * n[2] - 1.0),
+                -1.092548 * n[0] * n[2],
+                0.546274 * (n[0] * n[0] - n[1] * n[1]),
+            ];
+
+            weight_sum += weight;
+            scalars.tuple_as_f64(i * width + j, &mut tuple);
+
+            for component in 0..3 {
+                let v = normalize_component(tuple[component], scalars.scalar_type());
+                for y in 0..9 {
+                    harmonics[component][y] += weight * v * basis[y];
+                }
+            }
+        }
+    }
+
+    if weight_sum > 0.0 {
+        let normalize_factor = 4.0 * std::f64::consts::PI / weight_sum;
+        for component in &mut harmonics {
+            for coefficient in component {
+                *coefficient *= normalize_factor;
+            }
+        }
+    }
+
+    Ok(output_table(harmonics))
 }
 
-/// Evaluate real spherical harmonic Y_l^m(theta, phi).
-///
-/// Uses standard real-valued definitions:
-/// - Y_l^0 uses the associated Legendre polynomial directly
-/// - Y_l^m (m > 0) uses cos(m*phi) component
-/// - Y_l^m (m < 0) uses sin(|m|*phi) component
-fn eval_real_ylm(l: i32, m: i32, theta: f64, phi: f64) -> f64 {
-    use std::f64::consts::PI;
-
-    let cos_t = theta.cos();
-    let sin_t = theta.sin();
-
-    match (l, m) {
-        // l = 0: s orbital
-        (0, 0) => 0.5 * (1.0 / PI).sqrt(),
-
-        // l = 1: p orbitals
-        (1, -1) => (3.0 / (4.0 * PI)).sqrt() * sin_t * phi.sin(),
-        (1, 0) => (3.0 / (4.0 * PI)).sqrt() * cos_t,
-        (1, 1) => (3.0 / (4.0 * PI)).sqrt() * sin_t * phi.cos(),
-
-        // l = 2: d orbitals
-        (2, -2) => (15.0 / (16.0 * PI)).sqrt() * sin_t * sin_t * (2.0 * phi).sin(),
-        (2, -1) => (15.0 / (4.0 * PI)).sqrt() * sin_t * cos_t * phi.sin(),
-        (2, 0) => (5.0 / (16.0 * PI)).sqrt() * (3.0 * cos_t * cos_t - 1.0),
-        (2, 1) => (15.0 / (4.0 * PI)).sqrt() * sin_t * cos_t * phi.cos(),
-        (2, 2) => (15.0 / (16.0 * PI)).sqrt() * sin_t * sin_t * (2.0 * phi).cos(),
-
-        _ => panic!("unsupported (l, m) = ({}, {})", l, m),
+fn normalize_component(v: f64, scalar_type: ScalarType) -> f64 {
+    match scalar_type {
+        ScalarType::F32 | ScalarType::F64 => v,
+        ScalarType::U8 => (v / u8::MAX as f64).powf(2.2),
+        ScalarType::I8 => v / i8::MAX as f64,
+        ScalarType::I16 => v / i16::MAX as f64,
+        ScalarType::I32 => v / i32::MAX as f64,
+        ScalarType::I64 => v / i64::MAX as f64,
+        ScalarType::U16 => v / u16::MAX as f64,
+        ScalarType::U32 => v / u32::MAX as f64,
+        ScalarType::U64 => v / u64::MAX as f64,
     }
+}
+
+fn output_table(harmonics: [[f64; 9]; 3]) -> Table {
+    let mut values = Vec::with_capacity(27);
+    for component in harmonics {
+        values.extend_from_slice(&component);
+    }
+
+    Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+        "SphericalHarmonics",
+        values,
+        9,
+    )))
 }
 
 #[cfg(test)]
@@ -99,49 +114,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn y00_is_constant() {
-        // Y_0^0 = 1/(2*sqrt(pi)), should be constant on all points
-        let pd = PolyData::from_triangles(
-            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            vec![[0, 1, 2]],
-        );
-        let result = spherical_harmonics(&pd, 0, 0);
-        let arr = result.point_data().get_array("Y_0_0").unwrap();
-        let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf);
-        let v0 = buf[0];
-        arr.tuple_as_f64(1, &mut buf);
-        let v1 = buf[0];
-        arr.tuple_as_f64(2, &mut buf);
-        let v2 = buf[0];
+    fn constant_white_image_has_expected_dc_coefficient() {
+        let mut image = ImageData::with_dimensions(4, 2, 1);
+        image
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgb",
+                vec![1.0; 4 * 2 * 3],
+                3,
+            )));
+        image.point_data_mut().set_active_scalars("rgb");
 
-        let expected = 0.5 * (1.0 / std::f64::consts::PI).sqrt();
-        assert!((v0 - expected).abs() < 1e-10);
-        assert!((v1 - expected).abs() < 1e-10);
-        assert!((v2 - expected).abs() < 1e-10);
+        let table = spherical_harmonics(&image).unwrap();
+        let harmonics = table.column_by_name("SphericalHarmonics").unwrap();
+
+        assert_eq!(table.num_rows(), 3);
+        assert_eq!(harmonics.num_components(), 9);
+
+        let mut row = [0.0f64; 9];
+        harmonics.tuple_as_f64(0, &mut row);
+        assert!((row[0] - 0.282095 * 4.0 * std::f64::consts::PI).abs() < 1e-10);
+        for coefficient in row.iter().take(4).skip(1) {
+            assert!(coefficient.abs() < 1e-10);
+        }
     }
 
     #[test]
-    fn y10_varies_with_z() {
-        // Y_1^0 = sqrt(3/(4*pi)) * cos(theta), so it should vary with z
-        let pd = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 1.0],  // north pole relative to centroid
-                [0.0, 0.0, -1.0], // south pole
-                [1.0, 0.0, 0.0],
-            ],
-            vec![[0, 1, 2]],
-        );
-        let result = spherical_harmonics(&pd, 1, 0);
-        let arr = result.point_data().get_array("Y_1_0").unwrap();
-        let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf);
-        let v_north = buf[0];
-        arr.tuple_as_f64(1, &mut buf);
-        let v_south = buf[0];
+    fn rejects_polyline_volume_or_non_rgb_input() {
+        let mut image = ImageData::with_dimensions(2, 2, 2);
+        image
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgb",
+                vec![1.0; 2 * 2 * 2 * 3],
+                3,
+            )));
+        image.point_data_mut().set_active_scalars("rgb");
+        assert!(spherical_harmonics(&image).is_err());
 
-        // North and south should have opposite signs
-        assert!(v_north > 0.0);
-        assert!(v_south < 0.0);
+        let mut image = ImageData::with_dimensions(2, 2, 1);
+        image
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "gray",
+                vec![1.0; 2 * 2],
+                1,
+            )));
+        image.point_data_mut().set_active_scalars("gray");
+        assert!(spherical_harmonics(&image).is_err());
+    }
+
+    #[test]
+    fn unsigned_char_input_is_normalized_like_vtk() {
+        let mut image = ImageData::with_dimensions(2, 2, 1);
+        image
+            .point_data_mut()
+            .add_array(AnyDataArray::U8(DataArray::from_vec(
+                "rgb",
+                vec![255; 2 * 2 * 3],
+                3,
+            )));
+        image.point_data_mut().set_active_scalars("rgb");
+
+        let table = spherical_harmonics(&image).unwrap();
+        let harmonics = table.column_by_name("SphericalHarmonics").unwrap();
+
+        let mut row = [0.0f64; 9];
+        harmonics.tuple_as_f64(0, &mut row);
+        assert!((row[0] - 0.282095 * 4.0 * std::f64::consts::PI).abs() < 1e-10);
     }
 }

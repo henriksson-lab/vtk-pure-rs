@@ -10,9 +10,7 @@ pub fn image_bragg_angle(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (buf[0] * 633e-9 / (2.0 * buf[0].abs().max(0.01) * 5900.0))
-                .clamp(-1.0, 1.0)
-                .asin()
+            (buf[0] * 633e-9 / (2.0 * 5900.0)).clamp(-1.0, 1.0).asin()
         })
         .collect();
     let dims = input.dimensions();
@@ -35,5 +33,12 @@ mod tests {
         );
         let r = image_bragg_angle(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        let first = buf[0];
+        arr.tuple_as_f64(1, &mut buf);
+        assert!(buf[0] > first);
     }
 }

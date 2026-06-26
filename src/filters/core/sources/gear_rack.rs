@@ -3,13 +3,16 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn gear_rack(
     num_teeth: usize,
     tooth_height: f64,
-    _tooth_width: f64,
+    tooth_width: f64,
     base_height: f64,
     thickness: f64,
     length: f64,
 ) -> PolyData {
     let nt = num_teeth.max(1);
     let tw = length / nt as f64;
+    let tooth_width = tooth_width.clamp(0.0, tw);
+    let tooth_start = (tw - tooth_width) * 0.5;
+    let tooth_end = tooth_start + tooth_width;
     let ht = thickness / 2.0;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -19,8 +22,8 @@ pub fn gear_rack(
     for i in 0..nt {
         let x = i as f64 * tw;
         profile.push([x, base_height]);
-        profile.push([x + tw * 0.25, base_height + tooth_height]);
-        profile.push([x + tw * 0.75, base_height + tooth_height]);
+        profile.push([x + tooth_start, base_height + tooth_height]);
+        profile.push([x + tooth_end, base_height + tooth_height]);
         profile.push([x + tw, base_height]);
     }
     profile.push([length, 0.0]);
@@ -57,5 +60,12 @@ mod tests {
         let g = gear_rack(5, 0.3, 0.5, 0.5, 0.2, 5.0);
         assert!(g.points.len() > 20);
         assert!(g.polys.num_cells() > 10);
+    }
+
+    #[test]
+    fn tooth_width_controls_flat() {
+        let g = gear_rack(1, 0.3, 0.2, 0.5, 0.2, 1.0);
+        assert!((g.points.get(2)[0] - 0.4).abs() < 1e-10);
+        assert!((g.points.get(3)[0] - 0.6).abs() < 1e-10);
     }
 }

@@ -133,7 +133,9 @@ mod tests {
     #[test]
     fn circle_contour() {
         // Create a 2D distance field: f(x,y) = x^2 + y^2
-        let mut grid = ImageData::new([21, 21, 1], [0.1, 0.1, 1.0], [-1.0, -1.0, 0.0]);
+        let mut grid = ImageData::with_dimensions(21, 21, 1);
+        grid.set_spacing([0.1, 0.1, 1.0]);
+        grid.set_origin([-1.0, -1.0, 0.0]);
         let dims = grid.dimensions();
         let n = dims[0] * dims[1] * dims[2];
         let spacing = grid.spacing();
@@ -162,7 +164,9 @@ mod tests {
 
     #[test]
     fn no_intersection() {
-        let mut grid = ImageData::new([5, 5, 1], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]);
+        let mut grid = ImageData::with_dimensions(5, 5, 1);
+        grid.set_spacing([1.0, 1.0, 1.0]);
+        grid.set_origin([0.0, 0.0, 0.0]);
         let vals = vec![1.0; 25];
         grid.point_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("s", vals, 1)));

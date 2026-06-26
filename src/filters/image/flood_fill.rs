@@ -1,5 +1,37 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::types::{Scalar, ScalarType};
 use std::collections::VecDeque;
+
+fn array_from_f64_values(
+    name: &str,
+    values: Vec<f64>,
+    num_components: usize,
+    scalar_type: ScalarType,
+) -> AnyDataArray {
+    fn cast_array<T: Scalar>(name: &str, values: Vec<f64>, num_components: usize) -> AnyDataArray
+    where
+        AnyDataArray: From<DataArray<T>>,
+    {
+        AnyDataArray::from(DataArray::from_vec(
+            name,
+            values.into_iter().map(T::from_f64).collect(),
+            num_components,
+        ))
+    }
+
+    match scalar_type {
+        ScalarType::F32 => cast_array::<f32>(name, values, num_components),
+        ScalarType::F64 => cast_array::<f64>(name, values, num_components),
+        ScalarType::I8 => cast_array::<i8>(name, values, num_components),
+        ScalarType::I16 => cast_array::<i16>(name, values, num_components),
+        ScalarType::I32 => cast_array::<i32>(name, values, num_components),
+        ScalarType::I64 => cast_array::<i64>(name, values, num_components),
+        ScalarType::U8 => cast_array::<u8>(name, values, num_components),
+        ScalarType::U16 => cast_array::<u16>(name, values, num_components),
+        ScalarType::U32 => cast_array::<u32>(name, values, num_components),
+        ScalarType::U64 => cast_array::<u64>(name, values, num_components),
+    }
+}
 
 /// Flood fill starting from a seed voxel in an ImageData scalar field.
 ///
@@ -23,6 +55,7 @@ pub fn flood_fill(
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
     let total: usize = nx * ny * nz;
+    let nc = arr.num_components();
 
     if seed[0] >= nx || seed[1] >= ny || seed[2] >= nz {
         return input.clone();
@@ -34,18 +67,18 @@ pub fn flood_fill(
         return input.clone();
     }
 
-    let mut values: Vec<f64> = vec![0.0; total];
-    let mut buf = [0.0f64];
+    let mut values: Vec<f64> = vec![0.0; total * nc];
+    let mut buf = vec![0.0f64; nc];
     for i in 0..total {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = buf[0];
+        values[i * nc..(i + 1) * nc].copy_from_slice(&buf);
     }
 
     // Index helper: VTK ImageData uses x-fastest ordering
     let idx = |x: usize, y: usize, z: usize| -> usize { x + y * nx + z * nx * ny };
 
     let seed_idx: usize = idx(seed[0], seed[1], seed[2]);
-    let seed_value: f64 = values[seed_idx];
+    let seed_value: f64 = values[seed_idx * nc];
 
     // BFS flood fill
     let mut visited: Vec<bool> = vec![false; total];
@@ -55,7 +88,7 @@ pub fn flood_fill(
 
     while let Some(pos) = queue.pop_front() {
         let ci: usize = idx(pos[0], pos[1], pos[2]);
-        values[ci] = fill_value;
+        values[ci * nc] = fill_value;
 
         // 6-connected neighbors
         let neighbors: [[i64; 3]; 6] = [
@@ -88,7 +121,7 @@ pub fn flood_fill(
             let ni: usize = idx(nx2, ny2, nz2);
 
             if !visited[ni] {
-                let diff: f64 = (values[ni] - seed_value).abs();
+                let diff: f64 = (values[ni * nc] - seed_value).abs();
                 if diff <= tolerance {
                     visited[ni] = true;
                     queue.push_back([nx2, ny2, nz2]);
@@ -103,11 +136,12 @@ pub fn flood_fill(
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+            new_attrs.add_array(array_from_f64_values(
                 scalars,
                 values.clone(),
-                1,
-            )));
+                nc,
+                arr.scalar_type(),
+            ));
         } else {
             new_attrs.add_array(a.clone());
         }
@@ -167,5 +201,22 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 1.0); // unchanged
+    }
+
+    #[test]
+    fn fill_preserves_components_and_type() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::I32(DataArray::from_vec(
+                "v",
+                vec![1, 7, 1, 8, 5, 9],
+                2,
+            )));
+
+        let result = flood_fill(&img, "v", [0, 0, 0], 42.0, 0.5);
+        let arr = result.point_data().get_array("v").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        assert_eq!(arr.scalar_type(), crate::types::ScalarType::I32);
+        assert_eq!(arr.to_f64_vec_flat(), vec![42.0, 7.0, 42.0, 8.0, 5.0, 9.0]);
     }
 }

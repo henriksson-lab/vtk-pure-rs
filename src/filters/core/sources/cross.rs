@@ -20,14 +20,13 @@ impl Default for CrossParams {
 }
 
 /// Add a box defined by (x_min..x_max, y_min..y_max, z_min..z_max) to the given points/polys.
-/// Each box contributes 8 points and 6 quad faces.
+/// Each box contributes 24 points, 6 quad faces, and per-face normals.
 fn add_box(
     points: &mut Points<f64>,
     normals: &mut DataArray<f64>,
     polys: &mut CellArray,
     bounds: [[f64; 2]; 3],
 ) {
-    let base = points.len() as i64;
     let [xr, yr, zr] = bounds;
 
     // 8 corners of the box:
@@ -63,7 +62,6 @@ fn add_box(
         }
         polys.push_cell(&[face_base, face_base + 1, face_base + 2, face_base + 3]);
     }
-    let _ = base; // base not needed with per-face vertices
 }
 
 /// Generate a 3D cross/plus shape as PolyData.

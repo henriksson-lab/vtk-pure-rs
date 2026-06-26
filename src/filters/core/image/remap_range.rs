@@ -1,5 +1,9 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+fn image_point_count(dims: [usize; 3]) -> Option<usize> {
+    dims[0].checked_mul(dims[1])?.checked_mul(dims[2])
+}
+
 /// Remap scalar values from their current [old_min, old_max] range to [new_min, new_max].
 ///
 /// Reads the named scalar array, finds its min/max, then applies a linear mapping
@@ -11,7 +15,11 @@ pub fn remap_range(input: &ImageData, scalars: &str, new_min: f64, new_max: f64)
     };
 
     let n: usize = arr.num_tuples();
-    if n == 0 {
+    let image_points = match image_point_count(input.dimensions()) {
+        Some(n) => n,
+        None => return input.clone(),
+    };
+    if n == 0 || n < image_points {
         return input.clone();
     }
 

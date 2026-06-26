@@ -4,94 +4,91 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Create an icosahedron with given radius.
 pub fn icosahedron(radius: f64) -> PolyData {
-    let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
-    let a = radius / (1.0 + phi * phi).sqrt();
-    let b = a * phi;
+    let c = 0.5;
+    let d = 0.30901699;
     let verts = [
-        [-a, b, 0.0],
-        [a, b, 0.0],
-        [-a, -b, 0.0],
-        [a, -b, 0.0],
-        [0.0, -a, b],
-        [0.0, a, b],
-        [0.0, -a, -b],
-        [0.0, a, -b],
-        [b, 0.0, -a],
-        [b, 0.0, a],
-        [-b, 0.0, -a],
-        [-b, 0.0, a],
+        [0.0, d, -c],
+        [0.0, d, c],
+        [0.0, -d, c],
+        [-d, c, 0.0],
+        [-d, -c, 0.0],
+        [d, c, 0.0],
+        [d, -c, 0.0],
+        [0.0, -d, -c],
+        [c, 0.0, d],
+        [-c, 0.0, d],
+        [-c, 0.0, -d],
+        [c, 0.0, -d],
     ];
     let faces: [[usize; 3]; 20] = [
-        [0, 11, 5],
-        [0, 5, 1],
-        [0, 1, 7],
+        [0, 3, 5],
+        [1, 5, 3],
+        [1, 9, 2],
+        [1, 2, 8],
+        [0, 11, 7],
         [0, 7, 10],
-        [0, 10, 11],
-        [1, 5, 9],
-        [5, 11, 4],
-        [11, 10, 2],
-        [10, 7, 6],
-        [7, 1, 8],
-        [3, 9, 4],
-        [3, 4, 2],
-        [3, 2, 6],
-        [3, 6, 8],
-        [3, 8, 9],
-        [4, 9, 5],
-        [2, 4, 11],
-        [6, 2, 10],
-        [8, 6, 7],
-        [9, 8, 1],
+        [2, 4, 6],
+        [7, 6, 4],
+        [3, 10, 9],
+        [4, 9, 10],
+        [5, 8, 11],
+        [6, 11, 8],
+        [1, 3, 9],
+        [1, 8, 5],
+        [0, 10, 3],
+        [0, 5, 11],
+        [7, 4, 10],
+        [7, 11, 6],
+        [2, 9, 4],
+        [2, 6, 8],
     ];
-    build_polyhedron(&verts, &faces)
+    build_polyhedron(&verts, &faces, radius / 0.58778524999243)
 }
 
 /// Create a dodecahedron with given radius.
 pub fn dodecahedron(radius: f64) -> PolyData {
-    let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
-    let a = radius / 3.0f64.sqrt();
-    let b = a / phi;
-    let c = a * phi;
+    let a = 0.61803398875;
+    let b = 0.381966011250;
     let verts = [
-        [a, a, a],
-        [a, a, -a],
-        [a, -a, a],
-        [a, -a, -a],
+        [b, 0.0, 1.0],
+        [-b, 0.0, 1.0],
+        [b, 0.0, -1.0],
+        [-b, 0.0, -1.0],
+        [0.0, 1.0, -b],
+        [0.0, 1.0, b],
+        [0.0, -1.0, -b],
+        [0.0, -1.0, b],
+        [1.0, b, 0.0],
+        [1.0, -b, 0.0],
+        [-1.0, b, 0.0],
+        [-1.0, -b, 0.0],
         [-a, a, a],
+        [a, -a, a],
+        [-a, -a, -a],
+        [a, a, -a],
+        [a, a, a],
         [-a, a, -a],
         [-a, -a, a],
-        [-a, -a, -a],
-        [0.0, b, c],
-        [0.0, b, -c],
-        [0.0, -b, c],
-        [0.0, -b, -c],
-        [b, c, 0.0],
-        [b, -c, 0.0],
-        [-b, c, 0.0],
-        [-b, -c, 0.0],
-        [c, 0.0, b],
-        [c, 0.0, -b],
-        [-c, 0.0, b],
-        [-c, 0.0, -b],
+        [a, -a, -a],
     ];
-    // Dodecahedron has 12 pentagonal faces
     let faces: [[usize; 5]; 12] = [
-        [0, 16, 2, 10, 8],
-        [0, 8, 4, 14, 12],
-        [16, 17, 1, 12, 0],
-        [1, 9, 11, 3, 17],
-        [1, 12, 14, 5, 9],
-        [2, 13, 15, 6, 10],
-        [13, 3, 17, 16, 2],
-        [3, 11, 7, 15, 13],
-        [4, 8, 10, 6, 18],
-        [14, 5, 19, 18, 4],
-        [5, 9, 11, 7, 19],
-        [15, 7, 19, 18, 6],
+        [0, 16, 5, 12, 1],
+        [1, 18, 7, 13, 0],
+        [2, 19, 6, 14, 3],
+        [3, 17, 4, 15, 2],
+        [4, 5, 16, 8, 15],
+        [5, 4, 17, 10, 12],
+        [6, 7, 18, 11, 14],
+        [7, 6, 19, 9, 13],
+        [8, 16, 0, 13, 9],
+        [9, 19, 2, 15, 8],
+        [10, 17, 3, 14, 11],
+        [11, 18, 1, 12, 10],
     ];
     let mut pts = Points::<f64>::new();
+    let scale = radius / 1.070466269319;
     for v in &verts {
-        pts.push(*v);
+        pts.push([scale * v[0], scale * v[1], scale * v[2]]);
     }
     let mut polys = CellArray::new();
     for f in &faces {
@@ -105,32 +102,32 @@ pub fn dodecahedron(radius: f64) -> PolyData {
 
 /// Create an octahedron with given radius.
 pub fn octahedron(radius: f64) -> PolyData {
-    let r = radius;
+    let r = radius / 2.0f64.sqrt();
     let verts = [
-        [r, 0.0, 0.0],
-        [0.0, r, 0.0],
-        [0.0, 0.0, r],
-        [-r, 0.0, 0.0],
-        [0.0, -r, 0.0],
-        [0.0, 0.0, -r],
+        [-r, -r, 0.0],
+        [r, -r, 0.0],
+        [r, r, 0.0],
+        [-r, r, 0.0],
+        [0.0, 0.0, -radius],
+        [0.0, 0.0, radius],
     ];
     let faces = [
-        [0, 1, 2],
-        [1, 3, 2],
-        [3, 4, 2],
-        [4, 0, 2],
-        [1, 0, 5],
-        [3, 1, 5],
-        [4, 3, 5],
-        [0, 4, 5],
+        [4, 1, 0],
+        [4, 2, 1],
+        [4, 3, 2],
+        [4, 0, 3],
+        [0, 1, 5],
+        [1, 2, 5],
+        [2, 3, 5],
+        [3, 0, 5],
     ];
-    build_polyhedron(&verts, &faces)
+    build_polyhedron(&verts, &faces, 1.0)
 }
 
-fn build_polyhedron(verts: &[[f64; 3]], faces: &[[usize; 3]]) -> PolyData {
+fn build_polyhedron(verts: &[[f64; 3]], faces: &[[usize; 3]], scale: f64) -> PolyData {
     let mut pts = Points::<f64>::new();
     for v in verts {
-        pts.push(*v);
+        pts.push([scale * v[0], scale * v[1], scale * v[2]]);
     }
     let mut polys = CellArray::new();
     for f in faces {

@@ -17,7 +17,7 @@ pub fn dyson_sphere(radius: f64, panel_coverage: f64, resolution: usize) -> Poly
             rng = rng
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            if ((rng >> 33) as f64 / u32::MAX as f64) > coverage {
+            if ((rng >> 32) as u32 as f64 / u32::MAX as f64) > coverage {
                 continue;
             }
             let x = radius * sv * u.cos();

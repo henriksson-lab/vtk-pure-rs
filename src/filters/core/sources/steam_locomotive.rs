@@ -22,8 +22,8 @@ pub fn steam_locomotive(length: f64, na: usize) -> PolyData {
         let b1 = (f + 1) * na;
         for j in 0..na {
             let j1 = (j + 1) % na;
-            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
-            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b1 + j) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b0 + j1) as i64, (b1 + j1) as i64]);
         }
     }
     // Cab (box at rear)
@@ -82,9 +82,9 @@ pub fn steam_locomotive(length: f64, na: usize) -> PolyData {
             let j1 = (j + 1) % na;
             polys.push_cell(&[
                 (b0 + j) as i64,
-                (b1 + j) as i64,
-                (b1 + j1) as i64,
                 (b0 + j1) as i64,
+                (b1 + j1) as i64,
+                (b1 + j) as i64,
             ]);
         }
     }

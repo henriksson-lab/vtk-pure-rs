@@ -34,7 +34,7 @@ pub fn wave_deform(
     let wd_len: f64 = (wave_direction[0] * wave_direction[0]
         + wave_direction[1] * wave_direction[1]
         + wave_direction[2] * wave_direction[2])
-    .sqrt();
+        .sqrt();
     if wd_len < 1e-15 {
         return output;
     }
@@ -50,11 +50,14 @@ pub fn wave_deform(
         let p: [f64; 3] = input.points.get(i);
         let proj: f64 = p[0] * ax[0] + p[1] * ax[1] + p[2] * ax[2];
         let displacement: f64 = amplitude * (two_pi * proj / wavelength + phase).sin();
-        output.points.set(i, [
-            p[0] + wd[0] * displacement,
-            p[1] + wd[1] * displacement,
-            p[2] + wd[2] * displacement,
-        ]);
+        output.points.set(
+            i,
+            [
+                p[0] + wd[0] * displacement,
+                p[1] + wd[1] * displacement,
+                p[2] + wd[2] * displacement,
+            ],
+        );
     }
 
     output
@@ -78,21 +81,25 @@ mod tests {
         let pd = make_line_mesh();
         let result = wave_deform(
             &pd,
-            [1.0, 0.0, 0.0],  // wave propagates along X
-            [0.0, 1.0, 0.0],  // displacement along Y
-            1.0,               // amplitude
-            10.0,              // wavelength
-            0.0,               // phase
+            [1.0, 0.0, 0.0], // wave propagates along X
+            [0.0, 1.0, 0.0], // displacement along Y
+            1.0,             // amplitude
+            10.0,            // wavelength
+            0.0,             // phase
         );
 
         // At x=0, sin(0) = 0 => y should be 0
         let p0: [f64; 3] = result.points.get(0);
-        assert!((p0[1]).abs() < 1e-10, "y at x=0 should be ~0, got {}", p0[1]);
+        assert!(
+            (p0[1]).abs() < 1e-10,
+            "y at x=0 should be ~0, got {}",
+            p0[1]
+        );
 
         // At x=2.5, sin(pi/2) = 1 => y should be ~1
         let p25: [f64; 3] = result.points.get(2); // x=2 is close but not exact
-        // x=2.5 would be sin(2*pi*2.5/10) = sin(pi/2) = 1
-        // x=2 gives sin(2*pi*2/10) = sin(2*pi/5) ~ 0.951
+                                                  // x=2.5 would be sin(2*pi*2.5/10) = sin(pi/2) = 1
+                                                  // x=2 gives sin(2*pi*2/10) = sin(2*pi/5) ~ 0.951
         assert!(p25[1] > 0.9, "y at x=2 should be > 0.9, got {}", p25[1]);
 
         // X and Z coordinates should be unchanged

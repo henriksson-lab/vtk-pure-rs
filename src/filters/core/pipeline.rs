@@ -135,7 +135,7 @@ impl Pipeline {
     pub fn with_normals(self) -> Self {
         self.then(
             "normals",
-            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+            Box::new(|pd| crate::filters::normals::normals::compute_normals(pd)),
         )
     }
 
@@ -143,7 +143,7 @@ impl Pipeline {
     pub fn with_triangulate(self) -> Self {
         self.then(
             "triangulate",
-            Box::new(|pd| crate::filters::core::triangulate::triangulate(pd)),
+            Box::new(|pd| crate::filters::geometry::triangulate::triangulate(pd)),
         )
     }
 
@@ -151,7 +151,7 @@ impl Pipeline {
     pub fn with_elevation_z(self) -> Self {
         self.then(
             "elevation",
-            Box::new(|pd| crate::filters::core::elevation::elevation_z(pd)),
+            Box::new(|pd| crate::filters::geometry::elevation::elevation_z(pd)),
         )
     }
 
@@ -207,7 +207,7 @@ mod tests {
         let mut pipe = Pipeline::new(pd);
         pipe.add(
             "normals",
-            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+            Box::new(|pd| crate::filters::normals::normals::compute_normals(pd)),
         );
 
         let result = pipe.output();
@@ -280,7 +280,7 @@ mod tests {
         let mut pipe = Pipeline::new(pd);
         pipe.add(
             "normals",
-            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+            Box::new(|pd| crate::filters::normals::normals::compute_normals(pd)),
         );
         pipe.add("copy", Box::new(|pd| pd.clone()));
 
@@ -298,7 +298,7 @@ mod tests {
         let mut pipe = Pipeline::new(pd);
         pipe.add(
             "normals",
-            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+            Box::new(|pd| crate::filters::normals::normals::compute_normals(pd)),
         );
         pipe.add("copy", Box::new(|pd| pd.clone()));
 
@@ -333,7 +333,7 @@ mod tests {
         assert!(!pipe.is_dirty());
         pipe.replace_filter(
             "id",
-            Box::new(|pd| crate::filters::core::normals::compute_normals(pd)),
+            Box::new(|pd| crate::filters::normals::normals::compute_normals(pd)),
         );
         assert!(pipe.is_dirty());
         let out = pipe.output();

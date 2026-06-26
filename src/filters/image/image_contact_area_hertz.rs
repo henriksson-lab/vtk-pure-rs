@@ -10,7 +10,7 @@ pub fn image_contact_area_hertz(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            std::f64::consts::PI * (0.75 * buf[0] * 0.01 / 200e9).powf(2.0 / 3.0)
+            std::f64::consts::PI * (0.75 * buf[0].abs() * 0.01 / 200e9).powf(2.0 / 3.0)
         })
         .collect();
     let dims = input.dimensions();

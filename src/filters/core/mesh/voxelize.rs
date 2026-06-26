@@ -33,7 +33,7 @@ pub fn voxelize(input: &PolyData, dims: [u32; 3], bounds: [[f64; 2]; 3]) -> Imag
     // Collect triangles
     let mut triangles: Vec<[[f64; 3]; 3]> = Vec::new();
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(cell, input.points.len()) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -62,6 +62,7 @@ pub fn voxelize(input: &PolyData, dims: [u32; 3], bounds: [[f64; 2]; 3]) -> Imag
             }
 
             z_hits.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            collapse_duplicate_hits(&mut z_hits, sz.abs().max(1.0) * 1e-9);
 
             // Walk voxels along Z, toggle inside/outside at each crossing
             let mut hit_idx: usize = 0;
@@ -89,6 +90,27 @@ pub fn voxelize(input: &PolyData, dims: [u32; 3], bounds: [[f64; 2]; 3]) -> Imag
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("Voxels", voxels, 1)));
     output
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
+}
+
+fn collapse_duplicate_hits(z_hits: &mut Vec<f64>, tolerance: f64) {
+    if z_hits.len() < 2 {
+        return;
+    }
+
+    let mut write = 1;
+    let mut last = z_hits[0];
+    for read in 1..z_hits.len() {
+        if (z_hits[read] - last).abs() > tolerance {
+            z_hits[write] = z_hits[read];
+            last = z_hits[read];
+            write += 1;
+        }
+    }
+    z_hits.truncate(write);
 }
 
 /// Test if a Z-axis ray at (rx, ry) intersects a triangle, returning the Z coordinate.
@@ -123,7 +145,6 @@ fn ray_z_intersect(rx: f64, ry: f64, tri: &[[f64; 3]; 3]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::DataSet;
 
     fn make_box_mesh() -> PolyData {
         // A simple axis-aligned box from (0,0,0) to (1,1,1)
@@ -139,12 +160,18 @@ mod tests {
         ];
         // 12 triangles forming the 6 faces
         let tris = vec![
-            [0, 2, 1], [0, 3, 2], // -Z face
-            [4, 5, 6], [4, 6, 7], // +Z face
-            [0, 1, 5], [0, 5, 4], // -Y face
-            [2, 3, 7], [2, 7, 6], // +Y face
-            [0, 4, 7], [0, 7, 3], // -X face
-            [1, 2, 6], [1, 6, 5], // +X face
+            [0, 2, 1],
+            [0, 3, 2], // -Z face
+            [4, 5, 6],
+            [4, 6, 7], // +Z face
+            [0, 1, 5],
+            [0, 5, 4], // -Y face
+            [2, 3, 7],
+            [2, 7, 6], // +Y face
+            [0, 4, 7],
+            [0, 7, 3], // -X face
+            [1, 2, 6],
+            [1, 6, 5], // +X face
         ];
         PolyData::from_triangles(pts, tris)
     }
@@ -152,11 +179,7 @@ mod tests {
     #[test]
     fn voxelize_box_produces_correct_dimensions() {
         let mesh = make_box_mesh();
-        let result = voxelize(
-            &mesh,
-            [5, 5, 5],
-            [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]],
-        );
+        let result = voxelize(&mesh, [5, 5, 5], [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]]);
         assert_eq!(result.dimensions(), [5, 5, 5]);
         assert_eq!(result.num_points(), 125);
         let arr = result.point_data().get_array("Voxels").unwrap();
@@ -166,11 +189,7 @@ mod tests {
     #[test]
     fn voxelize_box_has_inside_voxels() {
         let mesh = make_box_mesh();
-        let result = voxelize(
-            &mesh,
-            [5, 5, 5],
-            [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]],
-        );
+        let result = voxelize(&mesh, [5, 5, 5], [[-0.5, 1.5], [-0.5, 1.5], [-0.5, 1.5]]);
         let arr = result.point_data().get_array("Voxels").unwrap();
         let mut buf = [0.0f64];
 
@@ -196,6 +215,28 @@ mod tests {
         for i in 0..arr.num_tuples() {
             arr.tuple_as_f64(i, &mut buf);
             assert!((buf[0]).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn duplicate_hits_count_as_single_crossings() {
+        let mut hits = vec![0.0, 0.0, 1.0, 1.0];
+        collapse_duplicate_hits(&mut hits, 1e-9);
+        assert_eq!(hits, vec![0.0, 1.0]);
+    }
+
+    #[test]
+    fn invalid_cells_are_ignored() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+
+        let result = voxelize(&mesh, [2, 2, 2], [[0.0, 1.0], [0.0, 1.0], [0.0, 1.0]]);
+        let arr = result.point_data().get_array("Voxels").unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..arr.num_tuples() {
+            arr.tuple_as_f64(i, &mut buf);
+            assert_eq!(buf[0], 0.0);
         }
     }
 }

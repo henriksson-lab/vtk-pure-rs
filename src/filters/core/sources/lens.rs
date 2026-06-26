@@ -9,9 +9,10 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn lens(radius: f64, curvature: f64, resolution: usize) -> PolyData {
     let n_theta = resolution.max(4);
     let n_phi = resolution.max(8);
-    let sphere_r = curvature * radius;
+    let radius = radius.abs();
+    let sphere_r = (curvature.abs() * radius).max(radius);
     // Distance from center to sphere center
-    let d = (sphere_r * sphere_r - radius * radius).sqrt().max(0.01);
+    let d = (sphere_r * sphere_r - radius * radius).sqrt();
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -25,7 +26,6 @@ pub fn lens(radius: f64, curvature: f64, resolution: usize) -> PolyData {
             let phi = 2.0 * std::f64::consts::PI * i as f64 / n_phi as f64;
             let x = sphere_r * theta.sin() * phi.cos();
             let y = sphere_r * theta.sin() * phi.sin();
-            let _z = d - sphere_r * theta.cos() + sphere_r - d; // shifted forward
             let z = sphere_r * (1.0 - theta.cos()) - (sphere_r - d);
             points.push([x, y, z]);
         }

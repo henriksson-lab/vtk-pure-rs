@@ -35,34 +35,10 @@ pub fn validate(pd: &PolyData) -> ValidationReport {
     let mut report = ValidationReport::default();
     let n_pts = pd.points.len();
 
-    for cell in pd.polys.iter() {
-        if cell.is_empty() {
-            report.empty_cells += 1;
-            continue;
-        }
-        if cell.len() < 3 {
-            report.degenerate_cells += 1;
-        }
-        for &pid in cell {
-            if pid < 0 || (pid as usize) >= n_pts {
-                report.out_of_range_indices += 1;
-            }
-        }
-    }
-
-    for cell in pd.lines.iter() {
-        if cell.is_empty() {
-            report.empty_cells += 1;
-        }
-        if cell.len() < 2 {
-            report.degenerate_cells += 1;
-        }
-        for &pid in cell {
-            if pid < 0 || (pid as usize) >= n_pts {
-                report.out_of_range_indices += 1;
-            }
-        }
-    }
+    validate_cells(&pd.verts, 1, n_pts, &mut report);
+    validate_cells(&pd.lines, 2, n_pts, &mut report);
+    validate_cells(&pd.polys, 3, n_pts, &mut report);
+    validate_cells(&pd.strips, 3, n_pts, &mut report);
 
     // Check for duplicate points using sorting-based approach (O(n log n))
     if n_pts <= 100_000 {
@@ -103,6 +79,28 @@ pub fn validate(pd: &PolyData) -> ValidationReport {
     }
 
     report
+}
+
+fn validate_cells(
+    cells: &crate::data::CellArray,
+    min_points: usize,
+    n_pts: usize,
+    report: &mut ValidationReport,
+) {
+    for cell in cells.iter() {
+        if cell.is_empty() {
+            report.empty_cells += 1;
+            continue;
+        }
+        if cell.len() < min_points {
+            report.degenerate_cells += 1;
+        }
+        for &pid in cell {
+            if pid < 0 || (pid as usize) >= n_pts {
+                report.out_of_range_indices += 1;
+            }
+        }
+    }
 }
 
 #[cfg(test)]

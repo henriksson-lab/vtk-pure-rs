@@ -4,9 +4,10 @@ use crate::data::{Points, PolyData};
 /// resample at a higher resolution.
 ///
 /// Each line cell is replaced by a smooth polyline with `resolution`
-/// points per original segment.
+/// subdivisions. Like vtkSplineFilter's specified-subdivision mode, the
+/// spline parameter is based on normalized arc length along the input line.
 pub fn spline(input: &PolyData, resolution: usize) -> PolyData {
-    let res = resolution.max(1);
+    let num_divs = resolution.max(1);
     let mut out_points = Points::<f64>::new();
     let mut out_lines = crate::data::CellArray::new();
 
@@ -21,9 +22,30 @@ pub fn spline(input: &PolyData, resolution: usize) -> PolyData {
             .collect();
         let n = control.len();
 
-        let mut spline_pts: Vec<i64> = Vec::new();
+        let mut params = vec![0.0; n];
+        let mut total_length = 0.0;
+        for i in 1..n {
+            total_length += distance(control[i - 1], control[i]);
+            params[i] = total_length;
+        }
+        if total_length <= 0.0 {
+            continue;
+        }
+        for t in &mut params {
+            *t /= total_length;
+        }
 
-        for seg in 0..n - 1 {
+        let mut spline_pts: Vec<i64> = Vec::with_capacity(num_divs + 1);
+        let mut seg = 0;
+        for i in 0..=num_divs {
+            let t = i as f64 / num_divs as f64;
+            while seg + 2 < n && t > params[seg + 1] {
+                seg += 1;
+            }
+
+            let t0 = params[seg];
+            let t1 = params[seg + 1];
+            let local_t = if t1 > t0 { (t - t0) / (t1 - t0) } else { 0.0 };
             let p0 = if seg > 0 {
                 control[seg - 1]
             } else {
@@ -37,14 +59,9 @@ pub fn spline(input: &PolyData, resolution: usize) -> PolyData {
                 control[seg + 1]
             };
 
-            let steps = if seg == n - 2 { res + 1 } else { res };
-            for s in 0..steps {
-                let t = s as f64 / res as f64;
-                let pt = catmull_rom(p0, p1, p2, p3, t);
-                let idx = out_points.len() as i64;
-                out_points.push(pt);
-                spline_pts.push(idx);
-            }
+            let idx = out_points.len() as i64;
+            out_points.push(catmull_rom(p0, p1, p2, p3, local_t));
+            spline_pts.push(idx);
         }
 
         out_lines.push_cell(&spline_pts);
@@ -54,6 +71,13 @@ pub fn spline(input: &PolyData, resolution: usize) -> PolyData {
     pd.points = out_points;
     pd.lines = out_lines;
     pd
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let dx = b[0] - a[0];
+    let dy = b[1] - a[1];
+    let dz = b[2] - a[2];
+    (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
 fn catmull_rom(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], p3: [f64; 3], t: f64) -> [f64; 3] {
@@ -83,7 +107,7 @@ mod tests {
         pd.lines.push_cell(&[0, 1]);
 
         let result = spline(&pd, 4);
-        // 1 segment * 4 + 1 = 5 points
+        // 4 subdivisions + 1 endpoint = 5 points
         assert_eq!(result.points.len(), 5);
         assert_eq!(result.lines.num_cells(), 1);
 
@@ -103,8 +127,7 @@ mod tests {
         pd.lines.push_cell(&[0, 1, 2]);
 
         let result = spline(&pd, 5);
-        // 2 segments * 5 + 1 = 11 points
-        assert_eq!(result.points.len(), 11);
+        assert_eq!(result.points.len(), 6);
     }
 
     #[test]
@@ -118,7 +141,22 @@ mod tests {
 
         let result = spline(&pd, 3);
         assert_eq!(result.lines.num_cells(), 1);
-        // 3 segments * 3 + 1 = 10
-        assert_eq!(result.points.len(), 10);
+        assert_eq!(result.points.len(), 4);
+    }
+
+    #[test]
+    fn spline_uses_arc_length_parameterization() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([10.0, 0.0, 0.0]);
+        pd.points.push([10.0, 1.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let result = spline(&pd, 11);
+        let mid = result.points.get(9);
+        assert!(
+            mid[0] > 9.0,
+            "normalized arc-length sampling should spend most samples on the long segment"
+        );
     }
 }

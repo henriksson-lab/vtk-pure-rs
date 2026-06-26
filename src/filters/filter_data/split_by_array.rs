@@ -16,7 +16,8 @@ pub fn split_by_array(input: &PolyData, array_name: &str) -> Vec<(i64, PolyData)
     let mut buf = [0.0f64];
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
 
-    for (ci, _) in cells.iter().enumerate() {
+    let num_values = arr.num_tuples().min(cells.len());
+    for ci in 0..num_values {
         arr.tuple_as_f64(ci, &mut buf);
         let key = buf[0] as i64;
         groups.entry(key).or_default().push(ci);

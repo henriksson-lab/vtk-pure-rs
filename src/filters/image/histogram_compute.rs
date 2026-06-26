@@ -32,7 +32,7 @@ pub fn compute_histogram(
 
     // First pass: find min/max
     let mut min_v: f64 = f64::MAX;
-    let mut max_v: f64 = f64::MIN;
+    let mut max_v: f64 = f64::NEG_INFINITY;
     let mut buf = [0.0f64];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);

@@ -2,12 +2,13 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Create ribbon (oriented strip) geometry from polyline cells.
 ///
-/// For each line segment, a ribbon of the given `width` is generated
+/// For each line segment, a ribbon of the given half `width` is generated
 /// perpendicular to the segment direction and a reference `up` vector.
-/// The result is a PolyData with triangle strip cells converted to quads.
+/// The result includes VTK-style triangle strip cells, with equivalent quads
+/// also populated for callers that consume `polys`.
 pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
-    let half = width * 0.5;
     let mut points = Points::<f64>::new();
+    let mut strips = CellArray::new();
     let mut polys = CellArray::new();
 
     let up_norm = normalize(up);
@@ -21,6 +22,7 @@ pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
         let n = cell.len();
         let mut left_ids = Vec::with_capacity(n);
         let mut right_ids = Vec::with_capacity(n);
+        let mut strip = Vec::with_capacity(n * 2);
 
         for i in 0..n {
             let p = input.points.get(cell[i] as usize);
@@ -51,14 +53,14 @@ pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
             let side = normalize(side);
 
             let left = [
-                p[0] + side[0] * half,
-                p[1] + side[1] * half,
-                p[2] + side[2] * half,
+                p[0] + side[0] * width,
+                p[1] + side[1] * width,
+                p[2] + side[2] * width,
             ];
             let right = [
-                p[0] - side[0] * half,
-                p[1] - side[1] * half,
-                p[2] - side[2] * half,
+                p[0] - side[0] * width,
+                p[1] - side[1] * width,
+                p[2] - side[2] * width,
             ];
 
             let base = points.len() as i64;
@@ -66,7 +68,11 @@ pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
             points.push(right);
             left_ids.push(base);
             right_ids.push(base + 1);
+            strip.push(base);
+            strip.push(base + 1);
         }
+
+        strips.push_cell(&strip);
 
         // Generate quads between consecutive pairs
         for i in 0..n - 1 {
@@ -76,6 +82,7 @@ pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
 
     let mut pd = PolyData::new();
     pd.points = points;
+    pd.strips = strips;
     pd.polys = polys;
     pd
 }
@@ -117,8 +124,9 @@ mod tests {
         pd.lines.push_cell(&[0, 1, 2]);
 
         let result = ribbon(&pd, 0.5, [0.0, 0.0, 1.0]);
-        // 3 vertices -> 6 ribbon points, 2 quads
+        // 3 vertices -> 6 ribbon points, 1 strip, 2 compatibility quads
         assert_eq!(result.points.len(), 6);
+        assert_eq!(result.strips.num_cells(), 1);
         assert_eq!(result.polys.num_cells(), 2);
     }
 
@@ -130,11 +138,11 @@ mod tests {
         pd.lines.push_cell(&[0, 1]);
 
         let result = ribbon(&pd, 1.0, [0.0, 0.0, 1.0]);
-        // Width=1 along X-axis with up=Z -> ribbon extends ±0.5 in Y
+        // VTK ribbon width is a half-width: Width=1 extends +/-1 in Y.
         let p0 = result.points.get(0);
         let p1 = result.points.get(1);
-        assert!((p0[1] - 0.5).abs() < 1e-10 || (p0[1] + 0.5).abs() < 1e-10);
-        assert!((p1[1] - 0.5).abs() < 1e-10 || (p1[1] + 0.5).abs() < 1e-10);
+        assert!((p0[1] - 1.0).abs() < 1e-10 || (p0[1] + 1.0).abs() < 1e-10);
+        assert!((p1[1] - 1.0).abs() < 1e-10 || (p1[1] + 1.0).abs() < 1e-10);
         assert!((p0[1] + p1[1]).abs() < 1e-10); // symmetric around Y=0
     }
 
@@ -149,6 +157,7 @@ mod tests {
         pd.lines.push_cell(&[2, 3]);
 
         let result = ribbon(&pd, 0.2, [0.0, 0.0, 1.0]);
+        assert_eq!(result.strips.num_cells(), 2); // 1 strip per input line
         assert_eq!(result.polys.num_cells(), 2); // 1 quad per line segment
     }
 

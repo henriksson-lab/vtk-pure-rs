@@ -6,8 +6,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// containing [dF/dx, dF/dy, dF/dz] at each grid point.
 pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -16,6 +16,9 @@ pub fn image_gradient_vector(input: &ImageData, scalars: &str) -> ImageData {
     let nz: usize = dims[2] as usize;
     let spacing = input.spacing();
     let n: usize = nx * ny * nz;
+    if arr.num_tuples() != n {
+        return input.clone();
+    }
 
     // Read scalar values
     let mut values: Vec<f64> = vec![0.0; n];

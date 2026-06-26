@@ -2,19 +2,35 @@
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
-/// Compute aspect ratio for each triangle (ratio of circumradius to inradius * 2).
-/// Equilateral triangle = 1.0, degenerate = high value.
+pub(crate) const VERDICT_DBL_MAX: f64 = 1.0e30;
+const VERDICT_DBL_MIN: f64 = 2.2204460492503131e-15;
+const ASPECT_RATIO_NORMAL_COEFF: f64 = 1.7320508075688772 / 6.0;
+
+/// Compute aspect ratio for each triangle.
+///
+/// This follows VTK/Verdict `tri_aspect_ratio`: `sqrt(3) / 6 * Hmax * perimeter
+/// / (2 * area)`. Equilateral triangles evaluate to 1.0; degenerate triangles
+/// evaluate to `1e30`.
 pub fn compute_aspect_ratios(mesh: &PolyData) -> PolyData {
-    let mut ratios = Vec::new();
+    let mut ratios = Vec::with_capacity(mesh.polys.num_cells());
     for cell in mesh.polys.iter() {
-        if cell.len() != 3 { ratios.push(0.0); continue; }
+        if cell.len() != 3 {
+            ratios.push(0.0);
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         let b = mesh.points.get(cell[1] as usize);
         let c = mesh.points.get(cell[2] as usize);
         ratios.push(triangle_aspect_ratio(a, b, c));
     }
     let mut result = mesh.clone();
-    result.cell_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("AspectRatio", ratios, 1)));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "AspectRatio",
+            ratios,
+            1,
+        )));
     result
 }
 
@@ -23,7 +39,9 @@ pub fn aspect_ratio_stats(mesh: &PolyData) -> (f64, f64, f64) {
     let r = compute_aspect_ratios(mesh);
     let arr = r.cell_data().get_array("AspectRatio").unwrap();
     let n = arr.num_tuples();
-    if n == 0 { return (0.0, 0.0, 0.0); }
+    if n == 0 {
+        return (0.0, 0.0, 0.0);
+    }
     let mut buf = [0.0f64];
     let mut mn = f64::INFINITY;
     let mut mx = f64::NEG_INFINITY;
@@ -37,22 +55,37 @@ pub fn aspect_ratio_stats(mesh: &PolyData) -> (f64, f64, f64) {
     (mn, mx, sum / n as f64)
 }
 
-fn triangle_aspect_ratio(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
+pub(crate) fn triangle_aspect_ratio(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     let ab = edge_len(a, b);
     let bc = edge_len(b, c);
     let ca = edge_len(c, a);
-    let s = (ab + bc + ca) * 0.5;
-    let area_sq = s * (s - ab) * (s - bc) * (s - ca);
-    if area_sq <= 0.0 { return f64::INFINITY; }
-    let area = area_sq.sqrt();
-    let circumradius = ab * bc * ca / (4.0 * area);
-    let inradius = area / s;
-    if inradius < 1e-15 { return f64::INFINITY; }
-    circumradius / (2.0 * inradius)
+    let hm = ab.max(bc).max(ca);
+    let denominator = cross_len(sub(b, a), sub(c, b));
+
+    if denominator < VERDICT_DBL_MIN {
+        return VERDICT_DBL_MAX;
+    }
+
+    (ASPECT_RATIO_NORMAL_COEFF * hm * (ab + bc + ca) / denominator)
+        .clamp(-VERDICT_DBL_MAX, VERDICT_DBL_MAX)
 }
 
 fn edge_len(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0]-b[0]).powi(2) + (a[1]-b[1]).powi(2) + (a[2]-b[2]).powi(2)).sqrt()
+    let d = sub(a, b);
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn cross_len(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let cross = [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+    (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt()
 }
 
 #[cfg(test)]
@@ -62,8 +95,8 @@ mod tests {
     fn test_equilateral() {
         let h = 3.0f64.sqrt() / 2.0;
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,h,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, h, 0.0]],
+            vec![[0, 1, 2]],
         );
         let (mn, mx, _) = aspect_ratio_stats(&mesh);
         assert!((mn - 1.0).abs() < 0.01);
@@ -72,8 +105,8 @@ mod tests {
     #[test]
     fn test_thin() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[10.0,0.0,0.0],[5.0,0.01,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 0.01, 0.0]],
+            vec![[0, 1, 2]],
         );
         let (_, mx, _) = aspect_ratio_stats(&mesh);
         assert!(mx > 10.0); // very thin triangle

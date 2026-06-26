@@ -84,6 +84,10 @@ pub fn isosurface_from_implicit(
     bounds: crate::types::BoundingBox,
     resolution: usize,
 ) -> PolyData {
+    if resolution < 2 {
+        return PolyData::new();
+    }
+
     let dims = [resolution, resolution, resolution];
     let spacing = [
         bounds.size()[0] / (resolution - 1) as f64,
@@ -158,6 +162,15 @@ mod tests {
         let iso = isosurface_from_implicit(&sphere_fn, bb, 16);
         assert!(iso.points.len() > 0);
         assert!(iso.polys.num_cells() > 0);
+    }
+
+    #[test]
+    fn isosurface_requires_grid() {
+        let sphere_fn = crate::types::ImplicitSphere::new([0.0, 0.0, 0.0], 0.5);
+        let bb = crate::types::BoundingBox::from_corners([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]);
+        let iso = isosurface_from_implicit(&sphere_fn, bb, 1);
+        assert!(iso.points.is_empty());
+        assert_eq!(iso.total_cells(), 0);
     }
 
     #[test]

@@ -9,7 +9,8 @@ pub fn dna_helix(
 ) -> PolyData {
     let res = resolution.max(8);
     let tres = 6;
-    let total = (res as f64 * turns).ceil() as usize;
+    let turns = turns.max(0.0);
+    let total = ((res as f64 * turns).ceil() as usize).max(1);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();

@@ -14,7 +14,7 @@ pub fn hyper_tree_grid_slice(
     plane_normal: [f64; 3],
 ) -> PolyData {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,

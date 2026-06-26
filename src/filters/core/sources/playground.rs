@@ -46,6 +46,7 @@ pub fn slide(height: f64, length: f64, width: f64, resolution: usize) -> PolyDat
     let hw = width / 2.0;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
+    let mut lines = CellArray::new();
     for i in 0..=res {
         let t = i as f64 / res as f64;
         let x = t * length;
@@ -58,14 +59,24 @@ pub fn slide(height: f64, length: f64, width: f64, resolution: usize) -> PolyDat
         polys.push_cell(&[b as i64, (b + 1) as i64, (b + 3) as i64, (b + 2) as i64]);
     }
     // Ladder
-    let _lb = pts.len();
+    let lb = pts.len();
     pts.push([0.0, -hw * 0.3, 0.0]);
     pts.push([0.0, -hw * 0.3, height]);
     pts.push([0.0, hw * 0.3, 0.0]);
     pts.push([0.0, hw * 0.3, height]);
+    lines.push_cell(&[lb as i64, (lb + 1) as i64]);
+    lines.push_cell(&[(lb + 2) as i64, (lb + 3) as i64]);
+    for rung in 1..5 {
+        let z = height * rung as f64 / 5.0;
+        let rb = pts.len();
+        pts.push([0.0, -hw * 0.3, z]);
+        pts.push([0.0, hw * 0.3, z]);
+        lines.push_cell(&[rb as i64, (rb + 1) as i64]);
+    }
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;
+    r.lines = lines;
     r
 }
 #[cfg(test)]
@@ -80,5 +91,6 @@ mod tests {
     fn test_slide() {
         let s = slide(2.0, 4.0, 1.0, 8);
         assert!(s.polys.num_cells() >= 4);
+        assert!(s.lines.num_cells() >= 6);
     }
 }

@@ -55,6 +55,6 @@ mod tests {
         assert!(m.polys.num_cells() > 0);
         // Center should be at origin
         let c = m.points.get(0);
-        assert_eq!(c, &[0.0, 0.0, 0.0]);
+        assert_eq!(c, [0.0, 0.0, 0.0]);
     }
 }

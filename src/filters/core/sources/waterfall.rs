@@ -4,7 +4,7 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn waterfall(
     width: f64,
     cliff_height: f64,
-    _pool_depth: f64,
+    pool_depth: f64,
     n_width: usize,
     n_height: usize,
 ) -> PolyData {
@@ -53,7 +53,7 @@ pub fn waterfall(
     // Pool at base
     let pb = pts.len();
     let pool_w = width * 1.2;
-    let pool_d = cliff_height * 0.4;
+    let pool_d = pool_depth.max(0.0);
     pts.push([-pool_w / 2.0, -pool_d, 0.0]);
     pts.push([pool_w / 2.0, -pool_d, 0.0]);
     pts.push([pool_w / 2.0, 0.0, 0.0]);

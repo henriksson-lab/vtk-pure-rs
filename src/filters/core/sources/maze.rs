@@ -73,6 +73,8 @@ pub fn maze(cols: usize, rows: usize, cell_size: f64, wall_height: f64, seed: u6
         polys.push_cell(&[f(4), f(5), f(6), f(7)]);
         polys.push_cell(&[f(0), f(1), f(5), f(4)]);
         polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+        polys.push_cell(&[f(0), f(4), f(7), f(3)]);
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]);
     };
     for y in 0..=rows {
         for x in 0..cols {

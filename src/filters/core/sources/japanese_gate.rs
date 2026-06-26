@@ -1,6 +1,7 @@
 //! Torii gate (Japanese shrine gate) geometry.
 use crate::data::{CellArray, Points, PolyData};
-pub fn torii_gate(width: f64, height: f64, beam_thickness: f64, pillar_radius: f64) -> PolyData {
+
+pub fn japanese_gate(width: f64, height: f64, beam_thickness: f64, pillar_radius: f64) -> PolyData {
     let hw = width / 2.0;
     let bt = beam_thickness;
     let mut pts = Points::<f64>::new();
@@ -84,12 +85,13 @@ pub fn torii_gate(width: f64, height: f64, beam_thickness: f64, pillar_radius: f
     r.polys = polys;
     r
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test() {
-        let t = torii_gate(4.0, 5.0, 0.3, 0.2);
+        let t = japanese_gate(4.0, 5.0, 0.3, 0.2);
         assert!(t.polys.num_cells() > 20);
     }
 }

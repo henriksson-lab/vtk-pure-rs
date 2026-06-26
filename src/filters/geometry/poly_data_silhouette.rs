@@ -5,11 +5,39 @@
 
 use crate::data::{CellArray, Points, PolyData};
 
+/// Options matching vtkPolyDataSilhouette defaults where practical.
+#[derive(Debug, Clone, Copy)]
+pub struct SilhouetteOptions {
+    pub enable_feature_angle: bool,
+    pub feature_angle_degrees: f64,
+    pub border_edges: bool,
+}
+
+impl Default for SilhouetteOptions {
+    fn default() -> Self {
+        Self {
+            enable_feature_angle: true,
+            feature_angle_degrees: 60.0,
+            border_edges: false,
+        }
+    }
+}
+
 /// Extract silhouette edges relative to a view direction.
 ///
 /// A silhouette edge is shared by one front-facing and one back-facing
-/// triangle. Boundary edges (shared by only one triangle) are also included.
+/// triangle. Sharp feature edges are included by default, and boundary edges
+/// are omitted by default, matching vtkPolyDataSilhouette defaults.
 pub fn silhouette_edges(mesh: &PolyData, view_dir: [f64; 3]) -> PolyData {
+    silhouette_edges_with_options(mesh, view_dir, SilhouetteOptions::default())
+}
+
+/// Extract silhouette edges with explicit feature-angle and border-edge options.
+pub fn silhouette_edges_with_options(
+    mesh: &PolyData,
+    view_dir: [f64; 3],
+    options: SilhouetteOptions,
+) -> PolyData {
     let n_cells = mesh.polys.num_cells();
     if n_cells == 0 {
         return PolyData::new();
@@ -49,6 +77,8 @@ pub fn silhouette_edges(mesh: &PolyData, view_dir: [f64; 3]) -> PolyData {
         }
     }
 
+    let feature_angle_cos = options.feature_angle_degrees.to_radians().cos();
+
     // Find silhouette edges
     let mut sil_points = Points::<f64>::new();
     let mut sil_lines = CellArray::new();
@@ -56,11 +86,12 @@ pub fn silhouette_edges(mesh: &PolyData, view_dir: [f64; 3]) -> PolyData {
 
     for ((a, b), faces) in &edge_faces {
         let is_silhouette = if faces.len() == 1 {
-            true // boundary edge
+            options.border_edges
         } else if faces.len() == 2 {
             let d0 = dot(face_normals[faces[0]], view_dir);
             let d1 = dot(face_normals[faces[1]], view_dir);
-            (d0 >= 0.0) != (d1 >= 0.0) // one front, one back
+            let edge_angle_cos = normalized_dot(face_normals[faces[0]], face_normals[faces[1]]);
+            (d0 * d1) < 0.0 || (options.enable_feature_angle && edge_angle_cos < feature_angle_cos)
         } else {
             false
         };
@@ -137,7 +168,7 @@ pub fn silhouette_edges_perspective(mesh: &PolyData, camera_pos: [f64; 3]) -> Po
 
     for ((a, b), faces) in &edge_faces {
         let is_sil = if faces.len() == 1 {
-            true
+            false
         } else if faces.len() == 2 {
             face_front[faces[0]] != face_front[faces[1]]
         } else {
@@ -167,6 +198,16 @@ pub fn silhouette_edges_perspective(mesh: &PolyData, camera_pos: [f64; 3]) -> Po
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn normalized_dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let la = dot(a, a).sqrt();
+    let lb = dot(b, b).sqrt();
+    if la <= 1e-15 || lb <= 1e-15 {
+        1.0
+    } else {
+        dot(a, b) / (la * lb)
+    }
 }
 
 #[cfg(test)]
@@ -203,12 +244,29 @@ mod tests {
     }
 
     #[test]
-    fn single_triangle_all_boundary() {
+    fn single_triangle_default_omits_boundary() {
         let mesh = PolyData::from_triangles(
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
             vec![[0, 1, 2]],
         );
         let sil = silhouette_edges(&mesh, [0.0, 0.0, 1.0]);
+        assert_eq!(sil.lines.num_cells(), 0);
+    }
+
+    #[test]
+    fn single_triangle_border_edges() {
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let sil = silhouette_edges_with_options(
+            &mesh,
+            [0.0, 0.0, 1.0],
+            SilhouetteOptions {
+                border_edges: true,
+                ..SilhouetteOptions::default()
+            },
+        );
         assert_eq!(sil.lines.num_cells(), 3); // all boundary edges
     }
 
@@ -219,7 +277,7 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let sil = silhouette_edges_perspective(&mesh, [0.5, 0.5, 5.0]);
-        assert_eq!(sil.lines.num_cells(), 3);
+        assert_eq!(sil.lines.num_cells(), 0);
     }
 
     #[test]

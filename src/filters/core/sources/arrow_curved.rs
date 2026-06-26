@@ -9,10 +9,12 @@ pub fn curved_arrow(
 ) -> PolyData {
     let res = resolution.max(4);
     let angle = angle_degrees.to_radians();
-    let hw = width / 2.0;
+    let hw = width.max(0.0) / 2.0;
+    let hs = head_size.max(0.0);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let arc_end = angle - head_size.to_radians().min(angle * 0.3);
+    let head_angle = hs.to_radians().min(angle.abs() * 0.3);
+    let arc_end = angle - angle.signum() * head_angle;
     // Arc ribbon
     for i in 0..=res {
         let t = arc_end * i as f64 / res as f64;
@@ -32,7 +34,6 @@ pub fn curved_arrow(
     let ts = tip_angle.sin();
     let bc = base_angle.cos();
     let bs = base_angle.sin();
-    let hs = head_size;
     let a0 = pts.len();
     pts.push([(radius - hs) * bc, (radius - hs) * bs, 0.0]);
     let a1 = pts.len();
@@ -51,6 +52,13 @@ mod tests {
     #[test]
     fn test() {
         let a = curved_arrow(2.0, 90.0, 0.3, 0.5, 12);
+        assert!(a.points.len() > 10);
+        assert!(a.polys.num_cells() > 5);
+    }
+
+    #[test]
+    fn negative_angle() {
+        let a = curved_arrow(2.0, -90.0, 0.3, 0.5, 12);
         assert!(a.points.len() > 10);
         assert!(a.polys.num_cells() > 5);
     }

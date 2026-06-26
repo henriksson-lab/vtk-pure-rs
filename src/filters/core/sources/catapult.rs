@@ -1,6 +1,6 @@
 //! Catapult/trebuchet geometry.
 use crate::data::{CellArray, Points, PolyData};
-pub fn trebuchet(base_w: f64, base_d: f64, tower_h: f64, arm_length: f64) -> PolyData {
+pub fn catapult(base_w: f64, base_d: f64, tower_h: f64, arm_length: f64) -> PolyData {
     let hw = base_w / 2.0;
     let hd = base_d / 2.0;
     let mut pts = Points::<f64>::new();
@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     #[test]
     fn test() {
-        let t = trebuchet(3.0, 2.0, 4.0, 5.0);
+        let t = catapult(3.0, 2.0, 4.0, 5.0);
         assert!(t.lines.num_cells() > 5);
         assert!(t.polys.num_cells() >= 2);
     }

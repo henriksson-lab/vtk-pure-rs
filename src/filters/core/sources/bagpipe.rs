@@ -35,6 +35,16 @@ pub fn bagpipe(bag_radius: f64, na: usize) -> PolyData {
             polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
+    let bottom = pts.len();
+    pts.push([0.0, 0.0, -bag_radius]);
+    let bottom_ring = top + 1 + (np - 2) * na;
+    for j in 0..na {
+        polys.push_cell(&[
+            bottom as i64,
+            (bottom_ring + (j + 1) % na) as i64,
+            (bottom_ring + j) as i64,
+        ]);
+    }
     // Chanter (long pipe downward)
     let ch0 = pts.len();
     pts.push([bag_radius * 0.8, 0.0, -bag_radius * 0.5]);

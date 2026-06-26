@@ -56,6 +56,7 @@ pub fn normalize_array(input: &PolyData, array_name: &str) -> PolyData {
     let name = format!("{}_normalized", array_name);
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(&name, normalized, 1)));
+    pd.point_data_mut().set_active_scalars(&name);
     pd
 }
 
@@ -102,6 +103,7 @@ pub fn rescale_array(input: &PolyData, array_name: &str, new_min: f64, new_max: 
         }
     }
     *pd.point_data_mut() = new_attrs;
+    pd.point_data_mut().set_active_scalars(array_name);
     pd
 }
 

@@ -4,7 +4,7 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Create a surface of revolution by rotating a profile curve around Z axis.
 pub fn surface_of_revolution(profile: &[[f64; 2]], resolution: usize) -> PolyData {
-    let res = resolution.max(3);
+    let res = resolution.max(1);
     let n = profile.len();
     if n < 2 {
         return PolyData::new();

@@ -28,14 +28,30 @@ pub fn i_beam(flange_w: f64, flange_h: f64, web_h: f64, web_t: f64, length: f64)
     for p in &profile {
         pts.push([p[0], p[1], length]);
     }
-    // Front face (fan)
-    for i in 1..np - 1 {
-        polys.push_cell(&[0, (i + 1) as i64, i as i64]);
-    }
-    // Back face
-    for i in 1..np - 1 {
-        polys.push_cell(&[np as i64, (np + i) as i64, (np + i + 1) as i64]);
-    }
+    // End caps. The I-beam profile is concave, so decompose each cap into
+    // the two flange rectangles and the web rectangle instead of fan
+    // triangulating the outline.
+    polys.push_cell(&[0, 1, 2, 11]);
+    polys.push_cell(&[10, 3, 4, 9]);
+    polys.push_cell(&[8, 5, 6, 7]);
+    polys.push_cell(&[
+        np as i64,
+        (np + 11) as i64,
+        (np + 2) as i64,
+        (np + 1) as i64,
+    ]);
+    polys.push_cell(&[
+        (np + 10) as i64,
+        (np + 9) as i64,
+        (np + 4) as i64,
+        (np + 3) as i64,
+    ]);
+    polys.push_cell(&[
+        (np + 8) as i64,
+        (np + 7) as i64,
+        (np + 6) as i64,
+        (np + 5) as i64,
+    ]);
     // Sides
     for i in 0..np {
         let j = (i + 1) % np;
@@ -53,6 +69,6 @@ mod tests {
     fn test() {
         let b = i_beam(1.0, 0.1, 0.8, 0.1, 5.0);
         assert_eq!(b.points.len(), 24);
-        assert!(b.polys.num_cells() > 10);
+        assert_eq!(b.polys.num_cells(), 18);
     }
 }

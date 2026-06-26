@@ -18,7 +18,7 @@ pub fn image_convolve_separable(input: &ImageData, scalars: &str, kernel: &[f64]
     let r = kernel.len() / 2;
 
     let mut buf = [0.0f64];
-    let mut values: Vec<f64> = (0..n)
+    let values: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]

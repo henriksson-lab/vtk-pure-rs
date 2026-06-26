@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Compute discrete Gaussian and mean curvatures at each vertex.
 ///
@@ -8,8 +9,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn curvatures(input: &PolyData) -> PolyData {
     let n = input.points.len();
     let mut gauss = vec![0.0f64; n];
-    let mut mean = vec![0.0f64; n];
-    let mut area = vec![0.0f64; n]; // mixed Voronoi area per vertex
+    let mut area = vec![0.0f64; n];
+    let mut triangles = Vec::new();
+    let mut edge_faces: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
 
     // Initialize Gaussian curvature with 2*pi (angle deficit starts from full circle)
     gauss.fill(2.0 * std::f64::consts::PI);
@@ -39,59 +41,62 @@ pub fn curvatures(input: &PolyData) -> PolyData {
         let p2 = [pts[b2], pts[b2 + 1], pts[b2 + 2]];
 
         let e01 = sub(p1, p0);
-        let e02 = sub(p2, p0);
         let e12 = sub(p2, p1);
-        let e10 = sub(p0, p1);
         let e20 = sub(p0, p2);
-        let e21 = sub(p1, p2);
 
-        // Angles at each vertex
-        let a0 = angle_between(e01, e02);
-        let a1 = angle_between(e10, e12);
-        let a2 = angle_between(e20, e21);
+        // Match vtkCurvatures::ComputeGaussCurvature: alpha0 is the
+        // exterior angle opposite vertex 0, and K uses alpha1/2/0.
+        let alpha0 = std::f64::consts::PI - angle_between(e12, e20);
+        let alpha1 = std::f64::consts::PI - angle_between(e20, e01);
+        let alpha2 = std::f64::consts::PI - angle_between(e01, e12);
 
-        // Gaussian curvature: subtract angles from 2*pi
-        gauss[i0] -= a0;
-        gauss[i1] -= a1;
-        gauss[i2] -= a2;
+        gauss[i0] -= alpha1;
+        gauss[i1] -= alpha2;
+        gauss[i2] -= alpha0;
 
         // Triangle area
-        let cross = cross_3(e01, e02);
+        let cross = cross_3(e01, sub(p2, p0));
         let tri_area = 0.5 * length(cross);
 
-        // Mixed area per vertex (1/3 of triangle area each for simplicity)
-        let va = tri_area / 3.0;
-        area[i0] += va;
-        area[i1] += va;
-        area[i2] += va;
+        area[i0] += tri_area;
+        area[i1] += tri_area;
+        area[i2] += tri_area;
 
-        // Mean curvature via cotangent weights
-        // For edge opposite to vertex i, cot(angle_i) * edge_vector
-        let cot0 = cot(a0);
-        let cot1 = cot(a1);
-        let cot2 = cot(a2);
-
-        // Mean curvature normal contribution:
-        // H(v0) += cot(a1) * e20 + cot(a2) * e10 ... but we accumulate |H| directly
-        // Simplified: accumulate cotangent-weighted edge lengths
-        let len_e12 = length(e12);
-        let len_e02 = length(e02);
-        let len_e01 = length(e01);
-
-        mean[i0] += cot1 * len_e02 * len_e02 + cot2 * len_e01 * len_e01;
-        mean[i1] += cot0 * len_e12 * len_e12 + cot2 * len_e01 * len_e01;
-        mean[i2] += cot0 * len_e12 * len_e12 + cot1 * len_e02 * len_e02;
+        let tri_id = triangles.len();
+        triangles.push(TriangleInfo {
+            ids: [i0, i1, i2],
+            normal: normalize(cross),
+            area: tri_area,
+        });
+        for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
+            let key = if a < b { (a, b) } else { (b, a) };
+            edge_faces.entry(key).or_default().push(tri_id);
+        }
     }
 
-    // Normalize by area
+    let mean = compute_mean_curvature(input, &triangles, &edge_faces);
+
     for i in 0..n {
-        if area[i] > 1e-20 {
-            gauss[i] /= area[i];
-            mean[i] /= 4.0 * area[i];
+        if area[i] > 0.0 {
+            gauss[i] = 3.0 * gauss[i] / area[i];
+        } else {
+            gauss[i] = 0.0;
         }
     }
 
     let mut pd = input.clone();
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Gauss_Curvature",
+            gauss.clone(),
+            1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Mean_Curvature",
+            mean.clone(),
+            1,
+        )));
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "GaussCurvature",
@@ -104,7 +109,78 @@ pub fn curvatures(input: &PolyData) -> PolyData {
             mean,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("Mean_Curvature");
     pd
+}
+
+#[derive(Clone, Copy)]
+struct TriangleInfo {
+    ids: [usize; 3],
+    normal: [f64; 3],
+    area: f64,
+}
+
+fn compute_mean_curvature(
+    input: &PolyData,
+    triangles: &[TriangleInfo],
+    edge_faces: &HashMap<(usize, usize), Vec<usize>>,
+) -> Vec<f64> {
+    let mut sum = vec![0.0f64; input.points.len()];
+    let mut num_neighbors = vec![0usize; input.points.len()];
+
+    for (f, tri) in triangles.iter().enumerate() {
+        for v in 0..3 {
+            let v_l = tri.ids[v];
+            let v_r = tri.ids[(v + 1) % 3];
+            let key = if v_l < v_r { (v_l, v_r) } else { (v_r, v_l) };
+            let Some(faces) = edge_faces.get(&key) else {
+                continue;
+            };
+            if faces.len() != 2 {
+                continue;
+            }
+            let n = if faces[0] == f { faces[1] } else { faces[0] };
+            if n <= f {
+                continue;
+            }
+
+            let ore = input.points.get(v_l);
+            let end = input.points.get(v_r);
+            let edge = sub(end, ore);
+            let length = length(edge);
+            if length <= 1e-20 {
+                continue;
+            }
+            let edge_unit = [edge[0] / length, edge[1] / length, edge[2] / length];
+            let neighbor = triangles[n];
+            let area = tri.area + neighbor.area;
+
+            let cs = dot(tri.normal, neighbor.normal);
+            let sn = dot(cross_3(tri.normal, neighbor.normal), edge_unit);
+            let hf = if sn != 0.0 || cs != 0.0 {
+                length * sn.atan2(cs)
+            } else {
+                0.0
+            };
+            let hf = if area != 0.0 { 3.0 * hf / area } else { hf };
+
+            sum[v_l] += hf;
+            sum[v_r] += hf;
+            num_neighbors[v_l] += 1;
+            num_neighbors[v_r] += 1;
+        }
+    }
+
+    sum.into_iter()
+        .zip(num_neighbors)
+        .map(|(value, count)| {
+            if count > 0 {
+                0.5 * value / count as f64
+            } else {
+                0.0
+            }
+        })
+        .collect()
 }
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -127,6 +203,15 @@ fn length(v: [f64; 3]) -> f64 {
     (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
+fn normalize(v: [f64; 3]) -> [f64; 3] {
+    let len = length(v);
+    if len > 1e-20 {
+        [v[0] / len, v[1] / len, v[2] / len]
+    } else {
+        [0.0, 0.0, 0.0]
+    }
+}
+
 fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
     let la = length(a);
     let lb = length(b);
@@ -135,15 +220,6 @@ fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
     }
     let cos_angle = (dot(a, b) / (la * lb)).clamp(-1.0, 1.0);
     cos_angle.acos()
-}
-
-fn cot(angle: f64) -> f64 {
-    let s = angle.sin();
-    if s.abs() < 1e-20 {
-        0.0
-    } else {
-        angle.cos() / s
-    }
 }
 
 #[cfg(test)]

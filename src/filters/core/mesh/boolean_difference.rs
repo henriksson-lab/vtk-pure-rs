@@ -79,18 +79,20 @@ fn collect_triangles(pd: &PolyData) -> Vec<([f64; 3], [f64; 3], [f64; 3])> {
 /// Ray-casting inside/outside test. Cast a ray in +X direction from point and
 /// count intersections with triangles.
 fn is_inside_mesh(point: [f64; 3], tris: &[([f64; 3], [f64; 3], [f64; 3])]) -> bool {
-    let mut crossings: usize = 0;
+    let mut intersections: Vec<f64> = Vec::new();
     let origin = point;
     let dir: [f64; 3] = [1.0, 0.0, 0.0]; // +X ray
 
     for &(v0, v1, v2) in tris {
-        if ray_triangle_intersect(origin, dir, v0, v1, v2) {
-            crossings += 1;
+        if let Some(t) = ray_triangle_intersect(origin, dir, v0, v1, v2) {
+            if !intersections.iter().any(|&prev| (prev - t).abs() < 1e-9) {
+                intersections.push(t);
+            }
         }
     }
 
     // Odd number of crossings means inside
-    crossings % 2 == 1
+    intersections.len() % 2 == 1
 }
 
 /// Moller-Trumbore ray-triangle intersection test.
@@ -100,7 +102,7 @@ fn ray_triangle_intersect(
     v0: [f64; 3],
     v1: [f64; 3],
     v2: [f64; 3],
-) -> bool {
+) -> Option<f64> {
     let eps: f64 = 1e-10;
 
     let e1: [f64; 3] = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
@@ -110,7 +112,7 @@ fn ray_triangle_intersect(
     let a: f64 = dot(e1, h);
 
     if a.abs() < eps {
-        return false;
+        return None;
     }
 
     let f: f64 = 1.0 / a;
@@ -118,18 +120,22 @@ fn ray_triangle_intersect(
     let u: f64 = f * dot(s, h);
 
     if u < 0.0 || u > 1.0 {
-        return false;
+        return None;
     }
 
     let q: [f64; 3] = cross(s, e1);
     let v: f64 = f * dot(dir, q);
 
     if v < 0.0 || u + v > 1.0 {
-        return false;
+        return None;
     }
 
     let t: f64 = f * dot(e2, q);
-    t > eps
+    if t > eps {
+        Some(t)
+    } else {
+        None
+    }
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -153,13 +159,13 @@ mod tests {
         let mut pd = PolyData::new();
         // 8 vertices of a cube
         pd.points.push([-s, -s, -s]); // 0
-        pd.points.push([s, -s, -s]);  // 1
-        pd.points.push([s, s, -s]);   // 2
-        pd.points.push([-s, s, -s]);  // 3
-        pd.points.push([-s, -s, s]);  // 4
-        pd.points.push([s, -s, s]);   // 5
-        pd.points.push([s, s, s]);    // 6
-        pd.points.push([-s, s, s]);   // 7
+        pd.points.push([s, -s, -s]); // 1
+        pd.points.push([s, s, -s]); // 2
+        pd.points.push([-s, s, -s]); // 3
+        pd.points.push([-s, -s, s]); // 4
+        pd.points.push([s, -s, s]); // 5
+        pd.points.push([s, s, s]); // 6
+        pd.points.push([-s, s, s]); // 7
 
         // 12 triangles (2 per face)
         // Front face (z = s)

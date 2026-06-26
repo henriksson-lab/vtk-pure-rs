@@ -13,8 +13,10 @@ pub fn fiedler_vector(input: &PolyData) -> PolyData {
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
             let a=cell[i] as usize; let b=cell[(i+1)%cell.len()] as usize;
-            if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-            if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+            if a < n && b < n {
+                if !neighbors[a].contains(&b) { neighbors[a].push(b); }
+                if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+            }
         }
     }
 

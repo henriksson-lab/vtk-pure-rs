@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Perform one iteration of Loop subdivision on a triangle mesh.
 ///
@@ -15,33 +15,42 @@ use crate::data::{CellArray, Points, PolyData};
 /// Boundary edge midpoints use the simple midpoint.
 pub fn subdivide_loop(input: &PolyData) -> PolyData {
     let num_orig_pts: usize = input.points.len();
+    if input.polys.iter().any(|cell| cell.len() != 3) {
+        return input.clone();
+    }
 
     // Build adjacency: for each vertex, collect neighbor vertices
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); num_orig_pts];
+    let mut neighbors: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); num_orig_pts];
+    let mut boundary_neighbors: Vec<BTreeSet<usize>> = vec![BTreeSet::new(); num_orig_pts];
 
     // Edge to opposite vertices: edge (min,max) -> list of opposite vertex indices
-    let mut edge_opposite: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    let mut edge_opposite: BTreeMap<(usize, usize), Vec<usize>> = BTreeMap::new();
 
     for cell in input.polys.iter() {
-        if cell.len() != 3 {
-            continue;
-        }
         let tri: [usize; 3] = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
 
         for i in 0..3 {
             let a: usize = tri[i];
             let b: usize = tri[(i + 1) % 3];
             let opp: usize = tri[(i + 2) % 3];
+            if a >= num_orig_pts || b >= num_orig_pts || opp >= num_orig_pts {
+                return input.clone();
+            }
 
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
+            neighbors[a].insert(b);
+            neighbors[b].insert(a);
 
             let key = if a < b { (a, b) } else { (b, a) };
             edge_opposite.entry(key).or_default().push(opp);
+        }
+    }
+    if edge_opposite.values().any(|opposites| opposites.len() > 2) {
+        return input.clone();
+    }
+    for (&(a, b), opposites) in &edge_opposite {
+        if opposites.len() == 1 {
+            boundary_neighbors[a].insert(b);
+            boundary_neighbors[b].insert(a);
         }
     }
 
@@ -55,11 +64,23 @@ pub fn subdivide_loop(input: &PolyData) -> PolyData {
             new_points.push(p);
             continue;
         }
+        if boundary_neighbors[i].len() >= 2 {
+            let mut iter = boundary_neighbors[i].iter();
+            let b0 = input.points.get(*iter.next().unwrap());
+            let b1 = input.points.get(*iter.next().unwrap());
+            new_points.push([
+                0.75 * p[0] + 0.125 * (b0[0] + b1[0]),
+                0.75 * p[1] + 0.125 * (b0[1] + b1[1]),
+                0.75 * p[2] + 0.125 * (b0[2] + b1[2]),
+            ]);
+            continue;
+        }
 
         let beta: f64 = if n == 3 {
             3.0 / 16.0
         } else {
-            3.0 / (8.0 * n as f64)
+            let cos_sq = 0.375 + 0.25 * (2.0 * std::f64::consts::PI / n as f64).cos();
+            (0.625 - cos_sq * cos_sq) / n as f64
         };
 
         let mut sx: f64 = 0.0;
@@ -82,7 +103,7 @@ pub fn subdivide_loop(input: &PolyData) -> PolyData {
 
     // Create edge midpoints
     // Map edge (min,max) -> new point index
-    let mut edge_point_map: HashMap<(usize, usize), usize> = HashMap::new();
+    let mut edge_point_map: BTreeMap<(usize, usize), usize> = BTreeMap::new();
 
     for (&(a, b), opposites) in &edge_opposite {
         let pa = input.points.get(a);
@@ -123,9 +144,15 @@ pub fn subdivide_loop(input: &PolyData) -> PolyData {
         let v1: usize = cell[1] as usize;
         let v2: usize = cell[2] as usize;
 
-        let e01: usize = *edge_point_map.get(&if v0 < v1 { (v0, v1) } else { (v1, v0) }).unwrap();
-        let e12: usize = *edge_point_map.get(&if v1 < v2 { (v1, v2) } else { (v2, v1) }).unwrap();
-        let e20: usize = *edge_point_map.get(&if v2 < v0 { (v2, v0) } else { (v0, v2) }).unwrap();
+        let e01: usize = *edge_point_map
+            .get(&if v0 < v1 { (v0, v1) } else { (v1, v0) })
+            .unwrap();
+        let e12: usize = *edge_point_map
+            .get(&if v1 < v2 { (v1, v2) } else { (v2, v1) })
+            .unwrap();
+        let e20: usize = *edge_point_map
+            .get(&if v2 < v0 { (v2, v0) } else { (v0, v2) })
+            .unwrap();
 
         // 4 sub-triangles
         new_polys.push_cell(&[v0 as i64, e01 as i64, e20 as i64]);
@@ -185,7 +212,10 @@ mod tests {
         for cell in result.polys.iter() {
             assert_eq!(cell.len(), 3, "All cells should be triangles");
             for &idx in cell {
-                assert!((idx as usize) < result.points.len(), "Point index out of bounds");
+                assert!(
+                    (idx as usize) < result.points.len(),
+                    "Point index out of bounds"
+                );
             }
         }
     }

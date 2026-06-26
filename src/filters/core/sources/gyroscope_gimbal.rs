@@ -42,17 +42,17 @@ pub fn gyroscope_gimbal(radius: f64, na: usize) -> PolyData {
             lines.push_cell(&[(rb + j) as i64, (rb + (j + 1) % na) as i64]);
         }
     }
-    // Pivot pins connecting rings (4 points)
-    for &(a, r_inner, r_outer) in &[
-        (0.0, radius * 0.6, radius * 0.8),
-        (std::f64::consts::PI, radius * 0.6, radius * 0.8),
-        (std::f64::consts::PI / 2.0, radius * 0.8, radius),
-        (3.0 * std::f64::consts::PI / 2.0, radius * 0.8, radius),
+    // Pivot pins connecting rings at their geometric intersections.
+    for &(p_inner, p_outer) in &[
+        ([0.0, 0.0, radius * 0.6], [0.0, 0.0, radius * 0.8]),
+        ([0.0, 0.0, -radius * 0.6], [0.0, 0.0, -radius * 0.8]),
+        ([radius * 0.8, 0.0, 0.0], [radius, 0.0, 0.0]),
+        ([-radius * 0.8, 0.0, 0.0], [-radius, 0.0, 0.0]),
     ] {
         let p0 = pts.len();
-        pts.push([r_inner * a.cos(), r_inner * a.sin(), 0.0]);
+        pts.push(p_inner);
         let p1 = pts.len();
-        pts.push([r_outer * a.cos(), r_outer * a.sin(), 0.0]);
+        pts.push(p_outer);
         lines.push_cell(&[p0 as i64, p1 as i64]);
     }
     let mut m = PolyData::new();

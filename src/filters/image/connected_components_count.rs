@@ -22,8 +22,9 @@ pub fn label_connected_components(input: &ImageData, scalars: &str) -> ImageData
 
 fn label_connected_components_inner(input: &ImageData, scalars: &str) -> (ImageData, usize) {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return (input.clone(), 0),
+        _ => return (input.clone(), 0),
     };
 
     let dims = input.dimensions();
@@ -148,5 +149,35 @@ mod tests {
         let img = make_image(3, 3, 1, vec![0.0; 9]);
         let count: usize = count_connected_components(&img, "mask");
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn threshold_is_inclusive() {
+        let img = make_image(1, 1, 1, vec![0.5]);
+        let count: usize = count_connected_components(&img, "mask");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn missing_array_count_is_zero() {
+        let img = ImageData::with_dimensions(1, 1, 1);
+        assert_eq!(count_connected_components(&img, "missing"), 0);
+    }
+
+    #[test]
+    fn multi_component_array_is_not_treated_as_scalar_mask() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "mask",
+                vec![1.0, 0.0, 1.0, 0.0],
+                2,
+            )));
+
+        assert_eq!(count_connected_components(&img, "mask"), 0);
+        assert!(label_connected_components(&img, "mask")
+            .point_data()
+            .get_array("ComponentLabel")
+            .is_none());
     }
 }

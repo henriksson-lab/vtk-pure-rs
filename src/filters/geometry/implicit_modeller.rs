@@ -6,6 +6,20 @@ use crate::data::{AnyDataArray, DataArray, DataSet, ImageData, PolyData};
 /// input surface. This is similar to `voxel_modeller` but produces a
 /// continuous distance field instead of a binary volume.
 pub fn implicit_modeller(input: &PolyData, dimensions: [usize; 3]) -> ImageData {
+    if dimensions.contains(&0) || input.points.is_empty() {
+        let mut image = ImageData::with_dimensions(dimensions[0], dimensions[1], dimensions[2]);
+        let num_points = image.num_points();
+        image
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Distance",
+                vec![0.0; num_points],
+                1,
+            )));
+        image.point_data_mut().set_active_scalars("Distance");
+        return image;
+    }
+
     let bb = input.points.bounds();
     let margin = ((bb.x_max - bb.x_min) + (bb.y_max - bb.y_min) + (bb.z_max - bb.z_min)) / 6.0;
     let origin = [bb.x_min - margin, bb.y_min - margin, bb.z_min - margin];
@@ -23,6 +37,7 @@ pub fn implicit_modeller(input: &PolyData, dimensions: [usize; 3]) -> ImageData 
     let tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = input
         .polys
         .iter()
+        .filter(|cell| cell.len() >= 3)
         .flat_map(|cell| {
             let p0 = input.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {

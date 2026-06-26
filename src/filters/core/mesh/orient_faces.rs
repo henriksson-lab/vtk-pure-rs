@@ -3,20 +3,23 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Orient all faces consistently using BFS from a seed face.
 ///
-/// Starting from face 0, propagates winding order to adjacent faces
-/// through shared edges. Flips faces whose winding disagrees with
-/// their already-oriented neighbor.
+/// Starting from each unvisited face, propagates winding order to adjacent
+/// faces through shared edges. Flips faces whose winding disagrees with their
+/// already-oriented neighbor.
 pub fn orient_faces_consistent(input: &PolyData) -> PolyData {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
-    if nc == 0 { return input.clone(); }
+    if nc == 0 {
+        return input.clone();
+    }
 
     // Build edge-to-face adjacency
-    let mut edge_faces: HashMap<(i64,i64),Vec<usize>> = HashMap::new();
-    for (fi,c) in cells.iter().enumerate() {
+    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    for (fi, c) in cells.iter().enumerate() {
         for i in 0..c.len() {
-            let a=c[i]; let b=c[(i+1)%c.len()];
-            let key=if a<b{(a,b)}else{(b,a)};
+            let a = c[i];
+            let b = c[(i + 1) % c.len()];
+            let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
     }
@@ -25,38 +28,43 @@ pub fn orient_faces_consistent(input: &PolyData) -> PolyData {
     let mut flipped = vec![false; nc];
     let mut queue = VecDeque::new();
 
-    oriented[0] = true;
-    queue.push_back(0);
+    for seed in 0..nc {
+        if oriented[seed] {
+            continue;
+        }
+        oriented[seed] = true;
+        queue.push_back(seed);
 
-    while let Some(fi) = queue.pop_front() {
-        let c = &cells[fi];
-        for i in 0..c.len() {
-            let a=c[i]; let b=c[(i+1)%c.len()];
-            let key=if a<b{(a,b)}else{(b,a)};
+        while let Some(fi) = queue.pop_front() {
+            let c = &cells[fi];
+            for i in 0..c.len() {
+                let a = c[i];
+                let b = c[(i + 1) % c.len()];
+                let key = if a < b { (a, b) } else { (b, a) };
 
-            if let Some(adj) = edge_faces.get(&key) {
-                for &ni in adj {
-                    if ni==fi || oriented[ni] { continue; }
-                    oriented[ni] = true;
+                if let Some(adj) = edge_faces.get(&key) {
+                    for &ni in adj {
+                        if ni == fi || oriented[ni] {
+                            continue;
+                        }
+                        oriented[ni] = true;
 
-                    // Check if ni has the edge in the same direction
-                    let nc_cell = &cells[ni];
-                    let mut same_dir = false;
-                    for j in 0..nc_cell.len() {
-                        if nc_cell[j]==a && nc_cell[(j+1)%nc_cell.len()]==b { same_dir=true; break; }
+                        // Check if ni has the edge in the same direction
+                        let nc_cell = &cells[ni];
+                        let mut same_dir = false;
+                        for j in 0..nc_cell.len() {
+                            if nc_cell[j] == a && nc_cell[(j + 1) % nc_cell.len()] == b {
+                                same_dir = true;
+                                break;
+                            }
+                        }
+
+                        // Adjacent faces should have OPPOSITE final edge direction.
+                        let fi_has_ab = !flipped[fi];
+                        flipped[ni] = same_dir == fi_has_ab;
+
+                        queue.push_back(ni);
                     }
-
-                    // Adjacent faces should have OPPOSITE edge direction
-                    // (if fi has a->b, ni should have b->a)
-                    let fi_has_ab = !flipped[fi]; // fi's actual direction
-                    if same_dir == fi_has_ab {
-                        // Same direction = needs flip
-                        flipped[ni] = !flipped[fi];
-                    } else {
-                        flipped[ni] = flipped[fi];
-                    }
-
-                    queue.push_back(ni);
                 }
             }
         }
@@ -85,10 +93,12 @@ mod tests {
     #[test]
     fn already_consistent() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.0,1.0,0.0]); pd.points.push([0.0,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
-        pd.polys.push_cell(&[0,2,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
 
         let result = orient_faces_consistent(&pd);
         assert_eq!(result.polys.num_cells(), 2);
@@ -97,10 +107,12 @@ mod tests {
     #[test]
     fn fixes_flipped() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.0,1.0,0.0]); pd.points.push([0.0,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
-        pd.polys.push_cell(&[3,2,0]); // wrong winding
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[3, 2, 0]); // wrong winding
 
         let result = orient_faces_consistent(&pd);
         assert_eq!(result.polys.num_cells(), 2);
@@ -109,8 +121,10 @@ mod tests {
     #[test]
     fn single_face() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = orient_faces_consistent(&pd);
         assert_eq!(result.polys.num_cells(), 1);
@@ -121,5 +135,49 @@ mod tests {
         let pd = PolyData::new();
         let result = orient_faces_consistent(&pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn propagates_from_flipped_face() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([2.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[3, 2, 0]); // must flip, then drives the next face
+        pd.polys.push_cell(&[2, 3, 4]);
+
+        let result = orient_faces_consistent(&pd);
+        let cells: Vec<Vec<i64>> = result.polys.iter().map(|c| c.to_vec()).collect();
+        assert_eq!(cells[1], vec![0, 2, 3]);
+        assert_eq!(cells[2], vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn visits_disconnected_components() {
+        let mut pd = PolyData::new();
+        for p in [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [4.0, 1.0, 0.0],
+            [3.0, 1.0, 0.0],
+        ] {
+            pd.points.push(p);
+        }
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[3, 2, 0]);
+        pd.polys.push_cell(&[4, 5, 6]);
+        pd.polys.push_cell(&[7, 6, 4]);
+
+        let result = orient_faces_consistent(&pd);
+        let cells: Vec<Vec<i64>> = result.polys.iter().map(|c| c.to_vec()).collect();
+        assert_eq!(cells[1], vec![0, 2, 3]);
+        assert_eq!(cells[3], vec![4, 6, 7]);
     }
 }

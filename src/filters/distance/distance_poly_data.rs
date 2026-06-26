@@ -13,6 +13,7 @@ pub fn distance_poly_data(source: &PolyData, target: &PolyData) -> PolyData {
     let tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = source
         .polys
         .iter()
+        .filter(|cell| cell.len() >= 3)
         .flat_map(|cell| {
             let p0 = source.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {
@@ -153,5 +154,21 @@ mod tests {
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
         assert!(val[0] < 1e-10);
+    }
+
+    #[test]
+    fn ignores_degenerate_source_polygons() {
+        let source = PolyData::from_polygons(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![vec![], vec![0, 1], vec![0, 1, 2]],
+        );
+        let mut target = PolyData::new();
+        target.points.push([0.25, 0.25, 1.0]);
+
+        let result = distance_poly_data(&source, &target);
+        let arr = result.point_data().get_array("Distance").unwrap();
+        let mut val = [0.0f64];
+        arr.tuple_as_f64(0, &mut val);
+        assert!((val[0] - 1.0).abs() < 1e-10);
     }
 }

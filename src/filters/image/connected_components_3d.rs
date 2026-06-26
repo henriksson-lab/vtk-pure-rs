@@ -72,7 +72,7 @@ pub fn component_volumes_3d(
         }
     }
 
-    volumes.sort_by(|a, b| b.1.cmp(&a.1)); // largest first
+    volumes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0))); // largest first
     volumes
 }
 
@@ -183,6 +183,20 @@ mod tests {
         assert_eq!(vols.len(), 2);
         assert_eq!(vols[0].1, 3); // larger
         assert_eq!(vols[1].1, 2);
+    }
+
+    #[test]
+    fn equal_volumes_keep_label_order() {
+        let mut img = ImageData::with_dimensions(5, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 0.0, 1.0, 0.0, 1.0],
+                1,
+            )));
+
+        let vols = component_volumes_3d(&img, "v", 0.5);
+        assert_eq!(vols, vec![(1, 1), (2, 1), (3, 1)]);
     }
 
     #[test]

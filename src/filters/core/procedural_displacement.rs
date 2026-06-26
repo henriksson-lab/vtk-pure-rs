@@ -108,7 +108,7 @@ fn noise3(x: f64, y: f64, z: f64, seed: u64) -> f64 {
             ^ z.wrapping_mul(1013904223)) as u64)
             .wrapping_add(seed);
         let h = h.wrapping_mul(6364136223846793005).wrapping_add(1);
-        (h >> 33) as f64 / (1u64 << 31) as f64 - 1.0
+        2.0 * ((h >> 33) as f64 / (1u64 << 31) as f64) - 1.0
     };
     let mut r = 0.0;
     for dz in 0..2 {
@@ -141,5 +141,14 @@ mod tests {
         let r = jitter(&m, 0.01, 1);
         let p = r.points.get(0);
         assert!(p[0].abs() < 0.02);
+    }
+
+    #[test]
+    fn noise_is_signed() {
+        let a = noise3(0.25, 0.5, 0.75, 7);
+        let b = noise3(3.25, 1.5, 4.75, 11);
+        assert!((-1.0..=1.0).contains(&a));
+        assert!((-1.0..=1.0).contains(&b));
+        assert!(a > 0.0 || b > 0.0);
     }
 }

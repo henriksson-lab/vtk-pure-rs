@@ -13,7 +13,7 @@ pub fn image_celu(input: &ImageData, scalars: &str) -> ImageData {
             if buf[0] >= 0.0 {
                 buf[0]
             } else {
-                (buf[0].exp() - 1.0)
+                buf[0].exp() - 1.0
             }
         })
         .collect();

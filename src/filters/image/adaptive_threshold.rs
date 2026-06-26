@@ -25,7 +25,6 @@ pub fn adaptive_threshold(
 
     let r = radius as isize;
     let (nx, ny) = (dims[0], dims[1]);
-    let nz = dims[2];
 
     let data: Vec<f64> = (0..n)
         .map(|idx| {
@@ -54,10 +53,11 @@ pub fn adaptive_threshold(
         })
         .collect();
 
-    ImageData::with_dimensions(nx, ny, nz)
-        .with_spacing(input.spacing())
-        .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+    let mut output = input.clone();
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output
 }
 
 #[cfg(test)]

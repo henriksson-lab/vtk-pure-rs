@@ -65,6 +65,7 @@ pub fn siege_tower(width: f64, height: f64, n_floors: usize) -> PolyData {
         let wc = pts.len();
         pts.push([x, 0.0, width * 0.15]);
         let na = 8;
+        let rb = pts.len();
         for j in 0..na {
             let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
             let wp = pts.len();
@@ -74,6 +75,9 @@ pub fn siege_tower(width: f64, height: f64, n_floors: usize) -> PolyData {
                 width * 0.15 + width * 0.15 * a.sin(),
             ]);
             lines.push_cell(&[wc as i64, wp as i64]);
+        }
+        for j in 0..na {
+            lines.push_cell(&[(rb + j) as i64, (rb + (j + 1) % na) as i64]);
         }
     }
     let mut m = PolyData::new();

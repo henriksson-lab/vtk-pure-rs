@@ -27,10 +27,10 @@ impl Default for Arrow2dParams {
 
 /// Generate a 2D arrow polygon in the XY plane pointing in +X.
 pub fn arrow_2d(params: &Arrow2dParams) -> PolyData {
-    let l = params.length;
-    let hw = params.head_width * l;
-    let hl = params.head_length * l;
-    let sw = params.shaft_width * l;
+    let l = params.length.max(0.0);
+    let hw = params.head_width.max(0.0) * l;
+    let hl = (params.head_length.clamp(0.0, 1.0)) * l;
+    let sw = params.shaft_width.max(0.0).min(params.head_width.max(0.0)) * l;
     let shaft_end = l - hl;
 
     let pts = vec![
@@ -77,5 +77,15 @@ mod tests {
         });
         let tip = a.points.get(3);
         assert!((tip[0] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn clamps_head_length() {
+        let a = arrow_2d(&Arrow2dParams {
+            head_length: 2.0,
+            ..Default::default()
+        });
+        let base = a.points.get(1);
+        assert!(base[0].abs() < 1e-10);
     }
 }

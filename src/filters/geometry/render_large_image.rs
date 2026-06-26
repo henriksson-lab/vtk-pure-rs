@@ -31,6 +31,10 @@ pub fn compute_render_tiles(
     total_height: usize,
     tile_size: usize,
 ) -> Vec<RenderTile> {
+    if total_width == 0 || total_height == 0 || tile_size == 0 {
+        return Vec::new();
+    }
+
     let n_cols = (total_width + tile_size - 1) / tile_size;
     let n_rows = (total_height + tile_size - 1) / tile_size;
     let mut tiles = Vec::with_capacity(n_cols * n_rows);
@@ -103,6 +107,10 @@ pub fn tile_frustum_params(
     total_width: usize,
     total_height: usize,
 ) -> (f64, f64, f64, f64) {
+    if total_width == 0 || total_height == 0 || tile.width == 0 || tile.height == 0 {
+        return (0.0, 0.0, 1.0, 1.0);
+    }
+
     let tw = total_width as f64;
     let th = total_height as f64;
     let x_scale = tw / tile.width as f64;
@@ -159,7 +167,7 @@ mod tests {
             height: 512,
             viewport: [0.0, 0.5, 0.0, 0.5],
         };
-        let (xo, yo, xs, ys) = tile_frustum_params(&tile, 1024, 1024);
+        let (_xo, _yo, xs, _ys) = tile_frustum_params(&tile, 1024, 1024);
         assert!((xs - 2.0).abs() < 1e-10); // rendering half width → 2x scale
     }
 

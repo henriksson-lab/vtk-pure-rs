@@ -11,6 +11,9 @@ pub fn gradient_analysis(image: &ImageData, array_name: &str) -> ImageData {
     let dims = image.dimensions();
     let sp = image.spacing();
     let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() != n {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {

@@ -4,18 +4,16 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Create a regular tetrahedron with given edge length, centered at origin.
 pub fn regular_tetrahedron(edge_length: f64) -> PolyData {
-    let a = edge_length;
-    let h = a * (2.0 / 3.0f64).sqrt();
-    let r = a / 3.0f64.sqrt();
+    let scale = edge_length / (2.0 * 2.0f64.sqrt());
 
     let verts = [
-        [r, 0.0, -h / 4.0],
-        [-r / 2.0, a / 2.0, -h / 4.0],
-        [-r / 2.0, -a / 2.0, -h / 4.0],
-        [0.0, 0.0, 3.0 * h / 4.0],
+        [scale, scale, scale],
+        [-scale, scale, -scale],
+        [scale, -scale, -scale],
+        [-scale, -scale, scale],
     ];
 
-    let faces = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]];
+    let faces = [[0, 2, 1], [1, 2, 3], [0, 3, 2], [0, 1, 3]];
 
     let mut pts = Points::<f64>::new();
     for v in &verts {
@@ -41,9 +39,9 @@ pub fn tetrahedron_from_points(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3], p3: [f6
     pts.push(p3);
     let mut polys = CellArray::new();
     polys.push_cell(&[0, 2, 1]);
-    polys.push_cell(&[0, 1, 3]);
     polys.push_cell(&[1, 2, 3]);
-    polys.push_cell(&[2, 0, 3]);
+    polys.push_cell(&[0, 3, 2]);
+    polys.push_cell(&[0, 1, 3]);
     let mut result = PolyData::new();
     result.points = pts;
     result.polys = polys;
@@ -58,6 +56,11 @@ mod tests {
         let t = regular_tetrahedron(2.0);
         assert_eq!(t.points.len(), 4);
         assert_eq!(t.polys.num_cells(), 4);
+        let p0 = t.points.get(0);
+        let p1 = t.points.get(1);
+        let edge =
+            ((p0[0] - p1[0]).powi(2) + (p0[1] - p1[1]).powi(2) + (p0[2] - p1[2]).powi(2)).sqrt();
+        assert!((edge - 2.0).abs() < 1e-12);
     }
     #[test]
     fn test_from_points() {

@@ -7,6 +7,9 @@ pub fn hot_air_balloon(
     rope_count: usize,
     resolution: usize,
 ) -> PolyData {
+    let envelope_r = envelope_r.abs();
+    let envelope_h = envelope_h.abs();
+    let basket_size = basket_size.abs();
     let res = resolution.max(8);
     let vres = res;
     let nr = rope_count.max(4);

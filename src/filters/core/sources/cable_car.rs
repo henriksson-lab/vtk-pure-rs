@@ -11,6 +11,8 @@ pub fn cable_car_system(
     if ns < 2 {
         return PolyData::new();
     }
+    let cable_sag = cable_sag.max(0.0);
+    let gondola_size = gondola_size.max(0.0);
     let res = resolution.max(8);
     let ng = num_gondolas.max(1);
     let mut pts = Points::<f64>::new();
@@ -83,6 +85,8 @@ pub fn cable_car_system(
         polys.push_cell(&[f(4), f(5), f(6), f(7)]);
         polys.push_cell(&[f(0), f(1), f(5), f(4)]);
         polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+        polys.push_cell(&[f(0), f(4), f(7), f(3)]);
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]);
         // Hanger
         let hb = pts.len();
         pts.push([gx, gy, gz + gs * 2.0]);

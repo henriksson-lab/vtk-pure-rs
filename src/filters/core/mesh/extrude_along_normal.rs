@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::data::{CellArray, DataArray, AnyDataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Extrude a surface mesh along its face normals by a given distance.
 ///
@@ -13,8 +13,7 @@ pub fn extrude_along_normals(input: &PolyData, distance: f64) -> PolyData {
         return input.clone();
     }
 
-    // Compute vertex normals by averaging face normals
-    let vertex_normals = compute_vertex_normals(input);
+    let vertex_normals = extract_vertex_normals(input);
 
     // Build output points: original points + offset points
     let mut points = Points::<f64>::new();
@@ -35,14 +34,17 @@ pub fn extrude_along_normals(input: &PolyData, distance: f64) -> PolyData {
 
     // Outer surface: original faces
     for cell in input.polys.iter() {
-        let ids: Vec<i64> = cell.iter().copied().collect();
-        polys.push_cell(&ids);
+        if valid_point_ids(cell, n).is_some() {
+            polys.push_cell(cell);
+        }
     }
 
-    // Inner surface: reversed faces offset by n
+    // Translated cap: VTK's linear extrusion keeps the input winding.
     for cell in input.polys.iter() {
-        let ids: Vec<i64> = cell.iter().rev().map(|&id| id + n as i64).collect();
-        polys.push_cell(&ids);
+        if let Some(ids) = valid_point_ids(cell, n) {
+            let ids: Vec<i64> = ids.into_iter().map(|id| id as i64 + n as i64).collect();
+            polys.push_cell(&ids);
+        }
     }
 
     // Find boundary edges (edges with only one adjacent face) for side walls
@@ -61,11 +63,31 @@ pub fn extrude_along_normals(input: &PolyData, distance: f64) -> PolyData {
     output
 }
 
+fn extract_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {
+    let n = input.points.len();
+    if let Some(normals) = input.point_data().normals() {
+        if normals.num_components() == 3 && normals.num_tuples() == n {
+            let mut result = Vec::with_capacity(n);
+            let mut tuple = [0.0; 3];
+            for i in 0..n {
+                normals.tuple_as_f64(i, &mut tuple);
+                result.push(tuple);
+            }
+            return result;
+        }
+    }
+
+    compute_vertex_normals(input)
+}
+
 fn compute_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {
     let n: usize = input.points.len();
     let mut normals: Vec<[f64; 3]> = vec![[0.0, 0.0, 0.0]; n];
 
     for cell in input.polys.iter() {
+        let Some(ids) = valid_point_ids(cell, n) else {
+            continue;
+        };
         if cell.len() < 3 {
             continue;
         }
@@ -73,17 +95,16 @@ fn compute_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {
         let mut nx: f64 = 0.0;
         let mut ny: f64 = 0.0;
         let mut nz: f64 = 0.0;
-        let len: usize = cell.len();
+        let len: usize = ids.len();
         for j in 0..len {
-            let pi = input.points.get(cell[j] as usize);
-            let pj = input.points.get(cell[(j + 1) % len] as usize);
+            let pi = input.points.get(ids[j]);
+            let pj = input.points.get(ids[(j + 1) % len]);
             nx += (pi[1] - pj[1]) * (pi[2] + pj[2]);
             ny += (pi[2] - pj[2]) * (pi[0] + pj[0]);
             nz += (pi[0] - pj[0]) * (pi[1] + pj[1]);
         }
         // Accumulate (unnormalized) face normal to each vertex
-        for &id in cell.iter() {
-            let idx: usize = id as usize;
+        for &idx in &ids {
             normals[idx][0] += nx;
             normals[idx][1] += ny;
             normals[idx][2] += nz;
@@ -92,7 +113,8 @@ fn compute_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {
 
     // Normalize
     for normal in normals.iter_mut() {
-        let mag: f64 = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+        let mag: f64 =
+            (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
         if mag > 1e-12 {
             normal[0] /= mag;
             normal[1] /= mag;
@@ -110,10 +132,13 @@ fn find_boundary_edges(input: &PolyData) -> Vec<(usize, usize)> {
     let mut ordered_edges: Vec<(usize, usize)> = Vec::new();
 
     for cell in input.polys.iter() {
-        let len: usize = cell.len();
+        let Some(ids) = valid_point_ids(cell, input.points.len()) else {
+            continue;
+        };
+        let len: usize = ids.len();
         for j in 0..len {
-            let a: usize = cell[j] as usize;
-            let b: usize = cell[(j + 1) % len] as usize;
+            let a: usize = ids[j];
+            let b: usize = ids[(j + 1) % len];
             let key = if a < b { (a, b) } else { (b, a) };
             let count = edge_count.entry(key).or_insert(0);
             if *count == 0 {
@@ -133,9 +158,16 @@ fn find_boundary_edges(input: &PolyData) -> Vec<(usize, usize)> {
     boundary
 }
 
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
     fn make_single_triangle() -> PolyData {
         let mut pd = PolyData::new();
@@ -167,6 +199,7 @@ mod tests {
 
         // 1 outer face + 1 inner face + 3 boundary edge side-wall quads
         assert_eq!(result.polys.num_cells(), 5);
+        assert_eq!(result.polys.cell(1), &[3, 4, 5]);
 
         // Verify offset points are at z=1 (normal of XY triangle is +Z)
         for i in 3..6 {
@@ -196,6 +229,28 @@ mod tests {
         for i in 3..6 {
             let p = result.points.get(i);
             assert!((p[2] - (-0.5)).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn extrude_uses_supplied_point_normals() {
+        let mut tri = make_single_triangle();
+        tri.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals",
+                vec![1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                3,
+            )));
+        tri.point_data_mut().set_active_normals("Normals");
+
+        let result = extrude_along_normals(&tri, 2.0);
+
+        for i in 0..3 {
+            let p = result.points.get(i);
+            let q = result.points.get(i + 3);
+            assert!((q[0] - (p[0] + 2.0)).abs() < 1e-10);
+            assert!((q[1] - p[1]).abs() < 1e-10);
+            assert!((q[2] - p[2]).abs() < 1e-10);
         }
     }
 }

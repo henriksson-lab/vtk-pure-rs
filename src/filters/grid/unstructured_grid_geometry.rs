@@ -1,5 +1,7 @@
 //! Extract specific faces from an UnstructuredGrid.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::data::{CellArray, Points, PolyData, UnstructuredGrid};
 use crate::types::CellType;
 
@@ -7,16 +9,14 @@ use crate::types::CellType;
 ///
 /// A boundary face is a face that is not shared by two cells.
 pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
-    // Build face → cell count map
-    let mut face_count: std::collections::HashMap<Vec<usize>, usize> =
-        std::collections::HashMap::new();
+    let mut face_count: HashMap<Vec<usize>, usize> = HashMap::new();
     let mut all_faces: Vec<Vec<usize>> = Vec::new();
 
-    for cell in grid.cells().iter() {
-        let faces = cell_faces(cell);
+    for (cell_id, cell) in grid.cells().iter().enumerate() {
+        let faces = cell_faces(grid.cell_type(cell_id), cell);
         for face in faces {
             let mut sorted = face.clone();
-            sorted.sort();
+            sorted.sort_unstable();
             *face_count.entry(sorted).or_insert(0) += 1;
             all_faces.push(face);
         }
@@ -25,11 +25,11 @@ pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
     // Collect boundary faces (count == 1)
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let mut point_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut point_map: HashMap<usize, usize> = HashMap::new();
 
     for face in &all_faces {
         let mut sorted = face.clone();
-        sorted.sort();
+        sorted.sort_unstable();
         if face_count.get(&sorted) != Some(&1) {
             continue;
         }
@@ -60,14 +60,14 @@ pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
 pub fn extract_all_faces(grid: &UnstructuredGrid) -> PolyData {
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let mut point_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-    let mut seen_faces: std::collections::HashSet<Vec<usize>> = std::collections::HashSet::new();
+    let mut point_map: HashMap<usize, usize> = HashMap::new();
+    let mut seen_faces: HashSet<Vec<usize>> = HashSet::new();
 
-    for cell in grid.cells().iter() {
-        let faces = cell_faces(cell);
+    for (cell_id, cell) in grid.cells().iter().enumerate() {
+        let faces = cell_faces(grid.cell_type(cell_id), cell);
         for face in faces {
             let mut sorted = face.clone();
-            sorted.sort();
+            sorted.sort_unstable();
             if !seen_faces.insert(sorted) {
                 continue;
             }
@@ -98,13 +98,13 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
     let types = grid.cell_types();
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let mut point_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut point_map: HashMap<usize, usize> = HashMap::new();
 
     for (ci, cell) in grid.cells().iter().enumerate() {
         if ci >= types.len() || types[ci] != cell_type {
             continue;
         }
-        let faces = cell_faces(cell);
+        let faces = cell_faces(cell_type, cell);
         for face in faces {
             let mut ids = Vec::new();
             for &pid in &face {
@@ -127,43 +127,48 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
     mesh
 }
 
-fn cell_faces(cell: &[i64]) -> Vec<Vec<usize>> {
-    let n = cell.len();
-    match n {
-        4 => {
-            // Tetrahedron: 4 triangular faces
-            let c: Vec<usize> = cell.iter().map(|&i| i as usize).collect();
+fn cell_faces(cell_type: CellType, cell: &[i64]) -> Vec<Vec<usize>> {
+    let c: Vec<usize> = cell.iter().map(|&i| i as usize).collect();
+    match cell_type {
+        CellType::Tetra if c.len() >= 4 => {
             vec![
-                vec![c[0], c[1], c[2]],
                 vec![c[0], c[1], c[3]],
-                vec![c[0], c[2], c[3]],
                 vec![c[1], c[2], c[3]],
+                vec![c[2], c[0], c[3]],
+                vec![c[0], c[2], c[1]],
             ]
         }
-        8 => {
-            // Hexahedron: 6 quad faces
-            let c: Vec<usize> = cell.iter().map(|&i| i as usize).collect();
+        CellType::Hexahedron | CellType::Voxel if c.len() >= 8 => {
             vec![
-                vec![c[0], c[1], c[2], c[3]], // bottom
-                vec![c[4], c[5], c[6], c[7]], // top
-                vec![c[0], c[1], c[5], c[4]], // front
-                vec![c[2], c[3], c[7], c[6]], // back
-                vec![c[0], c[3], c[7], c[4]], // left
-                vec![c[1], c[2], c[6], c[5]], // right
+                vec![c[0], c[4], c[7], c[3]],
+                vec![c[1], c[2], c[6], c[5]],
+                vec![c[0], c[1], c[5], c[4]],
+                vec![c[3], c[7], c[6], c[2]],
+                vec![c[0], c[3], c[2], c[1]],
+                vec![c[4], c[5], c[6], c[7]],
             ]
         }
-        3 => {
-            // Triangle: 1 face (itself)
-            vec![cell.iter().map(|&i| i as usize).collect()]
+        CellType::Wedge if c.len() >= 6 => {
+            vec![
+                vec![c[0], c[2], c[1]],
+                vec![c[3], c[4], c[5]],
+                vec![c[0], c[1], c[4], c[3]],
+                vec![c[1], c[2], c[5], c[4]],
+                vec![c[2], c[0], c[3], c[5]],
+            ]
         }
-        _ => {
-            // General polygon: 1 face
-            if n >= 3 {
-                vec![cell.iter().map(|&i| i as usize).collect()]
-            } else {
-                Vec::new()
-            }
+        CellType::Pyramid if c.len() >= 5 => {
+            vec![
+                vec![c[0], c[3], c[2], c[1]],
+                vec![c[0], c[1], c[4]],
+                vec![c[1], c[2], c[4]],
+                vec![c[2], c[3], c[4]],
+                vec![c[3], c[0], c[4]],
+            ]
         }
+        CellType::Triangle if c.len() >= 3 => vec![c],
+        CellType::Quad | CellType::Pixel | CellType::Polygon if c.len() >= 3 => vec![c],
+        _ => Vec::new(),
     }
 }
 

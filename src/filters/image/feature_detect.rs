@@ -134,6 +134,9 @@ pub fn non_maximum_suppression_3d(image: &ImageData, array_name: &str) -> ImageD
     };
     let dims = image.dimensions();
     let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() < n {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {

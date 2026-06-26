@@ -1,86 +1,73 @@
 //! Spatial decomposition using oriented bounding boxes.
 //!
 //! Recursively subdivides the OBB of a PolyData mesh along the longest axis
-//! until each partition has fewer than `max_cells` cells.
+//! until each partition has fewer than `max_points` points.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Dice a PolyData into regions using recursive OBB subdivision.
 ///
-/// Splits along the longest axis of the oriented bounding box, using cell
-/// centroids to determine which side each cell belongs to. Recursion stops
-/// when a region has at most `max_cells` cells.
+/// Splits along the longest axis of the oriented bounding box, using point
+/// positions to determine which side each point belongs to. Recursion stops
+/// when a region has at most `max_points` points.
 ///
-/// Adds a "RegionId" cell data array to the output.
-pub fn obb_dicer(input: &PolyData, max_cells: usize) -> PolyData {
-    let max_cells = max_cells.max(1);
-    let num_cells = input.polys.num_cells();
-    if num_cells == 0 {
+/// Adds a "vtkOBBDicer_GroupIds" point data array to the output.
+pub fn obb_dicer(input: &PolyData, max_points: usize) -> PolyData {
+    let max_points = max_points.max(1);
+    let num_points = input.points.len();
+    if num_points == 0 {
         return input.clone();
     }
 
-    // Compute centroids for all cells
-    let mut centroids: Vec<[f64; 3]> = Vec::with_capacity(num_cells);
-    for ci in 0..num_cells {
-        let cell = input.polys.cell(ci);
-        let mut cx = 0.0;
-        let mut cy = 0.0;
-        let mut cz = 0.0;
-        for &id in cell {
-            let p = input.points.get(id as usize);
-            cx += p[0];
-            cy += p[1];
-            cz += p[2];
-        }
-        let n = cell.len() as f64;
-        centroids.push([cx / n, cy / n, cz / n]);
-    }
+    let points: Vec<[f64; 3]> = (0..num_points).map(|i| input.points.get(i)).collect();
 
     // Assign region IDs via recursive splitting
-    let mut region_ids = vec![0i32; num_cells];
-    let indices: Vec<usize> = (0..num_cells).collect();
+    let mut group_ids = vec![0i32; num_points];
+    let indices: Vec<usize> = (0..num_points).collect();
     let mut next_region = 0i32;
     recursive_split(
-        &centroids,
+        &points,
         &indices,
-        max_cells,
-        &mut region_ids,
+        max_points,
+        &mut group_ids,
         &mut next_region,
     );
 
-    let region_f64: Vec<f64> = region_ids.iter().map(|&r| r as f64).collect();
+    let group_f64: Vec<f64> = group_ids.iter().map(|&r| r as f64).collect();
     let mut output = input.clone();
     output
-        .cell_data_mut()
+        .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "RegionId", region_f64, 1,
+            "vtkOBBDicer_GroupIds",
+            group_f64,
+            1,
         )));
     output
 }
 
 fn recursive_split(
-    centroids: &[[f64; 3]],
+    points: &[[f64; 3]],
     indices: &[usize],
-    max_cells: usize,
-    region_ids: &mut [i32],
+    max_points: usize,
+    group_ids: &mut [i32],
     next_region: &mut i32,
 ) {
-    if indices.len() <= max_cells || indices.is_empty() {
+    if indices.len() <= max_points || indices.is_empty() {
         let id = *next_region;
         *next_region += 1;
         for &idx in indices {
-            region_ids[idx] = id;
+            group_ids[idx] = id;
         }
         return;
     }
 
-    // Compute mean centroid for this subset
+    // Compute mean point for this subset
     let mut mean = [0.0f64; 3];
     for &idx in indices {
-        let c = centroids[idx];
-        mean[0] += c[0];
-        mean[1] += c[1];
-        mean[2] += c[2];
+        let p = points[idx];
+        mean[0] += p[0];
+        mean[1] += p[1];
+        mean[2] += p[2];
     }
     let n = indices.len() as f64;
     mean[0] /= n;
@@ -90,8 +77,8 @@ fn recursive_split(
     // Compute covariance matrix for OBB principal axis
     let mut cov = [[0.0f64; 3]; 3];
     for &idx in indices {
-        let c = centroids[idx];
-        let d = [c[0] - mean[0], c[1] - mean[1], c[2] - mean[2]];
+        let p = points[idx];
+        let d = [p[0] - mean[0], p[1] - mean[1], p[2] - mean[2]];
         for i in 0..3 {
             for j in 0..3 {
                 cov[i][j] += d[i] * d[j];
@@ -102,14 +89,14 @@ fn recursive_split(
     // Find the longest axis using power iteration (simple approximation)
     let axis = dominant_eigenvector(&cov);
 
-    // Project centroids onto the axis and split at the median
+    // Project points onto the axis and split at the median
     let mut projections: Vec<(f64, usize)> = indices
         .iter()
         .map(|&idx| {
-            let c = centroids[idx];
-            let proj = (c[0] - mean[0]) * axis[0]
-                + (c[1] - mean[1]) * axis[1]
-                + (c[2] - mean[2]) * axis[2];
+            let p = points[idx];
+            let proj = (p[0] - mean[0]) * axis[0]
+                + (p[1] - mean[1]) * axis[1]
+                + (p[2] - mean[2]) * axis[2];
             (proj, idx)
         })
         .collect();
@@ -120,8 +107,8 @@ fn recursive_split(
     let left: Vec<usize> = projections[..mid].iter().map(|&(_, idx)| idx).collect();
     let right: Vec<usize> = projections[mid..].iter().map(|&(_, idx)| idx).collect();
 
-    recursive_split(centroids, &left, max_cells, region_ids, next_region);
-    recursive_split(centroids, &right, max_cells, region_ids, next_region);
+    recursive_split(points, &left, max_points, group_ids, next_region);
+    recursive_split(points, &right, max_points, group_ids, next_region);
 }
 
 /// Simple power iteration to find the dominant eigenvector of a 3x3 symmetric matrix.
@@ -149,7 +136,7 @@ mod tests {
     #[test]
     fn dice_small_mesh() {
         let mut pd = PolyData::new();
-        // Create 6 triangles spread along x-axis
+        // Create 18 points spread along x-axis
         for i in 0..6 {
             let x = i as f64 * 2.0;
             let base = (i * 3) as i64;
@@ -160,19 +147,22 @@ mod tests {
         }
 
         let result = obb_dicer(&pd, 2);
-        let arr = result.cell_data().get_array("RegionId").unwrap();
-        assert_eq!(arr.num_tuples(), 6);
+        let arr = result
+            .point_data()
+            .get_array("vtkOBBDicer_GroupIds")
+            .unwrap();
+        assert_eq!(arr.num_tuples(), 18);
 
-        // Should have at least 3 regions (6 cells / 2 max each)
+        // Should have at least 9 regions (18 points / 2 max each)
         let mut ids = Vec::new();
         let mut buf = [0.0f64];
-        for i in 0..6 {
+        for i in 0..18 {
             arr.tuple_as_f64(i, &mut buf);
             ids.push(buf[0] as i32);
         }
         ids.sort();
         ids.dedup();
-        assert!(ids.len() >= 3);
+        assert!(ids.len() >= 9);
     }
 
     #[test]
@@ -182,7 +172,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = obb_dicer(&pd, 10);
-        let arr = result.cell_data().get_array("RegionId").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("vtkOBBDicer_GroupIds")
+            .unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 0.0);

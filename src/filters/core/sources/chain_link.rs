@@ -11,12 +11,8 @@ pub fn chain_link(major_radius: f64, minor_radius: f64, u_res: usize, v_res: usi
         let v = 2.0 * std::f64::consts::PI * iv as f64 / vres as f64;
         for iu in 0..ures {
             let u = 2.0 * std::f64::consts::PI * iu as f64 / ures as f64;
-            let cx = if u.cos() > 0.0 {
-                (major_radius + stretch) * u.cos()
-            } else {
-                (major_radius + stretch) * u.cos()
-            };
-            let cy = (major_radius) * u.sin();
+            let cx = (major_radius + stretch) * u.cos();
+            let cy = major_radius * u.sin();
             let r = minor_radius;
             pts.push([
                 cx + r * u.cos() * v.cos(),

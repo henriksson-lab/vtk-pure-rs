@@ -44,6 +44,8 @@ pub fn space_elevator(
     polys.push_cell(&[f(4), f(5), f(6), f(7)]);
     polys.push_cell(&[f(0), f(1), f(5), f(4)]);
     polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+    polys.push_cell(&[f(1), f(2), f(6), f(5)]);
+    polys.push_cell(&[f(0), f(4), f(7), f(3)]);
     // Counterweight
     let cw = gs_size * 2.0;
     let cb = pts.len();
@@ -58,6 +60,10 @@ pub fn space_elevator(
     let g = |i: usize| (cb + i) as i64;
     polys.push_cell(&[g(0), g(3), g(2), g(1)]);
     polys.push_cell(&[g(4), g(5), g(6), g(7)]);
+    polys.push_cell(&[g(0), g(1), g(5), g(4)]);
+    polys.push_cell(&[g(2), g(3), g(7), g(6)]);
+    polys.push_cell(&[g(1), g(2), g(6), g(5)]);
+    polys.push_cell(&[g(0), g(4), g(7), g(3)]);
     // Climber (small box on tether)
     let climber_z = geo_altitude * 0.3;
     let cs = gs_size * 0.5;
@@ -75,6 +81,8 @@ pub fn space_elevator(
     polys.push_cell(&[h(4), h(5), h(6), h(7)]);
     polys.push_cell(&[h(0), h(1), h(5), h(4)]);
     polys.push_cell(&[h(2), h(3), h(7), h(6)]);
+    polys.push_cell(&[h(1), h(2), h(6), h(5)]);
+    polys.push_cell(&[h(0), h(4), h(7), h(3)]);
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;

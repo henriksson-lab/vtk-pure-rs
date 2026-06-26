@@ -3,8 +3,8 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Create a supertoroid with exponents n1 and n2.
-/// n1 controls the cross-section shape, n2 controls the ring shape.
-/// n1=n2=1.0 gives a regular torus. n1=0.5 gives a square cross-section.
+/// n1 controls the ring shape in the x-y plane, n2 controls the cross-section shape.
+/// n1=n2=1.0 gives a regular torus.
 pub fn supertoroid(
     major_radius: f64,
     minor_radius: f64,
@@ -26,9 +26,10 @@ pub fn supertoroid(
             let su = signed_pow(u.sin(), n1);
             let cv = signed_pow(v.cos(), n2);
             let sv = signed_pow(v.sin(), n2);
-            let x = (major_radius + minor_radius * cu) * cv;
-            let y = (major_radius + minor_radius * cu) * sv;
-            let z = minor_radius * su;
+            let tmp = major_radius + minor_radius * cv;
+            let x = tmp * su;
+            let y = tmp * cu;
+            let z = minor_radius * sv;
             pts.push([x, y, z]);
         }
     }
@@ -52,6 +53,12 @@ pub fn supertoroid(
 }
 
 fn signed_pow(val: f64, exp: f64) -> f64 {
+    if val == 0.0 {
+        return 0.0;
+    }
+    if exp == 0.0 {
+        return 1.0;
+    }
     val.signum() * val.abs().powf(exp)
 }
 

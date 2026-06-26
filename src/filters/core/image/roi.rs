@@ -19,8 +19,10 @@ pub fn image_sphere_roi(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
-    let origin = input.origin();
-    let spacing = input.spacing();
+    let n = nx * ny * nz;
+    if arr.num_tuples() < n {
+        return input.clone();
+    }
     let r2 = radius * radius;
 
     let mut buf = [0.0f64];
@@ -29,9 +31,10 @@ pub fn image_sphere_roi(
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let x = origin[0] + i as f64 * spacing[0] - center[0];
-                let y = origin[1] + j as f64 * spacing[1] - center[1];
-                let z = origin[2] + k as f64 * spacing[2] - center[2];
+                let p = input.point_from_ijk(i, j, k);
+                let x = p[0] - center[0];
+                let y = p[1] - center[1];
+                let z = p[2] - center[2];
                 arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
                 values.push(if x * x + y * y + z * z <= r2 {
                     buf[0]
@@ -43,20 +46,9 @@ pub fn image_sphere_roi(
     }
 
     let mut img = input.clone();
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            new_attrs.add_array(a.clone());
-        }
-    }
-    *img.point_data_mut() = new_attrs;
+    img.point_data_mut()
+        .field_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
     img
 }
 
@@ -76,8 +68,10 @@ pub fn image_box_roi(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
-    let origin = input.origin();
-    let spacing = input.spacing();
+    let n = nx * ny * nz;
+    if arr.num_tuples() < n {
+        return input.clone();
+    }
 
     let mut buf = [0.0f64];
     let mut values = Vec::with_capacity(nx * ny * nz);
@@ -85,9 +79,7 @@ pub fn image_box_roi(
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let x = origin[0] + i as f64 * spacing[0];
-                let y = origin[1] + j as f64 * spacing[1];
-                let z = origin[2] + k as f64 * spacing[2];
+                let [x, y, z] = input.point_from_ijk(i, j, k);
                 arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
                 let inside = x >= bounds[0]
                     && x <= bounds[1]
@@ -101,20 +93,9 @@ pub fn image_box_roi(
     }
 
     let mut img = input.clone();
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            new_attrs.add_array(a.clone());
-        }
-    }
-    *img.point_data_mut() = new_attrs;
+    img.point_data_mut()
+        .field_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
     img
 }
 
@@ -167,5 +148,25 @@ mod tests {
         let img = ImageData::with_dimensions(3, 3, 1);
         let r = image_sphere_roi(&img, "nope", [0.0; 3], 1.0, 0.0);
         assert_eq!(r.dimensions(), [3, 3, 1]);
+    }
+
+    #[test]
+    fn roi_uses_image_extent_for_coordinates_and_preserves_active_scalars() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.set_extent([10, 11, 0, 0, 0, 0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0],
+                1,
+            )));
+        img.point_data_mut().set_active_scalars("v");
+
+        let result = image_box_roi(&img, "v", [10.0, 10.0, 0.0, 0.0, 0.0, 0.0], 0.0);
+        assert!(result.point_data().scalars().is_some());
+        assert_eq!(
+            result.point_data().get_array("v").unwrap().to_f64_vec(),
+            vec![1.0, 0.0]
+        );
     }
 }

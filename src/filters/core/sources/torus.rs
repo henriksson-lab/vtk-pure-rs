@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 pub struct TorusParams {
     /// Major radius (center of tube to center of torus). Default: 1.0
     pub ring_radius: f64,
-    /// Minor radius (radius of the tube). Default: 0.25
+    /// Minor radius (radius of the tube). Default: 0.5
     pub cross_section_radius: f64,
     /// Number of segments around the ring. Default: 32
     pub ring_resolution: usize,
@@ -19,7 +19,7 @@ impl Default for TorusParams {
     fn default() -> Self {
         Self {
             ring_radius: 1.0,
-            cross_section_radius: 0.25,
+            cross_section_radius: 0.5,
             ring_resolution: 32,
             cross_section_resolution: 16,
             center: [0.0, 0.0, 0.0],
@@ -53,15 +53,15 @@ pub fn torus(params: &TorusParams) -> PolyData {
             let sin_p = phi.sin();
 
             let r = r_ring + r_cs * cos_p;
-            let x = cx + r * cos_t;
-            let y = cy + r * sin_t;
+            let x = cx + r * sin_t;
+            let y = cy + r * cos_t;
             let z = cz + r_cs * sin_p;
 
             points.push([x, y, z]);
 
             // Normal points outward from the tube center
-            let nx = cos_p * cos_t;
-            let ny = cos_p * sin_t;
+            let nx = cos_p * sin_t;
+            let ny = cos_p * cos_t;
             let nz = sin_p;
             normals.push_tuple(&[nx, ny, nz]);
         }

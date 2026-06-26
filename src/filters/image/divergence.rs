@@ -11,7 +11,8 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
         None => return input.clone(),
     };
 
-    if arr.num_components() != 3 {
+    let num_components = arr.num_components().min(3);
+    if num_components == 0 {
         return input.clone();
     }
 
@@ -22,7 +23,7 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
     let spacing = input.spacing();
     let n: usize = nx * ny * nz;
 
-    // Extract vector components
+    // Extract up to the first three vector components, matching vtkImageDivergence.
     let mut vx: Vec<f64> = vec![0.0; n];
     let mut vy: Vec<f64> = vec![0.0; n];
     let mut vz: Vec<f64> = vec![0.0; n];
@@ -30,8 +31,12 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
     for idx in 0..n {
         arr.tuple_as_f64(idx, &mut buf);
         vx[idx] = buf[0];
-        vy[idx] = buf[1];
-        vz[idx] = buf[2];
+        if num_components > 1 {
+            vy[idx] = buf[1];
+        }
+        if num_components > 2 {
+            vz[idx] = buf[2];
+        }
     }
 
     let index = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
@@ -68,7 +73,15 @@ pub fn compute_divergence(input: &ImageData, vector_array: &str) -> ImageData {
                     0.0
                 };
 
-                divergence[index(i, j, k)] = dvx_dx + dvy_dy + dvz_dz;
+                let mut sum = dvx_dx;
+                if num_components > 1 {
+                    sum += dvy_dy;
+                }
+                if num_components > 2 {
+                    sum += dvz_dz;
+                }
+
+                divergence[index(i, j, k)] = sum;
             }
         }
     }
@@ -142,6 +155,29 @@ mod tests {
             div_arr.tuple_as_f64(i, &mut buf);
             assert!((buf[0] - 1.0).abs() < 1e-10, "Expected 1.0, got {}", buf[0]);
         }
+    }
+
+    #[test]
+    fn two_component_field_uses_x_and_y_terms() {
+        // V = (x, y) => div = 2
+        let mut img = ImageData::with_dimensions(5, 5, 1);
+        img.set_spacing([1.0, 1.0, 1.0]);
+
+        let mut data: Vec<f64> = Vec::new();
+        for j in 0..5 {
+            for i in 0..5 {
+                data.push(i as f64);
+                data.push(j as f64);
+            }
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("V", data, 2)));
+
+        let result = compute_divergence(&img, "V");
+        let div_arr = result.point_data().get_array("Divergence").unwrap();
+        let mut buf: [f64; 1] = [0.0];
+        div_arr.tuple_as_f64(2 * 5 + 2, &mut buf);
+        assert!((buf[0] - 2.0).abs() < 1e-10, "Expected 2.0, got {}", buf[0]);
     }
 
     #[test]

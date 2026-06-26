@@ -14,8 +14,10 @@ pub fn sphere_roi_stats(
         _ => return None,
     };
     let dims = image.dimensions();
-    let sp = image.spacing();
-    let org = image.origin();
+    let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() < n {
+        return None;
+    }
     let r2 = radius * radius;
     let mut buf = [0.0f64];
     let mut sum = 0.0;
@@ -27,22 +29,18 @@ pub fn sphere_roi_stats(
     for iz in 0..dims[2] {
         for iy in 0..dims[1] {
             for ix in 0..dims[0] {
-                let x = org[0] + ix as f64 * sp[0];
-                let y = org[1] + iy as f64 * sp[1];
-                let z = org[2] + iz as f64 * sp[2];
+                let [x, y, z] = image.point_from_ijk(ix, iy, iz);
                 if (x - center[0]).powi(2) + (y - center[1]).powi(2) + (z - center[2]).powi(2) > r2
                 {
                     continue;
                 }
                 let idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
-                if idx < arr.num_tuples() {
-                    arr.tuple_as_f64(idx, &mut buf);
-                    sum += buf[0];
-                    sum2 += buf[0] * buf[0];
-                    min_v = min_v.min(buf[0]);
-                    max_v = max_v.max(buf[0]);
-                    count += 1;
-                }
+                arr.tuple_as_f64(idx, &mut buf);
+                sum += buf[0];
+                sum2 += buf[0] * buf[0];
+                min_v = min_v.min(buf[0]);
+                max_v = max_v.max(buf[0]);
+                count += 1;
             }
         }
     }
@@ -68,8 +66,10 @@ pub fn box_roi_stats(
         _ => return None,
     };
     let dims = image.dimensions();
-    let sp = image.spacing();
-    let org = image.origin();
+    let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() < n {
+        return None;
+    }
     let mut buf = [0.0f64];
     let mut sum = 0.0;
     let mut sum2 = 0.0;
@@ -80,22 +80,18 @@ pub fn box_roi_stats(
     for iz in 0..dims[2] {
         for iy in 0..dims[1] {
             for ix in 0..dims[0] {
-                let x = org[0] + ix as f64 * sp[0];
-                let y = org[1] + iy as f64 * sp[1];
-                let z = org[2] + iz as f64 * sp[2];
+                let [x, y, z] = image.point_from_ijk(ix, iy, iz);
                 if x < min[0] || x > max[0] || y < min[1] || y > max[1] || z < min[2] || z > max[2]
                 {
                     continue;
                 }
                 let idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
-                if idx < arr.num_tuples() {
-                    arr.tuple_as_f64(idx, &mut buf);
-                    sum += buf[0];
-                    sum2 += buf[0] * buf[0];
-                    min_v = min_v.min(buf[0]);
-                    max_v = max_v.max(buf[0]);
-                    count += 1;
-                }
+                arr.tuple_as_f64(idx, &mut buf);
+                sum += buf[0];
+                sum2 += buf[0] * buf[0];
+                min_v = min_v.min(buf[0]);
+                max_v = max_v.max(buf[0]);
+                count += 1;
             }
         }
     }
@@ -112,8 +108,6 @@ pub fn box_roi_stats(
 /// Create a mask from an ROI (sphere or box) and apply to an array.
 pub fn mask_sphere_roi(image: &ImageData, center: [f64; 3], radius: f64) -> ImageData {
     let dims = image.dimensions();
-    let sp = image.spacing();
-    let org = image.origin();
     let r2 = radius * radius;
     let n = dims[0] * dims[1] * dims[2];
     let data: Vec<f64> = (0..n)
@@ -122,9 +116,7 @@ pub fn mask_sphere_roi(image: &ImageData, center: [f64; 3], radius: f64) -> Imag
             let rem = idx % (dims[0] * dims[1]);
             let iy = rem / dims[0];
             let ix = rem % dims[0];
-            let x = org[0] + ix as f64 * sp[0];
-            let y = org[1] + iy as f64 * sp[1];
-            let z = org[2] + iz as f64 * sp[2];
+            let [x, y, z] = image.point_from_ijk(ix, iy, iz);
             if (x - center[0]).powi(2) + (y - center[1]).powi(2) + (z - center[2]).powi(2) <= r2 {
                 1.0
             } else {
@@ -211,5 +203,27 @@ mod tests {
         let table =
             multi_roi_analysis(&img, "v", &[([3.0, 3.0, 0.0], 2.0), ([7.0, 7.0, 0.0], 2.0)]);
         assert_eq!(table.num_rows(), 2);
+    }
+
+    #[test]
+    fn stats_and_mask_use_image_extent_for_coordinates() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.set_extent([10, 11, 0, 0, 0, 0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![4.0, 8.0],
+                1,
+            )));
+
+        let stats = box_roi_stats(&img, "v", [10.0, 0.0, 0.0], [10.0, 0.0, 0.0]).unwrap();
+        assert_eq!(stats.4, 1);
+        assert_eq!(stats.2, 4.0);
+
+        let mask = mask_sphere_roi(&img, [10.0, 0.0, 0.0], 0.0);
+        assert_eq!(
+            mask.point_data().get_array("ROIMask").unwrap().to_f64_vec(),
+            vec![1.0, 0.0]
+        );
     }
 }

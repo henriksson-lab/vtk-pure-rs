@@ -15,19 +15,6 @@ pub mod merge;
 pub mod mmap_data;
 pub mod parallel_pipeline;
 pub mod piece_request;
-#[cfg(feature = "image")]
-#[cfg(feature = "mesh")]
-#[cfg(feature = "transform")]
-#[cfg(feature = "subdivide")]
-#[cfg(feature = "smooth")]
-#[cfg(feature = "cell")]
-#[cfg(feature = "statistics")]
-#[cfg(feature = "texture")]
-#[cfg(feature = "flow")]
-#[cfg(feature = "boolean")]
-#[cfg(feature = "grid")]
-#[cfg(feature = "data")]
-#[cfg(feature = "distance")]
 pub mod pipeline;
 pub mod plugin;
 pub mod procedural_displacement;
@@ -37,7 +24,7 @@ pub mod selection_extract;
 pub mod slice;
 pub mod sources;
 pub mod topology;
-#[cfg(feature = "cell")]
+#[cfg(feature = "filters-cell")]
 pub use crate::filters::cell::shrink;
 pub use crate::filters::clip::{clip, threshold};
 pub use crate::filters::extract::extract_component;
@@ -52,9 +39,9 @@ pub use crate::filters::geometry::triangulate;
 pub use crate::filters::geometry::tube;
 pub use crate::filters::normals::normals;
 pub use crate::filters::normals::orient;
-#[cfg(feature = "smooth")]
+#[cfg(feature = "filters-smooth")]
 pub use crate::filters::smooth::smooth;
-#[cfg(feature = "subdivide")]
+#[cfg(feature = "filters-subdivide")]
 pub use crate::filters::subdivide::subdivide;
-#[cfg(feature = "transform")]
+#[cfg(feature = "filters-transform")]
 pub use crate::filters::transform::{reflect, transform, warp};

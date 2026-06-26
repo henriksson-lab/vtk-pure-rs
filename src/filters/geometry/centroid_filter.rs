@@ -1,4 +1,5 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
+use crate::types::Scalar;
 
 /// Replace each cell with a single point at its centroid.
 ///
@@ -7,35 +8,36 @@ use crate::data::{CellArray, Points, PolyData};
 pub fn centroid_filter(input: &PolyData) -> PolyData {
     let mut out_points = Points::<f64>::new();
     let mut out_verts = CellArray::new();
+    let mut cell_ids = Vec::new();
+    let mut global_cell_id = 0usize;
 
-    for cell in input.polys.iter() {
-        if cell.is_empty() {
-            continue;
+    for cells in [&input.verts, &input.lines, &input.polys, &input.strips] {
+        for cell in cells.iter() {
+            if !cell.is_empty() {
+                let mut cx = 0.0;
+                let mut cy = 0.0;
+                let mut cz = 0.0;
+                for &id in cell.iter() {
+                    let p = input.points.get(id as usize);
+                    cx += p[0];
+                    cy += p[1];
+                    cz += p[2];
+                }
+                let n = cell.len() as f64;
+                let idx = out_points.len() as i64;
+                out_points.push([cx / n, cy / n, cz / n]);
+                out_verts.push_cell(&[idx]);
+                cell_ids.push(global_cell_id);
+            }
+            global_cell_id += 1;
         }
-        let mut cx = 0.0;
-        let mut cy = 0.0;
-        let mut cz = 0.0;
-        for &id in cell.iter() {
-            let p = input.points.get(id as usize);
-            cx += p[0];
-            cy += p[1];
-            cz += p[2];
-        }
-        let n = cell.len() as f64;
-        let idx = out_points.len() as i64;
-        out_points.push([cx / n, cy / n, cz / n]);
-        out_verts.push_cell(&[idx]);
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.verts = out_verts;
 
-    // Copy cell data as point data
-    for i in 0..input.cell_data().num_arrays() {
-        let arr = input.cell_data().get_array_by_index(i).unwrap();
-        pd.point_data_mut().add_array(arr.clone());
-    }
+    copy_arrays_by_indices(input.cell_data(), pd.point_data_mut(), &cell_ids);
     pd
 }
 
@@ -81,6 +83,45 @@ pub fn weighted_centroid(input: &PolyData, weight_array: Option<&str>) -> [f64; 
     } else {
         [0.0, 0.0, 0.0]
     }
+}
+
+fn copy_arrays_by_indices(
+    input: &DataSetAttributes,
+    output: &mut DataSetAttributes,
+    indices: &[usize],
+) {
+    for arr in input.iter() {
+        output.add_array(copy_array_by_indices(arr, indices));
+    }
+}
+
+fn copy_array_by_indices(arr: &AnyDataArray, indices: &[usize]) -> AnyDataArray {
+    macro_rules! copy {
+        ($array:expr, $variant:ident) => {{
+            AnyDataArray::$variant(copy_typed_array($array, indices))
+        }};
+    }
+    match arr {
+        AnyDataArray::F32(a) => copy!(a, F32),
+        AnyDataArray::F64(a) => copy!(a, F64),
+        AnyDataArray::I8(a) => copy!(a, I8),
+        AnyDataArray::I16(a) => copy!(a, I16),
+        AnyDataArray::I32(a) => copy!(a, I32),
+        AnyDataArray::I64(a) => copy!(a, I64),
+        AnyDataArray::U8(a) => copy!(a, U8),
+        AnyDataArray::U16(a) => copy!(a, U16),
+        AnyDataArray::U32(a) => copy!(a, U32),
+        AnyDataArray::U64(a) => copy!(a, U64),
+    }
+}
+
+fn copy_typed_array<T: Scalar>(array: &DataArray<T>, indices: &[usize]) -> DataArray<T> {
+    let nc = array.num_components();
+    let mut data = Vec::with_capacity(indices.len() * nc);
+    for &idx in indices {
+        data.extend_from_slice(array.tuple(idx));
+    }
+    DataArray::from_vec(array.name(), data, nc)
 }
 
 #[cfg(test)]

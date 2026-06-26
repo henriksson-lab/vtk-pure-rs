@@ -7,8 +7,8 @@ pub fn castle_tower(
     num_merlons: usize,
     resolution: usize,
 ) -> PolyData {
-    let res = resolution.max(num_merlons * 2);
     let nm = num_merlons.max(4);
+    let res = resolution.max(nm * 2);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     // Cylinder wall

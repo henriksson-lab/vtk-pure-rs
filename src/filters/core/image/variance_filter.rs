@@ -1,9 +1,9 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
-/// Compute local variance of an ImageData scalar field in an NxNxN window.
+/// Compute VTK-style local variance of an ImageData scalar field.
 ///
-/// For each voxel, computes the variance of values in a cubic neighborhood
-/// of the given `radius` (the window is `(2*radius+1)^3`). A "Variance"
+/// For each voxel, averages squared differences from the center voxel over an
+/// in-bounds ellipsoidal kernel, matching `vtkImageVariance3D`. A "Variance"
 /// array is added to the output point data.
 ///
 /// If the named scalar array is not found, returns a clone of the input.
@@ -18,7 +18,12 @@ pub fn variance_filter(input: &ImageData, scalars: &str, radius: usize) -> Image
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
     let total: usize = nx * ny * nz;
-    let r: i64 = radius.max(1) as i64;
+    if total == 0 {
+        return input.clone();
+    }
+    let r: i64 = radius as i64;
+    let kernel_size = 2.0 * radius as f64 + 1.0;
+    let kernel_radius = kernel_size * 0.5;
 
     // Extract scalar values
     let mut values: Vec<f64> = vec![0.0; total];
@@ -33,26 +38,43 @@ pub fn variance_filter(input: &ImageData, scalars: &str, radius: usize) -> Image
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
+                let center = values[k * ny * nx + j * nx + i];
                 let mut sum: f64 = 0.0;
-                let mut sum_sq: f64 = 0.0;
                 let mut count: usize = 0;
 
                 for dk in -r..=r {
-                    let kk: usize = (k as i64 + dk).clamp(0, nz as i64 - 1) as usize;
+                    let kk = k as i64 + dk;
+                    if kk < 0 || kk >= nz as i64 {
+                        continue;
+                    }
                     for dj in -r..=r {
-                        let jj: usize = (j as i64 + dj).clamp(0, ny as i64 - 1) as usize;
+                        let jj = j as i64 + dj;
+                        if jj < 0 || jj >= ny as i64 {
+                            continue;
+                        }
                         for di in -r..=r {
-                            let ii: usize = (i as i64 + di).clamp(0, nx as i64 - 1) as usize;
-                            let v: f64 = values[kk * ny * nx + jj * nx + ii];
-                            sum += v;
-                            sum_sq += v * v;
+                            let ii = i as i64 + di;
+                            if ii < 0 || ii >= nx as i64 {
+                                continue;
+                            }
+                            if radius > 0 {
+                                let x = di as f64 / kernel_radius;
+                                let y = dj as f64 / kernel_radius;
+                                let z = dk as f64 / kernel_radius;
+                                if x * x + y * y + z * z > 1.0 {
+                                    continue;
+                                }
+                            }
+                            let v: f64 =
+                                values[kk as usize * ny * nx + jj as usize * nx + ii as usize];
+                            let diff = v - center;
+                            sum += diff * diff;
                             count += 1;
                         }
                     }
                 }
 
-                let mean: f64 = sum / count as f64;
-                let var: f64 = (sum_sq / count as f64 - mean * mean).max(0.0);
+                let var: f64 = if count > 0 { sum / count as f64 } else { 0.0 };
                 variance[k * ny * nx + j * nx + i] = var;
             }
         }
@@ -121,6 +143,23 @@ mod tests {
             "center variance should be positive, got {}",
             buf[0]
         );
+    }
+
+    #[test]
+    fn center_difference_matches_vtk_variance3d_semantics() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Scalars",
+                vec![0.0, 10.0, 0.0],
+                1,
+            )));
+
+        let result = variance_filter(&img, "Scalars", 1);
+        let var_arr = result.point_data().get_array("Variance").unwrap();
+        let mut buf: [f64; 1] = [0.0];
+        var_arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - (200.0 / 3.0)).abs() < 1e-10);
     }
 
     #[test]

@@ -13,6 +13,7 @@ pub fn extrude_polygon(outline: &[[f64; 2]], height: f64) -> PolyData {
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
+    let mut strips = CellArray::new();
 
     // Bottom vertices
     for p in outline {
@@ -23,27 +24,22 @@ pub fn extrude_polygon(outline: &[[f64; 2]], height: f64) -> PolyData {
         points.push([p[0], p[1], height]);
     }
 
-    // Bottom face (fan triangulation, reversed for outward normal)
-    for i in 1..n - 1 {
-        polys.push_cell(&[0, (i + 1) as i64, i as i64]);
-    }
-    // Top face
-    for i in 1..n - 1 {
-        polys.push_cell(&[n as i64, (n + i) as i64, (n + i + 1) as i64]);
-    }
-    // Side quads
+    let bottom: Vec<i64> = (0..n).map(|i| i as i64).collect();
+    let top: Vec<i64> = (0..n).map(|i| (i + n) as i64).collect();
+    polys.push_cell(&bottom);
+    polys.push_cell(&top);
+
+    // Side strips, matching vtkLinearExtrusionFilter boundary-edge output.
     for i in 0..n {
-        let i0 = i as i64;
-        let i1 = ((i + 1) % n) as i64;
-        let i2 = i1 + n as i64;
-        let i3 = i0 + n as i64;
-        polys.push_cell(&[i0, i1, i2]);
-        polys.push_cell(&[i0, i2, i3]);
+        let p1 = i as i64;
+        let p2 = ((i + 1) % n) as i64;
+        strips.push_cell(&[p1, p2, p1 + n as i64, p2 + n as i64]);
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
+    mesh.strips = strips;
     mesh
 }
 
@@ -65,6 +61,7 @@ pub fn extrude_polygon_along(outline: &[[f64; 2]], direction: [f64; 3], distance
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
+    let mut strips = CellArray::new();
 
     for p in outline {
         points.push([p[0], p[1], 0.0]);
@@ -73,22 +70,21 @@ pub fn extrude_polygon_along(outline: &[[f64; 2]], direction: [f64; 3], distance
         points.push([p[0] + d[0], p[1] + d[1], d[2]]);
     }
 
-    for i in 1..n - 1 {
-        polys.push_cell(&[0, (i + 1) as i64, i as i64]);
-    }
-    for i in 1..n - 1 {
-        polys.push_cell(&[n as i64, (n + i) as i64, (n + i + 1) as i64]);
-    }
+    let bottom: Vec<i64> = (0..n).map(|i| i as i64).collect();
+    let top: Vec<i64> = (0..n).map(|i| (i + n) as i64).collect();
+    polys.push_cell(&bottom);
+    polys.push_cell(&top);
+
     for i in 0..n {
-        let i0 = i as i64;
-        let i1 = ((i + 1) % n) as i64;
-        polys.push_cell(&[i0, i1, i1 + n as i64]);
-        polys.push_cell(&[i0, i1 + n as i64, i0 + n as i64]);
+        let p1 = i as i64;
+        let p2 = ((i + 1) % n) as i64;
+        strips.push_cell(&[p1, p2, p1 + n as i64, p2 + n as i64]);
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
+    mesh.strips = strips;
     mesh
 }
 
@@ -101,7 +97,8 @@ mod tests {
         let outline = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         let solid = extrude_polygon(&outline, 2.0);
         assert_eq!(solid.points.len(), 8);
-        assert!(solid.polys.num_cells() > 8); // 2 cap fans + 4 side quads
+        assert_eq!(solid.polys.num_cells(), 2);
+        assert_eq!(solid.strips.num_cells(), 4);
     }
 
     #[test]

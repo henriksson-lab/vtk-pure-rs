@@ -27,16 +27,18 @@ impl Default for HemisphereParams {
 
 /// Generate a hemisphere (upper half of a sphere).
 pub fn hemisphere(params: &HemisphereParams) -> PolyData {
-    let n_theta = params.theta_resolution;
-    let n_phi = params.phi_resolution;
+    let n_theta = params.theta_resolution.max(2);
+    let n_phi = params.phi_resolution.max(3);
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
 
-    // Generate hemisphere points (theta from 0 to PI/2)
-    for j in 0..=n_theta {
+    points.push([0.0, 0.0, params.radius]);
+
+    // Generate hemisphere rings (theta from 0 to PI/2).
+    for j in 1..=n_theta {
         let theta = std::f64::consts::FRAC_PI_2 * j as f64 / n_theta as f64;
-        for i in 0..=n_phi {
+        for i in 0..n_phi {
             let phi = 2.0 * std::f64::consts::PI * i as f64 / n_phi as f64;
             let x = params.radius * theta.sin() * phi.cos();
             let y = params.radius * theta.sin() * phi.sin();
@@ -45,16 +47,19 @@ pub fn hemisphere(params: &HemisphereParams) -> PolyData {
         }
     }
 
-    // Triangulate
-    let row = n_phi + 1;
-    for j in 0..n_theta {
+    for i in 0..n_phi {
+        polys.push_cell(&[0, (1 + i) as i64, (1 + (i + 1) % n_phi) as i64]);
+    }
+
+    let row = n_phi;
+    for j in 0..(n_theta - 1) {
         for i in 0..n_phi {
-            let p0 = (j * row + i) as i64;
-            let p1 = p0 + 1;
-            let p2 = p0 + row as i64 + 1;
-            let p3 = p0 + row as i64;
-            polys.push_cell(&[p0, p1, p2]);
-            polys.push_cell(&[p0, p2, p3]);
+            let next = (i + 1) % n_phi;
+            let p0 = (1 + j * row + i) as i64;
+            let p1 = (1 + j * row + next) as i64;
+            let p2 = (1 + (j + 1) * row + next) as i64;
+            let p3 = (1 + (j + 1) * row + i) as i64;
+            polys.push_cell(&[p0, p1, p2, p3]);
         }
     }
 
@@ -62,9 +67,13 @@ pub fn hemisphere(params: &HemisphereParams) -> PolyData {
     if params.cap {
         let center_idx = points.len() as i64;
         points.push([0.0, 0.0, 0.0]);
-        let base_row = n_theta * row;
+        let base_row = 1 + (n_theta - 1) * row;
         for i in 0..n_phi {
-            polys.push_cell(&[center_idx, (base_row + i + 1) as i64, (base_row + i) as i64]);
+            polys.push_cell(&[
+                center_idx,
+                (base_row + (i + 1) % n_phi) as i64,
+                (base_row + i) as i64,
+            ]);
         }
     }
 
@@ -100,5 +109,16 @@ mod tests {
             ..Default::default()
         });
         assert!(h.polys.num_cells() < h_cap.polys.num_cells());
+    }
+
+    #[test]
+    fn minimal_resolution_is_valid() {
+        let h = hemisphere(&HemisphereParams {
+            theta_resolution: 0,
+            phi_resolution: 0,
+            ..Default::default()
+        });
+        assert!(h.points.len() > 0);
+        assert!(h.polys.num_cells() > 0);
     }
 }

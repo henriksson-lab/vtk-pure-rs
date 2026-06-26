@@ -24,6 +24,7 @@ impl std::fmt::Display for ManifoldReport {
 
 /// Perform comprehensive manifold check.
 pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
+    let n = mesh.points.len();
     let mut ec: std::collections::HashMap<(usize,usize),usize> = std::collections::HashMap::new();
     let mut directed: std::collections::HashMap<(usize,usize),usize> = std::collections::HashMap::new();
     let mut degenerate = 0;
@@ -32,7 +33,8 @@ pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
         let nc = cell.len();
         if nc < 3 { degenerate += 1; continue; }
         // Check for duplicate vertices
-        let mut ids: Vec<usize> = cell.iter().map(|&p| p as usize).collect();
+        let ids: Vec<usize> = cell.iter().map(|&p| p as usize).collect();
+        if ids.iter().any(|&id| id>=n) { degenerate += 1; continue; }
         let unique: std::collections::HashSet<usize> = ids.iter().cloned().collect();
         if unique.len() < 3 { degenerate += 1; continue; }
 
@@ -47,11 +49,10 @@ pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
     let non_manifold_edges = ec.values().filter(|&&c| c>2).count();
 
     // Non-manifold vertices: vertices where the one-ring is not a single fan
-    let n = mesh.points.len();
     let mut vert_edge_count: Vec<usize> = vec![0; n];
     for (&(a,b),_) in &ec { vert_edge_count[a]+=1; vert_edge_count[b]+=1; }
     let mut vert_face_count: Vec<usize> = vec![0; n];
-    for cell in mesh.polys.iter() { for &pid in cell { vert_face_count[pid as usize]+=1; } }
+    for cell in mesh.polys.iter() { for &pid in cell { let pid=pid as usize; if pid<n { vert_face_count[pid]+=1; } } }
     let non_manifold_verts = (0..n).filter(|&i| {
         if vert_edge_count[i]==0{return false;}
         // For manifold: edges = faces (interior) or edges = faces+1 (boundary)
@@ -79,7 +80,7 @@ pub fn mark_non_manifold(mesh: &PolyData) -> PolyData {
     let mut ec: std::collections::HashMap<(usize,usize),usize> = std::collections::HashMap::new();
     for cell in mesh.polys.iter() { let nc=cell.len(); for i in 0..nc {
         let a=cell[i] as usize; let b=cell[(i+1)%nc] as usize;
-        *ec.entry((a.min(b),a.max(b))).or_insert(0)+=1;
+        if a<n && b<n { *ec.entry((a.min(b),a.max(b))).or_insert(0)+=1; }
     }}
 
     let mut data = vec![0.0f64; n];

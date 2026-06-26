@@ -112,9 +112,12 @@ pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
                         avg[c] += buf[c];
                     }
                 }
-                let inv = 1.0 / (ce - cs) as f64;
-                for v in avg.iter_mut() {
-                    *v *= inv;
+                let num_points = ce - cs;
+                if num_points > 0 {
+                    let inv = 1.0 / num_points as f64;
+                    for v in avg.iter_mut() {
+                        *v *= inv;
+                    }
                 }
                 cell_values.extend_from_slice(&avg);
             }

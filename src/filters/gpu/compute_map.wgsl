@@ -22,7 +22,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         case 6u: { output[idx] = sin(v); }              // Sin
         case 7u: { output[idx] = cos(v); }              // Cos
         case 8u: { output[idx] = v * v; }               // Square
-        case 9u: { output[idx] = 1.0 / max(abs(v), 1e-30); } // Reciprocal
+        case 9u: { output[idx] = sign(v) / max(abs(v), 1e-30); } // Reciprocal
         default: { output[idx] = v; }
     }
 }

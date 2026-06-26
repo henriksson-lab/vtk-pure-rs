@@ -9,6 +9,8 @@ pub fn terrain(
     frequency: f64,
     seed: u64,
 ) -> PolyData {
+    let nx = nx.max(2);
+    let ny = ny.max(2);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut heights = Vec::with_capacity(nx * ny);
@@ -20,7 +22,7 @@ pub fn terrain(
             rng = rng
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            ((rng >> 33) as f64 / u32::MAX as f64) * 2.0 - 1.0
+            ((rng >> 33) as f64 / ((1u64 << 31) - 1) as f64) * 2.0 - 1.0
         })
         .collect();
     for iy in 0..ny {

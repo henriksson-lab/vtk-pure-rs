@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn two_regions() {
-        let mut htg = HyperTreeGrid::new([5, 1, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let mut htg = HyperTreeGrid::new([6, 1, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         // Two groups separated by a gap: [1, 1, 0, 1, 1]
         htg.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn single_region() {
-        let mut htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let mut htg = HyperTreeGrid::new([4, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let vals = vec![1.0; 9];
         htg.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("val", vals, 1)));
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn no_active_cells() {
-        let mut htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let mut htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         htg.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec(
                 "val",

@@ -6,15 +6,30 @@ use rayon::prelude::*;
 /// The scalar is the projection of each point onto the line from `low_point` to
 /// `high_point`. Values are in `[0, 1]` if points lie between the two endpoints.
 pub fn elevation(input: &PolyData, low_point: [f64; 3], high_point: [f64; 3]) -> PolyData {
+    elevation_with_scalar_range(input, low_point, high_point, [0.0, 1.0])
+}
+
+/// Compute elevation scalars mapped into `scalar_range`, matching vtkElevationFilter.
+pub fn elevation_with_scalar_range(
+    input: &PolyData,
+    low_point: [f64; 3],
+    high_point: [f64; 3],
+    scalar_range: [f64; 2],
+) -> PolyData {
     let mut output = input.clone();
 
-    let dir = [
+    let mut dir = [
         high_point[0] - low_point[0],
         high_point[1] - low_point[1],
         high_point[2] - low_point[2],
     ];
-    let len2 = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
-    let inv_len2 = if len2 > 1e-20 { 1.0 / len2 } else { 0.0 };
+    let mut len2 = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    if len2 <= 0.0 {
+        dir = [0.0, 0.0, 1.0];
+        len2 = 1.0;
+    }
+    let inv_len2 = 1.0 / len2;
+    let scalar_delta = scalar_range[1] - scalar_range[0];
 
     // Direct flat slice access + precomputed inverse avoids per-point overhead.
     let pts = input.points.as_flat_slice();
@@ -26,7 +41,8 @@ pub fn elevation(input: &PolyData, low_point: [f64; 3], high_point: [f64; 3]) ->
         let dx = pts[base] - low_point[0];
         let dy = pts[base + 1] - low_point[1];
         let dz = pts[base + 2] - low_point[2];
-        values.push((dx * dir[0] + dy * dir[1] + dz * dir[2]) * inv_len2);
+        let normalized = ((dx * dir[0] + dy * dir[1] + dz * dir[2]) * inv_len2).clamp(0.0, 1.0);
+        values.push(scalar_range[0] + normalized * scalar_delta);
     }
 
     let scalars = DataArray::<f64>::from_vec("Elevation", values, 1);
@@ -37,14 +53,29 @@ pub fn elevation(input: &PolyData, low_point: [f64; 3], high_point: [f64; 3]) ->
 
 /// Parallel version of `elevation` using rayon.
 pub fn elevation_par(input: &PolyData, low_point: [f64; 3], high_point: [f64; 3]) -> PolyData {
+    elevation_par_with_scalar_range(input, low_point, high_point, [0.0, 1.0])
+}
+
+/// Parallel version of `elevation_with_scalar_range` using rayon.
+pub fn elevation_par_with_scalar_range(
+    input: &PolyData,
+    low_point: [f64; 3],
+    high_point: [f64; 3],
+    scalar_range: [f64; 2],
+) -> PolyData {
     let mut output = input.clone();
 
-    let dir = [
+    let mut dir = [
         high_point[0] - low_point[0],
         high_point[1] - low_point[1],
         high_point[2] - low_point[2],
     ];
-    let len2 = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    let mut len2 = dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2];
+    if len2 <= 0.0 {
+        dir = [0.0, 0.0, 1.0];
+        len2 = 1.0;
+    }
+    let scalar_delta = scalar_range[1] - scalar_range[0];
 
     let values: Vec<f64> = (0..input.num_points())
         .into_par_iter()
@@ -55,11 +86,9 @@ pub fn elevation_par(input: &PolyData, low_point: [f64; 3], high_point: [f64; 3]
                 p[1] - low_point[1],
                 p[2] - low_point[2],
             ];
-            if len2 > 1e-20 {
-                (dp[0] * dir[0] + dp[1] * dir[1] + dp[2] * dir[2]) / len2
-            } else {
-                0.0
-            }
+            let normalized =
+                ((dp[0] * dir[0] + dp[1] * dir[1] + dp[2] * dir[2]) / len2).clamp(0.0, 1.0);
+            scalar_range[0] + normalized * scalar_delta
         })
         .collect();
 
@@ -128,5 +157,27 @@ mod tests {
 
         scalars.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn elevation_clamps_and_maps_scalar_range() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, -5.0], [0.0, 0.0, 5.0], [0.0, 0.0, 15.0]],
+            vec![[0, 1, 2]],
+        );
+
+        let result =
+            elevation_with_scalar_range(&pd, [0.0, 0.0, 0.0], [0.0, 0.0, 10.0], [10.0, 20.0]);
+        let scalars = result.point_data().scalars().unwrap();
+
+        let mut buf = [0.0f64];
+        scalars.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 10.0).abs() < 1e-10);
+
+        scalars.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 15.0).abs() < 1e-10);
+
+        scalars.tuple_as_f64(2, &mut buf);
+        assert!((buf[0] - 20.0).abs() < 1e-10);
     }
 }

@@ -25,11 +25,17 @@ pub fn bend_mesh(
     let ax: [f64; 3] = [axis[0] / a_len, axis[1] / a_len, axis[2] / a_len];
 
     // Normalize bend_axis
-    let b_len: f64 = (bend_axis[0] * bend_axis[0] + bend_axis[1] * bend_axis[1] + bend_axis[2] * bend_axis[2]).sqrt();
+    let b_len: f64 =
+        (bend_axis[0] * bend_axis[0] + bend_axis[1] * bend_axis[1] + bend_axis[2] * bend_axis[2])
+            .sqrt();
     if b_len < 1e-20 {
         return pd;
     }
-    let bx: [f64; 3] = [bend_axis[0] / b_len, bend_axis[1] / b_len, bend_axis[2] / b_len];
+    let bx: [f64; 3] = [
+        bend_axis[0] / b_len,
+        bend_axis[1] / b_len,
+        bend_axis[2] / b_len,
+    ];
 
     for i in 0..pd.points.len() {
         let p = pd.points.get(i);
@@ -60,7 +66,8 @@ pub fn bend_mesh(
         let ry: f64 = dy * cos_a + kxv[1] * sin_a + bx[1] * v_dot_k * (1.0 - cos_a);
         let rz: f64 = dz * cos_a + kxv[2] * sin_a + bx[2] * v_dot_k * (1.0 - cos_a);
 
-        pd.points.set(i, [center[0] + rx, center[1] + ry, center[2] + rz]);
+        pd.points
+            .set(i, [center[0] + rx, center[1] + ry, center[2] + rz]);
     }
 
     pd

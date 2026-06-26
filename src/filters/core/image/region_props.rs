@@ -1,6 +1,10 @@
 use crate::data::ImageData;
 use std::collections::HashMap;
 
+fn image_point_count(dims: [usize; 3]) -> Option<usize> {
+    dims[0].checked_mul(dims[1])?.checked_mul(dims[2])
+}
+
 /// Properties of a labeled region in an ImageData.
 #[derive(Debug, Clone, Default)]
 pub struct RegionProps {
@@ -27,6 +31,13 @@ pub fn region_properties(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
+    let n = match image_point_count(dims) {
+        Some(n) => n,
+        None => return vec![],
+    };
+    if la.num_tuples() < n || matches!(va, Some(a) if a.num_tuples() < n) {
+        return vec![];
+    }
     let sp = input.spacing();
     let origin = input.origin();
 

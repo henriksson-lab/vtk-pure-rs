@@ -36,7 +36,7 @@ pub fn superellipse(a: f64, b: f64, exponent: f64, resolution: usize) -> PolyDat
 
 /// Generate a 3D superellipsoid (generalized ellipsoid).
 ///
-/// |x/a|^(2/e1) + |y/b|^(2/e1) + |z/c|^(2/e2) = 1
+/// `e1` controls squareness in the z axis; `e2` controls squareness in the x-y plane.
 pub fn superellipsoid(a: f64, b: f64, c: f64, e1: f64, e2: f64, resolution: usize) -> PolyData {
     let n_u = resolution.max(4);
     let n_v = resolution.max(4);
@@ -49,16 +49,10 @@ pub fn superellipsoid(a: f64, b: f64, c: f64, e1: f64, e2: f64, resolution: usiz
         for i in 0..=n_u {
             let u = -std::f64::consts::PI + 2.0 * std::f64::consts::PI * i as f64 / n_u as f64;
 
-            let cos_v = v.cos();
-            let sin_v = v.sin();
-            let cos_u = u.cos();
-            let sin_u = u.sin();
-
-            let x =
-                a * cos_v.abs().powf(e2) * cos_v.signum() * cos_u.abs().powf(e1) * cos_u.signum();
-            let y =
-                b * cos_v.abs().powf(e2) * cos_v.signum() * sin_u.abs().powf(e1) * sin_u.signum();
-            let z = c * sin_v.abs().powf(e2) * sin_v.signum();
+            let tmp = signed_pow(v.cos(), e1);
+            let x = a * tmp * signed_pow(u.sin(), e2);
+            let y = b * tmp * signed_pow(u.cos(), e2);
+            let z = c * signed_pow(v.sin(), e1);
 
             points.push([x, y, z]);
         }
@@ -80,6 +74,20 @@ pub fn superellipsoid(a: f64, b: f64, c: f64, e1: f64, e2: f64, resolution: usiz
     mesh.points = points;
     mesh.polys = polys;
     mesh
+}
+
+fn signed_pow(value: f64, exponent: f64) -> f64 {
+    const EPS: f64 = 1.0e-6;
+    if value == 0.0 {
+        return 0.0;
+    }
+    if exponent == 0.0 {
+        return 1.0;
+    }
+    if value.abs() <= EPS {
+        return 0.0;
+    }
+    value.signum() * value.abs().powf(exponent)
 }
 
 #[cfg(test)]

@@ -7,16 +7,14 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Adds a "NormalCluster" (1-component i32) array to point data.
 ///
 /// The `seed` parameter controls the deterministic initialization of centroids.
-pub fn cluster_by_normal(
-    input: &PolyData,
-    k: usize,
-    normals_array: &str,
-    seed: u64,
-) -> PolyData {
+pub fn cluster_by_normal(input: &PolyData, k: usize, normals_array: &str, seed: u64) -> PolyData {
     let arr = match input.point_data().get_array(normals_array) {
         Some(a) => a,
         None => return input.clone(),
     };
+    if arr.num_components() != 3 || arr.num_tuples() != input.points.len() {
+        return input.clone();
+    }
 
     let n = arr.num_tuples();
     if n == 0 || k == 0 {
@@ -42,7 +40,9 @@ pub fn cluster_by_normal(
     let mut rng_state: u64 = seed;
     for i in 0..k {
         // Simple hash-like index selection
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let idx: usize = ((rng_state >> 33) as usize + i) % n;
         centroids.push(normals[idx]);
     }
@@ -87,10 +87,9 @@ pub fn cluster_by_normal(
         }
         for j in 0..k {
             if counts[j] > 0 {
-                let len: f64 = (sums[j][0] * sums[j][0]
-                    + sums[j][1] * sums[j][1]
-                    + sums[j][2] * sums[j][2])
-                    .sqrt();
+                let len: f64 =
+                    (sums[j][0] * sums[j][0] + sums[j][1] * sums[j][1] + sums[j][2] * sums[j][2])
+                        .sqrt();
                 if len > 1e-20 {
                     centroids[j] = [sums[j][0] / len, sums[j][1] / len, sums[j][2] / len];
                 }
@@ -99,9 +98,12 @@ pub fn cluster_by_normal(
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::I32(
-        DataArray::from_vec("NormalCluster", labels, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::I32(DataArray::from_vec(
+            "NormalCluster",
+            labels,
+            1,
+        )));
     pd
 }
 
@@ -127,9 +129,12 @@ mod tests {
             0.0, 0.0, 1.0, // +z
             0.0, 0.01, 0.99, // ~+z
         ];
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Normals", normals_data, 3),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals",
+                normals_data,
+                3,
+            )));
         pd
     }
 
@@ -164,6 +169,20 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         let result = cluster_by_normal(&pd, 2, "NonExistent", 0);
+        assert!(result.point_data().get_array("NormalCluster").is_none());
+    }
+
+    #[test]
+    fn invalid_normals_array_returns_clone() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals",
+                vec![1.0],
+                1,
+            )));
+        let result = cluster_by_normal(&pd, 1, "Normals", 0);
         assert!(result.point_data().get_array("NormalCluster").is_none());
     }
 

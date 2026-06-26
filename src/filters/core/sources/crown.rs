@@ -19,8 +19,10 @@ pub fn crown(
     // Top ring with peaks
     for i in 0..res {
         let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
-        let peak_phase = (i as f64 * ncp as f64 / res as f64 * std::f64::consts::TAU).sin();
-        let z = height + if peak_phase > 0.7 { point_height } else { 0.0 };
+        let peak_position = i as f64 * ncp as f64 / res as f64;
+        let distance_to_peak = (peak_position - peak_position.round()).abs();
+        let peak = (1.0 - 2.0 * distance_to_peak).max(0.0);
+        let z = height + point_height * peak;
         pts.push([radius * a.cos(), radius * a.sin(), z]);
     }
     // Side quads

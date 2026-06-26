@@ -35,21 +35,18 @@ pub fn dreamcatcher(radius: f64, n_web_rings: usize, na: usize) -> PolyData {
     }
     // Feathers (hanging lines from bottom)
     for f in 0..3 {
-        let angle = std::f64::consts::PI + std::f64::consts::PI * 0.3 * (f as f64 - 1.0);
-        let attach_j = (angle / (2.0 * std::f64::consts::PI) * na as f64).round() as usize % na;
+        let angle = -std::f64::consts::FRAC_PI_2 + std::f64::consts::PI * 0.15 * (f as f64 - 1.0);
+        let attach_j = ((angle / (2.0 * std::f64::consts::PI) * na as f64).round() as isize)
+            .rem_euclid(na as isize) as usize;
         let fb = pts.len();
-        pts.push([
-            radius * 1.1 * (angle).cos(),
-            radius * 1.1 * (angle).sin(),
-            -radius * 0.3 * (f as f64 + 1.0) / 3.0,
-        ]);
+        pts.push([radius * 1.1 * angle.cos(), radius * 1.1 * angle.sin(), 0.0]);
         lines.push_cell(&[(hb + attach_j) as i64, fb as i64]);
         // Feather barbs
         let fe = pts.len();
         pts.push([
-            radius * 1.15 * (angle).cos(),
-            radius * 1.15 * (angle).sin(),
-            -radius * 0.4 * (f as f64 + 1.0) / 3.0,
+            radius * 1.15 * angle.cos(),
+            radius * 1.15 * angle.sin(),
+            -radius * 0.1 * (f as f64 + 1.0),
         ]);
         lines.push_cell(&[fb as i64, fe as i64]);
     }

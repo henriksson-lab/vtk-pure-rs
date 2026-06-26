@@ -39,9 +39,12 @@ pub fn group_faces_by_normal(input: &PolyData, angle_tolerance_deg: f64) -> Poly
     }
 
     let mut pd = input.clone();
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("NormalGroup", group_ids, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "NormalGroup",
+            group_ids,
+            1,
+        )));
     pd
 }
 
@@ -50,7 +53,7 @@ fn compute_face_normals(input: &PolyData) -> Vec<[f64; 3]> {
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
-            normals.push([0.0, 0.0, 1.0]);
+            normals.push([0.0, 0.0, 0.0]);
             continue;
         }
 
@@ -70,7 +73,7 @@ fn compute_face_normals(input: &PolyData) -> Vec<[f64; 3]> {
         if len > 1e-20 {
             normals.push([nx / len, ny / len, nz / len]);
         } else {
-            normals.push([0.0, 0.0, 1.0]);
+            normals.push([0.0, 0.0, 0.0]);
         }
     }
 
@@ -86,8 +89,12 @@ mod tests {
         // Two triangles in the same plane should be in the same group
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
-                [2.0, 0.0, 0.0], [3.0, 0.0, 0.0], [2.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [2.5, 1.0, 0.0],
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );
@@ -98,7 +105,10 @@ mod tests {
         let mut g1 = [0.0f64];
         arr.tuple_as_f64(0, &mut g0);
         arr.tuple_as_f64(1, &mut g1);
-        assert!((g0[0] - g1[0]).abs() < 1e-10, "coplanar faces should share a group");
+        assert!(
+            (g0[0] - g1[0]).abs() < 1e-10,
+            "coplanar faces should share a group"
+        );
     }
 
     #[test]
@@ -106,8 +116,12 @@ mod tests {
         // Two triangles with perpendicular normals (XY plane vs XZ plane)
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0], // normal +Z
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 0.0, 1.0], // normal +Y (approx)
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0], // normal +Z
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 0.0, 1.0], // normal +Y (approx)
             ],
             vec![[0, 1, 2], [3, 4, 5]],
         );
@@ -117,7 +131,10 @@ mod tests {
         let mut g1 = [0.0f64];
         arr.tuple_as_f64(0, &mut g0);
         arr.tuple_as_f64(1, &mut g1);
-        assert!((g0[0] - g1[0]).abs() > 0.5, "perpendicular faces should be in different groups");
+        assert!(
+            (g0[0] - g1[0]).abs() > 0.5,
+            "perpendicular faces should be in different groups"
+        );
     }
 
     #[test]
@@ -125,9 +142,15 @@ mod tests {
         // With 180 degree tolerance, everything should be in group 0
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0],
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 0.0, 1.0],
-                [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.5, 1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 0.0, 1.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.5, 1.0],
             ],
             vec![[0, 1, 2], [3, 4, 5], [6, 7, 8]],
         );
@@ -136,7 +159,10 @@ mod tests {
         let mut val = [0.0f64];
         for i in 0..3 {
             arr.tuple_as_f64(i, &mut val);
-            assert!(val[0].abs() < 1e-10, "all faces should be group 0 with 180 deg tolerance");
+            assert!(
+                val[0].abs() < 1e-10,
+                "all faces should be group 0 with 180 deg tolerance"
+            );
         }
     }
 }

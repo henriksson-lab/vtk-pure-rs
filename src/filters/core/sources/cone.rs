@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use crate::data::{CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Parameters for generating a cone.
 pub struct ConeParams {
@@ -19,7 +19,7 @@ impl Default for ConeParams {
             height: 1.0,
             radius: 0.5,
             direction: [1.0, 0.0, 0.0],
-            resolution: 16,
+            resolution: 6,
             capping: true,
         }
     }
@@ -30,136 +30,140 @@ impl Default for ConeParams {
 /// The cone axis runs along `direction` with the apex at `center + direction * height/2`
 /// and the base at `center - direction * height/2`.
 pub fn cone(params: &ConeParams) -> PolyData {
-    let n = params.resolution.max(3);
-    let [cx, cy, cz] = params.center;
-    let h = params.height;
-    let r = params.radius;
-
-    // Normalize direction
-    let d = params.direction;
-    let dlen = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-    let dir = if dlen > 1e-10 {
-        [d[0] / dlen, d[1] / dlen, d[2] / dlen]
-    } else {
-        [1.0, 0.0, 0.0]
-    };
-
-    // Find two perpendicular vectors to dir
-    let (u, v) = perpendicular_frame(dir);
-
-    // Apex point
-    let apex = [
-        cx + dir[0] * h * 0.5,
-        cy + dir[1] * h * 0.5,
-        cz + dir[2] * h * 0.5,
-    ];
-    // Base center
-    let base_center = [
-        cx - dir[0] * h * 0.5,
-        cy - dir[1] * h * 0.5,
-        cz - dir[2] * h * 0.5,
-    ];
-
     let mut points = Points::new();
-    let mut normals = DataArray::<f64>::new("Normals", 3);
+    let mut lines = CellArray::new();
     let mut polys = CellArray::new();
+    let resolution = params.resolution;
+    let angle = if resolution != 0 {
+        2.0 * PI / resolution as f64
+    } else {
+        0.0
+    };
+    let xbot = -params.height / 2.0;
 
-    // Point 0: apex
-    points.push(apex);
-    normals.push_tuple(&dir);
+    points.push(transform_point(params, [params.height / 2.0, 0.0, 0.0]));
 
-    // Base ring points (1..=n)
-    for i in 0..n {
-        let theta = 2.0 * PI * i as f64 / n as f64;
-        let ct = theta.cos();
-        let st = theta.sin();
-
-        let px = base_center[0] + r * (ct * u[0] + st * v[0]);
-        let py = base_center[1] + r * (ct * u[1] + st * v[1]);
-        let pz = base_center[2] + r * (ct * u[2] + st * v[2]);
-
-        // Normal: outward from the cone surface
-        let radial = [
-            ct * u[0] + st * v[0],
-            ct * u[1] + st * v[1],
-            ct * u[2] + st * v[2],
-        ];
-        // Cone surface normal is a blend of radial and axis direction
-        let slope = r / h;
-        let nx = radial[0] + dir[0] * slope;
-        let ny = radial[1] + dir[1] * slope;
-        let nz = radial[2] + dir[2] * slope;
-        let nlen = (nx * nx + ny * ny + nz * nz).sqrt();
-
-        points.push([px, py, pz]);
-        normals.push_tuple(&[nx / nlen, ny / nlen, nz / nlen]);
-    }
-
-    // Side triangles
-    for i in 0..n {
-        let next = (i + 1) % n;
-        polys.push_cell(&[0, (1 + i) as i64, (1 + next) as i64]);
-    }
-
-    // Base cap
-    if params.capping {
-        let base_idx = points.len() as i64;
-        points.push(base_center);
-        normals.push_tuple(&[-dir[0], -dir[1], -dir[2]]);
-
-        // Duplicate base ring for cap normals
-        for i in 0..n {
-            let theta = 2.0 * PI * i as f64 / n as f64;
-            let ct = theta.cos();
-            let st = theta.sin();
-            let px = base_center[0] + r * (ct * u[0] + st * v[0]);
-            let py = base_center[1] + r * (ct * u[1] + st * v[1]);
-            let pz = base_center[2] + r * (ct * u[2] + st * v[2]);
-            points.push([px, py, pz]);
-            normals.push_tuple(&[-dir[0], -dir[1], -dir[2]]);
+    match resolution {
+        0 => {
+            points.push(transform_point(params, [xbot, 0.0, 0.0]));
+            lines.push_cell(&[0, 1]);
         }
-
-        for i in 0..n {
-            let next = (i + 1) % n;
-            polys.push_cell(&[
-                base_idx,
-                base_idx + 1 + next as i64,
-                base_idx + 1 + i as i64,
-            ]);
+        1 => {
+            points.push(transform_point(params, [xbot, -params.radius, 0.0]));
+            points.push(transform_point(params, [xbot, params.radius, 0.0]));
+            polys.push_cell(&[0, 1, 2]);
+        }
+        2 => {
+            points.push(transform_point(params, [xbot, 0.0, -params.radius]));
+            points.push(transform_point(params, [xbot, 0.0, params.radius]));
+            polys.push_cell(&[0, 1, 2]);
+            points.push(transform_point(params, [xbot, -params.radius, 0.0]));
+            points.push(transform_point(params, [xbot, params.radius, 0.0]));
+            polys.push_cell(&[0, 3, 4]);
+        }
+        _ => {
+            if params.capping {
+                let mut cap = Vec::with_capacity(resolution);
+                for i in 0..resolution {
+                    let p = transform_point(
+                        params,
+                        [
+                            xbot,
+                            params.radius * (i as f64 * angle).cos(),
+                            params.radius * (i as f64 * angle).sin(),
+                        ],
+                    );
+                    points.push(p);
+                    cap.push((resolution - i) as i64);
+                }
+                polys.push_cell(&cap);
+                for i in 0..resolution {
+                    let mut next = i + 2;
+                    if next > resolution {
+                        next = 1;
+                    }
+                    polys.push_cell(&[0, (i + 1) as i64, next as i64]);
+                }
+            } else {
+                let first = transform_point(params, [xbot, params.radius, 0.0]);
+                points.push(first);
+                let mut previous = 1;
+                for i in 0..resolution {
+                    let p = transform_point(
+                        params,
+                        [
+                            xbot,
+                            params.radius * ((i + 1) as f64 * angle).cos(),
+                            params.radius * ((i + 1) as f64 * angle).sin(),
+                        ],
+                    );
+                    points.push(p);
+                    let current = points.len() as i64 - 1;
+                    polys.push_cell(&[0, previous, current]);
+                    previous = current;
+                }
+            }
         }
     }
 
     let mut pd = PolyData::new();
     pd.points = points;
+    pd.lines = lines;
     pd.polys = polys;
-    pd.point_data_mut().add_array(normals.into());
-    pd.point_data_mut().set_active_normals("Normals");
     pd
 }
 
-fn perpendicular_frame(dir: [f64; 3]) -> ([f64; 3], [f64; 3]) {
-    // Find a vector not parallel to dir
-    let seed = if dir[0].abs() < 0.9 {
-        [1.0, 0.0, 0.0]
-    } else {
-        [0.0, 1.0, 0.0]
-    };
+fn transform_point(params: &ConeParams, point: [f64; 3]) -> [f64; 3] {
+    let mut x = point;
 
-    // u = normalize(seed x dir)
-    let u = cross(seed, dir);
-    let ulen = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
-    let u = [u[0] / ulen, u[1] / ulen, u[2] / ulen];
+    if params.center != [0.0, 0.0, 0.0] || params.direction != [1.0, 0.0, 0.0] {
+        let v_mag = (params.direction[0] * params.direction[0]
+            + params.direction[1] * params.direction[1]
+            + params.direction[2] * params.direction[2])
+            .sqrt();
 
-    // v = dir x u
-    let v = cross(dir, u);
-    (u, v)
+        if params.direction[0] < 0.0 {
+            x = rotate_wxyz_180(x, [0.0, 1.0, 0.0]);
+            x = rotate_wxyz_180(
+                x,
+                [
+                    (params.direction[0] - v_mag) / 2.0,
+                    params.direction[1] / 2.0,
+                    params.direction[2] / 2.0,
+                ],
+            );
+        } else {
+            x = rotate_wxyz_180(
+                x,
+                [
+                    (params.direction[0] + v_mag) / 2.0,
+                    params.direction[1] / 2.0,
+                    params.direction[2] / 2.0,
+                ],
+            );
+        }
+    }
+
+    [
+        x[0] + params.center[0],
+        x[1] + params.center[1],
+        x[2] + params.center[2],
+    ]
 }
 
-fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+fn rotate_wxyz_180(x: [f64; 3], axis: [f64; 3]) -> [f64; 3] {
+    let norm = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+    if norm == 0.0 {
+        return x;
+    }
+
+    let u = [axis[0] / norm, axis[1] / norm, axis[2] / norm];
+    let dot = u[0] * x[0] + u[1] * x[1] + u[2] * x[2];
+
     [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
+        2.0 * u[0] * dot - x[0],
+        2.0 * u[1] * dot - x[1],
+        2.0 * u[2] * dot - x[2],
     ]
 }
 
@@ -180,8 +184,19 @@ mod tests {
             capping: false,
             ..Default::default()
         });
-        // Without cap: apex + ring = 1 + resolution
-        assert_eq!(pd.points.len(), 1 + 16);
-        assert_eq!(pd.polys.num_cells(), 16); // side triangles only
+        assert_eq!(pd.points.len(), 8);
+        assert_eq!(pd.polys.num_cells(), 6);
+    }
+
+    #[test]
+    fn cone_center_uses_vtk_transform_path() {
+        let pd = cone(&ConeParams {
+            center: [1.0, 2.0, 3.0],
+            resolution: 3,
+            ..Default::default()
+        });
+
+        assert_eq!(pd.points.get(0), [1.5, 2.0, 3.0]);
+        assert_eq!(pd.points.get(1), [0.5, 1.5, 3.0]);
     }
 }

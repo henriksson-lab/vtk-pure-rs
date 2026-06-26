@@ -2,13 +2,15 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn horseshoe(radius: f64, thickness: f64, na: usize) -> PolyData {
+    let radius = radius.abs();
+    let thickness = thickness.abs();
     let na = na.max(12);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let open_angle = std::f64::consts::PI * 0.3; // opening at bottom
-    let start = open_angle / 2.0 + std::f64::consts::PI / 2.0;
-    let end = 2.0 * std::f64::consts::PI - open_angle / 2.0 + std::f64::consts::PI / 2.0;
-    let inner_r = radius - thickness / 2.0;
+    let start = -std::f64::consts::PI / 2.0 + open_angle / 2.0;
+    let end = 3.0 * std::f64::consts::PI / 2.0 - open_angle / 2.0;
+    let inner_r = (radius - thickness / 2.0).max(0.0);
     let outer_r = radius + thickness / 2.0;
     for i in 0..=na {
         let t = i as f64 / na as f64;
@@ -39,6 +41,10 @@ pub fn horseshoe(radius: f64, thickness: f64, na: usize) -> PolyData {
         // Bottom surface
         polys.push_cell(&[b as i64, (b + 1) as i64, (b + 5) as i64, (b + 4) as i64]);
     }
+    // End caps
+    polys.push_cell(&[0, 2, 3, 1]);
+    let b = na * 4;
+    polys.push_cell(&[b as i64, (b + 1) as i64, (b + 3) as i64, (b + 2) as i64]);
     // Nail holes (small circles)
     let mut lines = CellArray::new();
     for &hole_t in &[0.3, 0.5, 0.7] {

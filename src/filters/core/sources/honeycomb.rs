@@ -2,6 +2,7 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn honeycomb(cell_size: f64, nx: usize, ny: usize) -> PolyData {
+    let cell_size = cell_size.abs();
     let nx = nx.max(1);
     let ny = ny.max(1);
     let mut pts = Points::<f64>::new();

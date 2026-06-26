@@ -10,7 +10,8 @@ pub fn image_catalan_number_approx(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            4.0f64.powf(buf[0].abs()) / (std::f64::consts::PI * buf[0].abs().max(1.0)).sqrt()
+            let order = buf[0].abs().max(1.0);
+            4.0f64.powf(order) / (std::f64::consts::PI.sqrt() * order.powf(1.5))
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,24 @@ mod tests {
         );
         let r = image_catalan_number_approx(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn uses_standard_asymptotic_denominator() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 4.0,
+        );
+
+        let r = image_catalan_number_approx(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut value = [0.0];
+        arr.tuple_as_f64(0, &mut value);
+
+        let expected = 4.0f64.powf(4.0) / (std::f64::consts::PI.sqrt() * 4.0f64.powf(1.5));
+        assert!((value[0] - expected).abs() < 1e-12);
     }
 }

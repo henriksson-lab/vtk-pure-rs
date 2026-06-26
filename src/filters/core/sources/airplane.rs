@@ -37,6 +37,16 @@ pub fn airplane(
             ]);
         }
     }
+    let nose = pts.len();
+    pts.push([-hl, 0.0, 0.0]);
+    let tail = pts.len();
+    pts.push([hl, 0.0, 0.0]);
+    let last_ring = nseg * res;
+    for i in 0..res {
+        let j = (i + 1) % res;
+        polys.push_cell(&[nose as i64, j as i64, i as i64]);
+        polys.push_cell(&[tail as i64, (last_ring + i) as i64, (last_ring + j) as i64]);
+    }
     // Wings (flat quads)
     let wing_x = -fuselage_l * 0.05;
     let wing_z = -fuselage_r * 0.3;

@@ -10,7 +10,7 @@ pub fn image_bias(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].powf((-(0.6f64).ln() / 2.0f64.ln()))
+            buf[0].powf(-(0.6f64).ln() / 2.0f64.ln())
         })
         .collect();
     let dims = input.dimensions();

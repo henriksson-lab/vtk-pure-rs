@@ -10,6 +10,8 @@ fn add_sphere(
     r: f64,
     na: usize,
 ) -> usize {
+    let center = pts.len();
+    pts.push([cx, cy, cz]);
     let base = pts.len();
     let nr = 4;
     pts.push([cx, cy, cz + r]);
@@ -50,7 +52,7 @@ fn add_sphere(
             (last_ring + (j + 1) % na) as i64,
         ]);
     }
-    base
+    center
 }
 
 pub fn water_molecule(bond_length: f64, ball_radius: f64, n_angular: usize) -> PolyData {

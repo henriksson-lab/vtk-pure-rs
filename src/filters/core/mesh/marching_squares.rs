@@ -1,4 +1,5 @@
-use crate::data::{CellArray, ImageData, Points, PolyData};
+use crate::data::{CellArray, DataArray, ImageData, Points, PolyData};
+use std::collections::HashMap;
 
 /// 2D marching squares: extract contour lines from a 2D scalar field on a
 /// regular grid (ImageData with nz=1).
@@ -21,6 +22,9 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
     }
 
     let n: usize = nx * ny;
+    if arr.num_tuples() < n {
+        return PolyData::new();
+    }
     let mut values: Vec<f64> = vec![0.0; n];
     let mut buf: [f64; 1] = [0.0];
     for i in 0..n {
@@ -42,6 +46,8 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
 
     let mut out_points = Points::<f64>::new();
     let mut out_lines = CellArray::new();
+    let mut out_scalars = DataArray::<f64>::new(scalars, 1);
+    let mut point_ids = HashMap::new();
 
     // Edge indices for a square cell:
     //   3---2---2
@@ -52,25 +58,24 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
     //
     // Edges: 0=bottom, 1=right, 2=top, 3=left
 
-    // Lookup table: for each of the 16 cases, list of edge pairs forming line segments.
-    // Each sub-array contains pairs (edge_a, edge_b).
-    let edge_table: [&[(usize, usize)]; 16] = [
-        &[],                     // 0000
-        &[(0, 3)],               // 0001
-        &[(0, 1)],               // 0010
-        &[(1, 3)],               // 0011
-        &[(1, 2)],               // 0100
-        &[(0, 1), (2, 3)],       // 0101 - saddle
-        &[(0, 2)],               // 0110
-        &[(2, 3)],               // 0111
-        &[(2, 3)],               // 1000
-        &[(0, 2)],               // 1001
-        &[(0, 3), (1, 2)],       // 1010 - saddle
-        &[(1, 2)],               // 1011
-        &[(1, 3)],               // 1100
-        &[(0, 1)],               // 1101
-        &[(0, 3)],               // 1110
-        &[],                     // 1111
+    // vtkMarchingSquaresLineCases.
+    let edge_table: [[i32; 5]; 16] = [
+        [-1, -1, -1, -1, -1],
+        [0, 3, -1, -1, -1],
+        [1, 0, -1, -1, -1],
+        [1, 3, -1, -1, -1],
+        [2, 1, -1, -1, -1],
+        [0, 3, 2, 1, -1],
+        [2, 0, -1, -1, -1],
+        [2, 3, -1, -1, -1],
+        [3, 2, -1, -1, -1],
+        [0, 2, -1, -1, -1],
+        [1, 0, 3, 2, -1],
+        [1, 2, -1, -1, -1],
+        [3, 1, -1, -1, -1],
+        [0, 1, -1, -1, -1],
+        [3, 0, -1, -1, -1],
+        [-1, -1, -1, -1, -1],
     ];
 
     for j in 0..ny - 1 {
@@ -81,13 +86,21 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
             let v3: f64 = values[idx(i, j + 1)];
 
             let mut case_idx: u8 = 0;
-            if v0 >= iso_value { case_idx |= 1; }
-            if v1 >= iso_value { case_idx |= 2; }
-            if v2 >= iso_value { case_idx |= 4; }
-            if v3 >= iso_value { case_idx |= 8; }
+            if v0 >= iso_value {
+                case_idx |= 1;
+            }
+            if v1 >= iso_value {
+                case_idx |= 2;
+            }
+            if v2 >= iso_value {
+                case_idx |= 4;
+            }
+            if v3 >= iso_value {
+                case_idx |= 8;
+            }
 
-            let segments = edge_table[case_idx as usize];
-            if segments.is_empty() {
+            let segments = &edge_table[case_idx as usize];
+            if segments[0] < 0 {
                 continue;
             }
 
@@ -98,10 +111,10 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
 
             let interp_edge = |edge: usize| -> [f64; 3] {
                 let (va, vb, pa, pb) = match edge {
-                    0 => (v0, v1, p0, p1), // bottom
-                    1 => (v1, v2, p1, p2), // right
+                    0 => (v0, v1, p0, p1),             // bottom
+                    1 => (v1, v2, p1, p2),             // right
                     2 => (v3, v3 + (v2 - v3), p3, p2), // top (v3->v2)
-                    3 => (v0, v3, p0, p3), // left
+                    3 => (v0, v3, p0, p3),             // left
                     _ => unreachable!(),
                 };
                 let t: f64 = if (vb - va).abs() > 1e-20 {
@@ -116,13 +129,28 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
                 ]
             };
 
-            for &(ea, eb) in segments {
-                let pt_a = interp_edge(ea);
-                let pt_b = interp_edge(eb);
-                let id_a: i64 = out_points.len() as i64;
-                out_points.push(pt_a);
-                out_points.push(pt_b);
-                out_lines.push_cell(&[id_a, id_a + 1]);
+            let mut edge = 0usize;
+            while segments[edge] >= 0 {
+                let pt_a = interp_edge(segments[edge] as usize);
+                let pt_b = interp_edge(segments[edge + 1] as usize);
+                let id_a = insert_unique_point(
+                    &mut out_points,
+                    &mut out_scalars,
+                    &mut point_ids,
+                    pt_a,
+                    iso_value,
+                );
+                let id_b = insert_unique_point(
+                    &mut out_points,
+                    &mut out_scalars,
+                    &mut point_ids,
+                    pt_b,
+                    iso_value,
+                );
+                if id_a != id_b {
+                    out_lines.push_cell(&[id_a, id_b]);
+                }
+                edge += 2;
             }
         }
     }
@@ -130,7 +158,26 @@ pub fn marching_squares(image: &ImageData, scalars: &str, iso_value: f64) -> Pol
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.lines = out_lines;
+    pd.point_data_mut().add_array(out_scalars.into());
     pd
+}
+
+fn insert_unique_point(
+    points: &mut Points<f64>,
+    scalars: &mut DataArray<f64>,
+    point_ids: &mut HashMap<[u64; 3], i64>,
+    point: [f64; 3],
+    iso_value: f64,
+) -> i64 {
+    let key = [point[0].to_bits(), point[1].to_bits(), point[2].to_bits()];
+    if let Some(&id) = point_ids.get(&key) {
+        return id;
+    }
+    let id = points.len() as i64;
+    points.push(point);
+    scalars.push_tuple(&[iso_value]);
+    point_ids.insert(key, id);
+    id
 }
 
 #[cfg(test)]
@@ -142,14 +189,9 @@ mod tests {
     fn simple_contour() {
         // 3x3 grid with a step function: left column = 0, rest = 1
         let mut img = ImageData::with_dimensions(3, 3, 1);
-        let vals: Vec<f64> = vec![
-            0.0, 1.0, 1.0,
-            0.0, 1.0, 1.0,
-            0.0, 1.0, 1.0,
-        ];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalar", vals, 1),
-        ));
+        let vals: Vec<f64> = vec![0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0];
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("scalar", vals, 1)));
 
         let result = marching_squares(&img, "scalar", 0.5);
         // Should produce contour lines along x=0.5
@@ -167,9 +209,8 @@ mod tests {
         // Uniform field: no contour lines
         let mut img = ImageData::with_dimensions(4, 4, 1);
         let vals: Vec<f64> = vec![1.0; 16];
-        img.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("scalar", vals, 1),
-        ));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("scalar", vals, 1)));
 
         let result = marching_squares(&img, "scalar", 0.5);
         assert_eq!(result.lines.num_cells(), 0);

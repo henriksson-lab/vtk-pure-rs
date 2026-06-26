@@ -1,6 +1,6 @@
 //! Lattice tower (antenna/transmission tower) geometry.
 use crate::data::{CellArray, Points, PolyData};
-pub fn lattice_tower(base_width: f64, top_width: f64, height: f64, sections: usize) -> PolyData {
+pub fn antenna_tower(base_width: f64, top_width: f64, height: f64, sections: usize) -> PolyData {
     let ns = sections.max(1);
     let mut pts = Points::<f64>::new();
     let mut lines = CellArray::new();
@@ -42,12 +42,17 @@ pub fn lattice_tower(base_width: f64, top_width: f64, height: f64, sections: usi
     r.lines = lines;
     r
 }
+
+pub fn lattice_tower(base_width: f64, top_width: f64, height: f64, sections: usize) -> PolyData {
+    antenna_tower(base_width, top_width, height, sections)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test() {
-        let t = lattice_tower(4.0, 1.0, 20.0, 5);
+        let t = antenna_tower(4.0, 1.0, 20.0, 5);
         assert!(t.lines.num_cells() > 30);
     }
 }

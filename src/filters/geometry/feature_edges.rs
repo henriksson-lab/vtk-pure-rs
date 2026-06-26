@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Type of edge detected by the feature edges filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,9 +46,9 @@ impl Default for FeatureEdgesParams {
 ///
 /// Returns a PolyData containing line cells for the selected edge types.
 pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData {
-    // Build edge -> (face_count, face0, face1) using packed u64 key
-    // Stores at most 2 face indices per edge (sufficient for manifold detection)
-    let mut edge_data: HashMap<u64, (u8, usize, usize)> = HashMap::new();
+    // Build edge -> (face_count, face0, face1). Stores the first two face
+    // indices; higher counts only affect non-manifold classification.
+    let mut edge_data: HashMap<(i64, i64), (usize, usize, usize)> = HashMap::new();
     let nc = input.polys.num_cells();
     let mut face_normals: Vec<[f64; 3]> = Vec::with_capacity(nc);
 
@@ -58,11 +58,7 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
         let n = cell.len();
         for i in 0..n {
             let (a, b) = (cell[i], cell[(i + 1) % n]);
-            let key = if a < b {
-                (a as u64) << 32 | b as u64
-            } else {
-                (b as u64) << 32 | a as u64
-            };
+            let key = if a < b { (a, b) } else { (b, a) };
             let entry = edge_data.entry(key).or_insert((0, 0, 0));
             if entry.0 == 0 {
                 entry.1 = ci;
@@ -79,18 +75,16 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
     let mut pts_flat: Vec<f64> = Vec::new();
     let mut line_conn: Vec<i64> = Vec::new();
     let mut pt_map: Vec<i64> = vec![-1; input.points.len()];
+    let mut edge_types = Vec::new();
 
-    for (&key, &(count, f0, f1)) in &edge_data {
-        let a = (key >> 32) as i64;
-        let b = (key & 0xFFFFFFFF) as i64;
-
+    for (&(a, b), &(count, f0, f1)) in &edge_data {
         let edge_type = if count == 1 {
             EdgeType::Boundary
         } else if count == 2 {
             let n1 = face_normals[f0];
             let n2 = face_normals[f1];
             let dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
-            if dot < cos_threshold {
+            if dot <= cos_threshold {
                 EdgeType::Feature
             } else {
                 EdgeType::Manifold
@@ -120,6 +114,12 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
             }
             line_conn.push(pt_map[a as usize]);
             line_conn.push(pt_map[b as usize]);
+            edge_types.push(match edge_type {
+                EdgeType::Boundary => 0.0,
+                EdgeType::NonManifold => 0.222222,
+                EdgeType::Feature => 0.444444,
+                EdgeType::Manifold => 0.666667,
+            });
         }
     }
 
@@ -129,6 +129,12 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
     let mut pd = PolyData::new();
     pd.points = Points::from_flat_vec(pts_flat);
     pd.lines = CellArray::from_raw(offsets, line_conn);
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Edge Types",
+            edge_types,
+            1,
+        )));
     pd
 }
 

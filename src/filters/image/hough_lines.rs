@@ -16,12 +16,18 @@ pub fn hough_accumulator(
     theta_bins: usize,
     rho_bins: usize,
 ) -> ImageData {
+    if theta_bins == 0 || rho_bins == 0 {
+        return input.clone();
+    }
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
         _ => return input.clone(),
     };
     let dims = input.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
+    if nx == 0 || ny == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let diag = ((nx * nx + ny * ny) as f64).sqrt();
     let mut acc = vec![0.0f64; theta_bins * rho_bins];
@@ -65,8 +71,14 @@ pub fn detect_lines(
     rho_bins: usize,
     n: usize,
 ) -> Vec<HoughLine> {
+    if theta_bins == 0 || rho_bins == 0 || n == 0 {
+        return Vec::new();
+    }
     let acc_img = hough_accumulator(input, scalars, theta_bins, rho_bins);
-    let arr = acc_img.point_data().get_array("Accumulator").unwrap();
+    let arr = match acc_img.point_data().get_array("Accumulator") {
+        Some(a) => a,
+        None => return Vec::new(),
+    };
     let dims = acc_img.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
     let diag = {

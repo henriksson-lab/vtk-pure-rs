@@ -3,13 +3,13 @@ use crate::data::{CellArray, Points, PolyData};
 /// Place ellipsoid glyphs at each input point, scaled and oriented by a
 /// 3×3 symmetric tensor stored as a 9-component array in point data.
 ///
-/// The tensor is interpreted as a 3×3 matrix stored row-major. The glyph
-/// is a unit sphere scaled by the eigenvalues and rotated by the
-/// eigenvectors of the tensor (approximated by the matrix columns for
-/// symmetric tensors).
+/// The tensor is interpreted as a 3×3 matrix stored row-major. Like VTK's
+/// default tensor glyph path, the symmetric part of the tensor is decomposed
+/// into eigenvalues and eigenvectors; the source glyph's local axes are scaled
+/// by the eigenvalues and rotated onto the corresponding eigenvectors.
 pub fn tensor_glyph(input: &PolyData, tensor_name: &str, glyph: &PolyData) -> PolyData {
     let tensor_arr = match input.point_data().get_array(tensor_name) {
-        Some(a) if a.num_components() == 9 => a,
+        Some(a) if a.num_components() == 6 || a.num_components() == 9 => a,
         _ => return PolyData::new(),
     };
 
@@ -22,13 +22,35 @@ pub fn tensor_glyph(input: &PolyData, tensor_name: &str, glyph: &PolyData) -> Po
     let mut buf = [0.0f64; 9];
     for i in 0..n {
         let center = input.points.get(i);
-        tensor_arr.tuple_as_f64(i, &mut buf);
+        if tensor_arr.num_components() == 6 {
+            let mut sym = [0.0f64; 6];
+            tensor_arr.tuple_as_f64(i, &mut sym);
+            // VTK's six-component symmetric tensor order is
+            // xx, yy, zz, xy, yz, xz.
+            buf = [
+                sym[0], sym[3], sym[5], sym[3], sym[1], sym[4], sym[5], sym[4], sym[2],
+            ];
+        } else {
+            tensor_arr.tuple_as_f64(i, &mut buf);
+        }
 
-        // Extract columns as scale+direction (for symmetric tensors,
-        // columns approximate eigenvectors scaled by eigenvalues)
-        let col0 = [buf[0], buf[3], buf[6]];
-        let col1 = [buf[1], buf[4], buf[7]];
-        let col2 = [buf[2], buf[5], buf[8]];
+        let (eigenvalues, eigenvectors) = symmetric_eigensystem(&buf);
+        let scale = nonzero_scales(eigenvalues);
+        let col0 = [
+            eigenvectors[0][0] * scale[0],
+            eigenvectors[1][0] * scale[0],
+            eigenvectors[2][0] * scale[0],
+        ];
+        let col1 = [
+            eigenvectors[0][1] * scale[1],
+            eigenvectors[1][1] * scale[1],
+            eigenvectors[2][1] * scale[1],
+        ];
+        let col2 = [
+            eigenvectors[0][2] * scale[2],
+            eigenvectors[1][2] * scale[2],
+            eigenvectors[2][2] * scale[2],
+        ];
 
         let base = out_points.len() as i64;
 
@@ -52,6 +74,112 @@ pub fn tensor_glyph(input: &PolyData, tensor_name: &str, glyph: &PolyData) -> Po
     pd.points = out_points;
     pd.polys = out_polys;
     pd
+}
+
+fn symmetric_eigensystem(tensor: &[f64; 9]) -> ([f64; 3], [[f64; 3]; 3]) {
+    let mut a = [
+        [
+            tensor[0],
+            0.5 * (tensor[1] + tensor[3]),
+            0.5 * (tensor[2] + tensor[6]),
+        ],
+        [
+            0.5 * (tensor[3] + tensor[1]),
+            tensor[4],
+            0.5 * (tensor[5] + tensor[7]),
+        ],
+        [
+            0.5 * (tensor[6] + tensor[2]),
+            0.5 * (tensor[7] + tensor[5]),
+            tensor[8],
+        ],
+    ];
+    let mut v = [[0.0; 3]; 3];
+    for (i, row) in v.iter_mut().enumerate() {
+        row[i] = 1.0;
+    }
+
+    for _ in 0..32 {
+        let (p, q, max_off) = largest_off_diagonal(&a);
+        if max_off < 1e-12 {
+            break;
+        }
+
+        let tau = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let sign = if tau >= 0.0 { 1.0 } else { -1.0 };
+        let t = sign / (tau.abs() + (1.0 + tau * tau).sqrt());
+        let c = 1.0 / (1.0 + t * t).sqrt();
+        let s = t * c;
+
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+        a[p][p] = app - t * apq;
+        a[q][q] = aqq + t * apq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
+
+        for r in 0..3 {
+            if r != p && r != q {
+                let arp = a[r][p];
+                let arq = a[r][q];
+                a[r][p] = c * arp - s * arq;
+                a[p][r] = a[r][p];
+                a[r][q] = s * arp + c * arq;
+                a[q][r] = a[r][q];
+            }
+
+            let vrp = v[r][p];
+            let vrq = v[r][q];
+            v[r][p] = c * vrp - s * vrq;
+            v[r][q] = s * vrp + c * vrq;
+        }
+    }
+
+    let mut order = [0usize, 1, 2];
+    order.sort_by(|&lhs, &rhs| {
+        a[rhs][rhs]
+            .partial_cmp(&a[lhs][lhs])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut values = [0.0; 3];
+    let mut vectors = [[0.0; 3]; 3];
+    for (out_col, &src_col) in order.iter().enumerate() {
+        values[out_col] = a[src_col][src_col];
+        for row in 0..3 {
+            vectors[row][out_col] = v[row][src_col];
+        }
+    }
+    (values, vectors)
+}
+
+fn largest_off_diagonal(a: &[[f64; 3]; 3]) -> (usize, usize, f64) {
+    let pairs = [(0, 1), (0, 2), (1, 2)];
+    let mut best = (0, 1, a[0][1].abs());
+    for &(p, q) in &pairs[1..] {
+        let value = a[p][q].abs();
+        if value > best.2 {
+            best = (p, q, value);
+        }
+    }
+    best
+}
+
+fn nonzero_scales(mut scales: [f64; 3]) -> [f64; 3] {
+    let mut max_scale = 0.0f64;
+    for &scale in &scales {
+        max_scale = max_scale.max(scale.abs());
+    }
+    if max_scale == 0.0 {
+        max_scale = 1.0;
+    }
+    for scale in &mut scales {
+        if *scale == 0.0 {
+            *scale = max_scale * 1.0e-6;
+        }
+    }
+    scales
 }
 
 #[cfg(test)]
@@ -110,5 +238,21 @@ mod tests {
         let glyph = PolyData::new();
         let result = tensor_glyph(&input, "nope", &glyph);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn six_component_tensor_uses_vtk_order() {
+        let mut input = PolyData::new();
+        input.points.push([0.0, 0.0, 0.0]);
+        let tensor = DataArray::from_vec("T", vec![1.0, 1.0, 1.0, 0.0, 0.0, 2.0], 6);
+        input.point_data_mut().add_array(tensor.into());
+
+        let glyph = PolyData::from_triangles(
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            vec![[0, 1, 2]],
+        );
+
+        let result = tensor_glyph(&input, "T", &glyph);
+        assert_eq!(result.points.len(), 3);
     }
 }

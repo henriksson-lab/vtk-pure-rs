@@ -11,9 +11,9 @@ pub fn parabolic_dish(radius: f64, depth: f64, u_res: usize, v_res: usize) -> Po
         let z = r * r / (4.0 * f);
         for iu in 0..=ur {
             let a = 2.0 * std::f64::consts::PI * iu as f64 / ur as f64;
-            pts.push([r * a.cos(), r * a.sin(), -z]);
+            pts.push([r * a.cos(), r * a.sin(), z]);
         }
-    } // dish opens upward
+    }
     let w = ur + 1;
     for iv in 0..vr {
         for iu in 0..ur {
@@ -25,8 +25,6 @@ pub fn parabolic_dish(radius: f64, depth: f64, u_res: usize, v_res: usize) -> Po
             ]);
         }
     }
-    // Feed arm (line to focal point)
-    // Focus is at (0,0,-f) relative to vertex at origin... actually at z=f
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;
@@ -43,7 +41,7 @@ pub fn dish_with_feed(radius: f64, depth: f64, u_res: usize, v_res: usize) -> Po
         let a = 2.0 * std::f64::consts::PI * i as f64 / 3.0;
         let edge_idx = dish.points.len();
         dish.points
-            .push([radius * 0.9 * a.cos(), radius * 0.9 * a.sin(), -depth * 0.9]);
+            .push([radius * 0.9 * a.cos(), radius * 0.9 * a.sin(), depth * 0.9]);
         lines.push_cell(&[feed_idx as i64, edge_idx as i64]);
     }
     dish.lines = lines;

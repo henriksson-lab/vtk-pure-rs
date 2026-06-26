@@ -3,7 +3,7 @@
 //! Extracts a sub-grid by index ranges, preserving coordinate arrays
 //! and interpolating point/cell data.
 
-use crate::data::{AnyDataArray, DataArray, RectilinearGrid};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, RectilinearGrid};
 
 /// Extract a sub-region of a RectilinearGrid by index ranges.
 ///
@@ -38,29 +38,31 @@ pub fn extract_rectilinear_sub_grid(
     let pd = grid.point_data();
     for ai in 0..pd.num_arrays() {
         if let Some(arr) = pd.get_array_by_index(ai) {
-            let nc = arr.num_components();
-            let name = arr.name().to_string();
-            let mut data = Vec::new();
-            let mut buf = vec![0.0f64; nc];
+            let mut tuple_ids = Vec::with_capacity(new_dims[0] * new_dims[1] * new_dims[2]);
 
             for iz in z_start..=z_end {
                 for iy in y_start..=y_end {
                     for ix in x_start..=x_end {
                         let old_idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
-                        arr.tuple_as_f64(old_idx, &mut buf);
-                        data.extend_from_slice(&buf);
+                        tuple_ids.push(old_idx);
                     }
                 }
             }
 
-            let new_arr = AnyDataArray::F64(DataArray::from_vec(&name, data, nc));
-            result.point_data_mut().add_array(new_arr);
+            result
+                .point_data_mut()
+                .add_array(select_tuples(arr, &tuple_ids));
         }
     }
+    copy_active_attributes(grid.point_data(), result.point_data_mut());
 
     // Extract cell data
     let cd = grid.cell_data();
-    let cdims = [dims[0] - 1, dims[1] - 1, dims[2] - 1];
+    let cdims = [
+        dims[0].saturating_sub(1).max(1),
+        dims[1].saturating_sub(1).max(1),
+        dims[2].saturating_sub(1).max(1),
+    ];
     let new_cdims = [
         new_dims[0].saturating_sub(1).max(1),
         new_dims[1].saturating_sub(1).max(1),
@@ -69,33 +71,27 @@ pub fn extract_rectilinear_sub_grid(
 
     for ai in 0..cd.num_arrays() {
         if let Some(arr) = cd.get_array_by_index(ai) {
-            let nc = arr.num_components();
-            let name = arr.name().to_string();
-            let mut data = Vec::new();
-            let mut buf = vec![0.0f64; nc];
+            let mut tuple_ids = Vec::with_capacity(new_cdims[0] * new_cdims[1] * new_cdims[2]);
 
-            let cz_end = z_end.min(z_start + new_cdims[2]).min(cdims[2]);
-            let cy_end = y_end.min(y_start + new_cdims[1]).min(cdims[1]);
-            let cx_end = x_end.min(x_start + new_cdims[0]).min(cdims[0]);
-
-            for iz in z_start..cz_end {
-                for iy in y_start..cy_end {
-                    for ix in x_start..cx_end {
+            for iz in z_start..z_start + new_cdims[2] {
+                for iy in y_start..y_start + new_cdims[1] {
+                    for ix in x_start..x_start + new_cdims[0] {
                         let old_idx = ix + iy * cdims[0] + iz * cdims[0] * cdims[1];
                         if old_idx < arr.num_tuples() {
-                            arr.tuple_as_f64(old_idx, &mut buf);
-                            data.extend_from_slice(&buf);
+                            tuple_ids.push(old_idx);
                         }
                     }
                 }
             }
 
-            if !data.is_empty() {
-                let new_arr = AnyDataArray::F64(DataArray::from_vec(&name, data, nc));
-                result.cell_data_mut().add_array(new_arr);
+            if !tuple_ids.is_empty() {
+                result
+                    .cell_data_mut()
+                    .add_array(select_tuples(arr, &tuple_ids));
             }
         }
     }
+    copy_active_attributes(grid.cell_data(), result.cell_data_mut());
 
     result
 }
@@ -124,6 +120,70 @@ fn find_index(coords: &[f64], value: f64) -> usize {
     match coords.binary_search_by(|c| c.partial_cmp(&value).unwrap_or(std::cmp::Ordering::Equal)) {
         Ok(i) => i,
         Err(i) => i.min(coords.len().saturating_sub(1)),
+    }
+}
+
+fn select_tuples(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
+    macro_rules! select {
+        ($array:expr, $variant:ident) => {{
+            let mut out = DataArray::new($array.name(), $array.num_components());
+            for &tuple_id in tuple_ids {
+                out.push_tuple($array.tuple(tuple_id));
+            }
+            AnyDataArray::$variant(out)
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(a) => select!(a, F32),
+        AnyDataArray::F64(a) => select!(a, F64),
+        AnyDataArray::I8(a) => select!(a, I8),
+        AnyDataArray::I16(a) => select!(a, I16),
+        AnyDataArray::I32(a) => select!(a, I32),
+        AnyDataArray::I64(a) => select!(a, I64),
+        AnyDataArray::U8(a) => select!(a, U8),
+        AnyDataArray::U16(a) => select!(a, U16),
+        AnyDataArray::U32(a) => select!(a, U32),
+        AnyDataArray::U64(a) => select!(a, U64),
+    }
+}
+
+fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(array) = input.scalars() {
+        output.set_active_scalars(array.name());
+    }
+    if let Some(array) = input.vectors() {
+        output.set_active_vectors(array.name());
+    }
+    if let Some(array) = input.normals() {
+        output.set_active_normals(array.name());
+    }
+    if let Some(array) = input.tcoords() {
+        output.set_active_tcoords(array.name());
+    }
+    if let Some(array) = input.tensors() {
+        output.set_active_tensors(array.name());
+    }
+    if let Some(array) = input.global_ids() {
+        output.set_active_global_ids(array.name());
+    }
+    if let Some(array) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = input.edge_flags() {
+        output.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = input.tangents() {
+        output.set_active_tangents(array.name());
+    }
+    if let Some(array) = input.rational_weights() {
+        output.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = input.process_ids() {
+        output.set_active_process_ids(array.name());
     }
 }
 

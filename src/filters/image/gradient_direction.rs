@@ -5,8 +5,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Adds "GradientAngle" scalar in radians (atan2(dy, dx)).
 pub fn image_gradient_direction(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -15,6 +15,9 @@ pub fn image_gradient_direction(input: &ImageData, scalars: &str) -> ImageData {
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
     let sp = input.spacing();
+    if arr.num_tuples() != n {
+        return input.clone();
+    }
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)

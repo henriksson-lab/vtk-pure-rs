@@ -16,23 +16,24 @@ pub fn barycentric_subdivide(input: &PolyData) -> PolyData {
     // Cache for edge midpoints: (min_id, max_id) -> new point index
     let mut edge_midpoints: HashMap<(usize, usize), i64> = HashMap::new();
 
-    let get_or_insert_midpoint = |a: usize, b: usize, pts: &mut Points, cache: &mut HashMap<(usize, usize), i64>| -> i64 {
-        let key = if a < b { (a, b) } else { (b, a) };
-        if let Some(&idx) = cache.get(&key) {
-            return idx;
-        }
-        let pa = pts.get(a);
-        let pb = pts.get(b);
-        let mid: [f64; 3] = [
-            (pa[0] + pb[0]) * 0.5,
-            (pa[1] + pb[1]) * 0.5,
-            (pa[2] + pb[2]) * 0.5,
-        ];
-        let idx: i64 = pts.len() as i64;
-        pts.push(mid);
-        cache.insert(key, idx);
-        idx
-    };
+    let get_or_insert_midpoint =
+        |a: usize, b: usize, pts: &mut Points, cache: &mut HashMap<(usize, usize), i64>| -> i64 {
+            let key = if a < b { (a, b) } else { (b, a) };
+            if let Some(&idx) = cache.get(&key) {
+                return idx;
+            }
+            let pa = pts.get(a);
+            let pb = pts.get(b);
+            let mid: [f64; 3] = [
+                (pa[0] + pb[0]) * 0.5,
+                (pa[1] + pb[1]) * 0.5,
+                (pa[2] + pb[2]) * 0.5,
+            ];
+            let idx: i64 = pts.len() as i64;
+            pts.push(mid);
+            cache.insert(key, idx);
+            idx
+        };
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
@@ -99,8 +100,10 @@ mod tests {
     fn two_triangles_shared_edge() {
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0], [0.5, -1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.5, -1.0, 0.0],
             ],
             vec![[0, 1, 2], [0, 1, 3]],
         );

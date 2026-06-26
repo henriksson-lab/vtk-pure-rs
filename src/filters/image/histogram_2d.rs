@@ -11,6 +11,8 @@ pub fn joint_histogram(
     bins_x: usize,
     bins_y: usize,
 ) -> ImageData {
+    let bins_x = bins_x.max(1);
+    let bins_y = bins_y.max(1);
     let arr_a = match input.point_data().get_array(array_a) {
         Some(a) if a.num_components() == 1 => a,
         _ => return ImageData::with_dimensions(1, 1, 1),
@@ -33,6 +35,12 @@ pub fn joint_histogram(
             buf[0]
         })
         .collect();
+
+    if n == 0 {
+        return ImageData::with_dimensions(bins_x, bins_y, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("Histogram2D", vec![0.0; bins_x * bins_y], 1),
+        ));
+    }
 
     let min_a = va.iter().cloned().fold(f64::INFINITY, f64::min);
     let max_a = va.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
@@ -68,8 +76,12 @@ pub fn joint_histogram(
 
 /// Compute mutual information between two arrays.
 pub fn mutual_information(input: &ImageData, array_a: &str, array_b: &str, bins: usize) -> f64 {
+    let bins = bins.max(1);
     let hist = joint_histogram(input, array_a, array_b, bins, bins);
-    let arr = hist.point_data().get_array("Histogram2D").unwrap();
+    let arr = match hist.point_data().get_array("Histogram2D") {
+        Some(a) => a,
+        None => return 0.0,
+    };
     let n2 = bins * bins;
     let mut buf = [0.0f64];
     let counts: Vec<f64> = (0..n2)

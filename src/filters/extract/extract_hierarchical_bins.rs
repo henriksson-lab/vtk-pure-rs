@@ -3,7 +3,10 @@
 //! Organizes points into a multi-level spatial bin hierarchy (octree-like)
 //! with configurable depth and bin labeling.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use crate::types::Scalar;
 
 /// Hierarchically bin a point cloud into an octree structure.
 ///
@@ -77,12 +80,12 @@ pub fn hierarchical_bin(mesh: &PolyData, max_depth: usize) -> PolyData {
 }
 
 /// Count points per bin and return as a summary.
-pub fn bin_counts(mesh: &PolyData) -> std::collections::HashMap<usize, usize> {
+pub fn bin_counts(mesh: &PolyData) -> HashMap<usize, usize> {
     let arr = match mesh.point_data().get_array("BinId") {
         Some(a) => a,
-        None => return std::collections::HashMap::new(),
+        None => return HashMap::new(),
     };
-    let mut counts = std::collections::HashMap::new();
+    let mut counts = HashMap::new();
     let mut buf = [0.0f64];
     for i in 0..arr.num_tuples() {
         arr.tuple_as_f64(i, &mut buf);
@@ -93,20 +96,82 @@ pub fn bin_counts(mesh: &PolyData) -> std::collections::HashMap<usize, usize> {
 
 /// Extract points belonging to a specific bin ID.
 pub fn extract_bin(mesh: &PolyData, bin_id: usize) -> PolyData {
+    extract_bins(mesh, &[bin_id])
+}
+
+/// Extract points belonging to any of the specified bin IDs.
+pub fn extract_bins(mesh: &PolyData, bin_ids: &[usize]) -> PolyData {
     let arr = match mesh.point_data().get_array("BinId") {
         Some(a) => a,
         None => return PolyData::new(),
     };
-    let mut points = Points::<f64>::new();
+    let selected_bins: HashSet<usize> = bin_ids.iter().copied().collect();
+    let mut selected_points = Vec::new();
     let mut buf = [0.0f64];
     for i in 0..arr.num_tuples() {
         arr.tuple_as_f64(i, &mut buf);
-        if buf[0] as usize == bin_id {
-            points.push(mesh.points.get(i));
+        if selected_bins.contains(&(buf[0] as usize)) {
+            selected_points.push(i);
         }
     }
+    extract_point_indices(mesh, &selected_points)
+}
+
+/// Extract all points at a hierarchy level.
+pub fn extract_level(mesh: &PolyData, level: usize) -> PolyData {
+    let arr = match mesh.point_data().get_array("BinLevel") {
+        Some(a) => a,
+        None => return PolyData::new(),
+    };
+    let mut selected_points = Vec::new();
+    let mut buf = [0.0f64];
+    for i in 0..arr.num_tuples() {
+        arr.tuple_as_f64(i, &mut buf);
+        if buf[0] as usize == level {
+            selected_points.push(i);
+        }
+    }
+    extract_point_indices(mesh, &selected_points)
+}
+
+fn extract_point_indices(mesh: &PolyData, point_ids: &[usize]) -> PolyData {
     let mut result = PolyData::new();
+    let mut points = Points::<f64>::new();
+    for &point_id in point_ids {
+        points.push(mesh.points.get(point_id));
+    }
     result.points = points;
+
+    for array in mesh.point_data().iter() {
+        result
+            .point_data_mut()
+            .add_array(subset_any_array(array, point_ids));
+    }
+    result
+}
+
+fn subset_any_array(array: &AnyDataArray, point_ids: &[usize]) -> AnyDataArray {
+    match array {
+        AnyDataArray::F32(a) => AnyDataArray::F32(subset_data_array(a, point_ids)),
+        AnyDataArray::F64(a) => AnyDataArray::F64(subset_data_array(a, point_ids)),
+        AnyDataArray::I8(a) => AnyDataArray::I8(subset_data_array(a, point_ids)),
+        AnyDataArray::I16(a) => AnyDataArray::I16(subset_data_array(a, point_ids)),
+        AnyDataArray::I32(a) => AnyDataArray::I32(subset_data_array(a, point_ids)),
+        AnyDataArray::I64(a) => AnyDataArray::I64(subset_data_array(a, point_ids)),
+        AnyDataArray::U8(a) => AnyDataArray::U8(subset_data_array(a, point_ids)),
+        AnyDataArray::U16(a) => AnyDataArray::U16(subset_data_array(a, point_ids)),
+        AnyDataArray::U32(a) => AnyDataArray::U32(subset_data_array(a, point_ids)),
+        AnyDataArray::U64(a) => AnyDataArray::U64(subset_data_array(a, point_ids)),
+    }
+}
+
+fn subset_data_array<T: Scalar>(array: &DataArray<T>, point_ids: &[usize]) -> DataArray<T> {
+    let mut result = DataArray::new(array.name(), array.num_components());
+    for &point_id in point_ids {
+        if point_id < array.num_tuples() {
+            result.push_tuple(array.tuple(point_id));
+        }
+    }
     result
 }
 

@@ -8,7 +8,12 @@ pub fn hydrofoil(
     thickness: f64,
     n_pts: usize,
 ) -> PolyData {
+    if chord <= 0.0 {
+        return PolyData::new();
+    }
+
     let n = n_pts.max(10);
+    let p = camber_pos.clamp(f64::EPSILON, 1.0 - f64::EPSILON);
     let mut pts = Points::<f64>::new();
     let mut upper = Vec::new();
     let mut lower = Vec::new();
@@ -20,16 +25,15 @@ pub fn hydrofoil(
             * chord
             * (0.2969 * xc.sqrt() - 0.126 * xc - 0.3516 * xc.powi(2) + 0.2843 * xc.powi(3)
                 - 0.1015 * xc.powi(4));
-        let (yc, dyc) = if camber_pos > 0.0 && max_camber > 0.0 {
-            if xc < camber_pos {
-                let yc = max_camber * (2.0 * camber_pos * xc - xc.powi(2)) / camber_pos.powi(2);
-                let dy = 2.0 * max_camber * (camber_pos - xc) / camber_pos.powi(2);
+        let (yc, dyc) = if camber_pos > 0.0 && camber_pos < 1.0 && max_camber > 0.0 {
+            if xc < p {
+                let yc = max_camber * (2.0 * p * xc - xc.powi(2)) / p.powi(2);
+                let dy = 2.0 * max_camber * (p - xc) / p.powi(2);
                 (yc * chord, dy)
             } else {
-                let yc = max_camber
-                    * ((1.0 - 2.0 * camber_pos) + 2.0 * camber_pos * xc - xc.powi(2))
-                    / (1.0 - camber_pos).powi(2);
-                let dy = 2.0 * max_camber * (camber_pos - xc) / (1.0 - camber_pos).powi(2);
+                let yc =
+                    max_camber * ((1.0 - 2.0 * p) + 2.0 * p * xc - xc.powi(2)) / (1.0 - p).powi(2);
+                let dy = 2.0 * max_camber * (p - xc) / (1.0 - p).powi(2);
                 (yc * chord, dy)
             }
         } else {
@@ -64,5 +68,12 @@ mod tests {
         let m = hydrofoil(1.0, 0.04, 0.4, 0.12, 20);
         assert!(m.points.len() > 20);
         assert!(m.polys.num_cells() > 0);
+    }
+
+    #[test]
+    fn invalid_chord_is_empty() {
+        let m = hydrofoil(0.0, 0.04, 0.4, 0.12, 20);
+        assert_eq!(m.points.len(), 0);
+        assert_eq!(m.polys.num_cells(), 0);
     }
 }

@@ -14,11 +14,7 @@ use crate::data::PolyData;
 ///
 /// The output is a PolyData with the same connectivity as the input but with
 /// contracted vertex positions.
-pub fn extract_skeleton(
-    input: &PolyData,
-    iterations: usize,
-    contraction_weight: f64,
-) -> PolyData {
+pub fn extract_skeleton(input: &PolyData, iterations: usize, contraction_weight: f64) -> PolyData {
     let mut output = input.clone();
     let n: usize = output.points.len();
     if n == 0 || iterations == 0 {
@@ -32,20 +28,24 @@ pub fn extract_skeleton(
     for cell in input.polys.iter() {
         let len: usize = cell.len();
         for j in 0..len {
-            let a: usize = cell[j] as usize;
-            let b: usize = cell[(j + 1) % len] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[j], n),
+                valid_point_id(cell[(j + 1) % len], n),
+            ) {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
         }
     }
 
     // Also include edges from lines if present
     for cell in input.lines.iter() {
         for j in 0..(cell.len().saturating_sub(1)) {
-            let a: usize = cell[j] as usize;
-            let b: usize = cell[j + 1] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
+            if let (Some(a), Some(b)) = (valid_point_id(cell[j], n), valid_point_id(cell[j + 1], n))
+            {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
         }
     }
 
@@ -90,6 +90,14 @@ pub fn extract_skeleton(
     output
 }
 
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
 /// Compute the total edge length of a PolyData mesh (sum of all polygon edge lengths).
 #[cfg(test)]
 fn total_edge_length(pd: &PolyData) -> f64 {
@@ -99,8 +107,12 @@ fn total_edge_length(pd: &PolyData) -> f64 {
     for cell in pd.polys.iter() {
         let len: usize = cell.len();
         for j in 0..len {
-            let a: usize = cell[j] as usize;
-            let b: usize = cell[(j + 1) % len] as usize;
+            let Some(a) = valid_point_id(cell[j], pd.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(j + 1) % len], pd.points.len()) else {
+                continue;
+            };
             let key: (usize, usize) = if a < b { (a, b) } else { (b, a) };
             if seen.insert(key) {
                 let pa: [f64; 3] = pd.points.get(a);
@@ -173,9 +185,21 @@ mod tests {
         let p0: [f64; 3] = result.points.get(0);
         let p1: [f64; 3] = result.points.get(1);
         let p2: [f64; 3] = result.points.get(2);
-        let d01: f64 = ((p0[0] - p1[0]).powi(2) + (p0[1] - p1[1]).powi(2) + (p0[2] - p1[2]).powi(2)).sqrt();
-        let d02: f64 = ((p0[0] - p2[0]).powi(2) + (p0[1] - p2[1]).powi(2) + (p0[2] - p2[2]).powi(2)).sqrt();
+        let d01: f64 =
+            ((p0[0] - p1[0]).powi(2) + (p0[1] - p1[1]).powi(2) + (p0[2] - p1[2]).powi(2)).sqrt();
+        let d02: f64 =
+            ((p0[0] - p2[0]).powi(2) + (p0[1] - p2[1]).powi(2) + (p0[2] - p2[2]).powi(2)).sqrt();
         assert!(d01 < 0.01);
         assert!(d02 < 0.01);
+    }
+
+    #[test]
+    fn skips_invalid_connectivity() {
+        let mut mesh = make_triangle_mesh();
+        mesh.polys.push_cell(&[0, 1, 99]);
+        mesh.lines.push_cell(&[0, -1, 2]);
+
+        let result = extract_skeleton(&mesh, 2, 0.5);
+        assert_eq!(result.points.len(), mesh.points.len());
     }
 }

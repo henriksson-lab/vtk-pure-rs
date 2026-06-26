@@ -13,11 +13,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 ///
 /// The result is an approximate geodesic distance stored as "GeodesicDistance"
 /// point data on the returned PolyData.
-pub fn geodesic_distance_heat(
-    input: &PolyData,
-    source: usize,
-    heat_time: f64,
-) -> PolyData {
+pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -> PolyData {
     let n = input.points.len();
     let mut output = input.clone();
     if n == 0 || source >= n {
@@ -31,6 +27,9 @@ pub fn geodesic_distance_heat(
         for j in 0..len {
             let a = cell[j] as usize;
             let b = cell[(j + 1) % len] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             neighbors[a].insert(b);
             neighbors[b].insert(a);
         }
@@ -44,10 +43,9 @@ pub fn geodesic_distance_heat(
         for &nb in nbrs {
             if nb > i {
                 let pj = input.points.get(nb);
-                let d: f64 = ((pi[0] - pj[0]).powi(2)
-                    + (pi[1] - pj[1]).powi(2)
-                    + (pi[2] - pj[2]).powi(2))
-                .sqrt();
+                let d: f64 =
+                    ((pi[0] - pj[0]).powi(2) + (pi[1] - pj[1]).powi(2) + (pi[2] - pj[2]).powi(2))
+                        .sqrt();
                 avg_edge += d;
                 edge_count += 1.0;
             }
@@ -104,6 +102,10 @@ pub fn geodesic_distance_heat(
         let i0 = cell[0] as usize;
         let i1 = cell[1] as usize;
         let i2 = cell[2] as usize;
+        if i0 >= n || i1 >= n || i2 >= n {
+            face_grad.push([0.0, 0.0, 0.0]);
+            continue;
+        }
 
         let p0 = input.points.get(i0);
         let p1 = input.points.get(i1);
@@ -156,11 +158,7 @@ pub fn geodesic_distance_heat(
         if mag < 1e-15 {
             face_grad.push([0.0, 0.0, 0.0]);
         } else {
-            face_grad.push([
-                -grad[0] / mag,
-                -grad[1] / mag,
-                -grad[2] / mag,
-            ]);
+            face_grad.push([-grad[0] / mag, -grad[1] / mag, -grad[2] / mag]);
         }
     }
 
@@ -172,6 +170,9 @@ pub fn geodesic_distance_heat(
             continue;
         }
         let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+        if ids.iter().any(|&id| id >= n) {
+            continue;
+        }
         let pts: Vec<[f64; 3]> = ids.iter().map(|&idx| input.points.get(idx)).collect();
         let x = &face_grad[fi];
 

@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, ImageData};
 
 /// Extract a sub-region of an ImageData by index extent.
 ///
@@ -12,6 +12,10 @@ pub fn extract_region(input: &ImageData, sub_extent: [usize; 6]) -> ImageData {
     let j1 = sub_extent[3].min(dims[1].saturating_sub(1));
     let k0 = sub_extent[4].min(dims[2].saturating_sub(1));
     let k1 = sub_extent[5].min(dims[2].saturating_sub(1));
+
+    if i0 > i1 || j0 > j1 || k0 > k1 {
+        return ImageData::new();
+    }
 
     let new_nx = i1 - i0 + 1;
     let new_ny = j1 - j0 + 1;
@@ -37,35 +41,99 @@ pub fn extract_region(input: &ImageData, sub_extent: [usize; 6]) -> ImageData {
             Some(a) => a,
             None => continue,
         };
-        let nc = arr.num_components();
-        let mut data = Vec::with_capacity(new_nx * new_ny * new_nz * nc);
-        let mut buf = vec![0.0f64; nc];
+        if arr.num_tuples() != input.num_points() {
+            continue;
+        }
 
+        let mut tuple_ids = Vec::with_capacity(new_nx * new_ny * new_nz);
         for k in k0..=k1 {
             for j in j0..=j1 {
                 for i in i0..=i1 {
-                    let src_idx = input.index_from_ijk(i, j, k);
-                    arr.tuple_as_f64(src_idx, &mut buf);
-                    data.extend_from_slice(&buf);
+                    tuple_ids.push(input.index_from_ijk(i, j, k));
                 }
             }
         }
 
         let name = arr.name().to_string();
-        let out_arr = AnyDataArray::F64(DataArray::from_vec(&name, data, nc));
-        result.point_data_mut().add_array(out_arr);
+        result
+            .point_data_mut()
+            .add_array(select_tuples(arr, &tuple_ids));
         if result.point_data().scalars().is_none() {
             result.point_data_mut().set_active_scalars(&name);
         }
     }
+    copy_active_attributes(input.point_data(), result.point_data_mut());
 
     result
+}
+
+fn select_tuples(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
+    macro_rules! select {
+        ($array:expr, $variant:ident) => {{
+            let mut out = DataArray::new($array.name(), $array.num_components());
+            for &tuple_id in tuple_ids {
+                out.push_tuple($array.tuple(tuple_id));
+            }
+            AnyDataArray::$variant(out)
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(a) => select!(a, F32),
+        AnyDataArray::F64(a) => select!(a, F64),
+        AnyDataArray::I8(a) => select!(a, I8),
+        AnyDataArray::I16(a) => select!(a, I16),
+        AnyDataArray::I32(a) => select!(a, I32),
+        AnyDataArray::I64(a) => select!(a, I64),
+        AnyDataArray::U8(a) => select!(a, U8),
+        AnyDataArray::U16(a) => select!(a, U16),
+        AnyDataArray::U32(a) => select!(a, U32),
+        AnyDataArray::U64(a) => select!(a, U64),
+    }
+}
+
+fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(array) = input.scalars() {
+        output.set_active_scalars(array.name());
+    }
+    if let Some(array) = input.vectors() {
+        output.set_active_vectors(array.name());
+    }
+    if let Some(array) = input.normals() {
+        output.set_active_normals(array.name());
+    }
+    if let Some(array) = input.tcoords() {
+        output.set_active_tcoords(array.name());
+    }
+    if let Some(array) = input.tensors() {
+        output.set_active_tensors(array.name());
+    }
+    if let Some(array) = input.global_ids() {
+        output.set_active_global_ids(array.name());
+    }
+    if let Some(array) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = input.edge_flags() {
+        output.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = input.tangents() {
+        output.set_active_tangents(array.name());
+    }
+    if let Some(array) = input.rational_weights() {
+        output.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = input.process_ids() {
+        output.set_active_process_ids(array.name());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::DataSet;
 
     #[test]
     fn extract_subregion() {

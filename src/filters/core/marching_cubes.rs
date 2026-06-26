@@ -1,5 +1,6 @@
 use crate::data::{CellArray, DataArray, ImageData, Points, PolyData};
 use rayon::prelude::*;
+use std::collections::HashMap;
 
 /// Extract an isosurface from scalar data on an ImageData grid using marching cubes.
 ///
@@ -8,6 +9,9 @@ use rayon::prelude::*;
 pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> PolyData {
     let dims = image.dimensions();
     if dims[0] < 2 || dims[1] < 2 || dims[2] < 2 {
+        return PolyData::new();
+    }
+    if scalars.len() < dims[0] * dims[1] * dims[2] {
         return PolyData::new();
     }
 
@@ -21,7 +25,9 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
     let est = ((dims[0] - 1) * (dims[1] - 1) * (dims[2] - 1)) / 50 + 64;
     let mut pts_flat: Vec<f64> = Vec::with_capacity(est * 9);
     let mut nrm_flat: Vec<f64> = Vec::with_capacity(est * 9);
+    let mut scalar_values: Vec<f64> = Vec::with_capacity(est * 3);
     let mut conn: Vec<i64> = Vec::with_capacity(est * 3);
+    let mut locator: HashMap<[u64; 3], usize> = HashMap::with_capacity(est * 3);
 
     // Iterate over all cells (voxels)
     for k in 0..dims[2] - 1 {
@@ -142,9 +148,15 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
                             [0.0, 0.0, 1.0]
                         };
 
-                        edge_verts[edge] = pts_flat.len() / 3;
-                        pts_flat.extend_from_slice(&p);
-                        nrm_flat.extend_from_slice(&normal);
+                        edge_verts[edge] = insert_unique_point(
+                            &mut locator,
+                            &mut pts_flat,
+                            &mut nrm_flat,
+                            &mut scalar_values,
+                            p,
+                            normal,
+                            iso_value,
+                        );
                     }
                 }
 
@@ -152,9 +164,14 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
                 let tri_row = &TRI_TABLE[cube_index as usize];
                 let mut t = 0;
                 while t < tri_row.len() && tri_row[t] != -1 {
-                    conn.push(edge_verts[tri_row[t] as usize] as i64);
-                    conn.push(edge_verts[tri_row[t + 1] as usize] as i64);
-                    conn.push(edge_verts[tri_row[t + 2] as usize] as i64);
+                    let p0 = edge_verts[tri_row[t] as usize] as i64;
+                    let p1 = edge_verts[tri_row[t + 1] as usize] as i64;
+                    let p2 = edge_verts[tri_row[t + 2] as usize] as i64;
+                    if p0 != p1 && p0 != p2 && p1 != p2 {
+                        conn.push(p0);
+                        conn.push(p1);
+                        conn.push(p2);
+                    }
                     t += 3;
                 }
             }
@@ -174,7 +191,44 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
             "Normals", nrm_flat, 3,
         )));
     pd.point_data_mut().set_active_normals("Normals");
+    pd.point_data_mut()
+        .add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "Scalars",
+            scalar_values,
+            1,
+        )));
+    pd.point_data_mut().set_active_scalars("Scalars");
     pd
+}
+
+fn insert_unique_point(
+    locator: &mut HashMap<[u64; 3], usize>,
+    pts_flat: &mut Vec<f64>,
+    nrm_flat: &mut Vec<f64>,
+    scalar_values: &mut Vec<f64>,
+    p: [f64; 3],
+    normal: [f64; 3],
+    scalar: f64,
+) -> usize {
+    let key = [coord_key(p[0]), coord_key(p[1]), coord_key(p[2])];
+    if let Some(&idx) = locator.get(&key) {
+        return idx;
+    }
+
+    let idx = pts_flat.len() / 3;
+    pts_flat.extend_from_slice(&p);
+    nrm_flat.extend_from_slice(&normal);
+    scalar_values.push(scalar);
+    locator.insert(key, idx);
+    idx
+}
+
+fn coord_key(x: f64) -> u64 {
+    if x == 0.0 {
+        0.0f64.to_bits()
+    } else {
+        x.to_bits()
+    }
 }
 
 fn gradient_at(scalars: &[f64], idx: usize, nx: usize, ny: usize, dims: [usize; 3]) -> [f64; 3] {

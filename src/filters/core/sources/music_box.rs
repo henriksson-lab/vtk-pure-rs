@@ -37,9 +37,9 @@ pub fn music_box(
     let mut rng = 42u64;
     for _ in 0..np {
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let x = cylinder_length * ((rng >> 33) as f64 / u32::MAX as f64);
+        let x = cylinder_length * ((rng >> 32) as u32 as f64 / u32::MAX as f64);
         rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let a = 2.0 * std::f64::consts::PI * ((rng >> 33) as f64 / u32::MAX as f64);
+        let a = 2.0 * std::f64::consts::PI * ((rng >> 32) as u32 as f64 / u32::MAX as f64);
         let b = pts.len();
         pts.push([x, cylinder_radius * a.cos(), cylinder_radius * a.sin()]);
         let t = pts.len();

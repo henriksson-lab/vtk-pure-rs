@@ -19,7 +19,13 @@ pub fn convex_hull_2d(mesh: &PolyData) -> PolyData {
     points[1..].sort_by(|a, b| {
         let aa = (a.1[1] - pivot[1]).atan2(a.1[0] - pivot[0]);
         let ab = (b.1[1] - pivot[1]).atan2(b.1[0] - pivot[0]);
-        aa.partial_cmp(&ab).unwrap_or(std::cmp::Ordering::Equal)
+        aa.partial_cmp(&ab)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                let da = (a.1[0] - pivot[0]).powi(2) + (a.1[1] - pivot[1]).powi(2);
+                let db = (b.1[0] - pivot[0]).powi(2) + (b.1[1] - pivot[1]).powi(2);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            })
     });
 
     let mut hull: Vec<usize> = Vec::new();

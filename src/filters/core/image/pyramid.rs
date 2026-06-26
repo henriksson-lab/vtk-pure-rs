@@ -43,11 +43,15 @@ pub fn laplacian_pyramid(input: &ImageData, scalars: &str, levels: usize) -> Vec
         let ny = dims[1] as usize;
         let cdims = gauss[i + 1].dimensions();
         let cnx = cdims[0] as usize;
+        let ncomp = arr_fine.num_components();
+        if ncomp != arr_coarse.num_components() {
+            continue;
+        }
 
-        let mut buf_f = [0.0f64];
-        let mut buf_c = [0.0f64];
+        let mut buf_f = vec![0.0f64; ncomp];
+        let mut buf_c = vec![0.0f64; ncomp];
         let n = nx * ny;
-        let mut diff = Vec::with_capacity(n);
+        let mut diff = Vec::with_capacity(n * ncomp);
 
         for j in 0..ny {
             for i_x in 0..nx {
@@ -56,7 +60,9 @@ pub fn laplacian_pyramid(input: &ImageData, scalars: &str, levels: usize) -> Vec
                 let ci = (i_x / 2).min(cnx - 1);
                 let cj = (j / 2).min(cdims[1] as usize - 1);
                 arr_coarse.tuple_as_f64(cj * cnx + ci, &mut buf_c);
-                diff.push(buf_f[0] - buf_c[0]);
+                for c in 0..ncomp {
+                    diff.push(buf_f[c] - buf_c[c]);
+                }
             }
         }
 
@@ -65,7 +71,7 @@ pub fn laplacian_pyramid(input: &ImageData, scalars: &str, levels: usize) -> Vec
             .add_array(AnyDataArray::F64(DataArray::from_vec(
                 "LaplacianLevel",
                 diff,
-                1,
+                ncomp,
             )));
         lap.push(img);
     }
@@ -128,5 +134,20 @@ mod tests {
         let pyr = image_pyramid(&img, "nope", 3);
         // downsample returns clone when array missing, so pyramid still builds
         assert!(pyr.len() >= 1);
+    }
+
+    #[test]
+    fn laplacian_preserves_component_count() {
+        let mut img = ImageData::with_dimensions(4, 4, 1);
+        let values: Vec<f64> = (0..16)
+            .flat_map(|i| [i as f64, (100 + i) as f64])
+            .collect();
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 2)));
+
+        let lap = laplacian_pyramid(&img, "v", 1);
+        let arr = lap[0].point_data().get_array("LaplacianLevel").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        assert_eq!(arr.num_tuples(), 16);
     }
 }

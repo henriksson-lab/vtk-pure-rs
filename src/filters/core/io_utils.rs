@@ -7,7 +7,8 @@ use crate::types::VtkError;
 ///
 /// Supported extensions: `.vtk`, `.vtp`, `.stl`, `.obj`, `.ply`, `.glb`, `.off`
 pub fn read_poly_data(path: &Path) -> Result<PolyData, VtkError> {
-    let ext = path.extension()
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
@@ -20,7 +21,9 @@ pub fn read_poly_data(path: &Path) -> Result<PolyData, VtkError> {
         "ply" => crate::io::ply::PlyReader::read(path),
         "glb" => crate::io::gltf::GlbReader::read(path),
         "off" => crate::io::off::read_off_file(path).map_err(|e| VtkError::Parse(e)),
-        _ => Err(VtkError::Unsupported(format!("unknown file extension: .{ext}"))),
+        _ => Err(VtkError::Unsupported(format!(
+            "unknown file extension: .{ext}"
+        ))),
     }
 }
 
@@ -28,7 +31,8 @@ pub fn read_poly_data(path: &Path) -> Result<PolyData, VtkError> {
 ///
 /// Supported extensions: `.vtk`, `.vtp`, `.stl`, `.obj`, `.ply`, `.glb`, `.off`
 pub fn write_poly_data(path: &Path, data: &PolyData) -> Result<(), VtkError> {
-    let ext = path.extension()
+    let ext = path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
@@ -40,8 +44,11 @@ pub fn write_poly_data(path: &Path, data: &PolyData) -> Result<(), VtkError> {
         "obj" => crate::io::obj::ObjWriter::write(path, data),
         "ply" => crate::io::ply::PlyWriter::write(path, data),
         "glb" => crate::io::gltf::GlbWriter::write(path, data),
-        "off" => crate::io::off::write_off_file(data, path).map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))),
-        _ => Err(VtkError::Unsupported(format!("unknown file extension: .{ext}"))),
+        "off" => crate::io::off::write_off_file(data, path)
+            .map_err(|e| VtkError::Io(std::io::Error::new(std::io::ErrorKind::Other, e))),
+        _ => Err(VtkError::Unsupported(format!(
+            "unknown file extension: .{ext}"
+        ))),
     }
 }
 

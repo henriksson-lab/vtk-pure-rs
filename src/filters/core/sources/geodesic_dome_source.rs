@@ -55,13 +55,28 @@ pub fn geodesic_dome(radius: f64, subdivisions: usize) -> PolyData {
         }
         tris = new_tris;
     }
+
+    let dome_tris: Vec<[usize; 3]> = tris
+        .into_iter()
+        .filter(|t| pts[t[0]][2] >= -1e-12 && pts[t[1]][2] >= -1e-12 && pts[t[2]][2] >= -1e-12)
+        .collect();
+    let mut point_map = vec![usize::MAX; pts.len()];
     let mut mesh_pts = Points::<f64>::new();
-    for p in &pts {
-        mesh_pts.push(*p);
+    for t in &dome_tris {
+        for &idx in t {
+            if point_map[idx] == usize::MAX {
+                point_map[idx] = mesh_pts.len();
+                mesh_pts.push(pts[idx]);
+            }
+        }
     }
     let mut polys = CellArray::new();
-    for t in &tris {
-        polys.push_cell(&[t[0] as i64, t[1] as i64, t[2] as i64]);
+    for t in &dome_tris {
+        polys.push_cell(&[
+            point_map[t[0]] as i64,
+            point_map[t[1]] as i64,
+            point_map[t[2]] as i64,
+        ]);
     }
     let mut r = PolyData::new();
     r.points = mesh_pts;
@@ -94,18 +109,22 @@ mod tests {
     #[test]
     fn test_0() {
         let d = geodesic_dome(1.0, 0);
-        assert_eq!(d.points.len(), 12);
-        assert_eq!(d.polys.num_cells(), 20);
+        assert!(d.points.len() < 12);
+        assert!(d.polys.num_cells() < 20);
+        for i in 0..d.points.len() {
+            assert!(d.points.get(i)[2] >= -1e-12);
+        }
     }
     #[test]
     fn test_2() {
         let d = geodesic_dome(1.0, 2);
-        assert_eq!(d.polys.num_cells(), 320); // 20*4^2
-                                              // All points on sphere
+        assert!(d.polys.num_cells() < 320);
+        // All points on upper sphere
         for i in 0..d.points.len() {
             let p = d.points.get(i);
             let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
             assert!((r - 1.0).abs() < 1e-10);
+            assert!(p[2] >= -1e-12);
         }
     }
 }

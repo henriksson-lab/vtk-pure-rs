@@ -16,6 +16,15 @@ pub fn image_harris_corners(input: &ImageData, scalars: &str, k: f64, radius: us
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
     let sp = input.spacing();
+    if arr.num_tuples() < n
+        || nx == 0
+        || ny == 0
+        || nz == 0
+        || sp[0].abs() <= 1e-15
+        || sp[1].abs() <= 1e-15
+    {
+        return input.clone();
+    }
     let r = radius.max(1) as i64;
 
     let mut buf = [0.0f64];
@@ -91,6 +100,9 @@ pub fn harris_corner_points(
     let dims = result.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
+    if nx < 3 || ny < 3 {
+        return vec![];
+    }
 
     let mut buf = [0.0f64];
     let mut corners = Vec::new();

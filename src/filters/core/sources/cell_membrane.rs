@@ -1,5 +1,13 @@
 //! Biological cell membrane (lipid bilayer approximation).
 use crate::data::{CellArray, Points, PolyData};
+
+fn next_noise(rng: &mut u64) -> f64 {
+    *rng = rng
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    ((*rng >> 11) as f64 / ((1u64 << 53) - 1) as f64) - 0.5
+}
+
 pub fn cell_membrane(radius: f64, undulation: f64, resolution: usize) -> PolyData {
     let res = resolution.max(8);
     let vres = res;
@@ -13,10 +21,7 @@ pub fn cell_membrane(radius: f64, undulation: f64, resolution: usize) -> PolyDat
         let cv = v.cos();
         for iu in 0..=res {
             let u = 2.0 * std::f64::consts::PI * iu as f64 / res as f64;
-            rng = rng
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            let noise = ((rng >> 33) as f64 / u32::MAX as f64 - 0.5) * undulation;
+            let noise = next_noise(&mut rng) * undulation;
             let r = radius + noise;
             pts.push([r * sv * u.cos(), r * sv * u.sin(), r * cv]);
         }
@@ -41,10 +46,7 @@ pub fn cell_membrane(radius: f64, undulation: f64, resolution: usize) -> PolyDat
         let cv = v.cos();
         for iu in 0..=res {
             let u = 2.0 * std::f64::consts::PI * iu as f64 / res as f64;
-            rng = rng
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            let noise = ((rng >> 33) as f64 / u32::MAX as f64 - 0.5) * undulation * 0.8;
+            let noise = next_noise(&mut rng) * undulation * 0.8;
             let r = inner_r + noise;
             pts.push([r * sv * u.cos(), r * sv * u.sin(), r * cv]);
         }
@@ -96,5 +98,23 @@ mod tests {
     fn test() {
         let c = cell_membrane(5.0, 0.2, 10);
         assert!(c.polys.num_cells() > 100);
+    }
+
+    #[test]
+    fn undulation_is_centered() {
+        let radius = 5.0;
+        let resolution = 10;
+        let c = cell_membrane(radius, 0.2, resolution);
+        let outer_points = (resolution + 1) * (resolution + 1);
+        let mut min_radius = f64::INFINITY;
+        let mut max_radius = f64::NEG_INFINITY;
+        for i in 0..outer_points {
+            let p = c.points.get(i);
+            let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+            min_radius = min_radius.min(r);
+            max_radius = max_radius.max(r);
+        }
+        assert!(min_radius < radius);
+        assert!(max_radius > radius);
     }
 }

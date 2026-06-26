@@ -12,8 +12,9 @@ use std::collections::HashMap;
 pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
     // Collect all triangles as index triples
     let mut triangles: Vec<[usize; 3]> = Vec::new();
+    let num_points = input.points.len();
     for cell in input.polys.iter() {
-        if cell.len() == 3 {
+        if cell.len() == 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points) {
             triangles.push([cell[0] as usize, cell[1] as usize, cell[2] as usize]);
         } else {
             // Non-triangle cells: skip (cannot swap edges)
@@ -57,19 +58,24 @@ pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
         // Find the opposite vertices (not on the shared edge)
         let opp0: usize = find_opposite(&t0, ea, eb);
         let opp1: usize = find_opposite(&t1, ea, eb);
+        if opp0 == opp1 {
+            continue;
+        }
 
         // Current minimum angle across both triangles
-        let current_min: f64 = min_angle_of_tri(input, &t0)
-            .min(min_angle_of_tri(input, &t1));
+        let current_min: f64 = min_angle_of_tri(input, &t0).min(min_angle_of_tri(input, &t1));
 
         // Proposed swap: replace edge (ea, eb) with edge (opp0, opp1)
-        // New triangles: (opp0, opp1, ea) and (opp0, opp1, eb)
-        let new_t0: [usize; 3] = [opp0, opp1, ea];
-        let new_t1: [usize; 3] = [opp0, opp1, eb];
+        // New triangles are oriented to match the normals of the old pair.
+        let old_n0 = triangle_normal(input, &t0);
+        let old_n1 = triangle_normal(input, &t1);
+        let new_t0: [usize; 3] = orient_like(input, [opp0, opp1, ea], old_n0);
+        let new_t1: [usize; 3] = orient_like(input, [opp1, opp0, eb], old_n1);
+        if !has_positive_area(input, &new_t0) || !has_positive_area(input, &new_t1) {
+            continue;
+        }
 
-        // Check that the new triangles are valid (non-degenerate, correct winding)
-        let new_min: f64 = min_angle_of_tri(input, &new_t0)
-            .min(min_angle_of_tri(input, &new_t1));
+        let new_min: f64 = min_angle_of_tri(input, &new_t0).min(min_angle_of_tri(input, &new_t1));
 
         if new_min > current_min + 1e-10 {
             triangles[ti0] = new_t0;
@@ -132,6 +138,34 @@ fn angle_at_vertex(v: &[f64; 3], a: &[f64; 3], b: &[f64; 3]) -> f64 {
     cos_val.acos()
 }
 
+fn triangle_normal(pd: &PolyData, tri: &[usize; 3]) -> [f64; 3] {
+    let p0 = pd.points.get(tri[0]);
+    let p1 = pd.points.get(tri[1]);
+    let p2 = pd.points.get(tri[2]);
+    let u = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    let v = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ]
+}
+
+fn orient_like(pd: &PolyData, tri: [usize; 3], reference_normal: [f64; 3]) -> [usize; 3] {
+    let n = triangle_normal(pd, &tri);
+    let dot = n[0] * reference_normal[0] + n[1] * reference_normal[1] + n[2] * reference_normal[2];
+    if dot < 0.0 {
+        [tri[0], tri[2], tri[1]]
+    } else {
+        tri
+    }
+}
+
+fn has_positive_area(pd: &PolyData, tri: &[usize; 3]) -> bool {
+    let n = triangle_normal(pd, tri);
+    n[0] * n[0] + n[1] * n[1] + n[2] * n[2] > 1e-30
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,10 +178,10 @@ mod tests {
         // are close, making thin triangles that benefit from a swap.
         let pd = PolyData::from_triangles(
             vec![
-                [0.0, 2.0, 0.0],   // 0: top
-                [0.0, 0.0, 0.0],   // 1: bottom-left
-                [4.0, 0.0, 0.0],   // 2: bottom-right (shared edge with 1)
-                [4.0, 2.0, 0.0],   // 3: top-right
+                [0.0, 2.0, 0.0], // 0: top
+                [0.0, 0.0, 0.0], // 1: bottom-left
+                [4.0, 0.0, 0.0], // 2: bottom-right (shared edge with 1)
+                [4.0, 2.0, 0.0], // 3: top-right
             ],
             vec![[0, 1, 2], [2, 3, 0]],
         );

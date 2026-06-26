@@ -10,6 +10,8 @@ pub fn heightfield_from_function(
     ny: usize,
     f: impl Fn(f64, f64) -> f64,
 ) -> PolyData {
+    let nx = nx.max(1);
+    let ny = ny.max(1);
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut height = Vec::new();
@@ -50,12 +52,16 @@ pub fn heightfield_from_array(
     ny: usize,
     z_values: &[f64],
 ) -> PolyData {
+    let nx = nx.max(1);
+    let ny = ny.max(1);
+    let row = nx + 1;
+
     heightfield_from_function(x_range, y_range, nx, ny, |x, y| {
         let ix = ((x - x_range.0) / (x_range.1 - x_range.0) * nx as f64) as usize;
         let iy = ((y - y_range.0) / (y_range.1 - y_range.0) * ny as f64) as usize;
         let ix = ix.min(nx);
         let iy = iy.min(ny);
-        let idx = iy * (nx + 1) + ix;
+        let idx = iy * row + ix;
         if idx < z_values.len() {
             z_values[idx]
         } else {
@@ -78,5 +84,21 @@ mod tests {
         let z: Vec<f64> = (0..121).map(|i| i as f64 * 0.01).collect();
         let hf = heightfield_from_array((0.0, 1.0), (0.0, 1.0), 10, 10, &z);
         assert_eq!(hf.points.len(), 121);
+    }
+
+    #[test]
+    fn from_array_clamps_dimensions_consistently() {
+        let z = vec![1.0, 2.0, 3.0, 4.0];
+        let hf = heightfield_from_array((0.0, 1.0), (0.0, 1.0), 0, 0, &z);
+        assert_eq!(hf.points.len(), 4);
+        assert_eq!(hf.polys.num_cells(), 2);
+        let height = hf
+            .point_data()
+            .get_array("Height")
+            .unwrap()
+            .as_f64()
+            .unwrap();
+        assert_eq!(height.tuple(0), &[1.0]);
+        assert_eq!(height.tuple(3), &[4.0]);
     }
 }

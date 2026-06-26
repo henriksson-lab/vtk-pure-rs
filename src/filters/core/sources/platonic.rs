@@ -1,220 +1,159 @@
 //! All five Platonic solids with consistent API.
 
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Platonic solid type.
 pub enum PlatonicSolid {
     Tetrahedron,
     Cube,
     Octahedron,
-    Dodecahedron,
     Icosahedron,
+    Dodecahedron,
 }
 
 /// Create a Platonic solid centered at origin with given circumradius.
 pub fn platonic(solid: PlatonicSolid, radius: f64) -> PolyData {
-    match solid {
-        PlatonicSolid::Tetrahedron => make_tetrahedron(radius),
-        PlatonicSolid::Cube => make_cube(radius),
-        PlatonicSolid::Octahedron => make_octahedron(radius),
-        PlatonicSolid::Dodecahedron => make_dodecahedron(radius),
-        PlatonicSolid::Icosahedron => make_icosahedron(radius),
+    let (solid_points, solid_verts, cell_size, solid_scale) = match solid {
+        PlatonicSolid::Tetrahedron => (&TETRA_POINTS[..], &TETRA_VERTS[..], 3, 1.0 / 3.0f64.sqrt()),
+        PlatonicSolid::Cube => (&CUBE_POINTS[..], &CUBE_VERTS[..], 4, 1.0 / 3.0f64.sqrt()),
+        PlatonicSolid::Octahedron => (&OCT_POINTS[..], &OCT_VERTS[..], 3, 1.0 / 2.0f64.sqrt()),
+        PlatonicSolid::Icosahedron => (
+            &ICOSA_POINTS[..],
+            &ICOSA_VERTS[..],
+            3,
+            1.0 / 0.58778524999243,
+        ),
+        PlatonicSolid::Dodecahedron => (&DODE_POINTS[..], &DODE_VERTS[..], 5, 1.0 / 1.070466269319),
+    };
+
+    build_poly_data(solid_points, solid_verts, cell_size, solid_scale * radius)
+}
+
+const TETRA_POINTS: [[f64; 3]; 4] = [
+    [1.0, 1.0, 1.0],
+    [-1.0, 1.0, -1.0],
+    [1.0, -1.0, -1.0],
+    [-1.0, -1.0, 1.0],
+];
+const TETRA_VERTS: [i64; 12] = [0, 2, 1, 1, 2, 3, 0, 3, 2, 0, 1, 3];
+
+const CUBE_POINTS: [[f64; 3]; 8] = [
+    [-1.0, -1.0, -1.0],
+    [1.0, -1.0, -1.0],
+    [1.0, 1.0, -1.0],
+    [-1.0, 1.0, -1.0],
+    [-1.0, -1.0, 1.0],
+    [1.0, -1.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [-1.0, 1.0, 1.0],
+];
+const CUBE_VERTS: [i64; 24] = [
+    0, 1, 5, 4, 0, 4, 7, 3, 4, 5, 6, 7, 3, 7, 6, 2, 1, 2, 6, 5, 0, 3, 2, 1,
+];
+
+const OCT_POINTS: [[f64; 3]; 6] = [
+    [-1.0, -1.0, 0.0],
+    [1.0, -1.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [-1.0, 1.0, 0.0],
+    [0.0, 0.0, -1.4142135623731],
+    [0.0, 0.0, 1.4142135623731],
+];
+const OCT_VERTS: [i64; 24] = [
+    4, 1, 0, 4, 2, 1, 4, 3, 2, 4, 0, 3, 0, 1, 5, 1, 2, 5, 2, 3, 5, 3, 0, 5,
+];
+
+const A_0: f64 = 0.61803398875;
+const B: f64 = 0.381966011250;
+const DODE_POINTS: [[f64; 3]; 20] = [
+    [B, 0.0, 1.0],
+    [-B, 0.0, 1.0],
+    [B, 0.0, -1.0],
+    [-B, 0.0, -1.0],
+    [0.0, 1.0, -B],
+    [0.0, 1.0, B],
+    [0.0, -1.0, -B],
+    [0.0, -1.0, B],
+    [1.0, B, 0.0],
+    [1.0, -B, 0.0],
+    [-1.0, B, 0.0],
+    [-1.0, -B, 0.0],
+    [-A_0, A_0, A_0],
+    [A_0, -A_0, A_0],
+    [-A_0, -A_0, -A_0],
+    [A_0, A_0, -A_0],
+    [A_0, A_0, A_0],
+    [-A_0, A_0, -A_0],
+    [-A_0, -A_0, A_0],
+    [A_0, -A_0, -A_0],
+];
+const DODE_VERTS: [i64; 60] = [
+    0, 16, 5, 12, 1, 1, 18, 7, 13, 0, 2, 19, 6, 14, 3, 3, 17, 4, 15, 2, 4, 5, 16, 8, 15, 5, 4, 17,
+    10, 12, 6, 7, 18, 11, 14, 7, 6, 19, 9, 13, 8, 16, 0, 13, 9, 9, 19, 2, 15, 8, 10, 17, 3, 14, 11,
+    11, 18, 1, 12, 10,
+];
+
+const C: f64 = 0.5;
+const D: f64 = 0.30901699;
+const ICOSA_POINTS: [[f64; 3]; 12] = [
+    [0.0, D, -C],
+    [0.0, D, C],
+    [0.0, -D, C],
+    [-D, C, 0.0],
+    [-D, -C, 0.0],
+    [D, C, 0.0],
+    [D, -C, 0.0],
+    [0.0, -D, -C],
+    [C, 0.0, D],
+    [-C, 0.0, D],
+    [-C, 0.0, -D],
+    [C, 0.0, -D],
+];
+const ICOSA_VERTS: [i64; 60] = [
+    0, 3, 5, 1, 5, 3, 1, 9, 2, 1, 2, 8, 0, 11, 7, 0, 7, 10, 2, 4, 6, 7, 6, 4, 3, 10, 9, 4, 9, 10,
+    5, 8, 11, 6, 11, 8, 1, 3, 9, 1, 8, 5, 0, 10, 3, 0, 5, 11, 7, 4, 10, 7, 11, 6, 2, 9, 4, 2, 6, 8,
+];
+
+fn build_poly_data(
+    solid_points: &[[f64; 3]],
+    solid_verts: &[i64],
+    cell_size: usize,
+    solid_scale: f64,
+) -> PolyData {
+    let mut points = Points::<f64>::new();
+    for point in solid_points {
+        points.push([
+            solid_scale * point[0],
+            solid_scale * point[1],
+            solid_scale * point[2],
+        ]);
     }
-}
 
-fn make_tetrahedron(r: f64) -> PolyData {
-    let a = r * 2.0 / 3.0f64.sqrt();
-    let verts = [[a, a, a], [a, -a, -a], [-a, a, -a], [-a, -a, a]];
-    let scale = r / (a * a * 3.0).sqrt();
-    let verts: Vec<[f64; 3]> = verts
-        .iter()
-        .map(|v| [v[0] * scale, v[1] * scale, v[2] * scale])
-        .collect();
-    build(&verts, &[[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]])
-}
-
-fn make_cube(r: f64) -> PolyData {
-    let a = r / 3.0f64.sqrt();
-    let v = [
-        [-a, -a, -a],
-        [a, -a, -a],
-        [a, a, -a],
-        [-a, a, -a],
-        [-a, -a, a],
-        [a, -a, a],
-        [a, a, a],
-        [-a, a, a],
-    ];
-    build_quads(
-        &v,
-        &[
-            [0, 3, 2, 1],
-            [4, 5, 6, 7],
-            [0, 1, 5, 4],
-            [2, 3, 7, 6],
-            [0, 4, 7, 3],
-            [1, 2, 6, 5],
-        ],
-    )
-}
-
-fn make_octahedron(r: f64) -> PolyData {
-    let v = [
-        [r, 0.0, 0.0],
-        [0.0, r, 0.0],
-        [0.0, 0.0, r],
-        [-r, 0.0, 0.0],
-        [0.0, -r, 0.0],
-        [0.0, 0.0, -r],
-    ];
-    build(
-        &v,
-        &[
-            [0, 1, 2],
-            [1, 3, 2],
-            [3, 4, 2],
-            [4, 0, 2],
-            [1, 0, 5],
-            [3, 1, 5],
-            [4, 3, 5],
-            [0, 4, 5],
-        ],
-    )
-}
-
-fn make_dodecahedron(r: f64) -> PolyData {
-    let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
-    let a = r / 3.0f64.sqrt();
-    let b = a / phi;
-    let c = a * phi;
-    let v = [
-        [a, a, a],
-        [a, a, -a],
-        [a, -a, a],
-        [a, -a, -a],
-        [-a, a, a],
-        [-a, a, -a],
-        [-a, -a, a],
-        [-a, -a, -a],
-        [0.0, b, c],
-        [0.0, b, -c],
-        [0.0, -b, c],
-        [0.0, -b, -c],
-        [b, c, 0.0],
-        [b, -c, 0.0],
-        [-b, c, 0.0],
-        [-b, -c, 0.0],
-        [c, 0.0, b],
-        [c, 0.0, -b],
-        [-c, 0.0, b],
-        [-c, 0.0, -b],
-    ];
-    let faces: &[[usize; 5]] = &[
-        [0, 16, 2, 10, 8],
-        [0, 8, 4, 14, 12],
-        [16, 17, 1, 12, 0],
-        [1, 9, 11, 3, 17],
-        [1, 12, 14, 5, 9],
-        [2, 13, 15, 6, 10],
-        [13, 3, 17, 16, 2],
-        [3, 11, 7, 15, 13],
-        [4, 8, 10, 6, 18],
-        [14, 5, 19, 18, 4],
-        [5, 9, 11, 7, 19],
-        [15, 7, 19, 18, 6],
-    ];
-    let mut pts = Points::<f64>::new();
-    for vv in &v {
-        pts.push(*vv);
-    }
     let mut polys = CellArray::new();
-    for f in faces {
-        polys.push_cell(&f.iter().map(|&i| i as i64).collect::<Vec<_>>());
+    let mut colors = Vec::with_capacity(solid_verts.len() / cell_size);
+    for (i, cell) in solid_verts.chunks_exact(cell_size).enumerate() {
+        polys.push_cell(cell);
+        colors.push(i as i32);
     }
-    let mut result = PolyData::new();
-    result.points = pts;
-    result.polys = polys;
-    result
-}
 
-fn make_icosahedron(r: f64) -> PolyData {
-    let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
-    let a = r / (1.0 + phi * phi).sqrt();
-    let b = a * phi;
-    let v = [
-        [-a, b, 0.0],
-        [a, b, 0.0],
-        [-a, -b, 0.0],
-        [a, -b, 0.0],
-        [0.0, -a, b],
-        [0.0, a, b],
-        [0.0, -a, -b],
-        [0.0, a, -b],
-        [b, 0.0, -a],
-        [b, 0.0, a],
-        [-b, 0.0, -a],
-        [-b, 0.0, a],
-    ];
-    build(
-        &v,
-        &[
-            [0, 11, 5],
-            [0, 5, 1],
-            [0, 1, 7],
-            [0, 7, 10],
-            [0, 10, 11],
-            [1, 5, 9],
-            [5, 11, 4],
-            [11, 10, 2],
-            [10, 7, 6],
-            [7, 1, 8],
-            [3, 9, 4],
-            [3, 4, 2],
-            [3, 2, 6],
-            [3, 6, 8],
-            [3, 8, 9],
-            [4, 9, 5],
-            [2, 4, 11],
-            [6, 2, 10],
-            [8, 6, 7],
-            [9, 8, 1],
-        ],
-    )
-}
-
-fn build(verts: &[[f64; 3]], faces: &[[usize; 3]]) -> PolyData {
-    let mut pts = Points::<f64>::new();
-    for v in verts {
-        pts.push(*v);
-    }
-    let mut polys = CellArray::new();
-    for f in faces {
-        polys.push_cell(&[f[0] as i64, f[1] as i64, f[2] as i64]);
-    }
-    let mut r = PolyData::new();
-    r.points = pts;
-    r.polys = polys;
-    r
-}
-
-fn build_quads(verts: &[[f64; 3]], faces: &[[usize; 4]]) -> PolyData {
-    let mut pts = Points::<f64>::new();
-    for v in verts {
-        pts.push(*v);
-    }
-    let mut polys = CellArray::new();
-    for f in faces {
-        polys.push_cell(&[f[0] as i64, f[1] as i64, f[2] as i64, f[3] as i64]);
-    }
-    let mut r = PolyData::new();
-    r.points = pts;
-    r.polys = polys;
-    r
+    let mut output = PolyData::new();
+    output.points = points;
+    output.polys = polys;
+    output
+        .cell_data_mut()
+        .add_array(AnyDataArray::I32(DataArray::from_vec(
+            "FaceIndex",
+            colors,
+            1,
+        )));
+    output.cell_data_mut().set_active_scalars("FaceIndex");
+    output
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_all() {
         let cases = [
@@ -228,6 +167,7 @@ mod tests {
             let p = platonic(solid, 1.0);
             assert_eq!(p.points.len(), nv);
             assert_eq!(p.polys.num_cells(), nf);
+            assert_eq!(p.cell_data().scalars().unwrap().num_tuples(), nf);
         }
     }
 }

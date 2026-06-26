@@ -47,7 +47,9 @@ pub fn poisson_solve(
         for i in 0..n {
             if fixed[i] || adj[i].is_empty() { continue; }
             let sum: f64 = adj[i].iter().map(|&j| values[j]).sum();
-            let f_val = if let Some(s) = src { s.tuple_as_f64(i, &mut buf); buf[0] } else { 0.0 };
+            let f_val = if let Some(s) = src {
+                if i < s.num_tuples() { s.tuple_as_f64(i, &mut buf); buf[0] } else { 0.0 }
+            } else { 0.0 };
             new_vals[i] = (sum + f_val) / adj[i].len() as f64;
         }
         values = new_vals;

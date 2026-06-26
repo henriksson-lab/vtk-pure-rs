@@ -1,5 +1,5 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
-use std::collections::{HashMap, HashSet};
+use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extract the topological skeleton (medial axis) of a 2D point cloud.
 ///
@@ -8,28 +8,36 @@ use std::collections::{HashMap, HashSet};
 /// with line segments connecting internal Voronoi vertices.
 pub fn skeleton_2d(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    if n < 3 { return PolyData::new(); }
+    if n < 3 {
+        return PolyData::new();
+    }
 
     // Use the Voronoi dual: circumcenters of Delaunay triangles
     // that are "inside" the point set form the skeleton
-    let pts: Vec<[f64; 2]> = (0..n).map(|i| {
-        let p = input.points.get(i);
-        [p[0], p[1]]
-    }).collect();
+    let pts: Vec<[f64; 2]> = (0..n)
+        .map(|i| {
+            let p = input.points.get(i);
+            [p[0], p[1]]
+        })
+        .collect();
 
     let tris = delaunay_2d(&pts);
-    if tris.is_empty() { return PolyData::new(); }
+    if tris.is_empty() {
+        return PolyData::new();
+    }
 
-    let circumcenters: Vec<[f64; 2]> = tris.iter().map(|tri| {
-        circumcenter(pts[tri[0]], pts[tri[1]], pts[tri[2]])
-    }).collect();
+    let circumcenters: Vec<[f64; 2]> = tris
+        .iter()
+        .map(|tri| circumcenter(pts[tri[0]], pts[tri[1]], pts[tri[2]]))
+        .collect();
 
     // Build adjacency between triangles sharing an edge
     let mut edge_tris: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
     for (ti, tri) in tris.iter().enumerate() {
         for k in 0..3 {
-            let a = tri[k]; let b = tri[(k+1)%3];
-            let key = if a < b { (a,b) } else { (b,a) };
+            let a = tri[k];
+            let b = tri[(k + 1) % 3];
+            let key = if a < b { (a, b) } else { (b, a) };
             edge_tris.entry(key).or_default().push(ti);
         }
     }
@@ -40,7 +48,8 @@ pub fn skeleton_2d(input: &PolyData) -> PolyData {
 
     for (_edge, adj_tris) in &edge_tris {
         if adj_tris.len() == 2 {
-            let t0 = adj_tris[0]; let t1 = adj_tris[1];
+            let t0 = adj_tris[0];
+            let t1 = adj_tris[1];
             let id0 = *cc_map.entry(t0).or_insert_with(|| {
                 let idx = out_points.len() as i64;
                 out_points.push([circumcenters[t0][0], circumcenters[t0][1], 0.0]);
@@ -63,51 +72,111 @@ pub fn skeleton_2d(input: &PolyData) -> PolyData {
 
 fn delaunay_2d(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
     let n = pts.len();
-    if n < 3 { return vec![]; }
-    let mut min_x = f64::MAX; let mut max_x = f64::MIN;
-    let mut min_y = f64::MAX; let mut max_y = f64::MIN;
-    for p in pts { min_x=min_x.min(p[0]); max_x=max_x.max(p[0]); min_y=min_y.min(p[1]); max_y=max_y.max(p[1]); }
-    let m = ((max_x-min_x)+(max_y-min_y))*10.0;
-    let sp = [[min_x-m,min_y-m],[max_x+m*2.0,min_y-m],[min_x-m,max_y+m*2.0]];
-    let mut all: Vec<[f64;2]> = pts.to_vec(); all.extend_from_slice(&sp);
-    let mut tris: Vec<[usize;3]> = vec![[n,n+1,n+2]];
+    if n < 3 {
+        return vec![];
+    }
+    let mut min_x = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut min_y = f64::MAX;
+    let mut max_y = f64::MIN;
+    for p in pts {
+        min_x = min_x.min(p[0]);
+        max_x = max_x.max(p[0]);
+        min_y = min_y.min(p[1]);
+        max_y = max_y.max(p[1]);
+    }
+    let m = ((max_x - min_x) + (max_y - min_y)) * 10.0;
+    let sp = [
+        [min_x - m, min_y - m],
+        [max_x + m * 2.0, min_y - m],
+        [min_x - m, max_y + m * 2.0],
+    ];
+    let mut all: Vec<[f64; 2]> = pts.to_vec();
+    all.extend_from_slice(&sp);
+    let mut tris: Vec<[usize; 3]> = vec![[n, n + 1, n + 2]];
     for pi in 0..n {
         let p = all[pi];
-        let mut bad = vec![false;tris.len()];
-        for (ti,tri) in tris.iter().enumerate() {
-            if in_cc(all[tri[0]],all[tri[1]],all[tri[2]],p) { bad[ti]=true; }
-        }
-        let mut poly = Vec::new();
-        for (ti,tri) in tris.iter().enumerate() {
-            if !bad[ti] { continue; }
-            let edges = [(tri[0],tri[1]),(tri[1],tri[2]),(tri[2],tri[0])];
-            for &(a,b) in &edges {
-                let shared = tris.iter().enumerate().any(|(tj,o)| {
-                    if tj==ti||!bad[tj] { return false; }
-                    [(o[0],o[1]),(o[1],o[2]),(o[2],o[0])].contains(&(b,a))
-                });
-                if !shared { poly.push((a,b)); }
+        let mut bad = vec![false; tris.len()];
+        for (ti, tri) in tris.iter().enumerate() {
+            if in_cc(all[tri[0]], all[tri[1]], all[tri[2]], p) {
+                bad[ti] = true;
             }
         }
-        let mut nt: Vec<[usize;3]> = tris.iter().enumerate().filter(|(ti,_)|!bad[*ti]).map(|(_,t)|*t).collect();
-        for &(a,b) in &poly { nt.push([a,b,pi]); }
+        let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
+        for (ti, tri) in tris.iter().enumerate() {
+            if !bad[ti] {
+                continue;
+            }
+            let edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
+            for &(a, b) in &edges {
+                let key = if a < b { (a, b) } else { (b, a) };
+                *edge_count.entry(key).or_insert(0) += 1;
+            }
+        }
+        let mut nt: Vec<[usize; 3]> = tris
+            .iter()
+            .enumerate()
+            .filter(|(ti, _)| !bad[*ti])
+            .map(|(_, t)| *t)
+            .collect();
+        for (&(a, b), &count) in &edge_count {
+            if count == 1 {
+                let tri = orient_triangle([a, b, pi], &all);
+                nt.push(tri);
+            }
+        }
         tris = nt;
     }
-    tris.retain(|t| t[0]<n && t[1]<n && t[2]<n);
+    tris.retain(|t| t[0] < n && t[1] < n && t[2] < n);
     tris
 }
 
-fn in_cc(a:[f64;2],b:[f64;2],c:[f64;2],p:[f64;2]) -> bool {
-    let ax=a[0]-p[0];let ay=a[1]-p[1];let bx=b[0]-p[0];let by=b[1]-p[1];let cx=c[0]-p[0];let cy=c[1]-p[1];
-    ax*(by*(cx*cx+cy*cy)-cy*(bx*bx+by*by))-ay*(bx*(cx*cx+cy*cy)-cx*(bx*bx+by*by))+(ax*ax+ay*ay)*(bx*cy-by*cx)>0.0
+fn in_cc(a: [f64; 2], b: [f64; 2], c: [f64; 2], p: [f64; 2]) -> bool {
+    let orient = orient2d(a, b, c);
+    if orient.abs() <= 1e-15 {
+        return false;
+    }
+    let ax = a[0] - p[0];
+    let ay = a[1] - p[1];
+    let bx = b[0] - p[0];
+    let by = b[1] - p[1];
+    let cx = c[0] - p[0];
+    let cy = c[1] - p[1];
+    let det = ax * (by * (cx * cx + cy * cy) - cy * (bx * bx + by * by))
+        - ay * (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by))
+        + (ax * ax + ay * ay) * (bx * cy - by * cx);
+    if orient > 0.0 {
+        det > 1e-15
+    } else {
+        det < -1e-15
+    }
 }
 
-fn circumcenter(a:[f64;2],b:[f64;2],c:[f64;2]) -> [f64;2] {
-    let d = 2.0*(a[0]*(b[1]-c[1])+b[0]*(c[1]-a[1])+c[0]*(a[1]-b[1]));
-    if d.abs()<1e-15 { return [(a[0]+b[0]+c[0])/3.0,(a[1]+b[1]+c[1])/3.0]; }
-    let ux = ((a[0]*a[0]+a[1]*a[1])*(b[1]-c[1])+(b[0]*b[0]+b[1]*b[1])*(c[1]-a[1])+(c[0]*c[0]+c[1]*c[1])*(a[1]-b[1]))/d;
-    let uy = ((a[0]*a[0]+a[1]*a[1])*(c[0]-b[0])+(b[0]*b[0]+b[1]*b[1])*(a[0]-c[0])+(c[0]*c[0]+c[1]*c[1])*(b[0]-a[0]))/d;
-    [ux,uy]
+fn orient_triangle(mut tri: [usize; 3], pts: &[[f64; 2]]) -> [usize; 3] {
+    if orient2d(pts[tri[0]], pts[tri[1]], pts[tri[2]]) < 0.0 {
+        tri.swap(0, 1);
+    }
+    tri
+}
+
+fn orient2d(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+}
+
+fn circumcenter(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> [f64; 2] {
+    let d = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+    if d.abs() < 1e-15 {
+        return [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0];
+    }
+    let ux = ((a[0] * a[0] + a[1] * a[1]) * (b[1] - c[1])
+        + (b[0] * b[0] + b[1] * b[1]) * (c[1] - a[1])
+        + (c[0] * c[0] + c[1] * c[1]) * (a[1] - b[1]))
+        / d;
+    let uy = ((a[0] * a[0] + a[1] * a[1]) * (c[0] - b[0])
+        + (b[0] * b[0] + b[1] * b[1]) * (a[0] - c[0])
+        + (c[0] * c[0] + c[1] * c[1]) * (b[0] - a[0]))
+        / d;
+    [ux, uy]
 }
 
 #[cfg(test)]
@@ -117,9 +186,11 @@ mod tests {
     #[test]
     fn grid_skeleton() {
         let mut pd = PolyData::new();
-        for j in 0..4 { for i in 0..4 {
-            pd.points.push([i as f64, j as f64, 0.0]);
-        }}
+        for j in 0..4 {
+            for i in 0..4 {
+                pd.points.push([i as f64, j as f64, 0.0]);
+            }
+        }
         let result = skeleton_2d(&pd);
         assert!(result.lines.num_cells() > 0);
         assert!(result.points.len() > 0);
@@ -139,5 +210,17 @@ mod tests {
         let pd = PolyData::new();
         let result = skeleton_2d(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn square_points_form_voronoi_edge() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+
+        let result = skeleton_2d(&pd);
+        assert!(result.lines.num_cells() > 0);
     }
 }

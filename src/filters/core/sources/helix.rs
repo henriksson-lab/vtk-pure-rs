@@ -3,55 +3,44 @@ use std::f64::consts::PI;
 
 /// Parameters for generating a helix (spiral) polyline.
 pub struct HelixParams {
-    /// Radius of the helix. Default: 1.0
+    /// Radius of helix. Default: 1.0
     pub radius: f64,
-    /// Number of complete turns. Default: 3.0
-    pub turns: f64,
-    /// Height (pitch * turns). Default: 2.0
-    pub height: f64,
-    /// Number of points per turn. Default: 32
-    pub resolution: usize,
-    /// Center of the helix base. Default: [0, 0, 0]
-    pub center: [f64; 3],
+    /// Pitch of helix. Default: 1.0
+    pub pitch: f64,
+    /// Number of turns in helix. Default: 1
+    pub number_of_turns: usize,
+    /// Number of points per turn in helix. Default: 10
+    pub resolution_per_turn: usize,
 }
 
 impl Default for HelixParams {
     fn default() -> Self {
         Self {
             radius: 1.0,
-            turns: 3.0,
-            height: 2.0,
-            resolution: 32,
-            center: [0.0, 0.0, 0.0],
+            pitch: 1.0,
+            number_of_turns: 1,
+            resolution_per_turn: 10,
         }
     }
 }
 
 /// Generate a helix as a polyline in PolyData.
-///
-/// The helix spirals around the Z axis, starting at the base center
-/// and rising to `center[2] + height`.
 pub fn helix(params: &HelixParams) -> PolyData {
-    let res = params.resolution.max(4);
-    let n_pts = (params.turns * res as f64).ceil() as usize + 1;
-    let n_pts = n_pts.max(2);
+    let number_of_turns = params.number_of_turns.max(1);
+    let resolution_per_turn = params.resolution_per_turn.max(2);
+    let n = resolution_per_turn * number_of_turns;
 
     let mut points = Points::new();
     let mut lines = CellArray::new();
+    let mut cell_ids = Vec::with_capacity(n);
+    let pi_twice = 2.0 * PI;
+    let a = params.radius;
+    let b = params.pitch / pi_twice;
 
-    let total_angle = 2.0 * PI * params.turns;
-    let mut cell_ids: Vec<i64> = Vec::with_capacity(n_pts);
-
-    for i in 0..n_pts {
-        let t = i as f64 / (n_pts - 1) as f64;
-        let angle = total_angle * t;
-        let x = params.center[0] + params.radius * angle.cos();
-        let y = params.center[1] + params.radius * angle.sin();
-        let z = params.center[2] + params.height * t;
-
-        let idx = points.len() as i64;
-        points.push([x, y, z]);
-        cell_ids.push(idx);
+    for i in 0..n {
+        let t = number_of_turns as f64 * pi_twice * i as f64 / (n - 1) as f64;
+        points.push([a * t.cos(), a * t.sin(), b * t]);
+        cell_ids.push(i as i64);
     }
 
     lines.push_cell(&cell_ids);
@@ -69,8 +58,7 @@ mod tests {
     #[test]
     fn default_helix() {
         let pd = helix(&HelixParams::default());
-        // 3 turns * 32 pts/turn + 1 = 97
-        assert_eq!(pd.points.len(), 97);
+        assert_eq!(pd.points.len(), 10);
         assert_eq!(pd.lines.num_cells(), 1);
     }
 
@@ -78,10 +66,9 @@ mod tests {
     fn start_and_end() {
         let pd = helix(&HelixParams {
             radius: 1.0,
-            turns: 1.0,
-            height: 5.0,
-            resolution: 8,
-            center: [0.0, 0.0, 0.0],
+            pitch: 5.0,
+            number_of_turns: 1,
+            resolution_per_turn: 8,
             ..Default::default()
         });
         let first = pd.points.get(0);
@@ -97,14 +84,15 @@ mod tests {
     }
 
     #[test]
-    fn custom_center() {
+    fn multiple_turns() {
         let pd = helix(&HelixParams {
-            center: [10.0, 20.0, 30.0],
-            turns: 1.0,
-            resolution: 4,
+            pitch: 2.0,
+            number_of_turns: 3,
+            resolution_per_turn: 4,
             ..Default::default()
         });
-        let first = pd.points.get(0);
-        assert!((first[2] - 30.0).abs() < 1e-10);
+        let last = pd.points.get(pd.points.len() - 1);
+        assert_eq!(pd.points.len(), 12);
+        assert!((last[2] - 6.0).abs() < 1e-10);
     }
 }

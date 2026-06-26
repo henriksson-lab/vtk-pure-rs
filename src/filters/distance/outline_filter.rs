@@ -5,32 +5,36 @@ use crate::types::BoundingBox;
 
 /// Create a wireframe outline (12 edges) of a bounding box.
 pub fn outline_from_bounds(bounds: &BoundingBox) -> PolyData {
+    if bounds.is_empty() {
+        return PolyData::new();
+    }
+
     let min = [bounds.x_min, bounds.y_min, bounds.z_min];
     let max = [bounds.x_max, bounds.y_max, bounds.z_max];
     let pts = vec![
         [min[0], min[1], min[2]], // 0
         [max[0], min[1], min[2]], // 1
-        [max[0], max[1], min[2]], // 2
-        [min[0], max[1], min[2]], // 3
+        [min[0], max[1], min[2]], // 2
+        [max[0], max[1], min[2]], // 3
         [min[0], min[1], max[2]], // 4
         [max[0], min[1], max[2]], // 5
-        [max[0], max[1], max[2]], // 6
-        [min[0], max[1], max[2]], // 7
+        [min[0], max[1], max[2]], // 6
+        [max[0], max[1], max[2]], // 7
     ];
 
     let edges: Vec<[usize; 2]> = vec![
         [0, 1],
-        [1, 2],
         [2, 3],
-        [3, 0], // bottom
         [4, 5],
-        [5, 6],
         [6, 7],
-        [7, 4], // top
+        [0, 2],
+        [1, 3],
+        [4, 6],
+        [5, 7],
         [0, 4],
         [1, 5],
         [2, 6],
-        [3, 7], // verticals
+        [3, 7],
     ];
 
     let mut points = Points::<f64>::new();
@@ -69,14 +73,24 @@ pub fn outline_poly_data(mesh: &PolyData) -> PolyData {
 /// Create a wireframe outline of an ImageData's bounds.
 pub fn outline_image_data(image: &ImageData) -> PolyData {
     let dims = image.dimensions();
+    if dims[0] == 0 || dims[1] == 0 || dims[2] == 0 {
+        return PolyData::new();
+    }
+
     let spacing = image.spacing();
     let origin = image.origin();
-    let max = [
-        origin[0] + (dims[0] as f64 - 1.0) * spacing[0],
-        origin[1] + (dims[1] as f64 - 1.0) * spacing[1],
-        origin[2] + (dims[2] as f64 - 1.0) * spacing[2],
+    let extent = image.extent();
+    let min = [
+        origin[0] + extent[0] as f64 * spacing[0],
+        origin[1] + extent[2] as f64 * spacing[1],
+        origin[2] + extent[4] as f64 * spacing[2],
     ];
-    outline_from_bounds(&BoundingBox::from_corners(origin, max))
+    let max = [
+        origin[0] + extent[1] as f64 * spacing[0],
+        origin[1] + extent[3] as f64 * spacing[1],
+        origin[2] + extent[5] as f64 * spacing[2],
+    ];
+    outline_from_bounds(&BoundingBox::from_corners(min, max))
 }
 
 /// Create a wireframe outline of a RectilinearGrid's bounds.
@@ -135,6 +149,18 @@ mod tests {
         let img = ImageData::with_dimensions(10, 10, 10).with_spacing([0.5, 0.5, 0.5]);
         let outline = outline_image_data(&img);
         assert_eq!(outline.points.len(), 8);
+    }
+
+    #[test]
+    fn outline_image_uses_extent_origin() {
+        let mut img = ImageData::with_dimensions(3, 3, 3).with_spacing([2.0, 3.0, 4.0]);
+        img.set_origin([10.0, 20.0, 30.0]);
+        img.set_extent([5, 7, -2, 0, 1, 3]);
+
+        let outline = outline_image_data(&img);
+
+        assert_eq!(outline.points.get(0), [20.0, 14.0, 34.0]);
+        assert_eq!(outline.points.get(7), [24.0, 20.0, 42.0]);
     }
 
     #[test]

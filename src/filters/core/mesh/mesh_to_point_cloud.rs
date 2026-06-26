@@ -13,7 +13,8 @@ pub fn mesh_to_point_cloud(mesh: &PolyData) -> PolyData {
     let mut result = PolyData::new();
     result.points = pts;
     result.verts = verts;
-    // Copy point data
+    *result.point_data_mut() = mesh.point_data().clone();
+    *result.field_data_mut() = mesh.field_data().clone();
     result
 }
 
@@ -34,14 +35,18 @@ pub fn point_cloud_from_coords(coords: &[[f64; 3]]) -> PolyData {
 /// Compute centroid of all points.
 pub fn point_cloud_centroid(mesh: &PolyData) -> [f64; 3] {
     let n = mesh.points.len();
-    if n == 0 { return [0.0; 3]; }
+    if n == 0 {
+        return [0.0; 3];
+    }
     let mut c = [0.0; 3];
     for i in 0..n {
         let p = mesh.points.get(i);
-        c[0] += p[0]; c[1] += p[1]; c[2] += p[2];
+        c[0] += p[0];
+        c[1] += p[1];
+        c[2] += p[2];
     }
     let nf = n as f64;
-    [c[0]/nf, c[1]/nf, c[2]/nf]
+    [c[0] / nf, c[1] / nf, c[2] / nf]
 }
 
 /// Compute bounding sphere (center + radius).
@@ -50,7 +55,8 @@ pub fn point_cloud_bounding_sphere(mesh: &PolyData) -> ([f64; 3], f64) {
     let mut max_r2 = 0.0f64;
     for i in 0..mesh.points.len() {
         let p = mesh.points.get(i);
-        let d2 = (p[0]-center[0]).powi(2)+(p[1]-center[1]).powi(2)+(p[2]-center[2]).powi(2);
+        let d2 =
+            (p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2);
         max_r2 = max_r2.max(d2);
     }
     (center, max_r2.sqrt())
@@ -59,32 +65,73 @@ pub fn point_cloud_bounding_sphere(mesh: &PolyData) -> ([f64; 3], f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
+
     #[test]
     fn test_to_cloud() {
         let mesh = PolyData::from_triangles(
-            vec![[0.0,0.0,0.0],[1.0,0.0,0.0],[0.5,1.0,0.0]],
-            vec![[0,1,2]],
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
         );
         let pc = mesh_to_point_cloud(&mesh);
         assert_eq!(pc.points.len(), 3);
         assert_eq!(pc.verts.num_cells(), 3);
         assert_eq!(pc.polys.num_cells(), 0);
     }
+
+    #[test]
+    fn test_to_cloud_preserves_point_data() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temperature",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
+        mesh.point_data_mut().set_active_scalars("temperature");
+
+        let pc = mesh_to_point_cloud(&mesh);
+        assert!(pc.point_data().get_array("temperature").is_some());
+        assert!(pc.point_data().scalars().is_some());
+    }
+
+    #[test]
+    fn test_to_cloud_preserves_field_data() {
+        let mut mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        mesh.field_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "time",
+                vec![1.25],
+                1,
+            )));
+
+        let pc = mesh_to_point_cloud(&mesh);
+        assert!(pc.field_data().get_array("time").is_some());
+    }
+
     #[test]
     fn test_from_coords() {
-        let pc = point_cloud_from_coords(&[[0.0,0.0,0.0],[1.0,2.0,3.0]]);
+        let pc = point_cloud_from_coords(&[[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]]);
         assert_eq!(pc.points.len(), 2);
     }
     #[test]
     fn test_centroid() {
-        let pc = point_cloud_from_coords(&[[0.0,0.0,0.0],[2.0,4.0,6.0]]);
+        let pc = point_cloud_from_coords(&[[0.0, 0.0, 0.0], [2.0, 4.0, 6.0]]);
         let c = point_cloud_centroid(&pc);
-        assert!((c[0]-1.0).abs() < 1e-10);
-        assert!((c[1]-2.0).abs() < 1e-10);
+        assert!((c[0] - 1.0).abs() < 1e-10);
+        assert!((c[1] - 2.0).abs() < 1e-10);
     }
     #[test]
     fn test_bsphere() {
-        let pc = point_cloud_from_coords(&[[1.0,0.0,0.0],[-1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,-1.0,0.0]]);
+        let pc = point_cloud_from_coords(&[
+            [1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0],
+        ]);
         let (c, r) = point_cloud_bounding_sphere(&pc);
         assert!(c[0].abs() < 1e-10);
         assert!((r - 1.0).abs() < 1e-10);

@@ -7,7 +7,8 @@ pub fn fluted_column(
     flute_depth: f64,
     resolution: usize,
 ) -> PolyData {
-    let res = resolution.max(flutes * 2);
+    let flutes = flutes.max(1);
+    let res = resolution.max(flutes * 2).max(3);
     let half_h = height / 2.0;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();

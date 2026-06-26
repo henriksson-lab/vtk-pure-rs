@@ -4,21 +4,31 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Apply window/level contrast to a scalar array.
 ///
-/// Values in [center-width/2, center+width/2] are mapped to [0, 1].
-/// Values outside are clamped.
+/// Values in `[center - abs(width)/2, center + abs(width)/2]` are mapped to
+/// `[0, 1]`, with negative widths reversing the ramp as in VTK's
+/// `vtkImageMapToWindowLevelColors`.
 pub fn window_level(image: &ImageData, array_name: &str, center: f64, width: f64) -> ImageData {
     let arr = match image.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return image.clone(),
     };
-    let lo = center - width / 2.0;
-    let hi = center + width / 2.0;
-    let range = (hi - lo).max(1e-15);
+    let half_width = width.abs() / 2.0;
+    let lo = center - half_width;
     let mut buf = [0.0f64];
     let data: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            ((buf[0] - lo) / range).clamp(0.0, 1.0)
+            if width == 0.0 {
+                if buf[0] <= center {
+                    0.0
+                } else {
+                    1.0
+                }
+            } else if width > 0.0 {
+                ((buf[0] - lo) / width).clamp(0.0, 1.0)
+            } else {
+                (1.0 + (buf[0] - lo) / width).clamp(0.0, 1.0)
+            }
         })
         .collect();
     let mut result = image.clone();
@@ -40,6 +50,9 @@ pub fn auto_window_level(
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut values: Vec<f64> = (0..n)
         .map(|i| {
@@ -49,8 +62,10 @@ pub fn auto_window_level(
         .collect();
     values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    let lo_idx = (low_pct * (n - 1) as f64) as usize;
-    let hi_idx = (high_pct * (n - 1) as f64) as usize;
+    let low = low_pct.clamp(0.0, 1.0);
+    let high = high_pct.clamp(0.0, 1.0);
+    let lo_idx = (low * (n - 1) as f64) as usize;
+    let hi_idx = (high * (n - 1) as f64) as usize;
     let lo = values[lo_idx.min(n - 1)];
     let hi = values[hi_idx.min(n - 1)];
     let center = (lo + hi) / 2.0;
@@ -64,6 +79,9 @@ pub fn gamma_correction(image: &ImageData, array_name: &str, gamma: f64) -> Imag
         Some(a) if a.num_components() == 1 => a,
         _ => return image.clone(),
     };
+    if arr.num_tuples() == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
     let mut max_v = f64::MIN;
@@ -124,6 +142,23 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert!(buf[0] <= 0.01); // below window
+    }
+    #[test]
+    fn negative_width_reverses_window() {
+        let img = ImageData::from_function(
+            [3, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| x,
+        );
+        let result = window_level(&img, "v", 1.0, -2.0);
+        let arr = result.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-12);
+        arr.tuple_as_f64(2, &mut buf);
+        assert!(buf[0].abs() < 1e-12);
     }
     #[test]
     fn auto_wl() {

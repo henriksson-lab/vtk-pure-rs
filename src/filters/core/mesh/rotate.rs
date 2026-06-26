@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Rotate all points of a PolyData around an arbitrary axis through a center point
 /// using Rodrigues' rotation formula.
@@ -49,26 +49,15 @@ pub fn rotate_axis_angle(
         out_points.push(rotated);
     }
 
-    let mut pd = PolyData::new();
+    let mut pd = input.clone();
     pd.points = out_points;
-    pd.polys = copy_cell_array(&input.polys);
-    pd.lines = copy_cell_array(&input.lines);
-    pd.verts = copy_cell_array(&input.verts);
-    pd.strips = copy_cell_array(&input.strips);
     pd
-}
-
-fn copy_cell_array(src: &CellArray) -> CellArray {
-    let mut dst = CellArray::new();
-    for cell in src.iter() {
-        dst.push_cell(cell);
-    }
-    dst
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::DataArray;
 
     #[test]
     fn rotate_360_returns_to_original() {
@@ -111,5 +100,19 @@ mod tests {
         let p0 = result.points.get(0);
         assert!(p0[0].abs() < 1e-10);
         assert!(p0[1].abs() < 1e-10);
+    }
+
+    #[test]
+    fn rotate_preserves_attributes() {
+        let mut pd = PolyData::from_triangles(
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.point_data_mut()
+            .add_array(DataArray::from_vec("ids", vec![1.0, 2.0, 3.0], 1).into());
+
+        let result = rotate_axis_angle(&pd, [0.0, 0.0, 1.0], 90.0, [0.0, 0.0, 0.0]);
+
+        assert!(result.point_data().get_array("ids").is_some());
     }
 }

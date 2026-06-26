@@ -23,17 +23,24 @@ pub fn image_checkerboard(
     };
 
     let dims = a.dimensions();
+    if b.dimensions() != dims || arr_a.num_components() != arr_b.num_components() {
+        return a.clone();
+    }
     let nx = dims[0];
     let ny = dims[1];
     let nz = dims[2];
     let n = nx * ny * nz;
+    if arr_a.num_tuples() < n || arr_b.num_tuples() < n {
+        return a.clone();
+    }
+    let nc = arr_a.num_components();
 
     let tx = tile_size[0].max(1);
     let ty = tile_size[1].max(1);
     let tz = tile_size[2].max(1);
 
-    let mut buf = [0.0f64];
-    let mut values = Vec::with_capacity(n);
+    let mut buf = vec![0.0f64; nc];
+    let mut values = Vec::with_capacity(n * nc);
 
     for k in 0..nz {
         for j in 0..ny {
@@ -45,7 +52,7 @@ pub fn image_checkerboard(
                 } else {
                     arr_b.tuple_as_f64(idx, &mut buf);
                 }
-                values.push(buf[0]);
+                values.extend_from_slice(&buf);
             }
         }
     }
@@ -55,7 +62,7 @@ pub fn image_checkerboard(
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Checkerboard",
             values,
-            1,
+            nc,
         )));
     img
 }
@@ -104,5 +111,32 @@ mod tests {
         let b = ImageData::with_dimensions(3, 3, 1);
         let result = image_checkerboard(&a, &b, "nope", [1, 1, 1]);
         assert!(result.point_data().get_array("Checkerboard").is_none());
+    }
+
+    #[test]
+    fn checkerboard_preserves_components() {
+        let mut a = ImageData::with_dimensions(2, 1, 1);
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgb",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                3,
+            )));
+        let mut b = ImageData::with_dimensions(2, 1, 1);
+        b.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgb",
+                vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+                3,
+            )));
+
+        let result = image_checkerboard(&a, &b, "rgb", [1, 1, 1]);
+        let arr = result.point_data().get_array("Checkerboard").unwrap();
+        assert_eq!(arr.num_components(), 3);
+        let mut buf = [0.0f64; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [1.0, 2.0, 3.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [10.0, 11.0, 12.0]);
     }
 }

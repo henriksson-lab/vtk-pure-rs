@@ -11,67 +11,118 @@ pub struct MassProperties {
     pub center: [f64; 3],
 }
 
-/// Compute surface area, volume, and centroid of a PolyData.
+/// Compute surface area, volume, and centroid of a triangular PolyData.
 ///
 /// Uses the divergence theorem to compute volume from a closed triangular
 /// surface. The mesh should be a closed, consistently-wound triangle mesh
-/// for accurate volume and centroid results. Surface area works for any
-/// triangle mesh.
+/// for accurate volume and centroid results. Non-triangle polygon cells are
+/// ignored, matching vtkMassProperties.
 pub fn mass_properties(input: &PolyData) -> MassProperties {
     let mut total_area = 0.0f64;
-    let mut total_volume = 0.0f64;
+    let mut vol = [0.0f64; 3];
+    let mut munc = [0.0f64; 3];
+    let mut wxyz = 0.0f64;
+    let mut wxy = 0.0f64;
+    let mut wxz = 0.0f64;
+    let mut wyz = 0.0f64;
+    let mut centroid_volume = 0.0f64;
     let mut cx = 0.0f64;
     let mut cy = 0.0f64;
     let mut cz = 0.0f64;
+    let num_cells = input.polys.num_cells();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 {
             continue;
         }
 
-        // Fan triangulate for non-triangles
         let p0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let p1 = input.points.get(cell[i] as usize);
-            let p2 = input.points.get(cell[i + 1] as usize);
+        let p1 = input.points.get(cell[1] as usize);
+        let p2 = input.points.get(cell[2] as usize);
 
-            // Triangle area via cross product
-            let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-            let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-            let cross = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let area =
-                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
-            total_area += area;
+        let x = [p0[0], p1[0], p2[0]];
+        let y = [p0[1], p1[1], p2[1]];
+        let z = [p0[2], p1[2], p2[2]];
 
-            // Signed volume contribution via divergence theorem:
-            // V = (1/6) * sum_triangles (p0 . (p1 x p2))
-            let vol_contrib = p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
-                + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
-                + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
-            total_volume += vol_contrib;
+        let i = [x[1] - x[0], x[2] - x[0], x[2] - x[1]];
+        let j = [y[1] - y[0], y[2] - y[0], y[2] - y[1]];
+        let k = [z[1] - z[0], z[2] - z[0], z[2] - z[1]];
 
-            // Centroid contribution
-            // Using the formula from "Geometric Tools for Computer Graphics"
-            let tri_center = [
-                (p0[0] + p1[0] + p2[0]) / 3.0,
-                (p0[1] + p1[1] + p2[1]) / 3.0,
-                (p0[2] + p1[2] + p2[2]) / 3.0,
-            ];
-            cx += vol_contrib * tri_center[0];
-            cy += vol_contrib * tri_center[1];
-            cz += vol_contrib * tri_center[2];
+        let mut u = [
+            j[0] * k[1] - k[0] * j[1],
+            k[0] * i[1] - i[0] * k[1],
+            i[0] * j[1] - j[0] * i[1],
+        ];
+        let length = (u[0] * u[0] + u[1] * u[1] + u[2] * u[2]).sqrt();
+        if length != 0.0 {
+            u[0] /= length;
+            u[1] /= length;
+            u[2] /= length;
+        } else {
+            u = [0.0; 3];
         }
+
+        let absu = [u[0].abs(), u[1].abs(), u[2].abs()];
+        if absu[0] > absu[1] && absu[0] > absu[2] {
+            munc[0] += 1.0;
+        } else if absu[1] > absu[0] && absu[1] > absu[2] {
+            munc[1] += 1.0;
+        } else if absu[2] > absu[0] && absu[2] > absu[1] {
+            munc[2] += 1.0;
+        } else if absu[0] == absu[1] && absu[0] == absu[2] {
+            wxyz += 1.0;
+        } else if absu[0] == absu[1] && absu[0] > absu[2] {
+            wxy += 1.0;
+        } else if absu[0] == absu[2] && absu[0] > absu[1] {
+            wxz += 1.0;
+        } else if absu[1] == absu[2] && absu[0] < absu[2] {
+            wyz += 1.0;
+        }
+
+        let a = (i[1] * i[1] + j[1] * j[1] + k[1] * k[1]).sqrt();
+        let b = (i[0] * i[0] + j[0] * j[0] + k[0] * k[0]).sqrt();
+        let c = (i[2] * i[2] + j[2] * j[2] + k[2] * k[2]).sqrt();
+        let s = 0.5 * (a + b + c);
+        let area = (s * (s - a) * (s - b) * (s - c)).abs().sqrt();
+        total_area += area;
+
+        let xavg = (x[0] + x[1] + x[2]) / 3.0;
+        let yavg = (y[0] + y[1] + y[2]) / 3.0;
+        let zavg = (z[0] + z[1] + z[2]) / 3.0;
+        vol[0] += area * u[0] * xavg;
+        vol[1] += area * u[1] * yavg;
+        vol[2] += area * u[2] * zavg;
+
+        let vol_contrib = p0[0] * (p1[1] * p2[2] - p1[2] * p2[1])
+            + p0[1] * (p1[2] * p2[0] - p1[0] * p2[2])
+            + p0[2] * (p1[0] * p2[1] - p1[1] * p2[0]);
+        centroid_volume += vol_contrib;
+
+        let tet_center = [
+            (p0[0] + p1[0] + p2[0]) / 4.0,
+            (p0[1] + p1[1] + p2[1]) / 4.0,
+            (p0[2] + p1[2] + p2[2]) / 4.0,
+        ];
+        cx += vol_contrib * tet_center[0];
+        cy += vol_contrib * tet_center[1];
+        cz += vol_contrib * tet_center[2];
     }
 
-    total_volume /= 6.0;
-    let abs_vol = total_volume.abs();
+    let kxyz = if num_cells > 0 {
+        let n = num_cells as f64;
+        [
+            (munc[0] + (wxyz / 3.0) + ((wxy + wxz) / 2.0)) / n,
+            (munc[1] + (wxyz / 3.0) + ((wxy + wyz) / 2.0)) / n,
+            (munc[2] + (wxyz / 3.0) + ((wxz + wyz) / 2.0)) / n,
+        ]
+    } else {
+        [0.0; 3]
+    };
+    let abs_vol = (kxyz[0] * vol[0] + kxyz[1] * vol[1] + kxyz[2] * vol[2]).abs();
+    let centroid_volume = centroid_volume / 6.0;
 
-    let center = if abs_vol > 1e-30 {
-        let inv = 1.0 / (6.0 * total_volume * 4.0);
+    let center = if centroid_volume.abs() > 1e-30 {
+        let inv = 1.0 / (6.0 * centroid_volume);
         [cx * inv, cy * inv, cz * inv]
     } else {
         [0.0, 0.0, 0.0]

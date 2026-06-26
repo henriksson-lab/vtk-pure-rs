@@ -10,14 +10,15 @@ pub fn spinning_top(radius: f64, height: f64, na: usize) -> PolyData {
     pts.push([0.0, 0.0, 0.0]);
     // Body (expanding then contracting)
     let profile = [
-        (0.0, 0.0),
-        (0.3, 0.5),
-        (0.8, 1.0),
-        (1.0, 0.9),
-        (0.7, 0.7),
-        (0.3, 0.6),
-        (0.15, 0.55),
+        (0.00, 0.0),
+        (0.25, 0.5),
+        (0.45, 1.0),
+        (0.65, 0.9),
+        (0.78, 0.7),
+        (0.88, 0.6),
+        (0.95, 0.55),
     ];
+    let mut n_rings = 0;
     for &(h_frac, r_frac) in &profile {
         let z = height * h_frac;
         let r = radius * r_frac;
@@ -28,6 +29,7 @@ pub fn spinning_top(radius: f64, height: f64, na: usize) -> PolyData {
             let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
             pts.push([r * a.cos(), r * a.sin(), z]);
         }
+        n_rings += 1;
     }
     // Tip to first ring
     let first_ring = tip + 1;
@@ -39,7 +41,6 @@ pub fn spinning_top(radius: f64, height: f64, na: usize) -> PolyData {
         ]);
     }
     // Connect rings
-    let n_rings = profile.len() - 1; // minus the tip
     for ri in 0..(n_rings - 1) {
         let b0 = first_ring + ri * na;
         let b1 = first_ring + (ri + 1) * na;

@@ -15,45 +15,33 @@ pub fn plane_with_circular_hole(
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
 
-    // Corner points
-    let c0 = pts.len();
-    pts.push([-hw, -hh, 0.0]);
-    let c1 = pts.len();
-    pts.push([hw, -hh, 0.0]);
-    let c2 = pts.len();
-    pts.push([hw, hh, 0.0]);
-    let c3 = pts.len();
-    pts.push([-hw, hh, 0.0]);
-
-    // Hole circle points
-    let hole_start = pts.len();
     for i in 0..res {
         let angle = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
-        pts.push([hole_radius * angle.cos(), hole_radius * angle.sin(), 0.0]);
+        let cos_angle = angle.cos();
+        let sin_angle = angle.sin();
+        let tx = if cos_angle.abs() > 0.0 {
+            hw / cos_angle.abs()
+        } else {
+            f64::INFINITY
+        };
+        let ty = if sin_angle.abs() > 0.0 {
+            hh / sin_angle.abs()
+        } else {
+            f64::INFINITY
+        };
+        let t = tx.min(ty);
+        pts.push([t * cos_angle, t * sin_angle, 0.0]);
+        pts.push([hole_radius * cos_angle, hole_radius * sin_angle, 0.0]);
     }
 
-    // Connect corners to hole with triangles
-    // Split into 4 quadrants
-    let quarter = res / 4;
-    let sections = [
-        (c0, c1, 0, quarter),
-        (c1, c2, quarter, 2 * quarter),
-        (c2, c3, 2 * quarter, 3 * quarter),
-        (c3, c0, 3 * quarter, res),
-    ];
-
-    for (ca, cb, start, end) in sections {
-        // First triangle: corner_a -> first hole vertex
-        polys.push_cell(&[ca as i64, (hole_start + start) as i64, cb as i64]);
-        // Triangles along the hole arc
-        for i in start..end {
-            let next = if i + 1 >= res { 0 } else { i + 1 };
-            polys.push_cell(&[
-                cb as i64,
-                (hole_start + i) as i64,
-                (hole_start + next) as i64,
-            ]);
-        }
+    for i in 0..res {
+        let next = (i + 1) % res;
+        polys.push_cell(&[
+            (2 * i) as i64,
+            (2 * next) as i64,
+            (2 * next + 1) as i64,
+            (2 * i + 1) as i64,
+        ]);
     }
 
     let mut result = PolyData::new();
@@ -103,8 +91,8 @@ mod tests {
     #[test]
     fn test_circular() {
         let p = plane_with_circular_hole(10.0, 10.0, 2.0, 16);
-        assert!(p.points.len() >= 20);
-        assert!(p.polys.num_cells() > 0);
+        assert_eq!(p.points.len(), 32);
+        assert_eq!(p.polys.num_cells(), 16);
     }
     #[test]
     fn test_rect() {

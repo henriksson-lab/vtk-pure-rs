@@ -6,8 +6,20 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 ///   Laplacian(f) = d²f/dx² + d²f/dy² + d²f/dz²
 ///
 /// Adds a "Laplacian" 1-component point data array. Boundary voxels use
-/// clamped (replicated) boundary conditions.
+/// clamped (replicated) boundary conditions. Matches vtkImageLaplacian's
+/// default 2D behavior.
 pub fn image_laplacian(input: &ImageData, scalars: &str) -> ImageData {
+    image_laplacian_with_dimensionality(input, scalars, 2)
+}
+
+/// Compute the discrete Laplacian with vtkImageLaplacian-style dimensionality.
+///
+/// `dimensionality` is clamped to the VTK-supported range [2, 3].
+pub fn image_laplacian_with_dimensionality(
+    input: &ImageData,
+    scalars: &str,
+    dimensionality: usize,
+) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
         None => return input.clone(),
@@ -33,6 +45,7 @@ pub fn image_laplacian(input: &ImageData, scalars: &str) -> ImageData {
     let dx2: f64 = spacing[0] * spacing[0];
     let dy2: f64 = spacing[1] * spacing[1];
     let dz2: f64 = spacing[2] * spacing[2];
+    let dimensionality = dimensionality.clamp(2, 3);
 
     let mut laplacian = vec![0.0f64; n];
 
@@ -69,7 +82,7 @@ pub fn image_laplacian(input: &ImageData, scalars: &str) -> ImageData {
                     0.0
                 };
 
-                laplacian[pi] = d2x + d2y + d2z;
+                laplacian[pi] = d2x + d2y + if dimensionality == 3 { d2z } else { 0.0 };
             }
         }
     }
@@ -141,5 +154,32 @@ mod tests {
         let img = ImageData::with_dimensions(3, 3, 3);
         let result = image_laplacian(&img, "nonexistent");
         assert!(result.point_data().get_array("Laplacian").is_none());
+    }
+
+    #[test]
+    fn default_dimensionality_is_2d_like_vtk() {
+        let mut img = ImageData::with_dimensions(3, 1, 3);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        let mut values = Vec::new();
+        for k in 0..3 {
+            for _j in 0..1 {
+                for _i in 0..3 {
+                    values.push((k as f64) * (k as f64));
+                }
+            }
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
+
+        let result = image_laplacian(&img, "val");
+        let arr = result.point_data().get_array("Laplacian").unwrap();
+        let mut val = [0.0f64];
+        arr.tuple_as_f64(3, &mut val);
+        assert_eq!(val[0], 0.0);
+
+        let result = image_laplacian_with_dimensionality(&img, "val", 3);
+        let arr = result.point_data().get_array("Laplacian").unwrap();
+        arr.tuple_as_f64(3, &mut val);
+        assert!((val[0] - 2.0).abs() < 1e-10);
     }
 }

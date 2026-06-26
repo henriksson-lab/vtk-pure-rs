@@ -37,6 +37,29 @@ pub fn chamfer_distance_transform(input: &ImageData, scalars: &str) -> ImageData
 
     let idx = |x: usize, y: usize, z: usize| -> usize { z * ny * nx + y * nx + x };
 
+    let mut forward_offsets: Vec<(isize, isize, isize, i64)> = Vec::new();
+    let mut backward_offsets: Vec<(isize, isize, isize, i64)> = Vec::new();
+    for dz in -1isize..=1 {
+        for dy in -1isize..=1 {
+            for dx in -1isize..=1 {
+                if dx == 0 && dy == 0 && dz == 0 {
+                    continue;
+                }
+                let nonzero_axes = (dx != 0) as i64 + (dy != 0) as i64 + (dz != 0) as i64;
+                let weight = match nonzero_axes {
+                    1 => 3,
+                    2 => 4,
+                    _ => 5,
+                };
+                if dz < 0 || (dz == 0 && dy < 0) || (dz == 0 && dy == 0 && dx < 0) {
+                    forward_offsets.push((dx, dy, dz, weight));
+                } else {
+                    backward_offsets.push((dx, dy, dz, weight));
+                }
+            }
+        }
+    }
+
     // Forward pass: scan in +x, +y, +z order
     for z in 0..nz {
         for y in 0..ny {
@@ -46,51 +69,21 @@ pub fn chamfer_distance_transform(input: &ImageData, scalars: &str) -> ImageData
                     continue;
                 }
 
-                // Face neighbors (weight 3)
-                if x > 0 {
-                    let v: i64 = dist[idx(x - 1, y, z)] + 3;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if y > 0 {
-                    let v: i64 = dist[idx(x, y - 1, z)] + 3;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if z > 0 {
-                    let v: i64 = dist[idx(x, y, z - 1)] + 3;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-
-                // Edge-diagonal neighbors (weight 4)
-                if x > 0 && y > 0 {
-                    let v: i64 = dist[idx(x - 1, y - 1, z)] + 4;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if x > 0 && z > 0 {
-                    let v: i64 = dist[idx(x - 1, y, z - 1)] + 4;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if y > 0 && z > 0 {
-                    let v: i64 = dist[idx(x, y - 1, z - 1)] + 4;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-
-                // Corner-diagonal neighbors (weight 5)
-                if x > 0 && y > 0 && z > 0 {
-                    let v: i64 = dist[idx(x - 1, y - 1, z - 1)] + 5;
-                    if v < dist[cur] {
-                        dist[cur] = v;
+                for &(dx, dy, dz, weight) in &forward_offsets {
+                    let xx = x as isize + dx;
+                    let yy = y as isize + dy;
+                    let zz = z as isize + dz;
+                    if xx >= 0
+                        && xx < nx as isize
+                        && yy >= 0
+                        && yy < ny as isize
+                        && zz >= 0
+                        && zz < nz as isize
+                    {
+                        let v: i64 = dist[idx(xx as usize, yy as usize, zz as usize)] + weight;
+                        if v < dist[cur] {
+                            dist[cur] = v;
+                        }
                     }
                 }
             }
@@ -106,51 +99,21 @@ pub fn chamfer_distance_transform(input: &ImageData, scalars: &str) -> ImageData
                     continue;
                 }
 
-                // Face neighbors (weight 3)
-                if x + 1 < nx {
-                    let v: i64 = dist[idx(x + 1, y, z)] + 3;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if y + 1 < ny {
-                    let v: i64 = dist[idx(x, y + 1, z)] + 3;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if z + 1 < nz {
-                    let v: i64 = dist[idx(x, y, z + 1)] + 3;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-
-                // Edge-diagonal neighbors (weight 4)
-                if x + 1 < nx && y + 1 < ny {
-                    let v: i64 = dist[idx(x + 1, y + 1, z)] + 4;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if x + 1 < nx && z + 1 < nz {
-                    let v: i64 = dist[idx(x + 1, y, z + 1)] + 4;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-                if y + 1 < ny && z + 1 < nz {
-                    let v: i64 = dist[idx(x, y + 1, z + 1)] + 4;
-                    if v < dist[cur] {
-                        dist[cur] = v;
-                    }
-                }
-
-                // Corner-diagonal neighbors (weight 5)
-                if x + 1 < nx && y + 1 < ny && z + 1 < nz {
-                    let v: i64 = dist[idx(x + 1, y + 1, z + 1)] + 5;
-                    if v < dist[cur] {
-                        dist[cur] = v;
+                for &(dx, dy, dz, weight) in &backward_offsets {
+                    let xx = x as isize + dx;
+                    let yy = y as isize + dy;
+                    let zz = z as isize + dz;
+                    if xx >= 0
+                        && xx < nx as isize
+                        && yy >= 0
+                        && yy < ny as isize
+                        && zz >= 0
+                        && zz < nz as isize
+                    {
+                        let v: i64 = dist[idx(xx as usize, yy as usize, zz as usize)] + weight;
+                        if v < dist[cur] {
+                            dist[cur] = v;
+                        }
                     }
                 }
             }
@@ -220,6 +183,21 @@ mod tests {
             arr.tuple_as_f64(i, &mut buf);
             assert!((buf[0] - 0.0).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    fn opposite_diagonal_neighbor_uses_edge_weight() {
+        let mut img = ImageData::with_dimensions(3, 3, 1);
+        let mut values: Vec<f64> = vec![0.0; 9];
+        values[2] = 1.0;
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("mask", values, 1)));
+
+        let result = chamfer_distance_transform(&img, "mask");
+        let arr = result.point_data().get_array("ChamferDistance").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(4, &mut buf);
+        assert!((buf[0] - 4.0 / 3.0).abs() < 1e-10);
     }
 
     #[test]

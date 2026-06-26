@@ -9,7 +9,7 @@ pub fn select_cells_by_area(input: &PolyData, min_area: f64, max_area: f64) -> P
     let mut keep_cells: Vec<Vec<i64>> = Vec::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3 || !valid_cell(input, cell) {
             continue;
         }
 
@@ -49,6 +49,11 @@ pub fn select_cells_by_area(input: &PolyData, min_area: f64, max_area: f64) -> P
     pd.points = new_points;
     pd.polys = new_polys;
     pd
+}
+
+fn valid_cell(input: &PolyData, cell: &[i64]) -> bool {
+    cell.iter()
+        .all(|&idx| idx >= 0 && (idx as usize) < input.points.len())
 }
 
 fn polygon_area(input: &PolyData, cell: &[i64]) -> f64 {
@@ -115,5 +120,19 @@ mod tests {
         let result = select_cells_by_area(&pd, 10.0, 20.0);
         assert_eq!(result.polys.num_cells(), 0);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn skips_invalid_cell_ids() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, -1, 2]);
+
+        let result = select_cells_by_area(&pd, 0.0, 10.0);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.points.len(), 3);
     }
 }

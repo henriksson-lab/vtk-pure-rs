@@ -43,10 +43,10 @@ pub fn haar_decompose(
             let c = vals[2 * ix + (2 * iy + 1) * nx];
             let d = vals[2 * ix + 1 + (2 * iy + 1) * nx];
             let idx = ix + iy * hnx;
-            ll[idx] = (a + b + c + d) * 0.25;
-            lh[idx] = (a - b + c - d) * 0.25;
-            hl[idx] = (a + b - c - d) * 0.25;
-            hh[idx] = (a - b - c + d) * 0.25;
+            ll[idx] = (a + b + c + d) * 0.5;
+            lh[idx] = (a - b + c - d) * 0.5;
+            hl[idx] = (a + b - c - d) * 0.5;
+            hh[idx] = (a - b - c + d) * 0.5;
         }
     }
 
@@ -100,10 +100,10 @@ pub fn haar_reconstruct(
             let lhv = lh_v[idx];
             let hlv = hl_v[idx];
             let hhv = hh_v[idx];
-            data[2 * ix + 2 * iy * nx] = l + lhv + hlv + hhv;
-            data[2 * ix + 1 + 2 * iy * nx] = l - lhv + hlv - hhv;
-            data[2 * ix + (2 * iy + 1) * nx] = l + lhv - hlv - hhv;
-            data[2 * ix + 1 + (2 * iy + 1) * nx] = l - lhv - hlv + hhv;
+            data[2 * ix + 2 * iy * nx] = (l + lhv + hlv + hhv) * 0.5;
+            data[2 * ix + 1 + 2 * iy * nx] = (l - lhv + hlv - hhv) * 0.5;
+            data[2 * ix + (2 * iy + 1) * nx] = (l + lhv - hlv - hhv) * 0.5;
+            data[2 * ix + 1 + (2 * iy + 1) * nx] = (l - lhv - hlv + hhv) * 0.5;
         }
     }
 
@@ -134,6 +134,39 @@ mod tests {
         assert_eq!(lh.dimensions(), [4, 4, 1]);
         assert_eq!(hl.dimensions(), [4, 4, 1]);
         assert_eq!(hh.dimensions(), [4, 4, 1]);
+    }
+    #[test]
+    fn test_orthonormal_haar_coefficients() {
+        let mut img = ImageData::with_dimensions(2, 2, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
+
+        let (ll, lh, hl, hh) = haar_decompose(&img, "v");
+        let mut buf = [0.0f64];
+        ll.point_data()
+            .get_array("LL")
+            .unwrap()
+            .tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 5.0).abs() < 1e-12);
+        lh.point_data()
+            .get_array("LH")
+            .unwrap()
+            .tuple_as_f64(0, &mut buf);
+        assert!((buf[0] + 1.0).abs() < 1e-12);
+        hl.point_data()
+            .get_array("HL")
+            .unwrap()
+            .tuple_as_f64(0, &mut buf);
+        assert!((buf[0] + 2.0).abs() < 1e-12);
+        hh.point_data()
+            .get_array("HH")
+            .unwrap()
+            .tuple_as_f64(0, &mut buf);
+        assert!(buf[0].abs() < 1e-12);
     }
     #[test]
     fn test_roundtrip() {

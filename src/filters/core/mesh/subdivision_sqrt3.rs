@@ -9,34 +9,44 @@ use std::collections::HashMap;
 /// for some applications.
 pub fn subdivide_sqrt3(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    let tris: Vec<[i64; 3]> = input.polys.iter()
+    let tris: Vec<[i64; 3]> = input
+        .polys
+        .iter()
         .filter(|c| c.len() >= 3)
         .map(|c| [c[0], c[1], c[2]])
         .collect();
 
-    if tris.is_empty() { return PolyData::new(); }
+    if tris.is_empty() {
+        return PolyData::new();
+    }
 
     let mut out_pts = Points::<f64>::new();
-    for i in 0..n { out_pts.push(input.points.get(i)); }
+    for i in 0..n {
+        out_pts.push(input.points.get(i));
+    }
 
     // Insert centroids
-    let centroid_start = out_pts.len();
     let mut centroid_ids: Vec<i64> = Vec::with_capacity(tris.len());
     for tri in &tris {
         let v0 = input.points.get(tri[0] as usize);
         let v1 = input.points.get(tri[1] as usize);
         let v2 = input.points.get(tri[2] as usize);
         let idx = out_pts.len() as i64;
-        out_pts.push([(v0[0]+v1[0]+v2[0])/3.0, (v0[1]+v1[1]+v2[1])/3.0, (v0[2]+v1[2]+v2[2])/3.0]);
+        out_pts.push([
+            (v0[0] + v1[0] + v2[0]) / 3.0,
+            (v0[1] + v1[1] + v2[1]) / 3.0,
+            (v0[2] + v1[2] + v2[2]) / 3.0,
+        ]);
         centroid_ids.push(idx);
     }
 
     // Build edge-face adjacency
-    let mut edge_faces: HashMap<(i64,i64), Vec<usize>> = HashMap::new();
+    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, tri) in tris.iter().enumerate() {
         for k in 0..3 {
-            let a = tri[k]; let b = tri[(k+1)%3];
-            let key = if a < b { (a,b) } else { (b,a) };
+            let a = tri[k];
+            let b = tri[(k + 1) % 3];
+            let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
     }

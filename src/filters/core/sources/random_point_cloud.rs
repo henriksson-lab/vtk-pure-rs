@@ -75,7 +75,7 @@ impl Rng {
             .0
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((self.0 >> 33) as f64) / (u32::MAX as f64)
+        ((self.0 >> 32) as u32 as f64) / (u32::MAX as f64)
     }
 }
 

@@ -26,26 +26,9 @@ pub fn dumbbell(bar_length: f64, weight_radius: f64, bar_radius: f64, na: usize)
     // Two weight spheres
     for &cx in &[-bar_length / 2.0, bar_length / 2.0] {
         let np = 4;
-        let _top = pts.len();
-        pts.push([cx, 0.0, weight_radius]);
-        for p in 1..np {
-            let phi = std::f64::consts::PI * p as f64 / np as f64;
-            let r = weight_radius * phi.sin();
-            let z = weight_radius * phi.cos();
-            for j in 0..na {
-                let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
-                pts.push([cx, r * a.cos(), z + r * a.sin() - r * a.sin() + z]);
-                // Simplified: just place on sphere surface
-                let _last = pts.len() - 1;
-                let _p_ref = &mut [0.0f64; 3];
-                // Actually let's just do it simply
-            }
-        }
-        // Simpler: just hemisphere caps
-        let _sb = pts.len() - 1; // reset
         let sphere_base = pts.len();
         pts.push([cx, 0.0, weight_radius]); // top
-        for p in 1..=np {
+        for p in 1..np {
             let phi = std::f64::consts::PI * p as f64 / np as f64;
             for j in 0..na {
                 let theta = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
@@ -56,6 +39,8 @@ pub fn dumbbell(bar_length: f64, weight_radius: f64, bar_radius: f64, na: usize)
                 ]);
             }
         }
+        let south = pts.len();
+        pts.push([cx, 0.0, -weight_radius]);
         // Top cap
         for j in 0..na {
             polys.push_cell(&[
@@ -64,7 +49,7 @@ pub fn dumbbell(bar_length: f64, weight_radius: f64, bar_radius: f64, na: usize)
                 (sphere_base + 1 + (j + 1) % na) as i64,
             ]);
         }
-        for p in 0..(np - 1) {
+        for p in 0..(np - 2) {
             let r0 = sphere_base + 1 + p * na;
             let r1 = sphere_base + 1 + (p + 1) * na;
             for j in 0..na {
@@ -72,6 +57,15 @@ pub fn dumbbell(bar_length: f64, weight_radius: f64, bar_radius: f64, na: usize)
                 polys.push_cell(&[(r0 + j) as i64, (r1 + j) as i64, (r1 + j1) as i64]);
                 polys.push_cell(&[(r0 + j) as i64, (r1 + j1) as i64, (r0 + j1) as i64]);
             }
+        }
+        let last_ring = sphere_base + 1 + (np - 2) * na;
+        for j in 0..na {
+            let j1 = (j + 1) % na;
+            polys.push_cell(&[
+                (last_ring + j) as i64,
+                south as i64,
+                (last_ring + j1) as i64,
+            ]);
         }
     }
     let mut m = PolyData::new();

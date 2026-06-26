@@ -12,7 +12,11 @@ pub fn crenellation(
     let mut polys = CellArray::new();
     let ht = thickness / 2.0;
     let pitch = merlon_width + gap_width;
-    let n_merlons = (length / pitch).floor() as usize;
+    let n_merlons = if length > 0.0 && merlon_width > 0.0 && pitch > 0.0 {
+        (length / pitch).floor() as usize
+    } else {
+        0
+    };
     let add_box = |pts: &mut Points<f64>,
                    polys: &mut CellArray,
                    x0: f64,

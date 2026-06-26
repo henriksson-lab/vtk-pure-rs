@@ -21,9 +21,9 @@ pub fn delaunay_2d(input: &PolyData) -> PolyData {
 
     // Compute bounding box
     let mut min_x = f64::MAX;
-    let mut max_x = f64::MIN;
+    let mut max_x = f64::NEG_INFINITY;
     let mut min_y = f64::MAX;
-    let mut max_y = f64::MIN;
+    let mut max_y = f64::NEG_INFINITY;
     for p in &pts {
         min_x = min_x.min(p[0]);
         max_x = max_x.max(p[0]);
@@ -97,7 +97,12 @@ pub fn delaunay_2d(input: &PolyData) -> PolyData {
 
         // Create new triangles from polygon edges to the new point
         for &(a, b) in &polygon {
-            new_tris.push([a, b, pi]);
+            let tri = if orient2d(all_pts[a], all_pts[b], p) < 0.0 {
+                [b, a, pi]
+            } else {
+                [a, b, pi]
+            };
+            new_tris.push(tri);
         }
 
         triangles = new_tris;
@@ -135,7 +140,15 @@ fn in_circumcircle(a: [f64; 2], b: [f64; 2], c: [f64; 2], p: [f64; 2]) -> bool {
         - ay * (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by))
         + (ax * ax + ay * ay) * (bx * cy - by * cx);
 
-    det > 0.0
+    if orient2d(a, b, c) > 0.0 {
+        det > 0.0
+    } else {
+        det < 0.0
+    }
+}
+
+fn orient2d(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }
 
 #[cfg(test)]

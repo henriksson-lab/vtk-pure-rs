@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, CellLocator, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Compute barycentric coordinates for probe points relative to a triangle mesh.
 ///
@@ -13,28 +14,41 @@ pub fn barycentric_coordinates(surface: &PolyData, probe: &PolyData) -> PolyData
     let mut cell_ids = Vec::with_capacity(n);
 
     // Collect triangles for barycentric computation
-    let tris: Vec<[[f64; 3]; 3]> = surface
-        .polys
-        .iter()
-        .filter_map(|cell| {
-            if cell.len() >= 3 {
-                Some([
+    let mut tris_by_cell_id = HashMap::new();
+    let poly_offset = surface.verts.num_cells() + surface.lines.num_cells();
+    for (poly_id, cell) in surface.polys.iter().enumerate() {
+        if cell.len() >= 3 {
+            tris_by_cell_id.insert(
+                poly_offset + poly_id,
+                [
                     surface.points.get(cell[0] as usize),
                     surface.points.get(cell[1] as usize),
                     surface.points.get(cell[2] as usize),
-                ])
-            } else {
-                None
-            }
-        })
-        .collect();
+                ],
+            );
+        }
+    }
+
+    let strip_offset = poly_offset + surface.polys.num_cells();
+    for (strip_id, cell) in surface.strips.iter().enumerate() {
+        if cell.len() >= 3 {
+            tris_by_cell_id.insert(
+                strip_offset + strip_id,
+                [
+                    surface.points.get(cell[0] as usize),
+                    surface.points.get(cell[1] as usize),
+                    surface.points.get(cell[2] as usize),
+                ],
+            );
+        }
+    }
 
     for i in 0..n {
         let p = probe.points.get(i);
         if let Some((cell_id, closest_pt, _)) = locator.find_closest_cell(p) {
             cell_ids.push(cell_id as f64);
-            if cell_id < tris.len() {
-                let (u, v, w) = compute_bary(closest_pt, &tris[cell_id]);
+            if let Some(tri) = tris_by_cell_id.get(&cell_id) {
+                let (u, v, w) = compute_bary(closest_pt, tri);
                 bary.push(u);
                 bary.push(v);
                 bary.push(w);
@@ -134,6 +148,33 @@ mod tests {
 
         let result = barycentric_coordinates(&surface, &probe);
         assert!(result.point_data().get_array("NearestCell").is_some());
+    }
+
+    #[test]
+    fn uses_global_poly_cell_ids() {
+        let mut surface = PolyData::new();
+        surface.points.push([10.0, 10.0, 10.0]);
+        surface.points.push([0.0, 0.0, 0.0]);
+        surface.points.push([1.0, 0.0, 0.0]);
+        surface.points.push([0.0, 1.0, 0.0]);
+        surface.verts.push_cell(&[0]);
+        surface.polys.push_cell(&[1, 2, 3]);
+
+        let mut probe = PolyData::new();
+        probe.points.push([0.25, 0.25, 0.0]);
+
+        let result = barycentric_coordinates(&surface, &probe);
+        let nearest = result.point_data().get_array("NearestCell").unwrap();
+        let bary = result.point_data().get_array("Barycentric").unwrap();
+        let mut cell_buf = [0.0f64];
+        let mut bary_buf = [0.0f64; 3];
+        nearest.tuple_as_f64(0, &mut cell_buf);
+        bary.tuple_as_f64(0, &mut bary_buf);
+
+        assert_eq!(cell_buf[0], 1.0);
+        assert!((bary_buf[0] - 0.5).abs() < 1e-10);
+        assert!((bary_buf[1] - 0.25).abs() < 1e-10);
+        assert!((bary_buf[2] - 0.25).abs() < 1e-10);
     }
 
     #[test]

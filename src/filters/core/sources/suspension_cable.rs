@@ -24,8 +24,8 @@ pub fn catenary_cable(p0: [f64; 3], p1: [f64; 3], sag: f64, resolution: usize) -
 pub fn multi_span_cable(points: &[[f64; 3]], sag: f64, resolution: usize) -> PolyData {
     let mut all_pts = Points::<f64>::new();
     let mut all_lines = CellArray::new();
-    for i in 0..points.len() - 1 {
-        let cable = catenary_cable(points[i], points[i + 1], sag, resolution);
+    for segment in points.windows(2) {
+        let cable = catenary_cable(segment[0], segment[1], sag, resolution);
         let base = all_pts.len() as i64;
         for j in 0..cable.points.len() {
             all_pts.push(cable.points.get(j));
@@ -52,10 +52,10 @@ pub fn power_line(
     let mut all_pts = Points::<f64>::new();
     let mut all_lines = CellArray::new();
     for wi in 0..nw {
-        let offset = (wi as f64 - hw / wire_spacing.max(1e-15)) * wire_spacing;
-        for i in 0..poles.len() - 1 {
-            let p0 = [poles[i][0], poles[i][1] + offset, poles[i][2]];
-            let p1 = [poles[i + 1][0], poles[i + 1][1] + offset, poles[i + 1][2]];
+        let offset = wi as f64 * wire_spacing - hw;
+        for segment in poles.windows(2) {
+            let p0 = [segment[0][0], segment[0][1] + offset, segment[0][2]];
+            let p1 = [segment[1][0], segment[1][1] + offset, segment[1][2]];
             let cable = catenary_cable(p0, p1, sag, resolution);
             let base = all_pts.len() as i64;
             for j in 0..cable.points.len() {

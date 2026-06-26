@@ -9,37 +9,37 @@ pub fn cylinder_capped(radius: f64, height: f64, resolution: usize) -> PolyData 
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
 
-    // Bottom ring
+    // Side rings
     for i in 0..res {
         let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
         pts.push([radius * a.cos(), radius * a.sin(), -half_h]);
     }
-    // Top ring
     for i in 0..res {
         let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
         pts.push([radius * a.cos(), radius * a.sin(), half_h]);
     }
-    // Centers
-    let bot_center = pts.len();
-    pts.push([0.0, 0.0, -half_h]);
-    let top_center = pts.len();
-    pts.push([0.0, 0.0, half_h]);
 
     // Side quads
     for i in 0..res {
         let j = (i + 1) % res;
         polys.push_cell(&[i as i64, j as i64, (res + j) as i64, (res + i) as i64]);
     }
-    // Bottom cap
+
+    // Cap rings are duplicated, matching vtkCylinderSource's separate cap points.
+    let bottom_cap = pts.len();
     for i in 0..res {
-        let j = (i + 1) % res;
-        polys.push_cell(&[bot_center as i64, j as i64, i as i64]);
+        let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
+        pts.push([radius * a.cos(), radius * a.sin(), -half_h]);
     }
-    // Top cap
+    let top_cap = pts.len();
     for i in 0..res {
-        let j = (i + 1) % res;
-        polys.push_cell(&[top_center as i64, (res + i) as i64, (res + j) as i64]);
+        let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
+        pts.push([radius * a.cos(), radius * a.sin(), half_h]);
     }
+    let bottom: Vec<i64> = (0..res).rev().map(|i| (bottom_cap + i) as i64).collect();
+    let top: Vec<i64> = (0..res).map(|i| (top_cap + i) as i64).collect();
+    polys.push_cell(&bottom);
+    polys.push_cell(&top);
 
     let mut result = PolyData::new();
     result.points = pts;
@@ -67,20 +67,25 @@ pub fn tapered_cylinder(
         let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
         pts.push([top_radius * a.cos(), top_radius * a.sin(), half_h]);
     }
-    let bot_c = pts.len();
-    pts.push([0.0, 0.0, -half_h]);
-    let top_c = pts.len();
-    pts.push([0.0, 0.0, half_h]);
-
     for i in 0..res {
         let j = (i + 1) % res;
         polys.push_cell(&[i as i64, j as i64, (res + j) as i64, (res + i) as i64]);
     }
+
+    let bottom_cap = pts.len();
     for i in 0..res {
-        let j = (i + 1) % res;
-        polys.push_cell(&[bot_c as i64, j as i64, i as i64]);
-        polys.push_cell(&[top_c as i64, (res + i) as i64, (res + j) as i64]);
+        let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
+        pts.push([bottom_radius * a.cos(), bottom_radius * a.sin(), -half_h]);
     }
+    let top_cap = pts.len();
+    for i in 0..res {
+        let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
+        pts.push([top_radius * a.cos(), top_radius * a.sin(), half_h]);
+    }
+    let bottom: Vec<i64> = (0..res).rev().map(|i| (bottom_cap + i) as i64).collect();
+    let top: Vec<i64> = (0..res).map(|i| (top_cap + i) as i64).collect();
+    polys.push_cell(&bottom);
+    polys.push_cell(&top);
 
     let mut result = PolyData::new();
     result.points = pts;
@@ -94,13 +99,13 @@ mod tests {
     #[test]
     fn test_capped() {
         let c = cylinder_capped(1.0, 2.0, 12);
-        assert_eq!(c.points.len(), 26); // 24 + 2 centers
-        assert_eq!(c.polys.num_cells(), 36); // 12 side + 12 bottom + 12 top
+        assert_eq!(c.points.len(), 48); // side rings + separate cap rings
+        assert_eq!(c.polys.num_cells(), 14); // 12 side + 2 caps
     }
     #[test]
     fn test_tapered() {
         let c = tapered_cylinder(1.0, 0.5, 3.0, 8);
-        assert_eq!(c.points.len(), 18);
-        assert_eq!(c.polys.num_cells(), 24);
+        assert_eq!(c.points.len(), 32);
+        assert_eq!(c.polys.num_cells(), 10);
     }
 }

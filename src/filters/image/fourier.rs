@@ -11,6 +11,9 @@ pub fn fft_magnitude_1d(image: &ImageData, array_name: &str) -> ImageData {
     let dims = image.dimensions();
     let nx = dims[0];
     let ny = dims[1];
+    if dims[2] != 1 || arr.num_tuples() != nx * ny {
+        return image.clone();
+    }
 
     let mut buf = [0.0f64];
     let mut magnitude = vec![0.0f64; nx * ny];
@@ -59,6 +62,9 @@ pub fn fft_magnitude_2d(image: &ImageData, array_name: &str) -> ImageData {
     let nx = dims[0];
     let ny = dims[1];
     let n = nx * ny;
+    if dims[2] != 1 || arr.num_tuples() != n {
+        return image.clone();
+    }
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
@@ -109,6 +115,9 @@ pub fn low_pass_filter(image: &ImageData, array_name: &str, cutoff_fraction: f64
     let nx = dims[0];
     let ny = dims[1].max(1);
     let n = nx * ny;
+    if dims[2] != 1 || arr.num_tuples() != n {
+        return image.clone();
+    }
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
@@ -136,14 +145,21 @@ pub fn low_pass_filter(image: &ImageData, array_name: &str, cutoff_fraction: f64
         }
     }
 
-    // Zero out high frequencies
-    let cx = nx as f64 / 2.0;
-    let cy = ny as f64 / 2.0;
-    let cutoff2 = (cutoff_fraction * cx.min(cy)).powi(2);
+    // Zero out high frequencies. vtkImageIdealLowPass measures distance from
+    // the uncentered frequency origin and wraps coordinates past the midpoint.
+    let mid_x = nx as f64 / 2.0;
+    let mid_y = ny as f64 / 2.0;
+    let cutoff2 = (cutoff_fraction * mid_x.min(mid_y)).powi(2);
     for ky in 0..ny {
         for kx in 0..nx {
-            let dx = kx as f64 - cx;
-            let dy = ky as f64 - cy;
+            let mut dx = kx as f64;
+            let mut dy = ky as f64;
+            if dx > mid_x {
+                dx = mid_x + mid_x - dx;
+            }
+            if dy > mid_y {
+                dy = mid_y + mid_y - dy;
+            }
             if dx * dx + dy * dy > cutoff2 {
                 let idx = kx + ky * nx;
                 re_f[idx] = 0.0;
@@ -206,7 +222,7 @@ mod tests {
             [1.0, 1.0, 1.0],
             [0.0, 0.0, 0.0],
             "val",
-            |x, y, _| (x * 0.5).sin(),
+            |x, _y, _| (x * 0.5).sin(),
         );
         let result = fft_magnitude_2d(&img, "val");
         assert!(result.point_data().get_array("FFTMagnitude2D").is_some());

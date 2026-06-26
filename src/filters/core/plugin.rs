@@ -70,7 +70,8 @@ impl ReaderRegistry {
         extension: impl Into<String>,
         reader: impl Fn(&Path) -> Result<PolyData, String> + Send + Sync + 'static,
     ) {
-        self.readers.insert(extension.into(), Box::new(reader));
+        self.readers
+            .insert(extension.into().to_lowercase(), Box::new(reader));
     }
 
     /// Read a file, choosing the reader by file extension.
@@ -94,7 +95,7 @@ impl ReaderRegistry {
 
     /// Check whether a reader for the given extension exists.
     pub fn has(&self, extension: &str) -> bool {
-        self.readers.contains_key(extension)
+        self.readers.contains_key(&extension.to_lowercase())
     }
 }
 
@@ -133,11 +134,15 @@ mod tests {
             Ok(PolyData::from_points(vec![[1.0, 2.0, 3.0]]))
         });
         assert!(reg.has("xyz"));
+        assert!(reg.has("XYZ"));
         assert!(!reg.has("abc"));
 
         let result = reg.read(Path::new("/tmp/test.xyz"));
         assert!(result.is_ok());
         assert_eq!(result.unwrap().points.len(), 1);
+
+        let result = reg.read(Path::new("/tmp/test.XYZ"));
+        assert!(result.is_ok());
 
         let err = reg.read(Path::new("/tmp/test.abc"));
         assert!(err.is_err());

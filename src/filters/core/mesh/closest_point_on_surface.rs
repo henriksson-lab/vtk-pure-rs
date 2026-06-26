@@ -9,6 +9,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// The closest point is computed on actual triangle faces, not just vertices.
 pub fn closest_point_on_surface(source: &PolyData, target: &PolyData) -> PolyData {
     let tris = collect_triangles(target);
+    if source.points.is_empty() || tris.is_empty() {
+        return source.clone();
+    }
 
     let n = source.points.len();
     let mut closest_pts = Vec::with_capacity(n * 3);
@@ -35,12 +38,17 @@ pub fn closest_point_on_surface(source: &PolyData, target: &PolyData) -> PolyDat
     }
 
     let mut pd = source.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("ClosestPoint", closest_pts, 3),
-    ));
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("Distance", distances, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "ClosestPoint",
+            closest_pts,
+            3,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Distance", distances, 1,
+        )));
+    pd.point_data_mut().set_active_scalars("Distance");
     pd
 }
 
@@ -48,11 +56,14 @@ fn collect_triangles(pd: &PolyData) -> Vec<([f64; 3], [f64; 3], [f64; 3])> {
     let mut tris = Vec::new();
     for cell in pd.polys.iter() {
         if cell.len() >= 3 {
-            tris.push((
-                pd.points.get(cell[0] as usize),
-                pd.points.get(cell[1] as usize),
-                pd.points.get(cell[2] as usize),
-            ));
+            let v0 = pd.points.get(cell[0] as usize);
+            for i in 1..cell.len() - 1 {
+                tris.push((
+                    v0,
+                    pd.points.get(cell[i] as usize),
+                    pd.points.get(cell[i + 1] as usize),
+                ));
+            }
         }
     }
     tris
@@ -161,12 +172,20 @@ mod tests {
         let dist_arr = result.point_data().get_array("Distance").unwrap();
         let mut d = [0.0f64];
         dist_arr.tuple_as_f64(0, &mut d);
-        assert!((d[0] - 3.0).abs() < 1e-10, "distance should be 3.0, got {}", d[0]);
+        assert!(
+            (d[0] - 3.0).abs() < 1e-10,
+            "distance should be 3.0, got {}",
+            d[0]
+        );
 
         let cp_arr = result.point_data().get_array("ClosestPoint").unwrap();
         let mut cp = [0.0f64; 3];
         cp_arr.tuple_as_f64(0, &mut cp);
-        assert!((cp[2]).abs() < 1e-10, "closest z should be 0, got {}", cp[2]);
+        assert!(
+            (cp[2]).abs() < 1e-10,
+            "closest z should be 0, got {}",
+            cp[2]
+        );
     }
 
     #[test]
@@ -185,12 +204,56 @@ mod tests {
         let mut cp = [0.0f64; 3];
         cp_arr.tuple_as_f64(0, &mut cp);
         // Closest should be on the edge y=0, at x=0.5
-        assert!((cp[0] - 0.5).abs() < 1e-10, "x should be 0.5, got {}", cp[0]);
+        assert!(
+            (cp[0] - 0.5).abs() < 1e-10,
+            "x should be 0.5, got {}",
+            cp[0]
+        );
         assert!(cp[1].abs() < 1e-10, "y should be 0, got {}", cp[1]);
 
         let dist_arr = result.point_data().get_array("Distance").unwrap();
         let mut d = [0.0f64];
         dist_arr.tuple_as_f64(0, &mut d);
-        assert!((d[0] - 1.0).abs() < 1e-10, "distance should be 1.0, got {}", d[0]);
+        assert!(
+            (d[0] - 1.0).abs() < 1e-10,
+            "distance should be 1.0, got {}",
+            d[0]
+        );
+    }
+
+    #[test]
+    fn quad_surface_uses_all_fan_triangles() {
+        let target = PolyData::from_polygons(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![vec![0, 1, 2, 3]],
+        );
+        let mut source = PolyData::new();
+        source.points.push([0.25, 0.75, 2.0]);
+
+        let result = closest_point_on_surface(&source, &target);
+        let cp_arr = result.point_data().get_array("ClosestPoint").unwrap();
+        let mut cp = [0.0f64; 3];
+        cp_arr.tuple_as_f64(0, &mut cp);
+
+        assert!((cp[0] - 0.25).abs() < 1e-10, "x={}", cp[0]);
+        assert!((cp[1] - 0.75).abs() < 1e-10, "y={}", cp[1]);
+        assert!(cp[2].abs() < 1e-10, "z={}", cp[2]);
+    }
+
+    #[test]
+    fn empty_target_adds_no_distance_arrays() {
+        let mut source = PolyData::new();
+        source.points.push([1.0, 2.0, 3.0]);
+        let target = PolyData::new();
+
+        let result = closest_point_on_surface(&source, &target);
+
+        assert!(result.point_data().get_array("Distance").is_none());
+        assert!(result.point_data().get_array("ClosestPoint").is_none());
     }
 }

@@ -121,6 +121,12 @@ pub fn gradient(input: &PolyData, scalar_name: &str) -> PolyData {
     let mut pd = input.clone();
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Gradients",
+            grad_data.clone(),
+            3,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Gradient", grad_data, 3,
         )));
     pd

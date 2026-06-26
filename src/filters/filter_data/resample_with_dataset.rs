@@ -45,6 +45,9 @@ pub fn resample_with_dataset(source: &PolyData, target: &PolyData, array_name: &
 
     let out_arr = AnyDataArray::F64(DataArray::from_vec(array_name, out_data, nc));
     result.point_data_mut().add_array(out_arr);
+    if nc == 1 {
+        result.point_data_mut().set_active_scalars(array_name);
+    }
     result
 }
 

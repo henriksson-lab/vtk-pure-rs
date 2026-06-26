@@ -1,11 +1,14 @@
 //! Generate tubes around polylines where radius varies by an uncertainty scalar.
 //!
-//! Each line cell in the input PolyData is expanded into a tube mesh where the
-//! radius at each vertex is `base_radius * uncertainty_value`.
+//! Each line cell in the input PolyData is expanded into a tube mesh. When a
+//! vector uncertainty array is present, the cross-section follows the
+//! axis-aligned uncertainty ellipsoid at each vertex, matching the VTK filter's
+//! intent. A scalar `"Uncertainty"` array is accepted as a compatibility
+//! fallback and scales the radius uniformly.
 
 use std::f64::consts::PI;
 
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, DataArray, Points, PolyData};
 
 /// Generate uncertainty tubes around polylines.
 ///
@@ -21,9 +24,12 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
+    let mut out_normals = DataArray::<f64>::new("TubeNormals", 3);
 
     // Get uncertainty array
-    let uncertainty_arr = input.point_data().get_array("Uncertainty");
+    let active_vectors = input.point_data().vectors();
+    let named_uncertainty = input.point_data().get_array("Uncertainty");
+    let uncertainty_arr = active_vectors.or(named_uncertainty);
 
     for cell in input.lines.iter() {
         if cell.len() < 2 {
@@ -36,15 +42,27 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
             let vid = cell[seg_idx] as usize;
             let p = input.points.get(vid);
 
-            // Get uncertainty value for this vertex
-            let unc = if let Some(arr) = uncertainty_arr {
-                let mut buf = [0.0f64];
-                arr.tuple_as_f64(vid, &mut buf);
-                buf[0]
+            // Get uncertainty radii for this vertex. VTK's
+            // vtkUncertaintyTubeFilter uses a vector ellipsoid; scalar data
+            // remains a uniform-radius fallback for this crate's older API.
+            let uncertainty = if let Some(arr) = uncertainty_arr {
+                if arr.num_components() >= 3 {
+                    let mut buf = [0.0f64; 3];
+                    arr.tuple_as_f64(vid, &mut buf);
+                    [
+                        buf[0].abs().max(1e-12),
+                        buf[1].abs().max(1e-12),
+                        buf[2].abs().max(1e-12),
+                    ]
+                } else {
+                    let mut buf = [0.0f64];
+                    arr.tuple_as_f64(vid, &mut buf);
+                    let radius = buf[0].abs().max(1e-12);
+                    [radius, radius, radius]
+                }
             } else {
-                1.0
+                [1.0, 1.0, 1.0]
             };
-            let radius = base_radius * unc;
 
             // Compute tangent direction
             let tangent = if seg_idx == 0 {
@@ -72,6 +90,7 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
                     ct * u[1] + st * v[1],
                     ct * u[2] + st * v[2],
                 ];
+                let radius = base_radius * intersect_ellipsoid(uncertainty, normal);
 
                 let idx = out_points.len();
                 out_points.push([
@@ -79,6 +98,7 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
                     p[1] + radius * normal[1],
                     p[2] + radius * normal[2],
                 ]);
+                out_normals.push_tuple(&normal);
                 ring.push(idx);
             }
             rings.push(ring);
@@ -101,7 +121,25 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
     let mut output = PolyData::new();
     output.points = out_points;
     output.polys = out_polys;
+    output.point_data_mut().add_array(out_normals.into());
+    output.point_data_mut().set_active_normals("TubeNormals");
     output
+}
+
+fn intersect_ellipsoid(vector: [f64; 3], direction: [f64; 3]) -> f64 {
+    let a = vector[0];
+    let b = vector[1];
+    let c = vector[2];
+    let numerator = a * a * b * b * c * c;
+    let denominator = direction[0] * direction[0] * b * b * c * c
+        + direction[1] * direction[1] * a * a * c * c
+        + direction[2] * direction[2] * a * a * b * b;
+
+    if denominator <= 0.0 {
+        0.0
+    } else {
+        (numerator / denominator).sqrt()
+    }
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {

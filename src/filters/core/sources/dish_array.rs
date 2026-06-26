@@ -2,6 +2,7 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn dish_array(dish_radius: f64, spacing: f64, nx: usize, ny: usize, na: usize) -> PolyData {
+    let dish_radius = dish_radius.abs().max(1e-12);
     let na = na.max(8);
     let nr = 3;
     let mut pts = Points::<f64>::new();

@@ -13,17 +13,16 @@ pub fn viking_ship(length: f64, beam: f64, n_sections: usize) -> PolyData {
         let x = length * (t - 0.5);
         let taper = (std::f64::consts::PI * t).sin().max(0.05);
         let rise = 0.5 * (1.0 - taper) * length * 0.1; // bow/stern rise
-        for w in 0..=nw {
-            let u = w as f64 / nw as f64;
-            let angle = std::f64::consts::PI / 2.0 * u;
-            let y = beam / 2.0 * taper * angle.cos();
-            let z = -beam * 0.3 * taper * angle.sin() + rise;
+        for w in 0..=2 * nw {
+            let u = w as f64 / nw as f64 - 1.0;
+            let y = beam / 2.0 * taper * u;
+            let z = -beam * 0.3 * taper * (1.0 - u.abs()) + rise;
             pts.push([x, y, z]);
         }
     }
-    let stride = nw + 1;
+    let stride = 2 * nw + 1;
     for s in 0..ns {
-        for w in 0..nw {
+        for w in 0..2 * nw {
             let i0 = s * stride + w;
             let i1 = (s + 1) * stride + w;
             polys.push_cell(&[i0 as i64, i1 as i64, (i1 + 1) as i64, (i0 + 1) as i64]);
@@ -37,9 +36,9 @@ pub fn viking_ship(length: f64, beam: f64, n_sections: usize) -> PolyData {
     lines.push_cell(&[mast_b as i64, mast_t as i64]);
     // Yard (crossbeam)
     let yard_l = pts.len();
-    pts.push([-beam, 0.0, length * 0.35]);
+    pts.push([0.0, -beam, length * 0.35]);
     let yard_r = pts.len();
-    pts.push([beam, 0.0, length * 0.35]);
+    pts.push([0.0, beam, length * 0.35]);
     lines.push_cell(&[yard_l as i64, yard_r as i64]);
     // Oars (simplified as lines)
     let n_oars = 6;

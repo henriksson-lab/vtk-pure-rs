@@ -184,13 +184,15 @@ fn extract_cells_by_indices(
     }
 
     let mut new_polys = crate::data::CellArray::new();
-    for &ci in cell_indices {
+    let mut new_values = Vec::new();
+    for (value_idx, &ci) in cell_indices.iter().enumerate() {
         if ci >= total_cells {
             continue;
         }
         let cell = input.polys.cell(ci);
         let remapped: Vec<i64> = cell.iter().map(|&v| point_map[v as usize]).collect();
         new_polys.push_cell(&remapped);
+        new_values.push(data_values.get(value_idx).copied().unwrap_or(0.0));
     }
 
     let mut result = PolyData::new();
@@ -199,9 +201,7 @@ fn extract_cells_by_indices(
     result
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            data_name,
-            data_values.to_vec(),
-            1,
+            data_name, new_values, 1,
         )));
     result
 }

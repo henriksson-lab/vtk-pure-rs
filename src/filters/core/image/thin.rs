@@ -15,6 +15,21 @@ pub fn image_thin(input: &ImageData, scalars: &str, threshold: f64) -> ImageData
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let n = nx * ny;
+    if nx < 3 || ny < 3 {
+        let mut buf = [0.0f64];
+        let skeleton: Vec<f64> = (0..n)
+            .map(|i| {
+                arr.tuple_as_f64(i, &mut buf);
+                if buf[0] >= threshold { 1.0 } else { 0.0 }
+            })
+            .collect();
+        let mut out = input.clone();
+        out.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Skeleton", skeleton, 1,
+            )));
+        return out;
+    }
 
     let mut buf = [0.0f64];
     let mut img: Vec<bool> = (0..n)
@@ -147,5 +162,22 @@ mod tests {
         let img = ImageData::with_dimensions(5, 5, 1);
         let r = image_thin(&img, "nope", 0.5);
         assert!(r.point_data().get_array("Skeleton").is_none());
+    }
+
+    #[test]
+    fn tiny_image_does_not_underflow() {
+        let mut img = ImageData::with_dimensions(2, 2, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 1.0, 1.0, 0.0],
+                1,
+            )));
+
+        let result = image_thin(&img, "v", 0.5);
+        let arr = result.point_data().get_array("Skeleton").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

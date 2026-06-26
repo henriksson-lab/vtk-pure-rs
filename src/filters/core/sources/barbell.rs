@@ -35,18 +35,32 @@ pub fn barbell(
     for &side in &[-1.0f64, 1.0] {
         for p in 0..np {
             let cx = side * (bar_length / 2.0 - 0.1 - plate_thick * (p as f64 + 0.5));
-            // Front and back disk faces
-            for &dz in &[-plate_thick / 2.0, plate_thick / 2.0] {
-                let fc = pts.len();
-                pts.push([cx + dz, 0.0, 0.0]);
-                let fb = pts.len();
-                for j in 0..na {
-                    let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
-                    pts.push([cx + dz, plate_radius * a.cos(), plate_radius * a.sin()]);
-                }
-                for j in 0..na {
-                    polys.push_cell(&[fc as i64, (fb + j) as i64, (fb + (j + 1) % na) as i64]);
-                }
+            let x0 = cx - plate_thick / 2.0;
+            let x1 = cx + plate_thick / 2.0;
+            let c0 = pts.len();
+            pts.push([x0, 0.0, 0.0]);
+            let r0 = pts.len();
+            for j in 0..na {
+                let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
+                pts.push([x0, plate_radius * a.cos(), plate_radius * a.sin()]);
+            }
+            let c1 = pts.len();
+            pts.push([x1, 0.0, 0.0]);
+            let r1 = pts.len();
+            for j in 0..na {
+                let a = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
+                pts.push([x1, plate_radius * a.cos(), plate_radius * a.sin()]);
+            }
+            for j in 0..na {
+                let j1 = (j + 1) % na;
+                polys.push_cell(&[c0 as i64, (r0 + j1) as i64, (r0 + j) as i64]);
+                polys.push_cell(&[c1 as i64, (r1 + j) as i64, (r1 + j1) as i64]);
+                polys.push_cell(&[
+                    (r0 + j) as i64,
+                    (r0 + j1) as i64,
+                    (r1 + j1) as i64,
+                    (r1 + j) as i64,
+                ]);
             }
         }
     }

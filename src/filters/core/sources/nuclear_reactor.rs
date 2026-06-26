@@ -27,7 +27,7 @@ pub fn nuclear_reactor(
     // Containment dome
     let dome_rings = 6;
     for dr in 1..=dome_rings {
-        let t = dr as f64 / dome_rings as f64;
+        let t = dr as f64 / (dome_rings + 1) as f64;
         let a = t * std::f64::consts::FRAC_PI_2;
         let r = containment_r * a.cos();
         let z = containment_h + dome_h * a.sin();

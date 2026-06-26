@@ -65,12 +65,13 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
         }
     }
 
-    // Find boundary edges
+    // Find protected edges
     let boundary = if params.preserve_boundary {
         find_boundary_edges_set(&triangles)
     } else {
         std::collections::HashSet::new()
     };
+    let feature_edges = find_feature_edges_set(&triangles, &positions, params.feature_angle);
 
     // Build edge list with costs
     let mut edges: Vec<(usize, usize, f64, [f64; 3])> = Vec::new();
@@ -99,8 +100,9 @@ pub fn quadric_decimate(mesh: &PolyData, params: &QuadricDecimateParams) -> Poly
             continue;
         }
 
-        // Skip boundary edges if preserving
-        if params.preserve_boundary && boundary.contains(&(a.min(b), a.max(b))) {
+        // Skip protected edges when preserving mesh features.
+        let edge = (a.min(b), a.max(b));
+        if (params.preserve_boundary && boundary.contains(&edge)) || feature_edges.contains(&edge) {
             continue;
         }
 
@@ -235,6 +237,48 @@ fn find_boundary_edges_set(triangles: &[[usize; 3]]) -> std::collections::HashSe
         .into_iter()
         .filter(|(_, c)| *c == 1)
         .map(|(e, _)| e)
+        .collect()
+}
+
+fn find_feature_edges_set(
+    triangles: &[[usize; 3]],
+    positions: &[[f64; 3]],
+    feature_angle: f64,
+) -> std::collections::HashSet<(usize, usize)> {
+    if !(0.0..180.0).contains(&feature_angle) {
+        return std::collections::HashSet::new();
+    }
+
+    let mut edge_normals: std::collections::HashMap<(usize, usize), Vec<[f64; 3]>> =
+        std::collections::HashMap::new();
+    for tri in triangles {
+        let normal = face_normal(positions[tri[0]], positions[tri[1]], positions[tri[2]]);
+        for i in 0..3 {
+            let a = tri[i].min(tri[(i + 1) % 3]);
+            let b = tri[i].max(tri[(i + 1) % 3]);
+            edge_normals.entry((a, b)).or_default().push(normal);
+        }
+    }
+
+    let cos_threshold = feature_angle.to_radians().cos();
+    edge_normals
+        .into_iter()
+        .filter_map(|(edge, normals)| {
+            if normals.len() < 2 {
+                return None;
+            }
+            for i in 0..normals.len() {
+                for j in i + 1..normals.len() {
+                    let dot = normals[i][0] * normals[j][0]
+                        + normals[i][1] * normals[j][1]
+                        + normals[i][2] * normals[j][2];
+                    if dot.clamp(-1.0, 1.0) < cos_threshold {
+                        return Some(edge);
+                    }
+                }
+            }
+            None
+        })
         .collect()
 }
 

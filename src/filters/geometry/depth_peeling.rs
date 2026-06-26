@@ -1,6 +1,7 @@
 //! Depth-sorted polygon layers for order-independent transparency.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
+use crate::types::Scalar;
 
 /// Split a mesh into depth-peeled layers by sorting faces front-to-back
 /// relative to a view direction.
@@ -40,42 +41,35 @@ pub fn depth_sort_mesh(mesh: &PolyData, view_direction: [f64; 3]) -> PolyData {
 
     let cell_depths = compute_cell_depths(mesh, view_direction);
 
-    // Rebuild PolyData with sorted cell order using raw offsets/connectivity
+    // Rebuild PolyData with sorted cell order using raw offsets/connectivity.
+    // Like vtkDepthSortPolyData, point ids stay unchanged and data arrays are
+    // copied in the new cell order.
     let offsets = mesh.polys.offsets();
     let conn = mesh.polys.connectivity();
 
-    // Pre-count total connectivity size (same as input)
     let total_conn = conn.len();
     let mut new_conn = Vec::with_capacity(total_conn);
     let mut new_off = Vec::with_capacity(nc + 1);
     new_off.push(0i64);
     let mut depth_arr = Vec::with_capacity(nc);
-
-    // Point remapping: use a flat Vec instead of HashMap
-    let np = mesh.points.len();
-    let src_pts = mesh.points.as_flat_slice();
-    let mut pt_map: Vec<i64> = vec![-1; np];
-    let mut pts_flat: Vec<f64> = Vec::with_capacity(np * 3);
+    let mut cell_ids = Vec::with_capacity(nc);
 
     for &(ci, depth) in &cell_depths {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
         for idx in start..end {
-            let old_id = conn[idx] as usize;
-            if pt_map[old_id] < 0 {
-                pt_map[old_id] = (pts_flat.len() / 3) as i64;
-                let b = old_id * 3;
-                pts_flat.extend_from_slice(&src_pts[b..b + 3]);
-            }
-            new_conn.push(pt_map[old_id]);
+            new_conn.push(conn[idx]);
         }
         new_off.push(new_conn.len() as i64);
+        cell_ids.push(ci);
         depth_arr.push(depth);
     }
 
     let mut result = PolyData::new();
-    result.points = Points::from_flat_vec(pts_flat);
+    result.points = mesh.points.clone();
     result.polys = CellArray::from_raw(new_off, new_conn);
+    *result.point_data_mut() = mesh.point_data().clone();
+    copy_arrays_by_indices(mesh.cell_data(), result.cell_data_mut(), &cell_ids);
     result
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -123,6 +117,8 @@ fn extract_cells_fast(mesh: &PolyData, cells: &[(usize, f64)]) -> PolyData {
     let src_pts = mesh.points.as_flat_slice();
 
     let mut pt_map: Vec<i64> = vec![-1; np];
+    let mut point_ids = Vec::new();
+    let mut cell_ids = Vec::with_capacity(cells.len());
     let mut pts_flat: Vec<f64> = Vec::new();
     let mut new_conn = Vec::new();
     let mut new_off = Vec::with_capacity(cells.len() + 1);
@@ -135,18 +131,101 @@ fn extract_cells_fast(mesh: &PolyData, cells: &[(usize, f64)]) -> PolyData {
             let old_id = conn[idx] as usize;
             if pt_map[old_id] < 0 {
                 pt_map[old_id] = (pts_flat.len() / 3) as i64;
+                point_ids.push(old_id);
                 let b = old_id * 3;
                 pts_flat.extend_from_slice(&src_pts[b..b + 3]);
             }
             new_conn.push(pt_map[old_id]);
         }
         new_off.push(new_conn.len() as i64);
+        cell_ids.push(ci);
     }
 
     let mut result = PolyData::new();
     result.points = Points::from_flat_vec(pts_flat);
     result.polys = CellArray::from_raw(new_off, new_conn);
+    copy_arrays_by_indices(mesh.point_data(), result.point_data_mut(), &point_ids);
+    copy_arrays_by_indices(mesh.cell_data(), result.cell_data_mut(), &cell_ids);
     result
+}
+
+fn copy_arrays_by_indices(
+    input: &DataSetAttributes,
+    output: &mut DataSetAttributes,
+    indices: &[usize],
+) {
+    for arr in input.iter() {
+        output.add_array(copy_array_by_indices(arr, indices));
+    }
+    preserve_active_attributes(input, output);
+}
+
+fn copy_array_by_indices(arr: &AnyDataArray, indices: &[usize]) -> AnyDataArray {
+    macro_rules! copy {
+        ($array:expr, $variant:ident) => {{
+            AnyDataArray::$variant(copy_typed_array($array, indices))
+        }};
+    }
+    match arr {
+        AnyDataArray::F32(a) => copy!(a, F32),
+        AnyDataArray::F64(a) => copy!(a, F64),
+        AnyDataArray::I8(a) => copy!(a, I8),
+        AnyDataArray::I16(a) => copy!(a, I16),
+        AnyDataArray::I32(a) => copy!(a, I32),
+        AnyDataArray::I64(a) => copy!(a, I64),
+        AnyDataArray::U8(a) => copy!(a, U8),
+        AnyDataArray::U16(a) => copy!(a, U16),
+        AnyDataArray::U32(a) => copy!(a, U32),
+        AnyDataArray::U64(a) => copy!(a, U64),
+    }
+}
+
+fn copy_typed_array<T: Scalar>(array: &DataArray<T>, indices: &[usize]) -> DataArray<T> {
+    let nc = array.num_components();
+    let mut data = Vec::with_capacity(indices.len() * nc);
+    for &idx in indices {
+        data.extend_from_slice(array.tuple(idx));
+    }
+    DataArray::from_vec(array.name(), data, nc)
+}
+
+fn preserve_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(arr) = input.scalars() {
+        output.set_active_scalars(arr.name());
+    }
+    if let Some(arr) = input.vectors() {
+        output.set_active_vectors(arr.name());
+    }
+    if let Some(arr) = input.normals() {
+        output.set_active_normals(arr.name());
+    }
+    if let Some(arr) = input.tcoords() {
+        output.set_active_tcoords(arr.name());
+    }
+    if let Some(arr) = input.tensors() {
+        output.set_active_tensors(arr.name());
+    }
+    if let Some(arr) = input.global_ids() {
+        output.set_active_global_ids(arr.name());
+    }
+    if let Some(arr) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(arr.name());
+    }
+    if let Some(arr) = input.edge_flags() {
+        output.set_active_edge_flags(arr.name());
+    }
+    if let Some(arr) = input.tangents() {
+        output.set_active_tangents(arr.name());
+    }
+    if let Some(arr) = input.rational_weights() {
+        output.set_active_rational_weights(arr.name());
+    }
+    if let Some(arr) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(arr.name());
+    }
+    if let Some(arr) = input.process_ids() {
+        output.set_active_process_ids(arr.name());
+    }
 }
 
 #[cfg(test)]
@@ -178,9 +257,27 @@ mod tests {
 
     #[test]
     fn depth_sort() {
-        let mesh = make_two_planes();
-        let sorted = depth_sort_mesh(&mesh, [0.0, 0.0, 1.0]);
+        let mut mesh = make_two_planes();
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::I32(DataArray::from_vec(
+                "PointIds",
+                vec![0, 1, 2, 3, 4, 5],
+                1,
+            )));
+        mesh.cell_data_mut()
+            .add_array(AnyDataArray::I32(DataArray::from_vec(
+                "OriginalCellIds",
+                vec![10, 20],
+                1,
+            )));
+
+        let sorted = depth_sort_mesh(&mesh, [0.0, 0.0, -1.0]);
         assert_eq!(sorted.polys.num_cells(), 2);
+        assert!(sorted.point_data().get_array("PointIds").is_some());
+        let original_cell_ids = sorted.cell_data().get_array("OriginalCellIds").unwrap();
+        let mut original_id = [0.0f64];
+        original_cell_ids.tuple_as_f64(0, &mut original_id);
+        assert_eq!(original_id[0], 20.0);
         assert!(sorted.cell_data().get_array("Depth").is_some());
         let depth_arr = sorted.cell_data().get_array("Depth").unwrap();
         let mut d0 = [0.0f64];

@@ -10,7 +10,12 @@ pub fn image_attention_score(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].exp() / (buf[0].exp() + 1.0)
+            if buf[0] >= 0.0 {
+                1.0 / (1.0 + (-buf[0]).exp())
+            } else {
+                let e = buf[0].exp();
+                e / (1.0 + e)
+            }
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +38,22 @@ mod tests {
         );
         let r = image_attention_score(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn large_positive_input_remains_finite() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 1000.0,
+        );
+        let r = image_attention_score(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!(buf[0].is_finite());
+        assert_eq!(buf[0], 1.0);
     }
 }

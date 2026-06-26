@@ -106,7 +106,7 @@ pub fn capsule(params: &CapsuleParams) -> PolyData {
     // Top cap (pole to first ring)
     for i in 0..n_theta {
         let i_next = (i + 1) % n_theta;
-        polys.push_cell(&[0, (1 + i) as i64, (1 + i_next) as i64]);
+        polys.push_cell(&[0, (1 + i_next) as i64, (1 + i) as i64]);
     }
 
     // Top hemisphere body

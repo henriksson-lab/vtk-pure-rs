@@ -28,22 +28,40 @@ pub fn mri_scanner(
         let j = (i + 1) % res;
         polys.push_cell(&[i as i64, j as i64, (res + j) as i64, (res + i) as i64]);
     }
-    // End caps
+    // End caps are annuli so the patient bore remains open.
     for &ring_idx in &[0usize, res] {
-        let ec = pts.len();
         let x = if ring_idx == 0 {
             -housing_l / 2.0
         } else {
             housing_l / 2.0
         };
-        pts.push([x, 0.0, 0.0]);
+        let ec = pts.len();
         for i in 0..res {
             let a = 2.0 * std::f64::consts::PI * i as f64 / res as f64;
             pts.push([x, housing_r * a.cos(), housing_r * a.sin()]);
+            pts.push([x, bore_r * a.cos(), bore_r * a.sin()]);
         }
         for i in 0..res {
-            let j = if i + 1 < res { ec + 2 + i } else { ec + 1 };
-            polys.push_cell(&[ec as i64, (ec + 1 + i) as i64, j as i64]);
+            let j = (i + 1) % res;
+            let outer_i = ec + 2 * i;
+            let inner_i = outer_i + 1;
+            let outer_j = ec + 2 * j;
+            let inner_j = outer_j + 1;
+            if ring_idx == 0 {
+                polys.push_cell(&[
+                    outer_i as i64,
+                    outer_j as i64,
+                    inner_j as i64,
+                    inner_i as i64,
+                ]);
+            } else {
+                polys.push_cell(&[
+                    outer_i as i64,
+                    inner_i as i64,
+                    inner_j as i64,
+                    outer_j as i64,
+                ]);
+            }
         }
     }
     // Bore (inner cylinder)

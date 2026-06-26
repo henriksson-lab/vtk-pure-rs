@@ -10,7 +10,7 @@ pub fn image_activation_overpotential(input: &ImageData, scalars: &str) -> Image
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.026 * (buf[0] / buf[0].abs().max(1e-6)).abs().ln().max(0.0)
+            0.026 * (buf[0].abs().max(1e-6) / 1e-6).ln().max(0.0)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,9 @@ mod tests {
         );
         let r = image_activation_overpotential(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut out = [0.0f64];
+        arr.tuple_as_f64(0, &mut out);
+        assert!((out[0] - 0.026 * 1_000_000.0f64.ln()).abs() < 1e-12);
     }
 }

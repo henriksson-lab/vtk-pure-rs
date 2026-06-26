@@ -18,7 +18,7 @@ pub fn silo(radius: f64, height: f64, dome_height: f64, resolution: usize) -> Po
     }
     // Dome
     let dome_rings = 4;
-    for dr in 1..=dome_rings {
+    for dr in 1..dome_rings {
         let t = dr as f64 / dome_rings as f64;
         let a = t * std::f64::consts::FRAC_PI_2;
         let r = radius * a.cos();
@@ -29,7 +29,7 @@ pub fn silo(radius: f64, height: f64, dome_height: f64, resolution: usize) -> Po
         }
     }
     let base = res;
-    for dr in 0..dome_rings {
+    for dr in 0..(dome_rings - 1) {
         let r0 = if dr == 0 {
             base
         } else {
@@ -61,7 +61,7 @@ pub fn silo(radius: f64, height: f64, dome_height: f64, resolution: usize) -> Po
     // Top cap
     let tc = pts.len();
     pts.push([0.0, 0.0, height + dome_height]);
-    let top_ring = base + res + (dome_rings - 1) * res;
+    let top_ring = base + res + (dome_rings - 2) * res;
     for i in 0..res {
         let j = (i + 1) % res;
         polys.push_cell(&[tc as i64, (top_ring + i) as i64, (top_ring + j) as i64]);
@@ -78,5 +78,12 @@ mod tests {
     fn test() {
         let s = silo(2.0, 8.0, 1.5, 12);
         assert!(s.polys.num_cells() > 40);
+    }
+
+    #[test]
+    fn test_dome_uses_single_apex() {
+        let res = 12;
+        let s = silo(2.0, 8.0, 1.5, res);
+        assert_eq!(s.points.len(), 2 * res + 3 * res + 1);
     }
 }

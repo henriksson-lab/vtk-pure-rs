@@ -5,11 +5,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// For each point in `target`, finds the closest point in `input` (brute force)
 /// and copies the value of `array_name` from that closest point. The result is
 /// a clone of `target` with the interpolated array added to point data.
-pub fn interpolate_nearest(
-    input: &PolyData,
-    target: &PolyData,
-    array_name: &str,
-) -> PolyData {
+pub fn interpolate_nearest(input: &PolyData, target: &PolyData, array_name: &str) -> PolyData {
     let arr = match input.point_data().get_array(array_name) {
         Some(a) => a,
         None => return target.clone(),
@@ -18,6 +14,9 @@ pub fn interpolate_nearest(
     let nc: usize = arr.num_components();
     let src_n: usize = input.points.len();
     let tgt_n: usize = target.points.len();
+    if src_n == 0 || arr.num_tuples() == 0 {
+        return target.clone();
+    }
 
     let mut out_data: Vec<f64> = Vec::with_capacity(tgt_n * nc);
     let mut buf: Vec<f64> = vec![0.0; nc];
@@ -46,9 +45,11 @@ pub fn interpolate_nearest(
     }
 
     let mut result = target.clone();
-    result.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec(array_name, out_data, nc),
-    ));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            array_name, out_data, nc,
+        )));
     result
 }
 
@@ -63,9 +64,13 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 10.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        source.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Temperature", vec![100.0, 200.0, 300.0], 1),
-        ));
+        source
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Temperature",
+                vec![100.0, 200.0, 300.0],
+                1,
+            )));
 
         // Target mesh: single point near the first source point.
         let target = PolyData::from_triangles(
@@ -108,9 +113,13 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 10.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        source.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("Vec2", vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], 2),
-        ));
+        source
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Vec2",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                2,
+            )));
 
         let target = PolyData::from_triangles(
             vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 10.0, 0.0]],
@@ -124,5 +133,22 @@ mod tests {
         arr.tuple_as_f64(0, &mut val);
         assert!((val[0] - 1.0).abs() < 1e-10);
         assert!((val[1] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn interpolate_empty_source_returns_clone() {
+        let mut source = PolyData::new();
+        source
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Temperature",
+                Vec::<f64>::new(),
+                1,
+            )));
+        let target = PolyData::from_vertices(vec![[1.0, 2.0, 3.0]]);
+
+        let result = interpolate_nearest(&source, &target, "Temperature");
+        assert_eq!(result.points.len(), 1);
+        assert!(result.point_data().get_array("Temperature").is_none());
     }
 }

@@ -10,7 +10,7 @@ pub fn image_ballistic_trajectory(input: &ImageData, scalars: &str) -> ImageData
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.5 * 9.81 * (buf[0] / buf[0].abs().max(0.01)).powi(2)
+            0.5 * 9.81 * buf[0].powi(2)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,9 @@ mod tests {
         );
         let r = image_ballistic_trajectory(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut out = [0.0f64];
+        arr.tuple_as_f64(0, &mut out);
+        assert!((out[0] - 4.905).abs() < 1e-12);
     }
 }

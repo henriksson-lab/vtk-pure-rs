@@ -32,8 +32,9 @@ pub fn image_granulometry(
     let mut counts = Vec::with_capacity(max_radius + 1);
     counts.push(fg.iter().filter(|&&b| b).count());
 
-    for r in 1..=max_radius {
-        // Erode: a voxel survives only if all neighbors within radius are also foreground
+    for _step in 1..=max_radius {
+        // Erode one step: a voxel survives only if all in-bounds neighbors
+        // in the immediate 3x3x3 neighborhood are also foreground.
         let mut new_fg = vec![false; n];
         for k in 0..nz {
             for j in 0..ny {
@@ -42,12 +43,27 @@ pub fn image_granulometry(
                         continue;
                     }
                     let mut all_fg = true;
-                    'outer: for dk in -(r as i64)..=(r as i64) {
-                        let kk = (k as i64 + dk).clamp(0, nz as i64 - 1) as usize;
-                        for dj in -(r as i64)..=(r as i64) {
-                            let jj = (j as i64 + dj).clamp(0, ny as i64 - 1) as usize;
-                            for di in -(r as i64)..=(r as i64) {
-                                let ii = (i as i64 + di).clamp(0, nx as i64 - 1) as usize;
+                    'outer: for dk in -1isize..=1 {
+                        let Some(kk) = k.checked_add_signed(dk) else {
+                            continue;
+                        };
+                        if kk >= nz {
+                            continue;
+                        }
+                        for dj in -1isize..=1 {
+                            let Some(jj) = j.checked_add_signed(dj) else {
+                                continue;
+                            };
+                            if jj >= ny {
+                                continue;
+                            }
+                            for di in -1isize..=1 {
+                                let Some(ii) = i.checked_add_signed(di) else {
+                                    continue;
+                                };
+                                if ii >= nx {
+                                    continue;
+                                }
                                 if !fg[kk * ny * nx + jj * nx + ii] {
                                     all_fg = false;
                                     break 'outer;
@@ -104,41 +120,15 @@ pub fn erosion_thickness(input: &ImageData, scalars: &str, threshold: f64) -> Im
                     if !current[k * ny * nx + j * nx + i] {
                         continue;
                     }
-                    // Check 6-connected neighbors
-                    let has_bg = [
-                        if i > 0 {
-                            !current[k * ny * nx + j * nx + i - 1]
-                        } else {
-                            true
-                        },
-                        if i + 1 < nx {
-                            !current[k * ny * nx + j * nx + i + 1]
-                        } else {
-                            true
-                        },
-                        if j > 0 {
-                            !current[k * ny * nx + (j - 1) * nx + i]
-                        } else {
-                            true
-                        },
-                        if j + 1 < ny {
-                            !current[k * ny * nx + (j + 1) * nx + i]
-                        } else {
-                            true
-                        },
-                        if k > 0 {
-                            !current[(k - 1) * ny * nx + j * nx + i]
-                        } else {
-                            true
-                        },
-                        if k + 1 < nz {
-                            !current[(k + 1) * ny * nx + j * nx + i]
-                        } else {
-                            true
-                        },
-                    ]
-                    .iter()
-                    .any(|&b| b);
+                    // Check axis-connected neighbors. Degenerate dimensions are not
+                    // treated as missing foreground planes.
+                    let has_bg = (i == 0 || !current[k * ny * nx + j * nx + i - 1])
+                        || (i + 1 == nx || !current[k * ny * nx + j * nx + i + 1])
+                        || (j == 0 || !current[k * ny * nx + (j - 1) * nx + i])
+                        || (j + 1 == ny || !current[k * ny * nx + (j + 1) * nx + i])
+                        || (nz > 1
+                            && ((k == 0 || !current[(k - 1) * ny * nx + j * nx + i])
+                                || (k + 1 == nz || !current[(k + 1) * ny * nx + j * nx + i])));
 
                     if has_bg {
                         // This voxel is on the boundary -> mark with current radius
@@ -161,9 +151,6 @@ pub fn erosion_thickness(input: &ImageData, scalars: &str, threshold: f64) -> Im
             }
         }
         current = eroded;
-        if radius > 100 {
-            break;
-        } // safety
     }
 
     let mut img = input.clone();

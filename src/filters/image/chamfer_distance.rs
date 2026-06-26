@@ -14,8 +14,10 @@ pub fn image_chamfer_distance(input: &ImageData, scalars: &str, threshold: f64) 
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
-    let n = nx * ny;
+    let nz = dims[2] as usize;
+    let n = nx * ny * nz;
     let big = 1e8f64;
+    let idx = |x: usize, y: usize, z: usize| -> usize { z * nx * ny + y * nx + x };
 
     let mut buf = [0.0f64];
     let mut dist: Vec<f64> = (0..n)
@@ -29,40 +31,80 @@ pub fn image_chamfer_distance(input: &ImageData, scalars: &str, threshold: f64) 
         })
         .collect();
 
-    // Forward pass (top-left to bottom-right)
-    for j in 0..ny {
-        for i in 0..nx {
-            let idx = j * nx + i;
-            if i > 0 {
-                dist[idx] = dist[idx].min(dist[j * nx + i - 1] + 3.0);
-            }
-            if j > 0 {
-                dist[idx] = dist[idx].min(dist[(j - 1) * nx + i] + 3.0);
-            }
-            if i > 0 && j > 0 {
-                dist[idx] = dist[idx].min(dist[(j - 1) * nx + i - 1] + 4.0);
-            }
-            if i + 1 < nx && j > 0 {
-                dist[idx] = dist[idx].min(dist[(j - 1) * nx + i + 1] + 4.0);
+    // Forward pass (top-left-front to bottom-right-back)
+    for z in 0..nz {
+        for y in 0..ny {
+            for x in 0..nx {
+                let cur = idx(x, y, z);
+                for dz in -1isize..=0 {
+                    for dy in -1isize..=1 {
+                        for dx in -1isize..=1 {
+                            if dz == 0 && (dy > 0 || (dy == 0 && dx >= 0)) {
+                                continue;
+                            }
+                            let xx = x as isize + dx;
+                            let yy = y as isize + dy;
+                            let zz = z as isize + dz;
+                            if xx < 0
+                                || yy < 0
+                                || zz < 0
+                                || xx >= nx as isize
+                                || yy >= ny as isize
+                                || zz >= nz as isize
+                            {
+                                continue;
+                            }
+                            let changed = (dx != 0) as u8 + (dy != 0) as u8 + (dz != 0) as u8;
+                            let weight = match changed {
+                                1 => 3.0,
+                                2 => 4.0,
+                                3 => 5.0,
+                                _ => continue,
+                            };
+                            dist[cur] = dist[cur]
+                                .min(dist[idx(xx as usize, yy as usize, zz as usize)] + weight);
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Backward pass (bottom-right to top-left)
-    for j in (0..ny).rev() {
-        for i in (0..nx).rev() {
-            let idx = j * nx + i;
-            if i + 1 < nx {
-                dist[idx] = dist[idx].min(dist[j * nx + i + 1] + 3.0);
-            }
-            if j + 1 < ny {
-                dist[idx] = dist[idx].min(dist[(j + 1) * nx + i] + 3.0);
-            }
-            if i + 1 < nx && j + 1 < ny {
-                dist[idx] = dist[idx].min(dist[(j + 1) * nx + i + 1] + 4.0);
-            }
-            if i > 0 && j + 1 < ny {
-                dist[idx] = dist[idx].min(dist[(j + 1) * nx + i - 1] + 4.0);
+    // Backward pass (bottom-right-back to top-left-front)
+    for z in (0..nz).rev() {
+        for y in (0..ny).rev() {
+            for x in (0..nx).rev() {
+                let cur = idx(x, y, z);
+                for dz in 0isize..=1 {
+                    for dy in -1isize..=1 {
+                        for dx in -1isize..=1 {
+                            if dz == 0 && (dy < 0 || (dy == 0 && dx <= 0)) {
+                                continue;
+                            }
+                            let xx = x as isize + dx;
+                            let yy = y as isize + dy;
+                            let zz = z as isize + dz;
+                            if xx < 0
+                                || yy < 0
+                                || zz < 0
+                                || xx >= nx as isize
+                                || yy >= ny as isize
+                                || zz >= nz as isize
+                            {
+                                continue;
+                            }
+                            let changed = (dx != 0) as u8 + (dy != 0) as u8 + (dz != 0) as u8;
+                            let weight = match changed {
+                                1 => 3.0,
+                                2 => 4.0,
+                                3 => 5.0,
+                                _ => continue,
+                            };
+                            dist[cur] = dist[cur]
+                                .min(dist[idx(xx as usize, yy as usize, zz as usize)] + weight);
+                        }
+                    }
+                }
             }
         }
     }
@@ -101,6 +143,21 @@ mod tests {
         assert_eq!(buf[0], 0.0);
         arr.tuple_as_f64(25, &mut buf);
         assert!((buf[0] - 1.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn single_seed_3d_corner_weight() {
+        let mut img = ImageData::with_dimensions(3, 3, 3);
+        let mut values = vec![0.0; 27];
+        values[13] = 1.0;
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
+
+        let result = image_chamfer_distance(&img, "v", 0.5);
+        let arr = result.point_data().get_array("ChamferDistance").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 5.0 / 3.0).abs() < 1e-10);
     }
 
     #[test]

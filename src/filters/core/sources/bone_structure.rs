@@ -54,7 +54,7 @@ pub fn long_bone(length: f64, outer_r: f64, inner_r: f64, resolution: usize) -> 
     for &side in &[-1.0f64, 1.0] {
         let z = side * hl;
         let db = pts.len();
-        for dr in 1..=dome_res {
+        for dr in 1..dome_res {
             let t = dr as f64 / dome_res as f64;
             let a = t * std::f64::consts::FRAC_PI_2;
             let r = outer_r * a.cos();
@@ -64,23 +64,17 @@ pub fn long_bone(length: f64, outer_r: f64, inner_r: f64, resolution: usize) -> 
                 pts.push([r * ang.cos(), r * ang.sin(), z + dz]);
             }
         }
+        let pole = pts.len();
+        pts.push([0.0, 0.0, z + side * outer_r * 0.3]);
         let base = if side < 0.0 { 0 } else { res };
         for dr in 0..dome_res {
             let r0 = if dr == 0 { base } else { db + (dr - 1) * res };
-            let r1 = db + dr * res;
-            if dr == 0 {
-                for i in 0..res {
-                    let j = (i + 1) % res;
-                    polys.push_cell(&[
-                        (base + i) as i64,
-                        (base + j) as i64,
-                        (r1 + j) as i64,
-                        (r1 + i) as i64,
-                    ]);
-                }
-            } else {
-                for i in 0..res {
-                    let j = (i + 1) % res;
+            for i in 0..res {
+                let j = (i + 1) % res;
+                if dr + 1 == dome_res {
+                    polys.push_cell(&[(r0 + i) as i64, (r0 + j) as i64, pole as i64]);
+                } else {
+                    let r1 = db + dr * res;
                     polys.push_cell(&[
                         (r0 + i) as i64,
                         (r0 + j) as i64,

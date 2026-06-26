@@ -27,6 +27,9 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
 
     // Read scalar values
     let n_pts = nx * ny * nz;
+    if scalar_arr.num_tuples() < n_pts {
+        return PolyData::new();
+    }
     let mut values = vec![0.0f64; n_pts];
     let mut buf = [0.0f64];
     for (i, v) in values.iter_mut().enumerate() {
@@ -133,108 +136,57 @@ pub fn surface_nets(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData
         }
     }
 
-    // Connect adjacent cells with quads
+    // Connect four cell vertices around each grid edge that crosses the isovalue.
+    // Surface nets are dual to the input grid: vertices live in cells and quads
+    // are emitted around sign-changing grid edges.
     let mut out_polys = CellArray::new();
 
-    for k in 0..ncz {
-        for j in 0..ncy {
+    for k in 1..ncz {
+        for j in 1..ncy {
             for i in 0..ncx {
-                let ci = cell_idx(i, j, k);
-                if !cell_vertex.contains_key(&ci) {
-                    continue;
+                if (values[idx(i, j, k)] >= isovalue) != (values[idx(i + 1, j, k)] >= isovalue) {
+                    try_add_quad(
+                        &cell_vertex,
+                        &mut out_polys,
+                        cell_idx(i, j - 1, k - 1),
+                        cell_idx(i, j, k - 1),
+                        cell_idx(i, j, k),
+                        cell_idx(i, j - 1, k),
+                    );
                 }
+            }
+        }
+    }
 
-                // Check 3 face directions: +X, +Y, +Z
-                // +X face: shared edge between (i,j,k) and (i+1,j,k)
-                if i + 1 < ncx {
-                    let edge_val_a = values[idx(i + 1, j, k)];
-                    let edge_val_b = values[idx(i + 1, j + 1, k)];
-                    let edge_val_c = values[idx(i + 1, j + 1, k + 1)];
-                    let edge_val_d = values[idx(i + 1, j, k + 1)];
-                    // The face between cells (i,j,k) and (i+1,j,k)
-                    // straddles if the 4 face vertices have mixed signs
-                    let face_above = [edge_val_a, edge_val_b, edge_val_c, edge_val_d]
-                        .iter()
-                        .filter(|&&v| v >= isovalue)
-                        .count();
-                    if face_above > 0 && face_above < 4 {
-                        try_add_quad(
-                            &cell_vertex,
-                            &mut out_polys,
-                            cell_idx(i, j, k),
-                            cell_idx(i + 1, j, k),
-                            if j + 1 < ncy {
-                                Some(cell_idx(i + 1, j + 1, k))
-                            } else {
-                                None
-                            },
-                            if j + 1 < ncy {
-                                Some(cell_idx(i, j + 1, k))
-                            } else {
-                                None
-                            },
-                        );
-                    }
+    for k in 1..ncz {
+        for j in 0..ncy {
+            for i in 1..ncx {
+                if (values[idx(i, j, k)] >= isovalue) != (values[idx(i, j + 1, k)] >= isovalue) {
+                    try_add_quad(
+                        &cell_vertex,
+                        &mut out_polys,
+                        cell_idx(i - 1, j, k - 1),
+                        cell_idx(i, j, k - 1),
+                        cell_idx(i, j, k),
+                        cell_idx(i - 1, j, k),
+                    );
                 }
+            }
+        }
+    }
 
-                // +Y face
-                if j + 1 < ncy {
-                    let edge_val_a = values[idx(i, j + 1, k)];
-                    let edge_val_b = values[idx(i + 1, j + 1, k)];
-                    let edge_val_c = values[idx(i + 1, j + 1, k + 1)];
-                    let edge_val_d = values[idx(i, j + 1, k + 1)];
-                    let face_above = [edge_val_a, edge_val_b, edge_val_c, edge_val_d]
-                        .iter()
-                        .filter(|&&v| v >= isovalue)
-                        .count();
-                    if face_above > 0 && face_above < 4 {
-                        try_add_quad(
-                            &cell_vertex,
-                            &mut out_polys,
-                            cell_idx(i, j, k),
-                            cell_idx(i, j + 1, k),
-                            if k + 1 < ncz {
-                                Some(cell_idx(i, j + 1, k + 1))
-                            } else {
-                                None
-                            },
-                            if k + 1 < ncz {
-                                Some(cell_idx(i, j, k + 1))
-                            } else {
-                                None
-                            },
-                        );
-                    }
-                }
-
-                // +Z face
-                if k + 1 < ncz {
-                    let edge_val_a = values[idx(i, j, k + 1)];
-                    let edge_val_b = values[idx(i + 1, j, k + 1)];
-                    let edge_val_c = values[idx(i + 1, j + 1, k + 1)];
-                    let edge_val_d = values[idx(i, j + 1, k + 1)];
-                    let face_above = [edge_val_a, edge_val_b, edge_val_c, edge_val_d]
-                        .iter()
-                        .filter(|&&v| v >= isovalue)
-                        .count();
-                    if face_above > 0 && face_above < 4 {
-                        try_add_quad(
-                            &cell_vertex,
-                            &mut out_polys,
-                            cell_idx(i, j, k),
-                            cell_idx(i, j, k + 1),
-                            if i + 1 < ncx {
-                                Some(cell_idx(i + 1, j, k + 1))
-                            } else {
-                                None
-                            },
-                            if i + 1 < ncx {
-                                Some(cell_idx(i + 1, j, k))
-                            } else {
-                                None
-                            },
-                        );
-                    }
+    for k in 0..ncz {
+        for j in 1..ncy {
+            for i in 1..ncx {
+                if (values[idx(i, j, k)] >= isovalue) != (values[idx(i, j, k + 1)] >= isovalue) {
+                    try_add_quad(
+                        &cell_vertex,
+                        &mut out_polys,
+                        cell_idx(i - 1, j - 1, k),
+                        cell_idx(i, j - 1, k),
+                        cell_idx(i, j, k),
+                        cell_idx(i - 1, j, k),
+                    );
                 }
             }
         }
@@ -251,13 +203,13 @@ fn try_add_quad(
     polys: &mut CellArray,
     a: usize,
     b: usize,
-    c: Option<usize>,
-    d: Option<usize>,
+    c: usize,
+    d: usize,
 ) {
     let va = cell_vertex.get(&a);
     let vb = cell_vertex.get(&b);
-    let vc = c.and_then(|ci| cell_vertex.get(&ci));
-    let vd = d.and_then(|ci| cell_vertex.get(&ci));
+    let vc = cell_vertex.get(&c);
+    let vd = cell_vertex.get(&d);
 
     if let (Some(&a), Some(&b), Some(&c), Some(&d)) = (va, vb, vc, vd) {
         polys.push_cell(&[a as i64, b as i64, c as i64, d as i64]);

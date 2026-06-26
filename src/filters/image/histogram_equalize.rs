@@ -23,7 +23,7 @@ pub fn image_histogram_equalize(input: &ImageData, scalars: &str) -> ImageData {
         })
         .collect();
 
-    values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut result = vec![0.0f64; n];
     for (rank, &(_, orig_idx)) in values.iter().enumerate() {

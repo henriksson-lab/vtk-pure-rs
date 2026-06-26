@@ -8,7 +8,7 @@ pub fn annulus(inner_radius: f64, outer_radius: f64, resolution: usize, z: f64) 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
 
-    for i in 0..=n {
+    for i in 0..n {
         let angle = 2.0 * std::f64::consts::PI * i as f64 / n as f64;
         let cos_a = angle.cos();
         let sin_a = angle.sin();
@@ -17,12 +17,12 @@ pub fn annulus(inner_radius: f64, outer_radius: f64, resolution: usize, z: f64) 
     }
 
     for i in 0..n {
-        let i0 = (i * 2) as i64; // inner current
-        let o0 = (i * 2 + 1) as i64; // outer current
-        let i1 = (i * 2 + 2) as i64; // inner next
-        let o1 = (i * 2 + 3) as i64; // outer next
-        polys.push_cell(&[i0, o0, o1]);
-        polys.push_cell(&[i0, o1, i1]);
+        let next = (i + 1) % n;
+        let i0 = (i * 2) as i64;
+        let o0 = (i * 2 + 1) as i64;
+        let i1 = (next * 2) as i64;
+        let o1 = (next * 2 + 1) as i64;
+        polys.push_cell(&[i0, o0, o1, i1]);
     }
 
     let mut mesh = PolyData::new();
@@ -38,8 +38,10 @@ mod tests {
     #[test]
     fn basic() {
         let a = annulus(0.5, 1.0, 16, 0.0);
-        assert!(a.points.len() > 30);
-        assert_eq!(a.polys.num_cells(), 32); // 16 quads * 2 triangles
+        assert_eq!(a.points.len(), 32);
+        assert_eq!(a.polys.num_cells(), 16);
+        assert_eq!(a.polys.cell(0), &[0, 1, 3, 2]);
+        assert_eq!(a.polys.cell(15), &[30, 31, 1, 0]);
 
         // Check radii
         for i in 0..a.points.len() {

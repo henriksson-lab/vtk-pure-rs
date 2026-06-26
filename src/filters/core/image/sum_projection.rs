@@ -16,10 +16,11 @@ pub fn sum_projection_z(input: &ImageData, scalars: &str) -> ImageData {
     let nx: usize = dims[0] as usize;
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
+    let num_components = arr.num_components();
 
     let out_len: usize = nx * ny;
-    let mut values: Vec<f64> = vec![0.0; out_len];
-    let mut buf = [0.0f64];
+    let mut values: Vec<f64> = vec![0.0; out_len * num_components];
+    let mut buf = vec![0.0f64; num_components];
 
     for k in 0..nz {
         for j in 0..ny {
@@ -27,18 +28,26 @@ pub fn sum_projection_z(input: &ImageData, scalars: &str) -> ImageData {
                 let src_idx: usize = k * ny * nx + j * nx + i;
                 let dst_idx: usize = j * nx + i;
                 arr.tuple_as_f64(src_idx, &mut buf);
-                values[dst_idx] += buf[0];
+                let dst_offset = dst_idx * num_components;
+                for component in 0..num_components {
+                    values[dst_offset + component] += buf[component];
+                }
             }
         }
     }
 
     let mut out = ImageData::with_dimensions(nx, ny, 1);
     let spacing = input.spacing();
-    out.set_spacing([spacing[0], spacing[1], 1.0]);
-    let origin = input.origin();
+    out.set_spacing(spacing);
+    let mut origin = input.origin();
+    origin[2] += 0.5 * spacing[2] * (nz.saturating_sub(1) as f64);
     out.set_origin(origin);
     out.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars,
+            values,
+            num_components,
+        )));
     out
 }
 
@@ -110,5 +119,31 @@ mod tests {
         let img = ImageData::with_dimensions(2, 2, 2);
         let result = sum_projection_z(&img, "nonexistent");
         assert_eq!(result.dimensions(), [1, 1, 1]);
+    }
+
+    #[test]
+    fn processes_all_components_and_centers_origin() {
+        let mut img = ImageData::with_dimensions(1, 1, 3);
+        img.set_spacing([1.0, 2.0, 4.0]);
+        img.set_origin([10.0, 20.0, 30.0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![
+                    1.0, 2.0, //
+                    3.0, 4.0, //
+                    5.0, 6.0,
+                ],
+                2,
+            )));
+
+        let result = sum_projection_z(&img, "s");
+        assert_eq!(result.spacing(), [1.0, 2.0, 4.0]);
+        assert_eq!(result.origin(), [10.0, 20.0, 34.0]);
+        let arr = result.point_data().get_array("s").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64; 2];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [9.0, 12.0]);
     }
 }

@@ -11,7 +11,7 @@ pub fn random_point_scalars(
     seed: u64,
 ) -> PolyData {
     let n = input.points.len();
-    let mut state = seed;
+    let mut state = seed_state(seed);
     let range = max_val - min_val;
 
     let values: Vec<f64> = (0..n)
@@ -21,6 +21,7 @@ pub fn random_point_scalars(
     let mut pd = input.clone();
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(name, values, 1)));
+    pd.point_data_mut().set_active_scalars(name);
     pd
 }
 
@@ -33,7 +34,7 @@ pub fn random_point_vectors(
     seed: u64,
 ) -> PolyData {
     let n = input.points.len();
-    let mut state = seed;
+    let mut state = seed_state(seed);
     let range = max_val - min_val;
 
     let values: Vec<f64> = (0..n * 3)
@@ -55,7 +56,7 @@ pub fn random_cell_scalars(
     seed: u64,
 ) -> PolyData {
     let n = input.total_cells();
-    let mut state = seed;
+    let mut state = seed_state(seed);
     let range = max_val - min_val;
 
     let values: Vec<f64> = (0..n)
@@ -65,7 +66,16 @@ pub fn random_cell_scalars(
     let mut pd = input.clone();
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(name, values, 1)));
+    pd.cell_data_mut().set_active_scalars(name);
     pd
+}
+
+fn seed_state(seed: u64) -> u64 {
+    if seed == 0 {
+        0x9E37_79B9_7F4A_7C15
+    } else {
+        seed
+    }
 }
 
 fn next_random(state: &mut u64) -> f64 {

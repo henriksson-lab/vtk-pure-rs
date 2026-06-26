@@ -27,7 +27,7 @@ pub fn radio_telescope_array(
             let z = r * r / (4.0 * f);
             for iu in 0..=res {
                 let a = 2.0 * std::f64::consts::PI * iu as f64 / res as f64;
-                pts.push([dx + r * a.cos(), r * a.sin(), -z + dish_r * 0.5]);
+                pts.push([dx + r * a.cos(), r * a.sin(), z + dish_r * 0.5]);
             }
         }
         let w = res + 1;
@@ -50,7 +50,7 @@ pub fn radio_telescope_array(
             pts.push([
                 dx + dish_r * 0.85 * a.cos(),
                 dish_r * 0.85 * a.sin(),
-                dish_r * 0.5 - dish_depth * 0.85,
+                dish_r * 0.5 + dish_depth * 0.85,
             ]);
             lines.push_cell(&[fb as i64, ei as i64]);
         }

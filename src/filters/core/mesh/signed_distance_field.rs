@@ -3,17 +3,28 @@ use crate::data::{AnyDataArray, DataArray, DataSet, ImageData, PolyData};
 /// Compute a signed distance field on an ImageData grid from a closed PolyData surface.
 ///
 /// For each voxel center, the unsigned distance to the nearest triangle is computed.
-/// The sign is determined by the triangle normal at the closest point: negative inside
-/// the surface, positive outside.
+/// The sign is determined by closed-surface parity: negative inside and positive outside.
 pub fn compute_sdf(input: &PolyData, dims: [u32; 3], bounds: [[f64; 2]; 3]) -> ImageData {
     let nx: usize = dims[0] as usize;
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
 
     let spacing: [f64; 3] = [
-        if nx > 1 { (bounds[0][1] - bounds[0][0]) / (nx - 1) as f64 } else { 1.0 },
-        if ny > 1 { (bounds[1][1] - bounds[1][0]) / (ny - 1) as f64 } else { 1.0 },
-        if nz > 1 { (bounds[2][1] - bounds[2][0]) / (nz - 1) as f64 } else { 1.0 },
+        if nx > 1 {
+            (bounds[0][1] - bounds[0][0]) / (nx - 1) as f64
+        } else {
+            1.0
+        },
+        if ny > 1 {
+            (bounds[1][1] - bounds[1][0]) / (ny - 1) as f64
+        } else {
+            1.0
+        },
+        if nz > 1 {
+            (bounds[2][1] - bounds[2][0]) / (nz - 1) as f64
+        } else {
+            1.0
+        },
     ];
     let origin: [f64; 3] = [bounds[0][0], bounds[1][0], bounds[2][0]];
 
@@ -49,23 +60,19 @@ pub fn compute_sdf(input: &PolyData, dims: [u32; 3], bounds: [[f64; 2]; 3]) -> I
     for idx in 0..n_points {
         let p = image.point(idx);
         let mut min_dist2: f64 = f64::MAX;
-        let mut closest_normal: [f64; 3] = [0.0, 0.0, 1.0];
-        let mut closest_point: [f64; 3] = p;
-
-        for &(v0, v1, v2, normal) in &tris {
-            let (d2, cp) = point_triangle_closest(p, v0, v1, v2);
+        for &(v0, v1, v2, _) in &tris {
+            let (d2, _) = point_triangle_closest(p, v0, v1, v2);
             if d2 < min_dist2 {
                 min_dist2 = d2;
-                closest_normal = normal;
-                closest_point = cp;
             }
         }
 
         let dist: f64 = min_dist2.sqrt();
-        // Sign: dot(p - closest_point, normal). If negative, point is inside.
-        let to_point = sub(p, closest_point);
-        let d: f64 = dot(to_point, closest_normal);
-        let sign: f64 = if d < 0.0 { -1.0 } else { 1.0 };
+        let sign: f64 = if point_inside_closed_surface(p, &tris) {
+            -1.0
+        } else {
+            1.0
+        };
         sdf_values[idx] = sign * dist;
     }
 
@@ -162,6 +169,57 @@ fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
     dot(d, d)
 }
 
+fn point_inside_closed_surface(
+    p: [f64; 3],
+    tris: &[([f64; 3], [f64; 3], [f64; 3], [f64; 3])],
+) -> bool {
+    let dir = [1.0, 0.0, 0.0];
+    let mut hits: Vec<f64> = Vec::new();
+
+    for &(a, b, c, _) in tris {
+        if let Some(t) = ray_triangle_intersection(p, dir, a, b, c) {
+            if t > 1e-12 && !hits.iter().any(|&u| (u - t).abs() < 1e-9) {
+                hits.push(t);
+            }
+        }
+    }
+
+    hits.len() % 2 == 1
+}
+
+fn ray_triangle_intersection(
+    origin: [f64; 3],
+    dir: [f64; 3],
+    a: [f64; 3],
+    b: [f64; 3],
+    c: [f64; 3],
+) -> Option<f64> {
+    let eps = 1e-12;
+    let edge1 = sub(b, a);
+    let edge2 = sub(c, a);
+    let h = cross(dir, edge2);
+    let det = dot(edge1, h);
+    if det.abs() < eps {
+        return None;
+    }
+
+    let inv_det = 1.0 / det;
+    let s = sub(origin, a);
+    let u = inv_det * dot(s, h);
+    if u < -eps || u > 1.0 + eps {
+        return None;
+    }
+
+    let q = cross(s, edge1);
+    let v = inv_det * dot(dir, q);
+    if v < -eps || u + v > 1.0 + eps {
+        return None;
+    }
+
+    let t = inv_det * dot(edge2, q);
+    (t > eps).then_some(t)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,28 +228,34 @@ mod tests {
         // A simple closed cube from -0.5 to 0.5
         let pts: Vec<[f64; 3]> = vec![
             [-0.5, -0.5, -0.5], // 0
-            [ 0.5, -0.5, -0.5], // 1
-            [ 0.5,  0.5, -0.5], // 2
-            [-0.5,  0.5, -0.5], // 3
-            [-0.5, -0.5,  0.5], // 4
-            [ 0.5, -0.5,  0.5], // 5
-            [ 0.5,  0.5,  0.5], // 6
-            [-0.5,  0.5,  0.5], // 7
+            [0.5, -0.5, -0.5],  // 1
+            [0.5, 0.5, -0.5],   // 2
+            [-0.5, 0.5, -0.5],  // 3
+            [-0.5, -0.5, 0.5],  // 4
+            [0.5, -0.5, 0.5],   // 5
+            [0.5, 0.5, 0.5],    // 6
+            [-0.5, 0.5, 0.5],   // 7
         ];
         // 12 triangles (2 per face), outward-facing normals
         let tris: Vec<[i64; 3]> = vec![
             // -Z face
-            [0, 2, 1], [0, 3, 2],
+            [0, 2, 1],
+            [0, 3, 2],
             // +Z face
-            [4, 5, 6], [4, 6, 7],
+            [4, 5, 6],
+            [4, 6, 7],
             // -Y face
-            [0, 1, 5], [0, 5, 4],
+            [0, 1, 5],
+            [0, 5, 4],
             // +Y face
-            [2, 3, 7], [2, 7, 6],
+            [2, 3, 7],
+            [2, 7, 6],
             // -X face
-            [0, 4, 7], [0, 7, 3],
+            [0, 4, 7],
+            [0, 7, 3],
             // +X face
-            [1, 2, 6], [1, 6, 5],
+            [1, 2, 6],
+            [1, 6, 5],
         ];
         PolyData::from_triangles(pts, tris)
     }
@@ -222,7 +286,11 @@ mod tests {
         // Index ordering: x varies fastest. center = x=1,y=1,z=1 = 1+1*3+1*9=13
         let idx: usize = 1 + 1 * 3 + 1 * 9;
         arr.tuple_as_f64(idx, &mut buf);
-        assert!(buf[0] < 0.0, "Center should be negative (inside), got {}", buf[0]);
+        assert!(
+            buf[0] < 0.0,
+            "Center should be negative (inside), got {}",
+            buf[0]
+        );
         let _ = center_idx; // suppress unused warning
     }
 
@@ -236,6 +304,10 @@ mod tests {
         let arr = image.point_data().get_array("SDF").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert!(buf[0] > 0.0, "Corner should be positive (outside), got {}", buf[0]);
+        assert!(
+            buf[0] > 0.0,
+            "Corner should be positive (outside), got {}",
+            buf[0]
+        );
     }
 }

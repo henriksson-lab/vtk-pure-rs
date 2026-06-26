@@ -11,7 +11,7 @@ use crate::data::{AnyDataArray, DataArray, HyperTreeGrid, ImageData};
 /// by coarse cell linear index.
 pub fn amr_resample(htg: &HyperTreeGrid, source: &ImageData, array_name: &str) -> Vec<f64> {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let htg_spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn resample_uniform() {
-        let htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let source = ImageData::from_function(
             [10, 10, 1],
             [0.2, 0.2, 1.0],
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn resample_3d() {
-        let htg = HyperTreeGrid::new([2, 2, 2], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([3, 3, 3], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let source = ImageData::from_function(
             [4, 4, 4],
             [0.5, 0.5, 0.5],
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn missing_array() {
-        let htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let source = ImageData::with_dimensions(5, 5, 1);
         let values = amr_resample(&htg, &source, "nonexistent");
         assert!(values.iter().all(|&v| v == 0.0));

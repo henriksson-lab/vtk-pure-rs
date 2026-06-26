@@ -22,8 +22,8 @@ pub fn image_statistics(input: &ImageData, scalars: &str) -> Option<ImageStats> 
     }
 
     let mut buf = [0.0f64];
-    let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
     let mut sum = 0.0;
     let mut sum_sq = 0.0;
     let mut nonzero = 0;
@@ -41,7 +41,11 @@ pub fn image_statistics(input: &ImageData, scalars: &str) -> Option<ImageStats> 
     }
 
     let mean = sum / n as f64;
-    let variance = sum_sq / n as f64 - mean * mean;
+    let variance = if n > 1 {
+        (sum_sq - sum * mean) / (n - 1) as f64
+    } else {
+        0.0
+    };
 
     Some(ImageStats {
         min: min_v,
@@ -71,23 +75,26 @@ pub fn image_histogram(
     let n_bins = n_bins.max(1);
 
     let mut buf = [0.0f64];
-    let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
         max_v = max_v.max(buf[0]);
     }
 
-    let range = (max_v - min_v).max(1e-15);
-    let bw = range / n_bins as f64;
+    let bw = ((max_v - min_v) / n_bins as f64).max(1e-15);
 
     let centers: Vec<f64> = (0..n_bins).map(|i| min_v + (i as f64 + 0.5) * bw).collect();
     let mut counts = vec![0usize; n_bins];
 
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let bin = ((buf[0] - min_v) / bw).floor() as usize;
+        let bin = if buf[0] == max_v {
+            n_bins - 1
+        } else {
+            ((buf[0] - min_v) / bw).floor().max(0.0) as usize
+        };
         counts[bin.min(n_bins - 1)] += 1;
     }
 

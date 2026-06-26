@@ -10,7 +10,7 @@ use crate::data::{CellArray, HyperTreeGrid, Points, PolyData};
 /// where the scalar crosses the isovalue, generates a contour face.
 pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: f64) -> PolyData {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -157,10 +157,11 @@ fn add_quad(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn contour_2d() {
-        let mut htg = HyperTreeGrid::new([4, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let mut htg = HyperTreeGrid::new([5, 5, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let vals: Vec<f64> = (0..16).map(|i| i as f64).collect();
         htg.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("temp", vals, 1)));
@@ -170,7 +171,7 @@ mod tests {
 
     #[test]
     fn no_crossing() {
-        let mut htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let mut htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let vals = vec![1.0, 2.0, 3.0, 4.0];
         htg.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("v", vals, 1)));
@@ -180,7 +181,7 @@ mod tests {
 
     #[test]
     fn missing_array() {
-        let htg = HyperTreeGrid::new([2, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let contour = hyper_tree_grid_contour(&htg, "none", 0.5);
         assert_eq!(contour.polys.num_cells(), 0);
     }

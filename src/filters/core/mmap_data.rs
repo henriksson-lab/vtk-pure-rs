@@ -3,7 +3,7 @@
 //! Provides helpers for working with memory-mapped files,
 //! enabling processing of datasets larger than available RAM.
 
-use crate::data::{Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, Points, PolyData};
 use std::path::Path;
 
 /// Information about a memory-mapped data file.
@@ -21,11 +21,11 @@ pub fn estimate_file_info(path: &Path) -> Option<MmapInfo> {
 
     let ext = path.extension()?.to_str()?.to_lowercase();
     let estimated_points = match ext.as_str() {
-        "stl" => (size as usize - 84) / 50, // binary STL: 50 bytes per triangle
-        "ply" => size as usize / 40,        // rough estimate
+        "stl" => size.saturating_sub(84) as usize / 50, // binary STL: 50 bytes per triangle
+        "ply" => size as usize / 40,                    // rough estimate
         "obj" => size as usize / 30,
         "vtk" => size as usize / 40,
-        "las" => (size as usize - 227) / 20, // LAS format 0
+        "las" => size.saturating_sub(227) as usize / 20, // LAS format 0
         _ => size as usize / 30,
     };
 
@@ -43,6 +43,10 @@ pub fn process_points_chunked<F>(mesh: &PolyData, chunk_size: usize, mut process
 where
     F: FnMut(usize, &PolyData),
 {
+    if chunk_size == 0 {
+        return 0;
+    }
+
     let n = mesh.points.len();
     let mut chunk_count = 0;
 
@@ -54,6 +58,7 @@ where
         }
         let mut chunk = PolyData::new();
         chunk.points = pts;
+        copy_point_data_range(mesh.point_data(), chunk.point_data_mut(), start, end);
         process(chunk_count, &chunk);
         chunk_count += 1;
     }
@@ -87,6 +92,59 @@ pub fn estimate_memory_bytes(mesh: &PolyData) -> usize {
     points_bytes + cells_bytes + data_bytes
 }
 
+fn copy_point_data_range(
+    source: &DataSetAttributes,
+    target: &mut DataSetAttributes,
+    start: usize,
+    end: usize,
+) {
+    for array in source.iter() {
+        if end > array.num_tuples() {
+            continue;
+        }
+        if let Some(subset) = slice_array(array, start, end) {
+            let name = subset.name().to_string();
+            target.add_array(subset);
+            if source.scalars().map(|a| a.name()) == Some(name.as_str()) {
+                target.set_active_scalars(&name);
+            }
+            if source.vectors().map(|a| a.name()) == Some(name.as_str()) {
+                target.set_active_vectors(&name);
+            }
+            if source.normals().map(|a| a.name()) == Some(name.as_str()) {
+                target.set_active_normals(&name);
+            }
+        }
+    }
+}
+
+fn slice_array(array: &AnyDataArray, start: usize, end: usize) -> Option<AnyDataArray> {
+    macro_rules! slice_variant {
+        ($variant:ident, $a:expr) => {{
+            let nc = $a.num_components();
+            let from = start.checked_mul(nc)?;
+            let to = end.checked_mul(nc)?;
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                $a.name(),
+                $a.as_slice().get(from..to)?.to_vec(),
+                nc,
+            )))
+        }};
+    }
+    match array {
+        AnyDataArray::F32(a) => slice_variant!(F32, a),
+        AnyDataArray::F64(a) => slice_variant!(F64, a),
+        AnyDataArray::I8(a) => slice_variant!(I8, a),
+        AnyDataArray::I16(a) => slice_variant!(I16, a),
+        AnyDataArray::I32(a) => slice_variant!(I32, a),
+        AnyDataArray::I64(a) => slice_variant!(I64, a),
+        AnyDataArray::U8(a) => slice_variant!(U8, a),
+        AnyDataArray::U16(a) => slice_variant!(U16, a),
+        AnyDataArray::U32(a) => slice_variant!(U32, a),
+        AnyDataArray::U64(a) => slice_variant!(U64, a),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,15 +167,45 @@ mod tests {
     }
 
     #[test]
+    fn zero_chunk_size_returns_no_chunks() {
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let mut called = false;
+        let chunks = process_points_chunked(&mesh, 0, |_, _| called = true);
+        assert_eq!(chunks, 0);
+        assert!(!called);
+    }
+
+    #[test]
     fn chunked_read_count() {
         // Test the chunk counting logic with in-memory data
         let mesh =
             PolyData::from_points((0..100).map(|i| [i as f64, 0.0, 0.0]).collect::<Vec<_>>());
         let mut count = 0;
         let n = mesh.points.len();
-        for start in (0..n).step_by(30) {
+        for _start in (0..n).step_by(30) {
             count += 1;
         }
         assert_eq!(count, 4); // 100/30 = 3.33 → 4 chunks
+    }
+
+    #[test]
+    fn chunked_processing_preserves_point_data_ranges() {
+        let mut mesh = PolyData::from_points((0..5).map(|i| [i as f64, 0.0, 0.0]).collect());
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![0.0, 1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
+        mesh.point_data_mut().set_active_scalars("s");
+
+        let mut chunks = Vec::new();
+        let n = process_points_chunked(&mesh, 2, |_, chunk| chunks.push(chunk.clone()));
+
+        assert_eq!(n, 3);
+        assert_eq!(
+            chunks[1].point_data().scalars().unwrap().to_f64_vec(),
+            vec![2.0, 3.0]
+        );
     }
 }

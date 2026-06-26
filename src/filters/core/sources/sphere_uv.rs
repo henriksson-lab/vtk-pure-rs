@@ -2,40 +2,45 @@
 
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
-/// Create a sphere with proper UV texture coordinates.
+/// Create a vtkTexturedSphereSource-style sphere with texture coordinates.
 pub fn sphere_uv(radius: f64, u_res: usize, v_res: usize) -> PolyData {
-    let ures = u_res.max(3);
-    let vres = v_res.max(2);
+    let theta_resolution = u_res.max(4);
+    let phi_resolution = v_res.max(4);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let mut uvs = Vec::new();
+    let mut normals = Vec::with_capacity((theta_resolution + 1) * (phi_resolution + 1) * 3);
+    let mut tcoords = Vec::with_capacity((theta_resolution + 1) * (phi_resolution + 1) * 2);
 
-    for iv in 0..=vres {
-        let v = std::f64::consts::PI * iv as f64 / vres as f64;
-        let sv = v.sin();
-        let cv = v.cos();
-        for iu in 0..=ures {
-            let u = 2.0 * std::f64::consts::PI * iu as f64 / ures as f64;
-            pts.push([radius * sv * u.cos(), radius * sv * u.sin(), radius * cv]);
-            uvs.push(iu as f64 / ures as f64);
-            uvs.push(1.0 - iv as f64 / vres as f64);
+    let delta_phi = std::f64::consts::PI / phi_resolution as f64;
+    let delta_theta = 2.0 * std::f64::consts::PI / theta_resolution as f64;
+
+    for i in 0..=theta_resolution {
+        let theta = i as f64 * delta_theta;
+        let tc0 = theta / (2.0 * std::f64::consts::PI);
+        for j in 0..=phi_resolution {
+            let phi = j as f64 * delta_phi;
+            let ring_radius = radius * phi.sin();
+            let x = ring_radius * theta.cos();
+            let y = ring_radius * theta.sin();
+            let z = radius * phi.cos();
+            pts.push([x, y, z]);
+
+            let mut norm = (x * x + y * y + z * z).sqrt();
+            if norm == 0.0 {
+                norm = 1.0;
+            }
+            normals.extend_from_slice(&[x / norm, y / norm, z / norm]);
+            tcoords.extend_from_slice(&[tc0, 1.0 - phi / std::f64::consts::PI]);
         }
     }
 
-    let w = ures + 1;
-    for iv in 0..vres {
-        for iu in 0..ures {
-            let i00 = (iv * w + iu) as i64;
-            let i10 = (iv * w + iu + 1) as i64;
-            let i01 = ((iv + 1) * w + iu) as i64;
-            let i11 = ((iv + 1) * w + iu + 1) as i64;
-            if iv == 0 {
-                polys.push_cell(&[i00, i11, i01]);
-            } else if iv == vres - 1 {
-                polys.push_cell(&[i00, i10, i01]);
-            } else {
-                polys.push_cell(&[i00, i10, i11, i01]);
-            }
+    for i in 0..theta_resolution {
+        for j in 0..phi_resolution {
+            let p0 = ((phi_resolution + 1) * i + j) as i64;
+            let p1 = p0 + 1;
+            let p2 = ((phi_resolution + 1) * (i + 1) + j + 1) as i64;
+            polys.push_cell(&[p0, p1, p2]);
+            polys.push_cell(&[p0, p2, p2 - 1]);
         }
     }
 
@@ -44,8 +49,16 @@ pub fn sphere_uv(radius: f64, u_res: usize, v_res: usize) -> PolyData {
     result.polys = polys;
     result
         .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
-    result.point_data_mut().set_active_tcoords("UV");
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Normals", normals, 3,
+        )));
+    result.point_data_mut().set_active_normals("Normals");
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", tcoords, 2,
+        )));
+    result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
 
@@ -55,9 +68,16 @@ mod tests {
     #[test]
     fn test_sphere_uv() {
         let s = sphere_uv(1.0, 16, 8);
-        assert!(s.points.len() > 50);
-        assert!(s.polys.num_cells() > 50);
-        assert!(s.point_data().get_array("UV").is_some());
-        assert_eq!(s.point_data().get_array("UV").unwrap().num_components(), 2);
+        assert_eq!(s.points.len(), (16 + 1) * (8 + 1));
+        assert_eq!(s.polys.num_cells(), 16 * 8 * 2);
+        assert!(s.point_data().normals().is_some());
+        assert!(s.point_data().get_array("TCoords").is_some());
+        assert_eq!(
+            s.point_data()
+                .get_array("TCoords")
+                .unwrap()
+                .num_components(),
+            2
+        );
     }
 }

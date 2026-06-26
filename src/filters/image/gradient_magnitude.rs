@@ -3,8 +3,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Compute gradient magnitude from a scalar array on ImageData using central differences.
 ///
 /// Adds a "GradientMagnitude" point data array to the output. At each grid
-/// point, the gradient is computed via central differences along each axis,
-/// and the magnitude sqrt(gx^2 + gy^2 + gz^2) is stored.
+/// point, the gradient is computed via central differences along x and y,
+/// matching vtkImageGradientMagnitude's default 2D dimensionality.
 pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
@@ -37,12 +37,9 @@ pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
                 let ip: usize = if i + 1 < nx { i + 1 } else { nx - 1 };
                 let jm: usize = if j > 0 { j - 1 } else { 0 };
                 let jp: usize = if j + 1 < ny { j + 1 } else { ny - 1 };
-                let km: usize = if k > 0 { k - 1 } else { 0 };
-                let kp: usize = if k + 1 < nz { k + 1 } else { nz - 1 };
 
                 let dx_span: f64 = (ip - im) as f64 * spacing[0];
                 let dy_span: f64 = (jp - jm) as f64 * spacing[1];
-                let dz_span: f64 = (kp - km) as f64 * spacing[2];
 
                 let gx: f64 = if dx_span > 1e-15 {
                     (values[idx(ip, j, k)] - values[idx(im, j, k)]) / dx_span
@@ -54,14 +51,9 @@ pub fn image_gradient_magnitude(input: &ImageData, scalars: &str) -> ImageData {
                 } else {
                     0.0
                 };
-                let gz: f64 = if dz_span > 1e-15 {
-                    (values[idx(i, j, kp)] - values[idx(i, j, km)]) / dz_span
-                } else {
-                    0.0
-                };
 
                 let pi: usize = idx(i, j, k);
-                mag[pi] = (gx * gx + gy * gy + gz * gz).sqrt();
+                mag[pi] = (gx * gx + gy * gy).sqrt();
             }
         }
     }
@@ -117,6 +109,21 @@ mod tests {
         // Interior point (2,2): magnitude = sqrt(2)
         arr.tuple_as_f64(12, &mut buf);
         assert!((buf[0] - 2.0_f64.sqrt()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn default_dimensionality_ignores_z() {
+        let mut img = ImageData::with_dimensions(1, 1, 5);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        let values: Vec<f64> = (0..5).map(|k| k as f64).collect();
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("S", values, 1)));
+
+        let result = image_gradient_magnitude(&img, "S");
+        let arr = result.point_data().get_array("GradientMagnitude").unwrap();
+        let mut buf = [1.0f64];
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 
     #[test]

@@ -8,7 +8,7 @@ use crate::data::{AnyDataArray, DataArray, HyperTreeGrid};
 /// Adds "GradientX", "GradientY", "GradientZ", "GradientMagnitude" arrays.
 pub fn hyper_tree_grid_gradient(htg: &HyperTreeGrid, array_name: &str) -> HyperTreeGrid {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,

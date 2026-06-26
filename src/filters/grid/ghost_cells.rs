@@ -40,7 +40,6 @@ pub fn generate_ghost_cells(mesh: &PolyData) -> PolyData {
     }
 
     // Find boundary cells: cells that share a point with a cell in a different region
-    let ghost_level = vec![0.0f64; n_cells];
     let mut is_boundary_cell = vec![false; n_cells];
 
     for ci in 0..n_cells {
@@ -83,22 +82,42 @@ pub fn generate_ghost_cells(mesh: &PolyData) -> PolyData {
         }
     }
 
-    // Build output: original mesh + ghost cells from neighbors
+    // Build output: original mesh + one duplicated neighbor cell per region boundary.
     let mut result = mesh.clone();
+    let mut ghost_regions = regions.iter().map(|&r| r as f64).collect::<Vec<_>>();
+    let mut ghost_levels = vec![0.0f64; n_cells];
+    let mut boundary_data: Vec<f64> = (0..n_cells)
+        .map(|ci| if is_boundary_cell[ci] { 1.0 } else { 0.0 })
+        .collect();
 
-    // Mark original cells
+    for (ghost_cell_idx, dest_region) in extra_cells {
+        let cell = &all_cells[ghost_cell_idx];
+        let mut new_ids = Vec::with_capacity(cell.len());
+        for &pid in cell {
+            let new_pid = result.points.len();
+            result.points.push(mesh.points.get(pid as usize));
+            new_ids.push(new_pid as i64);
+        }
+        result.polys.push_cell(&new_ids);
+        ghost_regions.push(dest_region as f64);
+        ghost_levels.push(1.0);
+        boundary_data.push(1.0);
+    }
+
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "RegionId",
+            ghost_regions,
+            1,
+        )));
     result
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "GhostLevel",
-            ghost_level,
+            ghost_levels,
             1,
         )));
-
-    // For now, mark boundary cells in the output
-    let boundary_data: Vec<f64> = (0..n_cells)
-        .map(|ci| if is_boundary_cell[ci] { 1.0 } else { 0.0 })
-        .collect();
     result
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -181,6 +200,7 @@ pub fn partition_mesh(mesh: &PolyData, n_partitions: usize) -> PolyData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{CellArray, Points};
 
     fn make_grid_mesh() -> PolyData {
         // 4x4 grid of quads → 16 cells
@@ -234,13 +254,14 @@ mod tests {
 
         assert!(with_ghosts.cell_data().get_array("GhostLevel").is_some());
         assert!(with_ghosts.cell_data().get_array("BoundaryCell").is_some());
+        assert!(with_ghosts.polys.num_cells() > partitioned.polys.num_cells());
 
         // Some cells should be boundary cells
-        let boundary = with_ghosts.cell_data().get_array("BoundaryCell").unwrap();
+        let ghosts = with_ghosts.cell_data().get_array("GhostLevel").unwrap();
         let mut has_boundary = false;
         let mut buf = [0.0f64];
-        for i in 0..boundary.num_tuples() {
-            boundary.tuple_as_f64(i, &mut buf);
+        for i in 0..ghosts.num_tuples() {
+            ghosts.tuple_as_f64(i, &mut buf);
             if buf[0] > 0.5 {
                 has_boundary = true;
                 break;

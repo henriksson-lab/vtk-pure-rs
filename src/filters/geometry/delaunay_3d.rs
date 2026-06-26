@@ -21,7 +21,7 @@ pub fn delaunay_3d(input: &PolyData) -> UnstructuredGrid {
 
     // Compute bounding box
     let mut min = [f64::MAX; 3];
-    let mut max = [f64::MIN; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
     for p in &pts {
         for k in 0..3 {
             min[k] = min[k].min(p[k]);

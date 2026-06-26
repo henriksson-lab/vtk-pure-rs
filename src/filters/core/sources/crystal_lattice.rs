@@ -1,5 +1,36 @@
-//! Crystal lattice structures (FCC, BCC, HCP unit cells).
+//! Crystal lattice structures (FCC, BCC, simple cubic unit cells).
 use crate::data::{CellArray, Points, PolyData};
+
+fn add_octahedron_atom(
+    pts: &mut Points<f64>,
+    polys: &mut CellArray,
+    x: f64,
+    y: f64,
+    z: f64,
+    atom_r: f64,
+) {
+    let ab = pts.len();
+    let r = atom_r;
+    pts.push([x + r, y, z]);
+    pts.push([x - r, y, z]);
+    pts.push([x, y + r, z]);
+    pts.push([x, y - r, z]);
+    pts.push([x, y, z + r]);
+    pts.push([x, y, z - r]);
+    for f in &[
+        [0, 2, 4],
+        [2, 1, 4],
+        [1, 3, 4],
+        [3, 0, 4],
+        [0, 5, 2],
+        [2, 5, 1],
+        [1, 5, 3],
+        [3, 5, 0],
+    ] {
+        polys.push_cell(&[(ab + f[0]) as i64, (ab + f[1]) as i64, (ab + f[2]) as i64]);
+    }
+}
+
 pub fn fcc_lattice(a: f64, nx: usize, ny: usize, nz: usize, atom_r: f64) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -86,8 +117,72 @@ pub fn fcc_lattice(a: f64, nx: usize, ny: usize, nz: usize, atom_r: f64) -> Poly
     r
 }
 pub fn bcc_unit_cell(a: f64, atom_r: f64) -> PolyData {
-    fcc_lattice(a, 1, 1, 1, atom_r)
-} // simplified
+    let mut pts = Points::<f64>::new();
+    let mut polys = CellArray::new();
+    let mut lines = CellArray::new();
+
+    let atom_centers = [
+        [0.0, 0.0, 0.0],
+        [a, 0.0, 0.0],
+        [a, a, 0.0],
+        [0.0, a, 0.0],
+        [0.0, 0.0, a],
+        [a, 0.0, a],
+        [a, a, a],
+        [0.0, a, a],
+        [0.5 * a, 0.5 * a, 0.5 * a],
+    ];
+    for center in &atom_centers {
+        add_octahedron_atom(
+            &mut pts, &mut polys, center[0], center[1], center[2], atom_r,
+        );
+    }
+
+    let corners = [
+        [0.0, 0.0, 0.0],
+        [a, 0.0, 0.0],
+        [a, a, 0.0],
+        [0.0, a, 0.0],
+        [0.0, 0.0, a],
+        [a, 0.0, a],
+        [a, a, a],
+        [0.0, a, a],
+    ];
+    let edges = [
+        [0, 1],
+        [1, 2],
+        [2, 3],
+        [3, 0],
+        [4, 5],
+        [5, 6],
+        [6, 7],
+        [7, 4],
+        [0, 4],
+        [1, 5],
+        [2, 6],
+        [3, 7],
+    ];
+    for e in &edges {
+        let lb = pts.len();
+        pts.push(corners[e[0]]);
+        pts.push(corners[e[1]]);
+        lines.push_cell(&[lb as i64, (lb + 1) as i64]);
+    }
+
+    let body_center = [0.5 * a, 0.5 * a, 0.5 * a];
+    for corner in &corners {
+        let lb = pts.len();
+        pts.push(body_center);
+        pts.push(*corner);
+        lines.push_cell(&[lb as i64, (lb + 1) as i64]);
+    }
+
+    let mut r = PolyData::new();
+    r.points = pts;
+    r.polys = polys;
+    r.lines = lines;
+    r
+}
 pub fn simple_cubic(a: f64, nx: usize, ny: usize, nz: usize, atom_r: f64) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();

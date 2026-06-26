@@ -9,6 +9,9 @@ pub fn linear_stretch(input: &ImageData, scalars: &str, out_min: f64, out_max: f
         _ => return input.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -46,8 +49,11 @@ pub fn percentile_stretch(
         _ => return input.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
-    let mut vals: Vec<f64> = (0..n)
+    let vals: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -82,6 +88,9 @@ pub fn local_contrast_enhance(input: &ImageData, scalars: &str, tile_size: usize
     let dims = input.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
     let n = arr.num_tuples();
+    if n == 0 || nx == 0 || ny == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {

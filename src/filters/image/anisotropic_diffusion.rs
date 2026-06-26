@@ -52,9 +52,9 @@ pub fn anisotropic_diffusion(
                         (0, 0, 1),
                     ];
                     for &(di, dj, dk) in &nbrs {
-                        let ni = (i as i64 + di);
-                        let nj = (j as i64 + dj);
-                        let nk = (k as i64 + dk);
+                        let ni = i as i64 + di;
+                        let nj = j as i64 + dj;
+                        let nk = k as i64 + dk;
                         if ni >= 0
                             && ni < nx as i64
                             && nj >= 0

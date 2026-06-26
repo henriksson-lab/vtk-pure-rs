@@ -30,6 +30,8 @@ pub fn shape_index(mesh: &PolyData) -> PolyData {
         let diff = kmax - kmin;
         let si = if diff.abs() > 1e-12 {
             (2.0 / std::f64::consts::PI) * ((kmax + kmin) / diff).atan()
+        } else if (kmax + kmin).abs() > 1e-12 {
+            (kmax + kmin).signum()
         } else {
             0.0
         };
@@ -50,6 +52,30 @@ pub fn shape_index(mesh: &PolyData) -> PolyData {
 /// Compute curvedness: C = sqrt((K1² + K2²) / 2)
 pub fn curvedness(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
+    if let (Some(k1), Some(k2)) = (
+        mesh.point_data().get_array("K1"),
+        mesh.point_data().get_array("K2"),
+    ) {
+        let mut curv_data = Vec::with_capacity(n);
+        let mut buf1 = [0.0f64];
+        let mut buf2 = [0.0f64];
+        for i in 0..n {
+            k1.tuple_as_f64(i, &mut buf1);
+            k2.tuple_as_f64(i, &mut buf2);
+            curv_data.push(((buf1[0] * buf1[0] + buf2[0] * buf2[0]) / 2.0).sqrt());
+        }
+
+        let mut result = mesh.clone();
+        result
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Curvedness",
+                curv_data,
+                1,
+            )));
+        return result;
+    }
+
     let adj = build_adjacency(mesh, n);
     let curv = compute_mean_curvature(mesh, &adj);
 
@@ -74,6 +100,39 @@ pub fn curvedness(mesh: &PolyData) -> PolyData {
 /// 0=flat, 1=convex, 2=concave, 3=saddle
 pub fn classify_curvature(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
+    if let (Some(k1), Some(k2)) = (
+        mesh.point_data().get_array("K1"),
+        mesh.point_data().get_array("K2"),
+    ) {
+        let mut classification = Vec::with_capacity(n);
+        let mut buf1 = [0.0f64];
+        let mut buf2 = [0.0f64];
+        for i in 0..n {
+            k1.tuple_as_f64(i, &mut buf1);
+            k2.tuple_as_f64(i, &mut buf2);
+            let class = if buf1[0].abs() < 0.01 && buf2[0].abs() < 0.01 {
+                0.0
+            } else if buf1[0] >= 0.0 && buf2[0] >= 0.0 {
+                1.0
+            } else if buf1[0] <= 0.0 && buf2[0] <= 0.0 {
+                2.0
+            } else {
+                3.0
+            };
+            classification.push(class);
+        }
+
+        let mut result = mesh.clone();
+        result
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "CurvatureType",
+                classification,
+                1,
+            )));
+        return result;
+    }
+
     let adj = build_adjacency(mesh, n);
     let curv = compute_mean_curvature(mesh, &adj);
 
@@ -130,6 +189,9 @@ fn build_adjacency(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
@@ -223,5 +285,28 @@ mod tests {
             arr.tuple_as_f64(i, &mut buf);
             // All should be approximately flat for a planar mesh
         }
+    }
+
+    #[test]
+    fn shape_index_umbilic_uses_curvature_sign() {
+        let mut mesh = test_mesh();
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "K1",
+                vec![2.0; 5],
+                1,
+            )));
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "K2",
+                vec![2.0; 5],
+                1,
+            )));
+
+        let result = shape_index(&mesh);
+        let arr = result.point_data().get_array("ShapeIndex").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

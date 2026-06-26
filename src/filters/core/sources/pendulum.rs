@@ -21,7 +21,7 @@ pub fn pendulum(length: f64, bob_radius: f64, angle_deg: f64, na: usize) -> Poly
     let np = 3;
     let top = pts.len();
     pts.push([bob_x, 0.0, bob_z + bob_radius]);
-    for p in 1..=np {
+    for p in 1..np {
         let phi = std::f64::consts::PI * p as f64 / np as f64;
         for j in 0..na {
             let theta = 2.0 * std::f64::consts::PI * j as f64 / na as f64;
@@ -32,6 +32,8 @@ pub fn pendulum(length: f64, bob_radius: f64, angle_deg: f64, na: usize) -> Poly
             ]);
         }
     }
+    let bottom = pts.len();
+    pts.push([bob_x, 0.0, bob_z - bob_radius]);
     for j in 0..na {
         polys.push_cell(&[
             top as i64,
@@ -39,7 +41,7 @@ pub fn pendulum(length: f64, bob_radius: f64, angle_deg: f64, na: usize) -> Poly
             (top + 1 + (j + 1) % na) as i64,
         ]);
     }
-    for p in 0..(np - 1) {
+    for p in 0..(np - 2) {
         let b0 = top + 1 + p * na;
         let b1 = top + 1 + (p + 1) * na;
         for j in 0..na {
@@ -47,6 +49,15 @@ pub fn pendulum(length: f64, bob_radius: f64, angle_deg: f64, na: usize) -> Poly
             polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
             polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
+    }
+    let bottom_ring = top + 1 + (np - 2) * na;
+    for j in 0..na {
+        let j1 = (j + 1) % na;
+        polys.push_cell(&[
+            (bottom_ring + j) as i64,
+            (bottom_ring + j1) as i64,
+            bottom as i64,
+        ]);
     }
     // Pivot bracket (small triangle)
     let pb = pts.len();

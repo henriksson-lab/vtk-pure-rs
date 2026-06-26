@@ -5,16 +5,19 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Remaps values in `input` so its cumulative histogram matches `reference`.
 pub fn image_histogram_match(input: &ImageData, reference: &ImageData, scalars: &str) -> ImageData {
     let ia = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
     let ra = match reference.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let ni = ia.num_tuples();
     let nr = ra.num_tuples();
+    if ni == 0 || nr == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
 
     // Sort input values with indices
@@ -24,7 +27,7 @@ pub fn image_histogram_match(input: &ImageData, reference: &ImageData, scalars: 
             (buf[0], i)
         })
         .collect();
-    ival.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    ival.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     // Sort reference values
     let mut rval: Vec<f64> = (0..nr)
@@ -33,7 +36,7 @@ pub fn image_histogram_match(input: &ImageData, reference: &ImageData, scalars: 
             buf[0]
         })
         .collect();
-    rval.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    rval.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Map each input rank to corresponding reference value
     let mut result = vec![0.0f64; ni];

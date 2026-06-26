@@ -17,6 +17,7 @@ pub fn radii_to_scalars(mesh: &PolyData, center: [f64; 3], array_name: &str) -> 
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, radii, 1)));
+    result.point_data_mut().set_active_scalars(array_name);
     result
 }
 
@@ -64,6 +65,7 @@ pub fn radii_normalized(mesh: &PolyData, center: [f64; 3], array_name: &str) -> 
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, radii, 1)));
+    result.point_data_mut().set_active_scalars(array_name);
     result
 }
 

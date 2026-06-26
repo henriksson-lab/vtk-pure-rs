@@ -26,7 +26,9 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
             if cell.len() != 3 {
                 continue;
             }
-            let idx: [usize; 3] = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+            let Some(idx) = triangle_point_ids(cell, n) else {
+                continue;
+            };
             let p: [[f64; 3]; 3] = [
                 output.points.get(idx[0]),
                 output.points.get(idx[1]),
@@ -39,16 +41,8 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
                 let i: usize = (k + 1) % 3;
                 let j: usize = (k + 2) % 3;
 
-                let v1: [f64; 3] = [
-                    p[i][0] - p[k][0],
-                    p[i][1] - p[k][1],
-                    p[i][2] - p[k][2],
-                ];
-                let v2: [f64; 3] = [
-                    p[j][0] - p[k][0],
-                    p[j][1] - p[k][1],
-                    p[j][2] - p[k][2],
-                ];
+                let v1: [f64; 3] = [p[i][0] - p[k][0], p[i][1] - p[k][1], p[i][2] - p[k][2]];
+                let v2: [f64; 3] = [p[j][0] - p[k][0], p[j][1] - p[k][1], p[j][2] - p[k][2]];
 
                 let dot: f64 = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
                 let cross: [f64; 3] = [
@@ -120,6 +114,22 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
     output
 }
 
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +175,15 @@ mod tests {
         let pd = PolyData::from_triangles(vec![], vec![]);
         let result = smooth_cotangent(&pd, 10, 0.5);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn skips_invalid_triangles() {
+        let mut pd = make_pyramid();
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, -1, 2]);
+
+        let result = smooth_cotangent(&pd, 1, 0.2);
+        assert_eq!(result.points.len(), pd.points.len());
     }
 }

@@ -18,14 +18,28 @@ pub fn signpost(pole_height: f64, sign_width: f64, sign_height: f64, pole_radius
     pts.push([sw, pole_radius * 1.5, sz - sh]);
     pts.push([sw, pole_radius * 1.5, sz + sh]);
     pts.push([-sw, pole_radius * 1.5, sz + sh]);
-    polys.push_cell(&[sb as i64, (sb + 1) as i64, (sb + 2) as i64, (sb + 3) as i64]);
+    polys.push_cell(&[sb as i64, (sb + 3) as i64, (sb + 2) as i64, (sb + 1) as i64]);
     // Back of sign
     let bb = pts.len();
     pts.push([-sw, -pole_radius * 0.5, sz - sh]);
     pts.push([sw, -pole_radius * 0.5, sz - sh]);
     pts.push([sw, -pole_radius * 0.5, sz + sh]);
     pts.push([-sw, -pole_radius * 0.5, sz + sh]);
-    polys.push_cell(&[(bb + 3) as i64, (bb + 2) as i64, (bb + 1) as i64, bb as i64]);
+    polys.push_cell(&[bb as i64, (bb + 1) as i64, (bb + 2) as i64, (bb + 3) as i64]);
+    polys.push_cell(&[sb as i64, (sb + 1) as i64, (bb + 1) as i64, bb as i64]);
+    polys.push_cell(&[
+        (sb + 1) as i64,
+        (sb + 2) as i64,
+        (bb + 2) as i64,
+        (bb + 1) as i64,
+    ]);
+    polys.push_cell(&[
+        (sb + 3) as i64,
+        (bb + 3) as i64,
+        (bb + 2) as i64,
+        (sb + 2) as i64,
+    ]);
+    polys.push_cell(&[sb as i64, bb as i64, (bb + 3) as i64, (sb + 3) as i64]);
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;
@@ -72,7 +86,7 @@ mod tests {
     #[test]
     fn test_single() {
         let s = signpost(3.0, 1.0, 0.5, 0.05);
-        assert!(s.polys.num_cells() >= 2);
+        assert_eq!(s.polys.num_cells(), 6);
     }
     #[test]
     fn test_multi() {

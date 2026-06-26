@@ -6,12 +6,19 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Useful for baking procedural textures or lightmaps. Adds "AtlasUV"
 /// 2-component array. Vertices are duplicated so each triangle has unique UVs.
 pub fn texture_atlas(input: &PolyData) -> PolyData {
-    let tris: Vec<Vec<i64>> = input.polys.iter()
-        .filter(|c| c.len() >= 3)
-        .map(|c| c.to_vec())
-        .collect();
+    let mut tris: Vec<[i64; 3]> = Vec::new();
+    for cell in input.polys.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        for i in 1..cell.len() - 1 {
+            tris.push([cell[0], cell[i], cell[i + 1]]);
+        }
+    }
     let n_tris = tris.len();
-    if n_tris == 0 { return input.clone(); }
+    if n_tris == 0 {
+        return input.clone();
+    }
 
     // Grid layout: ceil(sqrt(n_tris)) x ceil(sqrt(n_tris))
     let grid = (n_tris as f64).sqrt().ceil() as usize;
@@ -27,25 +34,31 @@ pub fn texture_atlas(input: &PolyData) -> PolyData {
         let u_base = col as f64 * cell_size;
         let v_base = row as f64 * cell_size;
 
-        let base = out_points.len() as i64;
         let mut ids = Vec::new();
 
         // Map triangle vertices to UV positions within their cell
         let uv_coords = [[0.1, 0.1], [0.9, 0.1], [0.5, 0.9]];
-        for (vi, &pid) in tri.iter().enumerate().take(3) {
+        for (vi, &pid) in tri.iter().enumerate() {
+            if pid < 0 || pid as usize >= input.points.len() {
+                continue;
+            }
+            let new_id = out_points.len() as i64;
             out_points.push(input.points.get(pid as usize));
-            let uv = if vi < 3 { uv_coords[vi] } else { [0.5, 0.5] };
+            let uv = uv_coords[vi];
             uvs.push(u_base + uv[0] * cell_size);
             uvs.push(v_base + uv[1] * cell_size);
-            ids.push(base + vi as i64);
+            ids.push(new_id);
         }
-        out_polys.push_cell(&ids);
+        if ids.len() == 3 {
+            out_polys.push_cell(&ids);
+        }
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("AtlasUV", uvs, 2)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("AtlasUV", uvs, 2)));
     pd.point_data_mut().set_active_tcoords("AtlasUV");
     pd
 }
@@ -57,10 +70,12 @@ mod tests {
     #[test]
     fn atlas_basic() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.0,1.0,0.0]); pd.points.push([0.0,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
-        pd.polys.push_cell(&[0,2,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
 
         let result = texture_atlas(&pd);
         assert_eq!(result.points.len(), 6); // 2 * 3
@@ -72,8 +87,10 @@ mod tests {
     #[test]
     fn uvs_in_range() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]); pd.points.push([0.5,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
 
         let result = texture_atlas(&pd);
         let arr = result.point_data().get_array("AtlasUV").unwrap();

@@ -13,8 +13,6 @@ pub fn extract_row_profile(image: &ImageData, array_name: &str, y: usize, z: usi
     if y >= dims[1] || z >= dims[2] {
         return Table::new();
     }
-    let sp = image.spacing();
-    let org = image.origin();
     let mut buf = [0.0f64];
     let mut x_data = Vec::new();
     let mut v_data = Vec::new();
@@ -22,7 +20,7 @@ pub fn extract_row_profile(image: &ImageData, array_name: &str, y: usize, z: usi
         let idx = ix + y * dims[0] + z * dims[0] * dims[1];
         if idx < arr.num_tuples() {
             arr.tuple_as_f64(idx, &mut buf);
-            x_data.push(org[0] + ix as f64 * sp[0]);
+            x_data.push(image.point_from_ijk(ix, y, z)[0]);
             v_data.push(buf[0]);
         }
     }
@@ -45,8 +43,6 @@ pub fn extract_column_profile(image: &ImageData, array_name: &str, x: usize, z: 
     if x >= dims[0] || z >= dims[2] {
         return Table::new();
     }
-    let sp = image.spacing();
-    let org = image.origin();
     let mut buf = [0.0f64];
     let mut y_data = Vec::new();
     let mut v_data = Vec::new();
@@ -54,7 +50,7 @@ pub fn extract_column_profile(image: &ImageData, array_name: &str, x: usize, z: 
         let idx = x + iy * dims[0] + z * dims[0] * dims[1];
         if idx < arr.num_tuples() {
             arr.tuple_as_f64(idx, &mut buf);
-            y_data.push(org[1] + iy as f64 * sp[1]);
+            y_data.push(image.point_from_ijk(x, iy, z)[1]);
             v_data.push(buf[0]);
         }
     }
@@ -77,8 +73,6 @@ pub fn extract_depth_profile(image: &ImageData, array_name: &str, x: usize, y: u
     if x >= dims[0] || y >= dims[1] {
         return Table::new();
     }
-    let sp = image.spacing();
-    let org = image.origin();
     let mut buf = [0.0f64];
     let mut z_data = Vec::new();
     let mut v_data = Vec::new();
@@ -86,7 +80,7 @@ pub fn extract_depth_profile(image: &ImageData, array_name: &str, x: usize, y: u
         let idx = x + y * dims[0] + iz * dims[0] * dims[1];
         if idx < arr.num_tuples() {
             arr.tuple_as_f64(idx, &mut buf);
-            z_data.push(org[2] + iz as f64 * sp[2]);
+            z_data.push(image.point_from_ijk(x, y, iz)[2]);
             v_data.push(buf[0]);
         }
     }
@@ -109,10 +103,10 @@ pub fn extract_diagonal_profile(image: &ImageData, array_name: &str, z: usize) -
     if z >= dims[2] {
         return Table::new();
     }
-    let sp = image.spacing();
     let n = dims[0].min(dims[1]);
     let mut buf = [0.0f64];
     let mut vals = Vec::new();
+    let first = image.point_from_ijk(0, 0, z);
     for i in 0..n {
         let idx = i + i * dims[0] + z * dims[0] * dims[1];
         if idx < arr.num_tuples() {
@@ -122,7 +116,11 @@ pub fn extract_diagonal_profile(image: &ImageData, array_name: &str, z: usize) -
     }
     let mut pos = Vec::with_capacity(vals.len());
     for i in 0..vals.len() {
-        pos.push(i as f64 * (sp[0] * sp[0] + sp[1] * sp[1]).sqrt());
+        let p = image.point_from_ijk(i, i, z);
+        let dx = p[0] - first[0];
+        let dy = p[1] - first[1];
+        let dz = p[2] - first[2];
+        pos.push((dx * dx + dy * dy + dz * dz).sqrt());
     }
     Table::new()
         .with_column(AnyDataArray::F64(DataArray::from_vec("Position", pos, 1)))
@@ -193,5 +191,23 @@ mod tests {
         assert_eq!(extract_row_profile(&img, "v", 4, 0).num_rows(), 0);
         assert_eq!(extract_column_profile(&img, "v", 0, 1).num_rows(), 0);
         assert_eq!(extract_diagonal_profile(&img, "v", 1).num_rows(), 0);
+    }
+
+    #[test]
+    fn row_profile_positions_include_extent_offset() {
+        let mut img = ImageData::with_dimensions(3, 2, 1);
+        img.set_extent([10, 12, 20, 21, 0, 0]);
+        img.set_spacing([2.0, 3.0, 1.0]);
+        img.set_origin([5.0, 7.0, 0.0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0; 6],
+                1,
+            )));
+
+        let table = extract_row_profile(&img, "v", 0, 0);
+        assert_eq!(table.value_f64(0, "Position"), Some(25.0));
+        assert_eq!(table.value_f64(2, "Position"), Some(29.0));
     }
 }

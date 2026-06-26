@@ -2,7 +2,7 @@
 use crate::data::{CellArray, Points, PolyData};
 pub fn bernal_sphere(radius: f64, window_strip_count: usize, resolution: usize) -> PolyData {
     let res = resolution.max(12);
-    let nw = window_strip_count.max(0);
+    let nw = window_strip_count.min(res);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let lines = CellArray::new();
@@ -21,7 +21,7 @@ pub fn bernal_sphere(radius: f64, window_strip_count: usize, resolution: usize) 
     for iv in 0..vres {
         for iu in 0..res {
             // Skip window strips
-            let is_window = nw > 0 && (iu % (res / nw.max(1))) == 0;
+            let is_window = nw > 0 && iu % (res / nw) == 0;
             if !is_window {
                 polys.push_cell(&[
                     (iv * w + iu) as i64,

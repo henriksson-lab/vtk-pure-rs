@@ -1,5 +1,5 @@
-use std::collections::BinaryHeap;
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
@@ -19,6 +19,26 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
         for j in 0..len {
             let a: usize = cell[j] as usize;
             let b: usize = cell[(j + 1) % len] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
+            let pa = input.points.get(a);
+            let pb = input.points.get(b);
+            let dx: f64 = pa[0] - pb[0];
+            let dy: f64 = pa[1] - pb[1];
+            let dz: f64 = pa[2] - pb[2];
+            let dist: f64 = (dx * dx + dy * dy + dz * dz).sqrt();
+            adj[a].push((b, dist));
+            adj[b].push((a, dist));
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            let a: usize = edge[0] as usize;
+            let b: usize = edge[1] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             let pa = input.points.get(a);
             let pb = input.points.get(b);
             let dx: f64 = pa[0] - pb[0];
@@ -38,7 +58,10 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
 
     let mut heap: BinaryHeap<DijkstraNode> = BinaryHeap::new();
     if source_vertex < n {
-        heap.push(DijkstraNode { cost: 0.0, vertex: source_vertex });
+        heap.push(DijkstraNode {
+            cost: 0.0,
+            vertex: source_vertex,
+        });
     }
 
     while let Some(DijkstraNode { cost, vertex }) = heap.pop() {
@@ -49,15 +72,22 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
             let new_cost: f64 = cost + weight;
             if new_cost < distances[neighbor] {
                 distances[neighbor] = new_cost;
-                heap.push(DijkstraNode { cost: new_cost, vertex: neighbor });
+                heap.push(DijkstraNode {
+                    cost: new_cost,
+                    vertex: neighbor,
+                });
             }
         }
     }
 
     let mut output = input.clone();
-    output.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("GeodesicDistance", distances, 1),
-    ));
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GeodesicDistance",
+            distances,
+            1,
+        )));
     output
 }
 
@@ -84,7 +114,10 @@ impl PartialOrd for DijkstraNode {
 impl Ord for DijkstraNode {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reverse ordering for min-heap behavior
-        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 

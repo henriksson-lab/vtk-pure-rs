@@ -3,8 +3,8 @@ use crate::data::{CellArray, Points, PolyData};
 /// Clip a mesh by a cylinder, keeping points inside or outside.
 ///
 /// The cylinder is defined by a `center` point, an `axis` direction, and a `radius`.
-/// Points are classified as inside if their perpendicular distance to the axis is
-/// less than the radius. If `keep_inside` is true, cells whose **all** vertices
+/// Points are classified as inside if their squared perpendicular distance to
+/// the axis is less than or equal to the squared radius. If `keep_inside` is true, cells whose **all** vertices
 /// are inside the cylinder are kept; otherwise cells whose all vertices are outside.
 pub fn clip_by_cylinder(
     input: &PolyData,
@@ -19,6 +19,7 @@ pub fn clip_by_cylinder(
         return PolyData::new();
     }
     let ax: [f64; 3] = [axis[0] / axis_len, axis[1] / axis_len, axis[2] / axis_len];
+    let radius_sq = radius * radius;
 
     // Classify each point: true means inside the cylinder.
     let n: usize = input.points.len();
@@ -30,8 +31,7 @@ pub fn clip_by_cylinder(
         let dz: f64 = p[2] - center[2];
         let proj: f64 = dx * ax[0] + dy * ax[1] + dz * ax[2];
         let perp_sq: f64 = dx * dx + dy * dy + dz * dz - proj * proj;
-        let dist: f64 = if perp_sq > 0.0 { perp_sq.sqrt() } else { 0.0 };
-        inside[i] = dist < radius;
+        inside[i] = perp_sq <= radius_sq;
     }
 
     // Build output: keep cells whose all vertices satisfy the condition.
@@ -43,7 +43,11 @@ pub fn clip_by_cylinder(
     for cell in input.polys.iter() {
         let all_match = cell.iter().all(|&id| {
             let flag = inside[id as usize];
-            if keep_inside { flag } else { !flag }
+            if keep_inside {
+                flag
+            } else {
+                !flag
+            }
         });
         if !all_match {
             continue;

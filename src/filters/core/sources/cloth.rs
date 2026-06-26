@@ -4,6 +4,8 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Generate a cloth mesh (flat grid) with per-vertex mass and fixed-point markers.
 pub fn cloth_mesh(width: f64, depth: f64, nx: usize, ny: usize) -> PolyData {
+    let nx = nx.max(1);
+    let ny = ny.max(1);
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut mass = Vec::new();

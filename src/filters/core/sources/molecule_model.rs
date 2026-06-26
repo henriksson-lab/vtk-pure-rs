@@ -1,38 +1,70 @@
 //! Simple ball-and-stick molecular model.
 use crate::data::{CellArray, Points, PolyData};
+
+fn add_sphere(
+    pts: &mut Points<f64>,
+    polys: &mut CellArray,
+    center: [f64; 3],
+    radius: f64,
+    resolution: usize,
+) -> usize {
+    let base = pts.len();
+    let nr = (resolution / 2).max(3);
+    pts.push([center[0], center[1], center[2] + radius]);
+    for ring in 1..nr {
+        let phi = std::f64::consts::PI * ring as f64 / nr as f64;
+        for j in 0..resolution {
+            let theta = 2.0 * std::f64::consts::PI * j as f64 / resolution as f64;
+            pts.push([
+                center[0] + radius * phi.sin() * theta.cos(),
+                center[1] + radius * phi.sin() * theta.sin(),
+                center[2] + radius * phi.cos(),
+            ]);
+        }
+    }
+    pts.push([center[0], center[1], center[2] - radius]);
+    let south = pts.len() - 1;
+
+    for j in 0..resolution {
+        polys.push_cell(&[
+            base as i64,
+            (base + 1 + j) as i64,
+            (base + 1 + (j + 1) % resolution) as i64,
+        ]);
+    }
+    for ring in 0..(nr - 2) {
+        let r0 = base + 1 + ring * resolution;
+        let r1 = base + 1 + (ring + 1) * resolution;
+        for j in 0..resolution {
+            let j1 = (j + 1) % resolution;
+            polys.push_cell(&[(r0 + j) as i64, (r1 + j) as i64, (r1 + j1) as i64]);
+            polys.push_cell(&[(r0 + j) as i64, (r1 + j1) as i64, (r0 + j1) as i64]);
+        }
+    }
+    let last_ring = base + 1 + (nr - 2) * resolution;
+    for j in 0..resolution {
+        polys.push_cell(&[
+            (last_ring + j) as i64,
+            south as i64,
+            (last_ring + (j + 1) % resolution) as i64,
+        ]);
+    }
+    base
+}
+
 pub fn molecule(
     atoms: &[[f64; 3]],
     radii: &[f64],
     bonds: &[(usize, usize)],
     resolution: usize,
 ) -> PolyData {
-    let _res = resolution.max(6);
+    let res = resolution.max(6);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
-    // Atoms (octahedra as sphere approximation)
     for (ai, &pos) in atoms.iter().enumerate() {
         let r = if ai < radii.len() { radii[ai] } else { 0.3 };
-        let ab = pts.len();
-        pts.push([pos[0] + r, pos[1], pos[2]]);
-        pts.push([pos[0] - r, pos[1], pos[2]]);
-        pts.push([pos[0], pos[1] + r, pos[2]]);
-        pts.push([pos[0], pos[1] - r, pos[2]]);
-        pts.push([pos[0], pos[1], pos[2] + r]);
-        pts.push([pos[0], pos[1], pos[2] - r]);
-        let faces = [
-            [0, 2, 4],
-            [2, 1, 4],
-            [1, 3, 4],
-            [3, 0, 4],
-            [0, 5, 2],
-            [2, 5, 1],
-            [1, 5, 3],
-            [3, 5, 0],
-        ];
-        for f in &faces {
-            polys.push_cell(&[(ab + f[0]) as i64, (ab + f[1]) as i64, (ab + f[2]) as i64]);
-        }
+        add_sphere(&mut pts, &mut polys, pos, r, res);
     }
     // Bonds (lines)
     for &(a, b) in bonds {

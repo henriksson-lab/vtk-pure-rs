@@ -9,14 +9,9 @@ pub fn vertex_valence(input: &PolyData) -> PolyData {
     let n = input.points.len();
     let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
 
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
-        }
-    }
+    add_poly_edges(&input.polys, n, &mut neighbors);
+    add_poly_edges(&input.strips, n, &mut neighbors);
+    add_line_edges(&input.lines, n, &mut neighbors);
 
     let valences: Vec<f64> = neighbors.iter().map(|s| s.len() as f64).collect();
 
@@ -33,14 +28,9 @@ pub fn valence_histogram(input: &PolyData) -> Vec<(usize, usize)> {
     let n = input.points.len();
     let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
 
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
-        }
-    }
+    add_poly_edges(&input.polys, n, &mut neighbors);
+    add_poly_edges(&input.strips, n, &mut neighbors);
+    add_line_edges(&input.lines, n, &mut neighbors);
 
     let mut counts = std::collections::HashMap::new();
     for s in &neighbors {
@@ -50,6 +40,39 @@ pub fn valence_histogram(input: &PolyData) -> Vec<(usize, usize)> {
     let mut result: Vec<(usize, usize)> = counts.into_iter().collect();
     result.sort();
     result
+}
+
+fn add_poly_edges(cells: &crate::data::CellArray, n: usize, neighbors: &mut [HashSet<usize>]) {
+    for cell in cells.iter() {
+        if cell.len() < 2 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for i in 0..cell.len() {
+            add_edge(
+                cell[i] as usize,
+                cell[(i + 1) % cell.len()] as usize,
+                neighbors,
+            );
+        }
+    }
+}
+
+fn add_line_edges(cells: &crate::data::CellArray, n: usize, neighbors: &mut [HashSet<usize>]) {
+    for cell in cells.iter() {
+        if cell.len() < 2 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for edge in cell.windows(2) {
+            add_edge(edge[0] as usize, edge[1] as usize, neighbors);
+        }
+    }
+}
+
+fn add_edge(a: usize, b: usize, neighbors: &mut [HashSet<usize>]) {
+    if a != b {
+        neighbors[a].insert(b);
+        neighbors[b].insert(a);
+    }
 }
 
 #[cfg(test)]

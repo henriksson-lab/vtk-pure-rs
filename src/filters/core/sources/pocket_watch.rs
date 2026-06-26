@@ -54,8 +54,8 @@ pub fn pocket_watch(radius: f64, na: usize) -> PolyData {
     // Crown (small bump at top)
     let crown = pts.len();
     pts.push([0.0, case_outer + 0.1, 0.0]);
-    lines.push_cell(&[(fb + na / 4) as i64, crown as i64]); // connect to top of case
-                                                            // Chain
+    lines.push_cell(&[((na / 4) * 2) as i64, crown as i64]); // connect to top of case
+                                                             // Chain
     let chain_end = pts.len();
     pts.push([0.0, case_outer + radius, 0.0]);
     lines.push_cell(&[crown as i64, chain_end as i64]);

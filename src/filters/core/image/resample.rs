@@ -14,21 +14,30 @@ pub fn image_resample(input: &ImageData, scalars: &str, new_dims: [usize; 3]) ->
     let onx = old_dims[0] as usize;
     let ony = old_dims[1] as usize;
     let onz = old_dims[2] as usize;
+    if onx == 0 || ony == 0 || onz == 0 {
+        return input.clone();
+    }
     let old_spacing = input.spacing();
     let origin = input.origin();
 
+    let num_comp = arr.num_components();
+
     // Read old values
     let old_n = onx * ony * onz;
-    let mut old_values = vec![0.0f64; old_n];
-    let mut buf = [0.0f64];
+    let mut old_values = vec![0.0f64; old_n * num_comp];
+    let mut buf = vec![0.0f64; num_comp];
     for i in 0..old_n {
-        arr.tuple_as_f64(i, &mut buf);
-        old_values[i] = buf[0];
+        if i < arr.num_tuples() {
+            arr.tuple_as_f64(i, &mut buf);
+            for c in 0..num_comp {
+                old_values[i * num_comp + c] = buf[c];
+            }
+        }
     }
 
-    let nnx = new_dims[0].max(2);
-    let nny = new_dims[1].max(2);
-    let nnz = new_dims[2].max(2);
+    let nnx = new_dims[0].max(1);
+    let nny = new_dims[1].max(1);
+    let nnz = new_dims[2].max(1);
 
     // Compute new spacing to cover the same extent
     let extent = [
@@ -37,15 +46,27 @@ pub fn image_resample(input: &ImageData, scalars: &str, new_dims: [usize; 3]) ->
         (onz as f64 - 1.0) * old_spacing[2],
     ];
     let new_spacing = [
-        extent[0] / (nnx as f64 - 1.0).max(1.0),
-        extent[1] / (nny as f64 - 1.0).max(1.0),
-        extent[2] / (nnz as f64 - 1.0).max(1.0),
+        if nnx > 1 {
+            extent[0] / (nnx as f64 - 1.0)
+        } else {
+            old_spacing[0]
+        },
+        if nny > 1 {
+            extent[1] / (nny as f64 - 1.0)
+        } else {
+            old_spacing[1]
+        },
+        if nnz > 1 {
+            extent[2] / (nnz as f64 - 1.0)
+        } else {
+            old_spacing[2]
+        },
     ];
 
     let new_n = nnx * nny * nnz;
-    let mut new_values = vec![0.0f64; new_n];
+    let mut new_values = vec![0.0f64; new_n * num_comp];
 
-    let sample = |fx: f64, fy: f64, fz: f64| -> f64 {
+    let sample = |fx: f64, fy: f64, fz: f64, component: usize| -> f64 {
         let ix = fx.floor() as i64;
         let iy = fy.floor() as i64;
         let iz = fz.floor() as i64;
@@ -57,7 +78,7 @@ pub fn image_resample(input: &ImageData, scalars: &str, new_dims: [usize; 3]) ->
             let ii = i.clamp(0, onx as i64 - 1) as usize;
             let jj = j.clamp(0, ony as i64 - 1) as usize;
             let kk = k.clamp(0, onz as i64 - 1) as usize;
-            old_values[kk * ony * onx + jj * onx + ii]
+            old_values[(kk * ony * onx + jj * onx + ii) * num_comp + component]
         };
 
         let c000 = get(ix, iy, iz);
@@ -84,12 +105,26 @@ pub fn image_resample(input: &ImageData, scalars: &str, new_dims: [usize; 3]) ->
         for j in 0..nny {
             for i in 0..nnx {
                 // Map new grid coords to old grid coords
-                let fx = i as f64 * new_spacing[0] / old_spacing[0];
-                let fy = j as f64 * new_spacing[1] / old_spacing[1];
-                let fz = k as f64 * new_spacing[2] / old_spacing[2];
+                let fx = if nnx > 1 {
+                    i as f64 * (onx as f64 - 1.0) / (nnx as f64 - 1.0)
+                } else {
+                    0.0
+                };
+                let fy = if nny > 1 {
+                    j as f64 * (ony as f64 - 1.0) / (nny as f64 - 1.0)
+                } else {
+                    0.0
+                };
+                let fz = if nnz > 1 {
+                    k as f64 * (onz as f64 - 1.0) / (nnz as f64 - 1.0)
+                } else {
+                    0.0
+                };
 
                 let idx = k * nny * nnx + j * nnx + i;
-                new_values[idx] = sample(fx, fy, fz);
+                for c in 0..num_comp {
+                    new_values[idx * num_comp + c] = sample(fx, fy, fz, c);
+                }
             }
         }
     }
@@ -99,7 +134,7 @@ pub fn image_resample(input: &ImageData, scalars: &str, new_dims: [usize; 3]) ->
     img.set_spacing(new_spacing);
     img.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            scalars, new_values, 1,
+            scalars, new_values, num_comp,
         )));
     img.point_data_mut().set_active_scalars(scalars);
     img

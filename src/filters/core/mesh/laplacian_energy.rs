@@ -8,6 +8,7 @@ pub fn dirichlet_energy(input: &PolyData) -> f64 {
     let mut seen=std::collections::HashSet::new();
     for cell in input.polys.iter(){for i in 0..cell.len(){
         let a=cell[i] as usize; let b=cell[(i+1)%cell.len()] as usize;
+        if a>=input.points.len()||b>=input.points.len(){continue;}
         let key=if a<b{(a,b)}else{(b,a)};
         if seen.insert(key){
             let pa=input.points.get(a); let pb=input.points.get(b);
@@ -27,8 +28,10 @@ pub fn willmore_energy(input: &PolyData) -> f64 {
     let mut neighbors: Vec<Vec<usize>>=vec![Vec::new();n];
     for cell in input.polys.iter(){for i in 0..cell.len(){
         let a=cell[i] as usize;let b=cell[(i+1)%cell.len()] as usize;
-        if !neighbors[a].contains(&b){neighbors[a].push(b);}
-        if !neighbors[b].contains(&a){neighbors[b].push(a);}
+        if a<n&&b<n{
+            if !neighbors[a].contains(&b){neighbors[a].push(b);}
+            if !neighbors[b].contains(&a){neighbors[b].push(a);}
+        }
     }}
 
     let mut energy=0.0;

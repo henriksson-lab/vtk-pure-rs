@@ -2,21 +2,23 @@
 //!
 //! Supports eigenvalue decomposition, determinant, inverse, and
 //! matrix multiplication for 3x3 matrices stored as 9-component tuples.
+//! Symmetric tensors may also be provided as 6-component tuples using VTK's
+//! order: xx, yy, zz, xy, yz, xz.
 
 use crate::data::DataArray;
 
 /// Compute determinant of 3x3 matrices stored as 9-component tuples.
 pub fn matrix_determinant(input: &DataArray<f64>) -> DataArray<f64> {
-    assert_eq!(
-        input.num_components(),
-        9,
-        "input must have 9 components (3x3 matrix)"
+    assert!(
+        input.num_components() == 9 || input.num_components() == 6,
+        "input must have 9 components (3x3 matrix) or 6 components (symmetric tensor)"
     );
     let n = input.num_tuples();
     let mut data = Vec::with_capacity(n);
 
     for i in 0..n {
-        let m = input.tuple(i);
+        let tuple = input.tuple(i);
+        let m = tensor_tuple_to_3x3(tuple);
         let det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
             + m[2] * (m[3] * m[7] - m[4] * m[6]);
         data.push(det);
@@ -28,16 +30,20 @@ pub fn matrix_determinant(input: &DataArray<f64>) -> DataArray<f64> {
 /// Compute inverse of 3x3 matrices stored as 9-component tuples.
 /// Singular matrices produce zero matrices.
 pub fn matrix_inverse(input: &DataArray<f64>) -> DataArray<f64> {
-    assert_eq!(input.num_components(), 9);
+    assert!(
+        input.num_components() == 9 || input.num_components() == 6,
+        "input must have 9 components (3x3 matrix) or 6 components (symmetric tensor)"
+    );
     let n = input.num_tuples();
     let mut data = Vec::with_capacity(n * 9);
 
     for i in 0..n {
-        let m = input.tuple(i);
+        let tuple = input.tuple(i);
+        let m = tensor_tuple_to_3x3(tuple);
         let det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6])
             + m[2] * (m[3] * m[7] - m[4] * m[6]);
 
-        if det.abs() < 1e-30 {
+        if det.abs() <= f64::EPSILON {
             data.extend_from_slice(&[0.0; 9]);
         } else {
             let inv_det = 1.0 / det;
@@ -69,7 +75,7 @@ pub fn symmetric_eigenvalues(input: &DataArray<f64>) -> DataArray<f64> {
         data.extend_from_slice(&eigs);
     }
 
-    DataArray::from_vec("Eigenvalues", data, 3)
+    DataArray::from_vec("Eigenvalue", data, 3)
 }
 
 /// Compute trace of 3x3 matrices (9-component).
@@ -148,6 +154,20 @@ fn eigenvalues_3x3_symmetric(
     vals
 }
 
+fn tensor_tuple_to_3x3(tuple: &[f64]) -> [f64; 9] {
+    if tuple.len() == 6 {
+        [
+            tuple[0], tuple[3], tuple[5], tuple[3], tuple[1], tuple[4], tuple[5], tuple[4],
+            tuple[2],
+        ]
+    } else {
+        [
+            tuple[0], tuple[1], tuple[2], tuple[3], tuple[4], tuple[5], tuple[6], tuple[7],
+            tuple[8],
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +180,13 @@ mod tests {
     }
 
     #[test]
+    fn symmetric_tensor_determinant() {
+        let m = DataArray::from_vec("s", vec![2.0, 3.0, 4.0, 0.0, 0.0, 0.0], 6);
+        let det = matrix_determinant(&m);
+        assert!((det.tuple(0)[0] - 24.0).abs() < 1e-10);
+    }
+
+    #[test]
     fn identity_inverse() {
         let m = DataArray::from_vec("m", vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], 9);
         let inv = matrix_inverse(&m);
@@ -167,6 +194,16 @@ mod tests {
         assert!((t[0] - 1.0).abs() < 1e-10);
         assert!((t[4] - 1.0).abs() < 1e-10);
         assert!((t[8] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn symmetric_tensor_inverse() {
+        let m = DataArray::from_vec("s", vec![2.0, 4.0, 8.0, 0.0, 0.0, 0.0], 6);
+        let inv = matrix_inverse(&m);
+        let t = inv.tuple(0);
+        assert!((t[0] - 0.5).abs() < 1e-10);
+        assert!((t[4] - 0.25).abs() < 1e-10);
+        assert!((t[8] - 0.125).abs() < 1e-10);
     }
 
     #[test]

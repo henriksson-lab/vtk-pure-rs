@@ -7,7 +7,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData, Table};
 /// Uses 6-connectivity flood fill. Returns labeled image + component count.
 pub fn label_components_3d(image: &ImageData, array_name: &str) -> (ImageData, usize) {
     let arr = match image.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) => a,
         _ => return (image.clone(), 0),
     };
     let dims = image.dimensions();
@@ -16,7 +16,7 @@ pub fn label_components_3d(image: &ImageData, array_name: &str) -> (ImageData, u
     let fg: Vec<bool> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] > 0.5
+            buf[0] >= 0.5
         })
         .collect();
     let mut labels = vec![0i64; n];
@@ -104,7 +104,7 @@ pub fn component_sizes(image: &ImageData) -> Vec<(i64, usize)> {
         }
     }
     let mut sizes: Vec<(i64, usize)> = counts.into_iter().collect();
-    sizes.sort_by(|a, b| b.1.cmp(&a.1));
+    sizes.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     sizes
 }
 
@@ -180,6 +180,26 @@ mod tests {
         assert!(result.point_data().get_array("Labels").is_some());
     }
     #[test]
+    fn includes_threshold_edge_and_first_component() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "m",
+                vec![0.5, 2.0, 0.0, 0.0, 2.0, 9.0],
+                2,
+            )));
+        let (result, nc) = label_components_3d(&img, "m");
+        assert_eq!(nc, 2);
+        let labels = result.point_data().get_array("Labels").unwrap();
+        let mut buf = [0.0f64];
+        labels.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
+        labels.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        labels.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 2.0);
+    }
+    #[test]
     fn sizes() {
         let img = ImageData::from_function(
             [10, 10, 1],
@@ -191,6 +211,17 @@ mod tests {
         let (labeled, _) = label_components_3d(&img, "m");
         let s = component_sizes(&labeled);
         assert!(!s.is_empty());
+    }
+    #[test]
+    fn equal_sizes_keep_label_order() {
+        let mut img = ImageData::with_dimensions(5, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Labels",
+                vec![2.0, 0.0, 1.0, 0.0, 3.0],
+                1,
+            )));
+        assert_eq!(component_sizes(&img), vec![(1, 1), (2, 1), (3, 1)]);
     }
     #[test]
     fn keep_largest() {

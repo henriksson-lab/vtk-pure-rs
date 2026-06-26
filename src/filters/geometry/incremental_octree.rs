@@ -8,6 +8,7 @@ use crate::data::PolyData;
 /// An incrementally built octree for point location.
 pub struct IncrementalOctree {
     nodes: Vec<OctreeNode>,
+    point_positions: Vec<Option<[f64; 3]>>,
     bounds: [[f64; 3]; 2], // [min, max]
     max_points_per_leaf: usize,
     max_depth: usize,
@@ -28,8 +29,9 @@ impl IncrementalOctree {
                 children: [0; 8],
                 point_indices: Vec::new(),
             }],
+            point_positions: Vec::new(),
             bounds: [min, max],
-            max_points_per_leaf,
+            max_points_per_leaf: max_points_per_leaf.max(1),
             max_depth: 20,
         }
     }
@@ -64,6 +66,10 @@ impl IncrementalOctree {
 
     /// Insert a point into the octree.
     pub fn insert(&mut self, point_index: usize, point: [f64; 3]) {
+        if point_index >= self.point_positions.len() {
+            self.point_positions.resize(point_index + 1, None);
+        }
+        self.point_positions[point_index] = Some(point);
         self.insert_recursive(0, point_index, point, self.bounds[0], self.bounds[1], 0);
     }
 
@@ -132,8 +138,8 @@ impl IncrementalOctree {
         self.insert_recursive(child, idx, pt, cmin, cmax, depth + 1);
     }
 
-    fn split(&mut self, node: usize, min: [f64; 3], max: [f64; 3], _depth: usize) {
-        let _mid = midpoint(min, max);
+    fn split(&mut self, node: usize, min: [f64; 3], max: [f64; 3], depth: usize) {
+        let mid = midpoint(min, max);
         let first_child = self.nodes.len();
         for _ in 0..8 {
             self.nodes.push(OctreeNode {
@@ -149,13 +155,25 @@ impl IncrementalOctree {
         self.nodes[node].children = children;
         self.nodes[node].is_leaf = false;
 
-        // Redistribute points (we don't have the actual positions stored, so just clear)
-        // In practice we'd need the point positions here — mark as redistributed
         let old_points = std::mem::take(&mut self.nodes[node].point_indices);
-        // Points need to be re-inserted by the caller with actual positions
-        // For simplicity, keep them in the parent as a fallback
-        self.nodes[node].point_indices = old_points;
-        self.nodes[node].is_leaf = true; // keep as leaf with many points
+        for idx in old_points {
+            let Some(pt) = self.point_positions.get(idx).copied().flatten() else {
+                continue;
+            };
+            let octant = get_octant(pt, mid);
+            let child = self.nodes[node].children[octant];
+            self.nodes[child].point_indices.push(idx);
+        }
+
+        for octant in 0..8 {
+            let child = self.nodes[node].children[octant];
+            if self.nodes[child].point_indices.len() > self.max_points_per_leaf
+                && depth + 1 < self.max_depth
+            {
+                let (cmin, cmax) = octant_bounds(octant, min, max, mid);
+                self.split(child, cmin, cmax, depth + 1);
+            }
+        }
     }
 
     fn nearest_recursive(

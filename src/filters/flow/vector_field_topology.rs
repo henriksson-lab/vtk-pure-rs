@@ -52,6 +52,7 @@ pub fn find_critical_points_2d(field: &ImageData) -> Vec<CriticalPoint> {
     };
 
     let dims = field.dimensions();
+    let extent = field.extent();
     let spacing = field.spacing();
     let origin = field.origin();
 
@@ -97,8 +98,8 @@ pub fn find_critical_points_2d(field: &ImageData) -> Vec<CriticalPoint> {
 
             // Bilinear interpolation to find zero: solve v(x,y) ≈ 0
             // Use simple averaging as approximation
-            let cx = origin[0] + (ix as f64 + 0.5) * spacing[0];
-            let cy = origin[1] + (iy as f64 + 0.5) * spacing[1];
+            let cx = origin[0] + (extent[0] as f64 + ix as f64 + 0.5) * spacing[0];
+            let cy = origin[1] + (extent[2] as f64 + iy as f64 + 0.5) * spacing[1];
 
             // Compute Jacobian via finite differences at cell center
             let dvx_dx = ((v10[0] + v11[0]) - (v00[0] + v01[0])) / (2.0 * spacing[0]);
@@ -347,6 +348,22 @@ mod tests {
     }
 
     #[test]
+    fn critical_point_position_respects_extent() {
+        let mut field = make_source_field();
+        field.set_extent([10, 29, 20, 39, 0, 0]);
+        field.set_origin([-1.0, -2.0, 0.0]);
+
+        let cps = find_critical_points_2d(&field);
+        let source = cps
+            .iter()
+            .find(|cp| cp.point_type == CriticalPointType::Source)
+            .expect("expected source point");
+
+        assert!(source.position[0] > 0.0);
+        assert!(source.position[1] > 0.0);
+    }
+
+    #[test]
     fn sink_field() {
         // Inward flow: v = -(x - cx, y - cy, 0)
         let dims = [20, 20, 1];
@@ -406,7 +423,7 @@ mod tests {
 
         let n = dims[0] * dims[1] * dims[2];
         let mut vdata = Vec::with_capacity(n * 3);
-        for iz in 0..dims[2] {
+        for _iz in 0..dims[2] {
             for iy in 0..dims[1] {
                 for ix in 0..dims[0] {
                     let x = origin[0] + ix as f64 * spacing[0];

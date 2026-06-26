@@ -13,14 +13,18 @@ pub fn image_gabor(
     radius: usize,
 ) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
-    let n = nx * ny;
+    let nz = dims[2] as usize;
+    let n = nx * ny * nz;
+    if arr.num_tuples() != n {
+        return input.clone();
+    }
     let r = radius.max(1) as i64;
 
     let mut buf = [0.0f64];
@@ -31,8 +35,10 @@ pub fn image_gabor(
         })
         .collect();
 
-    let get = |i: i64, j: i64| -> f64 {
-        values[(j.clamp(0, ny as i64 - 1) as usize) * nx + (i.clamp(0, nx as i64 - 1) as usize)]
+    let get = |i: i64, j: i64, k: usize| -> f64 {
+        values[k * ny * nx
+            + (j.clamp(0, ny as i64 - 1) as usize) * nx
+            + (i.clamp(0, nx as i64 - 1) as usize)]
     };
 
     let cos_t = orientation.cos();
@@ -40,20 +46,21 @@ pub fn image_gabor(
     let inv_2s2 = 1.0 / (2.0 * sigma * sigma);
 
     let mut response = vec![0.0f64; n];
-    for j in 0..ny {
-        for i in 0..nx {
-            let mut sum = 0.0;
-            for dj in -r..=r {
-                for di in -r..=r {
-                    let x_rot = di as f64 * cos_t + dj as f64 * sin_t;
-                    let y_rot = -di as f64 * sin_t + dj as f64 * cos_t;
-                    let gaussian = (-(di * di + dj * dj) as f64 * inv_2s2).exp();
-                    let sinusoid = (2.0 * std::f64::consts::PI * frequency * x_rot).cos();
-                    let kernel = gaussian * sinusoid;
-                    sum += get(i as i64 + di, j as i64 + dj) * kernel;
+    for k in 0..nz {
+        for j in 0..ny {
+            for i in 0..nx {
+                let mut sum = 0.0;
+                for dj in -r..=r {
+                    for di in -r..=r {
+                        let x_rot = di as f64 * cos_t + dj as f64 * sin_t;
+                        let gaussian = (-(di * di + dj * dj) as f64 * inv_2s2).exp();
+                        let sinusoid = (2.0 * std::f64::consts::PI * frequency * x_rot).cos();
+                        let kernel = gaussian * sinusoid;
+                        sum += get(i as i64 + di, j as i64 + dj, k) * kernel;
+                    }
                 }
+                response[k * ny * nx + j * nx + i] = sum;
             }
-            response[j * nx + i] = sum;
         }
     }
 

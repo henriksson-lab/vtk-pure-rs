@@ -28,8 +28,8 @@ pub fn temporal_interpolator(a: &PolyData, b: &PolyData, t: f64) -> PolyData {
     let mut pd = a.clone();
     pd.points = points;
 
-    // Interpolate matching scalar arrays
-    let mut new_attrs = crate::data::DataSetAttributes::new();
+    // Interpolate matching point arrays, preserving active attribute designations.
+    let mut new_attrs = a.point_data().clone();
     for i in 0..a.point_data().num_arrays() {
         let arr_a = a.point_data().get_array_by_index(i).unwrap();
         if let Some(arr_b) = b.point_data().get_array(arr_a.name()) {
@@ -53,12 +53,40 @@ pub fn temporal_interpolator(a: &PolyData, b: &PolyData, t: f64) -> PolyData {
                     interp,
                     nc,
                 )));
-                continue;
             }
         }
-        new_attrs.add_array(arr_a.clone());
     }
     *pd.point_data_mut() = new_attrs;
+
+    // vtkTemporalInterpolator applies the same name/component/tuple matching to cell data.
+    let mut new_cell_attrs = a.cell_data().clone();
+    for i in 0..a.cell_data().num_arrays() {
+        let arr_a = a.cell_data().get_array_by_index(i).unwrap();
+        if let Some(arr_b) = b.cell_data().get_array(arr_a.name()) {
+            if arr_a.num_tuples() == arr_b.num_tuples()
+                && arr_a.num_components() == arr_b.num_components()
+            {
+                let nc = arr_a.num_components();
+                let nt = arr_a.num_tuples();
+                let mut interp = Vec::with_capacity(nt * nc);
+                let mut ba = vec![0.0f64; nc];
+                let mut bb = vec![0.0f64; nc];
+                for ti in 0..nt {
+                    arr_a.tuple_as_f64(ti, &mut ba);
+                    arr_b.tuple_as_f64(ti, &mut bb);
+                    for c in 0..nc {
+                        interp.push(ba[c] + t * (bb[c] - ba[c]));
+                    }
+                }
+                new_cell_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                    arr_a.name(),
+                    interp,
+                    nc,
+                )));
+            }
+        }
+    }
+    *pd.cell_data_mut() = new_cell_attrs;
     pd
 }
 

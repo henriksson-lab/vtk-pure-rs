@@ -12,10 +12,14 @@ pub fn compute_histogram(
         Some(a) if a.num_components() == 1 => a,
         _ => return (Vec::new(), Vec::new()),
     };
+    let n_bins = n_bins.max(1);
     let n = arr.num_tuples();
+    if n == 0 {
+        return (Vec::new(), Vec::new());
+    }
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
@@ -43,6 +47,9 @@ pub fn histogram_equalize(image: &ImageData, array_name: &str) -> ImageData {
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut values: Vec<(f64, usize)> = (0..n)
         .map(|i| {
@@ -58,11 +65,20 @@ pub fn histogram_equalize(image: &ImageData, array_name: &str) -> ImageData {
     }
 
     let mut result = image.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            array_name, output, 1,
-        )));
+    let mut attrs = crate::data::DataSetAttributes::new();
+    for i in 0..image.point_data().num_arrays() {
+        let a = image.point_data().get_array_by_index(i).unwrap();
+        if a.name() == array_name {
+            attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
+                array_name,
+                output.clone(),
+                1,
+            )));
+        } else {
+            attrs.add_array(a.clone());
+        }
+    }
+    *result.point_data_mut() = attrs;
     result
 }
 

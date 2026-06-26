@@ -10,7 +10,7 @@ pub fn image_copysign(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].abs() * buf[0].signum()
+            buf[0].abs().copysign(buf[0])
         })
         .collect();
     let dims = input.dimensions();
@@ -22,6 +22,14 @@ pub fn image_copysign(input: &ImageData, scalars: &str) -> ImageData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tuple_value(image: &ImageData, array_name: &str, tuple: usize) -> f64 {
+        let array = image.point_data().get_array(array_name).unwrap();
+        let mut buf = [0.0f64];
+        array.tuple_as_f64(tuple, &mut buf);
+        buf[0]
+    }
+
     #[test]
     fn test() {
         let img = ImageData::from_function(
@@ -33,5 +41,22 @@ mod tests {
         );
         let r = image_copysign(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn keeps_input_magnitude_and_sign() {
+        let mut img = ImageData::with_dimensions(4, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![2.5, -3.5, 0.0, -0.0],
+                1,
+            )));
+
+        let r = image_copysign(&img, "v");
+        assert_eq!(tuple_value(&r, "v", 0), 2.5);
+        assert_eq!(tuple_value(&r, "v", 1), -3.5);
+        assert_eq!(tuple_value(&r, "v", 2), 0.0);
+        assert_eq!(tuple_value(&r, "v", 3).to_bits(), (-0.0f64).to_bits());
     }
 }

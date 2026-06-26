@@ -1,7 +1,7 @@
 use crate::data::PolyData;
 
-/// Compute the smallest circumscribed (bounding) sphere of a mesh using
-/// Ritter's algorithm.
+/// Compute an approximate bounding sphere of a mesh using VTK's
+/// `vtkSphere::ComputeBoundingSphere` point algorithm.
 ///
 /// Returns `(radius, center)`.
 pub fn bounding_sphere(input: &PolyData) -> (f64, [f64; 3]) {
@@ -13,76 +13,73 @@ pub fn bounding_sphere(input: &PolyData) -> (f64, [f64; 3]) {
         return (0.0, input.points.get(0));
     }
 
-    // Step 1: Find an initial diameter by picking the two most distant points
-    // along a coordinate axis, then refining.
-    let p0 = input.points.get(0);
+    let mut x_min = [f64::MAX; 3];
+    let mut x_max = [-f64::MAX; 3];
+    let mut y_min = [f64::MAX; 3];
+    let mut y_max = [-f64::MAX; 3];
+    let mut z_min = [f64::MAX; 3];
+    let mut z_max = [-f64::MAX; 3];
 
-    // Find point farthest from p0
-    let mut far1_idx: usize = 0;
-    let mut far1_dist: f64 = 0.0;
     for i in 0..n {
-        let d: f64 = dist_sq(&p0, &input.points.get(i));
-        if d > far1_dist {
-            far1_dist = d;
-            far1_idx = i;
+        let p = input.points.get(i);
+        if p[0] < x_min[0] {
+            x_min = p;
+        }
+        if p[0] > x_max[0] {
+            x_max = p;
+        }
+        if p[1] < y_min[1] {
+            y_min = p;
+        }
+        if p[1] > y_max[1] {
+            y_max = p;
+        }
+        if p[2] < z_min[2] {
+            z_min = p;
+        }
+        if p[2] > z_max[2] {
+            z_max = p;
         }
     }
 
-    // Find point farthest from far1
-    let far1 = input.points.get(far1_idx);
-    let mut far2_idx: usize = 0;
-    let mut far2_dist: f64 = 0.0;
-    for i in 0..n {
-        let d: f64 = dist_sq(&far1, &input.points.get(i));
-        if d > far2_dist {
-            far2_dist = d;
-            far2_idx = i;
-        }
-    }
+    let x_span = dist_sq(&x_min, &x_max);
+    let y_span = dist_sq(&y_min, &y_max);
+    let z_span = dist_sq(&z_min, &z_max);
 
-    // Initial sphere: centered between far1 and far2
-    let a = input.points.get(far1_idx);
-    let b = input.points.get(far2_idx);
+    let (a, b) = if x_span > y_span {
+        if x_span > z_span {
+            (x_min, x_max)
+        } else {
+            (z_min, z_max)
+        }
+    } else if y_span > z_span {
+        (y_min, y_max)
+    } else {
+        (z_min, z_max)
+    };
+
     let mut cx: f64 = (a[0] + b[0]) * 0.5;
     let mut cy: f64 = (a[1] + b[1]) * 0.5;
     let mut cz: f64 = (a[2] + b[2]) * 0.5;
-    let mut radius: f64 = (far2_dist).sqrt() * 0.5;
+    let mut radius: f64 = dist_sq(&a, &b).sqrt() * 0.5;
+    let mut radius_sq = radius * radius;
 
-    // Step 2: Ritter's expansion — grow sphere to include all points
+    // Make a single VTK-style pass over the points and grow the sphere as needed.
     for i in 0..n {
         let p = input.points.get(i);
         let dx: f64 = p[0] - cx;
         let dy: f64 = p[1] - cy;
         let dz: f64 = p[2] - cz;
-        let d: f64 = (dx * dx + dy * dy + dz * dz).sqrt();
+        let dist_sq = dx * dx + dy * dy + dz * dz;
 
-        if d > radius {
-            let new_radius: f64 = (radius + d) * 0.5;
-            let shift: f64 = new_radius - radius;
-            let inv_d: f64 = 1.0 / d;
-            cx += dx * inv_d * shift;
-            cy += dy * inv_d * shift;
-            cz += dz * inv_d * shift;
-            radius = new_radius;
-        }
-    }
-
-    // Step 3: Second pass to ensure all points are enclosed (refine)
-    for i in 0..n {
-        let p = input.points.get(i);
-        let dx: f64 = p[0] - cx;
-        let dy: f64 = p[1] - cy;
-        let dz: f64 = p[2] - cz;
-        let d: f64 = (dx * dx + dy * dy + dz * dz).sqrt();
-
-        if d > radius {
-            let new_radius: f64 = (radius + d) * 0.5;
-            let shift: f64 = new_radius - radius;
-            let inv_d: f64 = 1.0 / d;
-            cx += dx * inv_d * shift;
-            cy += dy * inv_d * shift;
-            cz += dz * inv_d * shift;
-            radius = new_radius;
+        if dist_sq > radius_sq {
+            let dist = dist_sq.sqrt();
+            radius = (radius + dist) * 0.5;
+            radius_sq = radius * radius;
+            let delta = dist - radius;
+            cx = (radius * cx + delta * p[0]) / dist;
+            cy = (radius * cy + delta * p[1]) / dist;
+            cz = (radius * cz + delta * p[2]) / dist;
         }
     }
 

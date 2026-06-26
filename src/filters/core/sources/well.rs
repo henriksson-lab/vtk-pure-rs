@@ -26,8 +26,7 @@ pub fn well(well_radius: f64, wall_height: f64, roof_height: f64, resolution: us
         lines.push_cell(&[b as i64, (b + 1) as i64]);
     }
     // Ridge beam
-    let _rb = pts.len() - 2;
-    let _rb2 = pts.len() - 1;
+    lines.push_cell(&[(pts.len() - 3) as i64, (pts.len() - 1) as i64]);
     // Roof panels
     let rp = pts.len();
     pts.push([-pr * 1.3, 0.0, wall_height + roof_height * 0.5]);

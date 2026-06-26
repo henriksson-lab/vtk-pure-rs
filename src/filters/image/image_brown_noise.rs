@@ -7,10 +7,12 @@ pub fn image_brown_noise(input: &ImageData, scalars: &str) -> ImageData {
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
+    let mut integral = 0.0f64;
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * buf[0] * 0.5
+            integral += buf[0];
+            integral
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +35,11 @@ mod tests {
         );
         let r = image_brown_noise(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 3.0);
     }
 }

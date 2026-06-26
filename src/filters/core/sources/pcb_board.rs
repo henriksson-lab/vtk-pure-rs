@@ -40,7 +40,7 @@ pub fn pcb(width: f64, length: f64, thickness: f64, num_components: usize, seed:
         *rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((*rng >> 33) as f64) / (u32::MAX as f64)
+        ((*rng >> 33) as f64) / ((1u64 << 31) as f64)
     };
     for _ in 0..nc {
         let cx = -hw * 0.8 + next_f(&mut rng) * width * 0.8;

@@ -4,7 +4,6 @@ pub fn anchor(height: f64, arm_span: f64, shank_width: f64) -> PolyData {
     let h = height;
     let hw = arm_span / 2.0;
     let sw = shank_width / 2.0;
-    let _t = shank_width * 0.5;
     let mut pts = Points::<f64>::new();
     let mut lines = CellArray::new();
     let mut polys = CellArray::new();
@@ -18,14 +17,13 @@ pub fn anchor(height: f64, arm_span: f64, shank_width: f64) -> PolyData {
     // Ring at top
     let ring_r = shank_width;
     let ring_res = 12;
+    let rb = pts.len();
     for i in 0..ring_res {
         let a = 2.0 * std::f64::consts::PI * i as f64 / ring_res as f64;
-        let j = (i + 1) % ring_res;
-        let a2 = 2.0 * std::f64::consts::PI * j as f64 / ring_res as f64;
-        let rb = pts.len();
         pts.push([ring_r * a.cos(), 0.0, h + ring_r + ring_r * a.sin()]);
-        pts.push([ring_r * a2.cos(), 0.0, h + ring_r + ring_r * a2.sin()]);
-        lines.push_cell(&[rb as i64, (rb + 1) as i64]);
+    }
+    for i in 0..ring_res {
+        lines.push_cell(&[(rb + i) as i64, (rb + (i + 1) % ring_res) as i64]);
     }
     // Crown (cross bar at base)
     let cb = pts.len();

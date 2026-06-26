@@ -98,6 +98,7 @@ pub fn terrain_ridged(
             height_data,
             1,
         )));
+    mesh.point_data_mut().set_active_scalars("Height");
     mesh
 }
 

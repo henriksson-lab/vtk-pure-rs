@@ -27,8 +27,8 @@ pub fn wine_barrel(
         let b1 = (f + 1) * na;
         for j in 0..na {
             let j1 = (j + 1) % na;
-            polys.push_cell(&[(b0 + j) as i64, (b1 + j) as i64, (b1 + j1) as i64]);
-            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b0 + j1) as i64, (b1 + j1) as i64]);
+            polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b1 + j) as i64]);
         }
     }
     // Hoops (rings at 1/4 and 3/4 height)
@@ -45,14 +45,14 @@ pub fn wine_barrel(
     for j in 0..na {
         polys.push_cell(&[
             (nf * na + j) as i64,
-            top_c as i64,
             (nf * na + (j + 1) % na) as i64,
+            top_c as i64,
         ]);
     }
     let bot_c = pts.len();
     pts.push([0.0, 0.0, 0.0]);
     for j in 0..na {
-        polys.push_cell(&[j as i64, ((j + 1) % na) as i64, bot_c as i64]);
+        polys.push_cell(&[j as i64, bot_c as i64, ((j + 1) % na) as i64]);
     }
     let mut m = PolyData::new();
     m.points = pts;

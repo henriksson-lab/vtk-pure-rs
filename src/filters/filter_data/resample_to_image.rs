@@ -62,6 +62,7 @@ pub fn resample_to_image(input: &PolyData, array_name: &str, dimensions: [usize;
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             array_name, values, 1,
         )));
+    img.point_data_mut().set_active_scalars(array_name);
     img
 }
 

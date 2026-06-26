@@ -47,7 +47,8 @@ pub fn gyroscope(radius: f64, na: usize) -> PolyData {
     // Stand
     let sb = pts.len();
     pts.push([0.0, 0.0, -radius * 1.3]);
-    lines.push_cell(&[(g2b + na / 2) as i64, sb as i64]); // bottom of outer ring to stand
+    let bottom = g2b + 3 * na / 4;
+    lines.push_cell(&[bottom as i64, sb as i64]); // bottom of outer ring to stand
     let mut m = PolyData::new();
     m.points = pts;
     m.polys = polys;
@@ -63,5 +64,20 @@ mod tests {
         let m = gyroscope(2.0, 16);
         assert!(m.points.len() > 40);
         assert!(m.lines.num_cells() > 20);
+    }
+
+    #[test]
+    fn stand_attaches_to_bottom_of_outer_ring() {
+        let radius = 2.0;
+        let na = 16;
+        let m = gyroscope(radius, na);
+        let g2b = 1 + na + 2 + na;
+        let bottom = g2b + 3 * na / 4;
+        let stand = m.points.len() - 1;
+        let line = m.lines.cell(m.lines.num_cells() - 1);
+        let p = m.points.get(bottom);
+
+        assert_eq!(line, &[bottom as i64, stand as i64]);
+        assert!(p[1] < -radius + 1e-12);
     }
 }

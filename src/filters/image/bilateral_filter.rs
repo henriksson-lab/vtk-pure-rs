@@ -25,21 +25,26 @@ pub fn bilateral_filter(
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n: usize = nx * ny * nz;
+    if n == 0 {
+        return input.clone();
+    }
     let spacing = input.spacing();
+    let spatial_sigma = if spatial_sigma.is_finite() && spatial_sigma > 0.0 {
+        spatial_sigma
+    } else {
+        f64::EPSILON
+    };
+    let intensity_sigma = if intensity_sigma.is_finite() && intensity_sigma > 0.0 {
+        intensity_sigma
+    } else {
+        f64::EPSILON
+    };
 
     // Kernel radius: 2 * sigma in voxels, at least 1
     let radius: i64 = (2.0 * spatial_sigma).ceil().max(1.0) as i64;
 
-    let inv_2s_sq: f64 = if spatial_sigma > 1e-15 {
-        1.0 / (2.0 * spatial_sigma * spatial_sigma)
-    } else {
-        0.0
-    };
-    let inv_2i_sq: f64 = if intensity_sigma > 1e-15 {
-        1.0 / (2.0 * intensity_sigma * intensity_sigma)
-    } else {
-        0.0
-    };
+    let inv_2s_sq: f64 = 1.0 / (2.0 * spatial_sigma * spatial_sigma);
+    let inv_2i_sq: f64 = 1.0 / (2.0 * intensity_sigma * intensity_sigma);
 
     // Read scalar values
     let mut values = vec![0.0f64; n];

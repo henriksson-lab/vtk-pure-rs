@@ -9,7 +9,7 @@ use crate::data::{AnyDataArray, CellArray, DataArray, HyperTreeGrid, Points, Pol
 /// `axis`: 0=X, 1=Y, 2=Z. Returns a PolyData with quads at the slice plane.
 pub fn amr_slice(htg: &HyperTreeGrid, axis: usize, position: f64) -> PolyData {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -21,10 +21,9 @@ pub fn amr_slice(htg: &HyperTreeGrid, axis: usize, position: f64) -> PolyData {
     ];
     let origin = [bounds.x_min, bounds.y_min, bounds.z_min];
 
-    // Find which coarse cell layer the slice passes through
-    let cell_idx = ((position - origin[axis]) / spacing[axis]).floor() as usize;
-    let max_idx = gs[axis].saturating_sub(1);
-    let _cell_idx = cell_idx.min(max_idx);
+    let axis_min = origin[axis];
+    let axis_max = axis_min + gs[axis] as f64 * spacing[axis];
+    let position = position.clamp(axis_min, axis_max);
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -95,29 +94,36 @@ mod tests {
 
     #[test]
     fn slice_2d_grid() {
-        let htg = HyperTreeGrid::new([4, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([5, 5, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let slice = amr_slice(&htg, 2, 0.0); // XY slice at z=0
         assert_eq!(slice.polys.num_cells(), 16); // 4x4 cells
     }
 
     #[test]
     fn slice_3d_grid_x() {
-        let htg = HyperTreeGrid::new([4, 3, 2], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([5, 4, 3], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let slice = amr_slice(&htg, 0, 2.0); // YZ slice at x=2
         assert_eq!(slice.polys.num_cells(), 6); // 3*2
     }
 
     #[test]
     fn slice_3d_grid_y() {
-        let htg = HyperTreeGrid::new([4, 3, 2], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([5, 4, 3], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let slice = amr_slice(&htg, 1, 1.5); // XZ slice at y=1.5
         assert_eq!(slice.polys.num_cells(), 8); // 4*2
     }
 
     #[test]
     fn with_indices() {
-        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let htg = HyperTreeGrid::new([4, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let slice = amr_slice_with_indices(&htg, 2, 0.0);
         assert!(slice.cell_data().get_array("SliceIndex").is_some());
+    }
+
+    #[test]
+    fn clamps_slice_to_bounds() {
+        let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let slice = amr_slice(&htg, 0, -10.0);
+        assert_eq!(slice.points.get(0)[0], 0.0);
     }
 }

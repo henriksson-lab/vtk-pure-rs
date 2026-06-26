@@ -4,97 +4,102 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Extract silhouette edges from a triangle mesh as seen from a given viewpoint.
 ///
-/// An edge is a silhouette edge if it is shared by exactly two triangles where
-/// one is front-facing and the other is back-facing with respect to the viewpoint.
-/// Boundary edges (used by only one face) that are front-facing are also included.
+/// An edge is a silhouette edge if its two incident polygon normals face opposite
+/// directions with respect to the viewpoint. Feature edges above VTK's default
+/// 60 degree feature angle are also emitted.
 ///
 /// Returns a PolyData with line cells representing the silhouette edges.
 pub fn extract_silhouette(input: &PolyData, viewpoint: [f64; 3]) -> PolyData {
-    let num_faces: usize = input.polys.num_cells();
-    if num_faces == 0 {
+    if input.polys.num_cells() == 0 {
         return PolyData::default();
     }
 
-    // Compute face normals and determine front/back facing.
-    let mut face_facing: Vec<bool> = Vec::with_capacity(num_faces); // true = front-facing
+    let feature_angle_cos = 60.0_f64.to_radians().cos();
+    let mut edges: HashMap<(i64, i64), TwoNormals> = HashMap::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
-            face_facing.push(false);
+        let np = cell.len();
+        if np < 3 {
             continue;
         }
-        let p0 = input.points.get(cell[0] as usize);
-        let p1 = input.points.get(cell[1] as usize);
-        let p2 = input.points.get(cell[2] as usize);
+        let normal = polygon_normal(input, cell);
 
-        // Face normal via cross product.
-        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-        let nx: f64 = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny: f64 = e1[2] * e2[0] - e1[0] * e2[2];
-        let nz: f64 = e1[0] * e2[1] - e1[1] * e2[0];
-
-        // View direction from face centroid to viewpoint.
-        let cx: f64 = (p0[0] + p1[0] + p2[0]) / 3.0;
-        let cy: f64 = (p0[1] + p1[1] + p2[1]) / 3.0;
-        let cz: f64 = (p0[2] + p1[2] + p2[2]) / 3.0;
-        let vx: f64 = viewpoint[0] - cx;
-        let vy: f64 = viewpoint[1] - cy;
-        let vz: f64 = viewpoint[2] - cz;
-
-        let dot: f64 = nx * vx + ny * vy + nz * vz;
-        face_facing.push(dot > 0.0);
-    }
-
-    // Build edge-to-face adjacency. Key: (min_vertex, max_vertex).
-    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    for (fi, cell) in input.polys.iter().enumerate() {
-        let n: usize = cell.len();
-        for k in 0..n {
-            let a: i64 = cell[k];
-            let b: i64 = cell[(k + 1) % n];
-            let key = if a < b { (a, b) } else { (b, a) };
-            edge_faces.entry(key).or_default().push(fi);
+        for j in 0..np {
+            let p1 = cell[j];
+            let p2 = cell[(j + 1) % np];
+            let key = if p1 <= p2 { (p1, p2) } else { (p2, p1) };
+            let entry = edges.entry(key).or_default();
+            if p1 < p2 {
+                entry.left = normal;
+            } else {
+                entry.right = normal;
+            }
         }
     }
 
-    // Collect silhouette edges.
-    let mut out_points: Points<f64> = Points::new();
     let mut out_lines: CellArray = CellArray::new();
-    let mut point_map: HashMap<i64, i64> = HashMap::new();
+    for (&(p1, p2), normals) in &edges {
+        let left_norm = norm(normals.left);
+        let right_norm = norm(normals.right);
+        let winged = left_norm > 0.5 && right_norm > 0.5;
+        let center = midpoint(input.points.get(p1 as usize), input.points.get(p2 as usize));
+        let view = [
+            viewpoint[0] - center[0],
+            viewpoint[1] - center[1],
+            viewpoint[2] - center[2],
+        ];
+        let d1 = dot(view, normals.left);
+        let d2 = dot(view, normals.right);
+        let edge_angle_cos = dot(normals.left, normals.right);
 
-    let mut get_or_insert = |vid: i64, pts: &mut Points<f64>, map: &mut HashMap<i64, i64>| -> i64 {
-        if let Some(&id) = map.get(&vid) {
-            return id;
-        }
-        let id: i64 = pts.len() as i64;
-        pts.push(input.points.get(vid as usize));
-        map.insert(vid, id);
-        id
-    };
-
-    for (&(a, b), faces) in &edge_faces {
-        let is_silhouette: bool = if faces.len() == 1 {
-            // Boundary edge: include if the single face is front-facing.
-            face_facing[faces[0]]
-        } else if faces.len() == 2 {
-            // Silhouette: one front-facing and one back-facing.
-            face_facing[faces[0]] != face_facing[faces[1]]
-        } else {
-            false
-        };
-
-        if is_silhouette {
-            let id_a: i64 = get_or_insert(a, &mut out_points, &mut point_map);
-            let id_b: i64 = get_or_insert(b, &mut out_points, &mut point_map);
-            out_lines.push_cell(&[id_a, id_b]);
+        if (winged && d1 * d2 < 0.0) || (edge_angle_cos < feature_angle_cos) {
+            out_lines.push_cell(&[p1, p2]);
         }
     }
 
     let mut pd = PolyData::new();
-    pd.points = out_points;
+    pd.points = input.points.clone();
     pd.lines = out_lines;
     pd
+}
+
+#[derive(Clone, Copy, Default)]
+struct TwoNormals {
+    left: [f64; 3],
+    right: [f64; 3],
+}
+
+fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
+    let mut normal = [0.0; 3];
+    for i in 0..cell.len() {
+        let p = input.points.get(cell[i] as usize);
+        let q = input.points.get(cell[(i + 1) % cell.len()] as usize);
+        normal[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        normal[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        normal[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let len = norm(normal);
+    if len > 1e-15 {
+        [normal[0] / len, normal[1] / len, normal[2] / len]
+    } else {
+        [0.0, 0.0, 0.0]
+    }
+}
+
+fn midpoint(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        0.5 * (a[0] + b[0]),
+        0.5 * (a[1] + b[1]),
+        0.5 * (a[2] + b[2]),
+    ]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn norm(v: [f64; 3]) -> f64 {
+    dot(v, v).sqrt()
 }
 
 #[cfg(test)]

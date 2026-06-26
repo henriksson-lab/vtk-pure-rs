@@ -1,23 +1,21 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Estimate principal curvatures (k1, k2) at each vertex from mean and
-/// Gaussian curvature.
-///
-/// Uses the angle-deficit method for Gaussian curvature and cotangent-weight
-/// formula for mean curvature, then derives:
-///   k1 = H + sqrt(H^2 - K)
-///   k2 = H - sqrt(H^2 - K)
+/// Gaussian curvature, following vtkCurvatures' triangle-mesh formulas.
 ///
 /// Adds "PrincipalCurvature1" and "PrincipalCurvature2" point data arrays.
 /// Input should be a triangle mesh.
 pub fn compute_principal_curvatures(input: &PolyData) -> PolyData {
     let n = input.points.len();
     let mut gauss = vec![0.0f64; n];
-    let mut mean = vec![0.0f64; n];
     let mut area = vec![0.0f64; n];
 
     // Initialize Gaussian curvature with 2*pi (angle deficit starts from full circle)
     gauss.fill(2.0 * std::f64::consts::PI);
+
+    let mut triangles = Vec::new();
+    let mut edge_faces: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
 
     for cell in input.polys.iter() {
         if cell.len() != 3 {
@@ -49,23 +47,24 @@ pub fn compute_principal_curvatures(input: &PolyData) -> PolyData {
         let cross = cross_3(e01, e02);
         let tri_area: f64 = 0.5 * length(cross);
 
-        let va: f64 = tri_area / 3.0;
-        area[i0] += va;
-        area[i1] += va;
-        area[i2] += va;
+        area[i0] += tri_area;
+        area[i1] += tri_area;
+        area[i2] += tri_area;
 
-        let cot0 = cot(a0);
-        let cot1 = cot(a1);
-        let cot2 = cot(a2);
+        let tri_id = triangles.len();
+        triangles.push(TriangleInfo {
+            ids: [i0, i1, i2],
+            normal: normalize(cross),
+            area: tri_area,
+        });
 
-        let len_e12: f64 = length(e12);
-        let len_e02: f64 = length(e02);
-        let len_e01: f64 = length(e01);
-
-        mean[i0] += cot1 * len_e02 * len_e02 + cot2 * len_e01 * len_e01;
-        mean[i1] += cot0 * len_e12 * len_e12 + cot2 * len_e01 * len_e01;
-        mean[i2] += cot0 * len_e12 * len_e12 + cot1 * len_e02 * len_e02;
+        for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
+            let key = if a < b { (a, b) } else { (b, a) };
+            edge_faces.entry(key).or_default().push(tri_id);
+        }
     }
+
+    let mean = compute_vtk_mean_curvature(input, &triangles, &edge_faces);
 
     // Normalize by area and compute principal curvatures
     let mut k1 = vec![0.0f64; n];
@@ -73,8 +72,8 @@ pub fn compute_principal_curvatures(input: &PolyData) -> PolyData {
 
     for i in 0..n {
         if area[i] > 1e-20 {
-            let g: f64 = gauss[i] / area[i];
-            let h: f64 = mean[i] / (4.0 * area[i]);
+            let g: f64 = 3.0 * gauss[i] / area[i];
+            let h: f64 = mean[i];
 
             let disc: f64 = (h * h - g).max(0.0);
             let sqrt_disc: f64 = disc.sqrt();
@@ -91,6 +90,76 @@ pub fn compute_principal_curvatures(input: &PolyData) -> PolyData {
         DataArray::from_vec("PrincipalCurvature2", k2, 1),
     ));
     pd
+}
+
+#[derive(Clone, Copy)]
+struct TriangleInfo {
+    ids: [usize; 3],
+    normal: [f64; 3],
+    area: f64,
+}
+
+fn compute_vtk_mean_curvature(
+    input: &PolyData,
+    triangles: &[TriangleInfo],
+    edge_faces: &HashMap<(usize, usize), Vec<usize>>,
+) -> Vec<f64> {
+    let mut sum = vec![0.0f64; input.points.len()];
+    let mut num_neighbors = vec![0usize; input.points.len()];
+
+    for (f, tri) in triangles.iter().enumerate() {
+        for v in 0..3 {
+            let v_l = tri.ids[v];
+            let v_r = tri.ids[(v + 1) % 3];
+            let key = if v_l < v_r { (v_l, v_r) } else { (v_r, v_l) };
+            let Some(faces) = edge_faces.get(&key) else {
+                continue;
+            };
+            if faces.len() != 2 {
+                continue;
+            }
+            let n = if faces[0] == f { faces[1] } else { faces[0] };
+            if n <= f {
+                continue;
+            }
+
+            let ore = input.points.get(v_l);
+            let end = input.points.get(v_r);
+            let edge = sub(end, ore);
+            let length = length(edge);
+            if length <= 1e-20 {
+                continue;
+            }
+            let edge_unit = [edge[0] / length, edge[1] / length, edge[2] / length];
+            let neighbor = triangles[n];
+            let area = tri.area + neighbor.area;
+
+            let cs = dot(tri.normal, neighbor.normal);
+            let sn = dot(cross_3(tri.normal, neighbor.normal), edge_unit);
+            let hf = if sn != 0.0 || cs != 0.0 {
+                length * sn.atan2(cs)
+            } else {
+                0.0
+            };
+            let hf = if area != 0.0 { 3.0 * hf / area } else { hf };
+
+            sum[v_l] += hf;
+            sum[v_r] += hf;
+            num_neighbors[v_l] += 1;
+            num_neighbors[v_r] += 1;
+        }
+    }
+
+    sum.into_iter()
+        .zip(num_neighbors)
+        .map(|(value, count)| {
+            if count > 0 {
+                0.5 * value / count as f64
+            } else {
+                0.0
+            }
+        })
+        .collect()
 }
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -113,6 +182,15 @@ fn length(v: [f64; 3]) -> f64 {
     (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
+fn normalize(v: [f64; 3]) -> [f64; 3] {
+    let len = length(v);
+    if len > 1e-20 {
+        [v[0] / len, v[1] / len, v[2] / len]
+    } else {
+        [0.0, 0.0, 0.0]
+    }
+}
+
 fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
     let la: f64 = length(a);
     let lb: f64 = length(b);
@@ -121,15 +199,6 @@ fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
     }
     let cos_angle: f64 = (dot(a, b) / (la * lb)).clamp(-1.0, 1.0);
     cos_angle.acos()
-}
-
-fn cot(angle: f64) -> f64 {
-    let s: f64 = angle.sin();
-    if s.abs() < 1e-20 {
-        0.0
-    } else {
-        angle.cos() / s
-    }
 }
 
 #[cfg(test)]

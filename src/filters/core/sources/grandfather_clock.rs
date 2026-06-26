@@ -37,7 +37,7 @@ pub fn grandfather_clock(height: f64, width: f64, depth: f64) -> PolyData {
         (cb + 6) as i64,
         (cb + 7) as i64,
     ]); // top
-        // Crown (triangular pediment)
+    polys.push_cell(&[cb as i64, (cb + 3) as i64, (cb + 2) as i64, (cb + 1) as i64]);
     let crown = pts.len();
     pts.push([0.0, -hd, height + height * 0.08]);
     polys.push_cell(&[(cb + 4) as i64, (cb + 5) as i64, crown as i64]);
@@ -113,7 +113,7 @@ mod tests {
     fn test_clock() {
         let m = grandfather_clock(2.0, 0.5, 0.3);
         assert!(m.points.len() > 40);
-        assert!(m.polys.num_cells() >= 6);
+        assert!(m.polys.num_cells() >= 7);
         assert!(m.lines.num_cells() > 20);
     }
 }

@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::{HashMap, HashSet};
 
 /// For each vertex, count the number of neighboring vertices (connected by an edge).
 ///
@@ -13,9 +13,12 @@ pub fn compute_vertex_neighbor_counts(input: &PolyData) -> PolyData {
         .collect();
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("VertexNeighborCount", counts, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "VertexNeighborCount",
+            counts,
+            1,
+        )));
     pd
 }
 
@@ -54,17 +57,66 @@ pub fn n_ring_neighborhood(input: &PolyData, vertex: usize, n: usize) -> HashSet
 /// Build an adjacency map: vertex index -> set of neighboring vertex indices.
 fn build_adjacency(input: &PolyData) -> HashMap<usize, HashSet<usize>> {
     let mut adj: HashMap<usize, HashSet<usize>> = HashMap::new();
+    let npoints = input.points.len();
 
-    for cell in input.polys.iter() {
-        let n = cell.len();
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            adj.entry(a).or_default().insert(b);
-            adj.entry(b).or_default().insert(a);
+    add_closed_cell_edges(&input.polys, npoints, &mut adj);
+    add_open_cell_edges(&input.lines, npoints, &mut adj);
+    add_closed_cell_edges(&input.strips, npoints, &mut adj);
+    add_open_cell_edges(&input.verts, npoints, &mut adj);
+
+    adj
+}
+
+fn add_closed_cell_edges(
+    cells: &crate::data::CellArray,
+    npoints: usize,
+    adj: &mut HashMap<usize, HashSet<usize>>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        if indices.len() < 2 {
+            continue;
+        }
+        for i in 0..indices.len() {
+            add_edge(adj, indices[i], indices[(i + 1) % indices.len()]);
         }
     }
-    adj
+}
+
+fn add_open_cell_edges(
+    cells: &crate::data::CellArray,
+    npoints: usize,
+    adj: &mut HashMap<usize, HashSet<usize>>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        for edge in indices.windows(2) {
+            add_edge(adj, edge[0], edge[1]);
+        }
+    }
+}
+
+fn add_edge(adj: &mut HashMap<usize, HashSet<usize>>, a: usize, b: usize) {
+    if a == b {
+        return;
+    }
+    adj.entry(a).or_default().insert(b);
+    adj.entry(b).or_default().insert(a);
+}
+
+fn valid_cell_indices(cell: &[i64], npoints: usize) -> Option<Vec<usize>> {
+    let mut indices = Vec::with_capacity(cell.len());
+    for &id in cell {
+        if id < 0 || id as usize >= npoints {
+            return None;
+        }
+        indices.push(id as usize);
+    }
+    Some(indices)
 }
 
 #[cfg(test)]
@@ -78,12 +130,19 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = compute_vertex_neighbor_counts(&pd);
-        let arr = result.point_data().get_array("VertexNeighborCount").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("VertexNeighborCount")
+            .unwrap();
         assert_eq!(arr.num_tuples(), 3);
         let mut val = [0.0f64];
         for i in 0..3 {
             arr.tuple_as_f64(i, &mut val);
-            assert!((val[0] - 2.0).abs() < 1e-10, "vertex {} should have 2 neighbors", i);
+            assert!(
+                (val[0] - 2.0).abs() < 1e-10,
+                "vertex {} should have 2 neighbors",
+                i
+            );
         }
     }
 
@@ -101,10 +160,16 @@ mod tests {
             vec![[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1]],
         );
         let result = compute_vertex_neighbor_counts(&pd);
-        let arr = result.point_data().get_array("VertexNeighborCount").unwrap();
+        let arr = result
+            .point_data()
+            .get_array("VertexNeighborCount")
+            .unwrap();
         let mut val = [0.0f64];
         arr.tuple_as_f64(0, &mut val);
-        assert!((val[0] - 4.0).abs() < 1e-10, "center vertex should have 4 neighbors");
+        assert!(
+            (val[0] - 4.0).abs() < 1e-10,
+            "center vertex should have 4 neighbors"
+        );
     }
 
     #[test]

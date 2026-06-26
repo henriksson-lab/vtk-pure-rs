@@ -12,6 +12,9 @@ pub fn arrow_3d(
     resolution: usize,
 ) -> PolyData {
     let n = resolution.max(4);
+    let shaft_radius = shaft_radius.max(0.0);
+    let tip_radius = tip_radius.max(0.0);
+    let tip_fraction = tip_fraction.clamp(0.0, 1.0);
     let dir = [end[0] - start[0], end[1] - start[1], end[2] - start[2]];
     let length = (dir[0].powi(2) + dir[1].powi(2) + dir[2].powi(2)).sqrt();
     if length < 1e-15 {
@@ -61,6 +64,18 @@ pub fn arrow_3d(
         polys.push_cell(&[p0, p2, p3]);
     }
 
+    let start_center = points.len() as i64;
+    points.push(start);
+    for i in 0..n {
+        polys.push_cell(&[start_center, (i + 1) as i64, i as i64]);
+    }
+
+    let shaft_end_center = points.len() as i64;
+    points.push(shaft_end);
+    for i in 0..n {
+        polys.push_cell(&[shaft_end_center, (row + i) as i64, (row + i + 1) as i64]);
+    }
+
     // Tip cone
     let cone_base_offset = points.len();
     for i in 0..=n {
@@ -76,6 +91,13 @@ pub fn arrow_3d(
     for i in 0..n {
         let b0 = (cone_base_offset + i) as i64;
         polys.push_cell(&[b0, b0 + 1, tip_idx]);
+    }
+
+    let cone_base_center = points.len() as i64;
+    points.push(shaft_end);
+    for i in 0..n {
+        let b0 = (cone_base_offset + i) as i64;
+        polys.push_cell(&[cone_base_center, b0 + 1, b0]);
     }
 
     let mut mesh = PolyData::new();
@@ -110,5 +132,11 @@ mod tests {
     fn zero_length() {
         let a = arrow_3d([1.0, 1.0, 1.0], [1.0, 1.0, 1.0], 0.1, 0.2, 0.3, 8);
         assert_eq!(a.points.len(), 0);
+    }
+
+    #[test]
+    fn clamps_tip_fraction() {
+        let a = arrow_3d([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 0.1, 0.2, 2.0, 8);
+        assert!(a.polys.num_cells() > 0);
     }
 }

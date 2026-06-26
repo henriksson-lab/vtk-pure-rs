@@ -22,9 +22,13 @@ fn uv_planar(input: &PolyData, axis_u: usize, axis_v: usize) -> PolyData {
     let n: usize = input.points.len();
     if n == 0 {
         let mut pd = input.clone();
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("UV", Vec::<f64>::new(), 2),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "UV",
+                Vec::<f64>::new(),
+                2,
+            )));
+        pd.point_data_mut().set_active_tcoords("UV");
         return pd;
     }
 
@@ -58,9 +62,9 @@ fn uv_planar(input: &PolyData, axis_u: usize, axis_v: usize) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("UV", uvs, 2),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
+    pd.point_data_mut().set_active_tcoords("UV");
     pd
 }
 
@@ -72,9 +76,13 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
     let n: usize = input.points.len();
     if n == 0 {
         let mut pd = input.clone();
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("UV", Vec::<f64>::new(), 2),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "UV",
+                Vec::<f64>::new(),
+                2,
+            )));
+        pd.point_data_mut().set_active_tcoords("UV");
         return pd;
     }
 
@@ -99,7 +107,8 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
         arbitrary[1] - dot_arb * ax[1],
         arbitrary[2] - dot_arb * ax[2],
     ];
-    let e1_len: f64 = (e1_raw[0] * e1_raw[0] + e1_raw[1] * e1_raw[1] + e1_raw[2] * e1_raw[2]).sqrt();
+    let e1_len: f64 =
+        (e1_raw[0] * e1_raw[0] + e1_raw[1] * e1_raw[1] + e1_raw[2] * e1_raw[2]).sqrt();
     let e1: [f64; 3] = [e1_raw[0] / e1_len, e1_raw[1] / e1_len, e1_raw[2] / e1_len];
     // e2 = ax cross e1
     let e2: [f64; 3] = [
@@ -110,7 +119,7 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
 
     // Compute height and angle for each point
     let mut heights: Vec<f64> = Vec::with_capacity(n);
-    let mut angles: Vec<f64> = Vec::with_capacity(n);
+    let mut angle_u: Vec<f64> = Vec::with_capacity(n);
     let mut min_h: f64 = f64::MAX;
     let mut max_h: f64 = f64::MIN;
 
@@ -119,29 +128,32 @@ pub fn uv_cylindrical(input: &PolyData, axis: [f64; 3]) -> PolyData {
         let h: f64 = p[0] * ax[0] + p[1] * ax[1] + p[2] * ax[2];
         let proj1: f64 = p[0] * e1[0] + p[1] * e1[1] + p[2] * e1[2];
         let proj2: f64 = p[0] * e2[0] + p[1] * e2[1] + p[2] * e2[2];
-        let angle: f64 = proj2.atan2(proj1);
+        let radial_len = (proj1 * proj1 + proj2 * proj2).sqrt();
+        let u = if radial_len > 1e-15 {
+            (proj1 / radial_len).clamp(-1.0, 1.0).acos() / std::f64::consts::PI
+        } else {
+            0.0
+        };
         heights.push(h);
-        angles.push(angle);
+        angle_u.push(u);
         min_h = min_h.min(h);
         max_h = max_h.max(h);
     }
 
     let range_h: f64 = max_h - min_h;
     let inv_h: f64 = if range_h > 1e-15 { 1.0 / range_h } else { 0.0 };
-    let pi2: f64 = 2.0 * std::f64::consts::PI;
 
     let mut uvs: Vec<f64> = Vec::with_capacity(n * 2);
     for i in 0..n {
-        let u: f64 = (angles[i] + std::f64::consts::PI) / pi2; // map [-pi, pi] to [0, 1]
         let v: f64 = (heights[i] - min_h) * inv_h;
-        uvs.push(u);
+        uvs.push(angle_u[i]);
         uvs.push(v);
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("UV", uvs, 2),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
+    pd.point_data_mut().set_active_tcoords("UV");
     pd
 }
 
@@ -184,11 +196,7 @@ mod tests {
     #[test]
     fn cylindrical_produces_uv() {
         let pd = PolyData::from_triangles(
-            vec![
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 1.0],
-                [-1.0, 0.0, 2.0],
-            ],
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 1.0], [-1.0, 0.0, 2.0]],
             vec![[0, 1, 2]],
         );
         let result = uv_cylindrical(&pd, [0.0, 0.0, 1.0]);

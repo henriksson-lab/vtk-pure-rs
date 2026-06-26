@@ -14,6 +14,9 @@ pub fn resample_nearest(input: &ImageData, scalars: &str, new_dims: [u32; 3]) ->
     let onx: usize = old_dims[0] as usize;
     let ony: usize = old_dims[1] as usize;
     let onz: usize = old_dims[2] as usize;
+    if onx == 0 || ony == 0 || onz == 0 {
+        return input.clone();
+    }
 
     let nnx: usize = (new_dims[0] as usize).max(1);
     let nny: usize = (new_dims[1] as usize).max(1);
@@ -26,9 +29,11 @@ pub fn resample_nearest(input: &ImageData, scalars: &str, new_dims: [u32; 3]) ->
     let mut old_values: Vec<f64> = vec![0.0; old_n * num_comp];
     let mut buf: Vec<f64> = vec![0.0; num_comp];
     for i in 0..old_n {
-        arr.tuple_as_f64(i, &mut buf);
-        for c in 0..num_comp {
-            old_values[i * num_comp + c] = buf[c];
+        if i < arr.num_tuples() {
+            arr.tuple_as_f64(i, &mut buf);
+            for c in 0..num_comp {
+                old_values[i * num_comp + c] = buf[c];
+            }
         }
     }
 
@@ -44,17 +49,17 @@ pub fn resample_nearest(input: &ImageData, scalars: &str, new_dims: [u32; 3]) ->
         if nnx > 1 {
             extent_x / (nnx as f64 - 1.0)
         } else {
-            extent_x
+            old_spacing[0]
         },
         if nny > 1 {
             extent_y / (nny as f64 - 1.0)
         } else {
-            extent_y
+            old_spacing[1]
         },
         if nnz > 1 {
             extent_z / (nnz as f64 - 1.0)
         } else {
-            extent_z
+            old_spacing[2]
         },
     ];
 
@@ -99,6 +104,7 @@ pub fn resample_nearest(input: &ImageData, scalars: &str, new_dims: [u32; 3]) ->
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             scalars, new_values, num_comp,
         )));
+    out.point_data_mut().set_active_scalars(scalars);
     out
 }
 

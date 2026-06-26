@@ -5,32 +5,14 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Creates a new ImageData with the same dimensions, spacing, and origin,
 /// containing a new single-component array named "{name}_Component{component}".
 pub fn extract_component(input: &ImageData, array_name: &str, component: usize) -> ImageData {
-    let dims = input.dimensions();
-    let mut result = ImageData::with_dimensions(dims[0], dims[1], dims[2]);
-    result.set_spacing(input.spacing());
-    result.set_origin(input.origin());
-
-    // Copy all existing arrays unchanged
-    for arr_idx in 0..input.point_data().num_arrays() {
-        let arr = match input.point_data().get_array_by_index(arr_idx) {
-            Some(a) => a,
-            None => continue,
-        };
-        result.point_data_mut().add_array(arr.clone());
-    }
-
-    // Extract the requested component
-    let arr = input
-        .point_data()
-        .get_array(array_name)
-        .expect("Array not found");
+    let arr = match input.point_data().get_array(array_name) {
+        Some(a) => a,
+        None => return input.clone(),
+    };
     let nc: usize = arr.num_components();
-    assert!(
-        component < nc,
-        "Component index {} out of range for array with {} components",
-        component,
-        nc,
-    );
+    if component >= nc {
+        return input.clone();
+    }
 
     let n: usize = arr.num_tuples();
     let mut data: Vec<f64> = Vec::with_capacity(n);
@@ -42,16 +24,16 @@ pub fn extract_component(input: &ImageData, array_name: &str, component: usize) 
     }
 
     let out_name: String = format!("{}_Component{}", array_name, component);
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(&out_name, data, 1)));
-    result
+    let mut result = ImageData::with_dimensions(0, 0, 0);
+    result.set_extent(input.extent());
+    result.set_spacing(input.spacing());
+    result.set_origin(input.origin());
+    result.with_point_array(AnyDataArray::F64(DataArray::from_vec(&out_name, data, 1)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::DataSet;
 
     #[test]
     fn extract_first_component() {
@@ -71,6 +53,7 @@ mod tests {
         let out_arr = result.point_data().get_array("rgb_Component0").unwrap();
         assert_eq!(out_arr.num_tuples(), n);
         assert_eq!(out_arr.num_components(), 1);
+        assert!(result.point_data().get_array("rgb").is_none());
         let mut val = [0.0f64];
         out_arr.tuple_as_f64(2, &mut val);
         assert!((val[0] - 2.0).abs() < 1e-12);
@@ -96,13 +79,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Component index 3 out of range")]
     fn out_of_range_component() {
         let mut img = ImageData::with_dimensions(2, 2, 1);
         let n: usize = img.num_points();
         let vals: Vec<f64> = vec![0.0; n * 2];
         img.point_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("v", vals, 2)));
-        extract_component(&img, "v", 3);
+        let result = extract_component(&img, "v", 3);
+        assert!(result.point_data().get_array("v_Component3").is_none());
     }
 }

@@ -13,65 +13,132 @@ pub fn vertex_glue(input: &PolyData, tolerance: f64) -> PolyData {
     let inv_tol = 1.0 / tol;
     let n = input.points.len();
 
-    // Snap each point to a grid cell and build a mapping
-    let mut grid_map: HashMap<(i64, i64, i64), usize> = HashMap::new();
+    // Bucket points by tolerance-sized grid cell, then check neighboring
+    // buckets by actual distance so points within tolerance are not separated
+    // just because they lie on opposite sides of a bucket boundary.
+    let mut buckets: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
     let mut point_remap = vec![0usize; n];
     let mut out_points = Points::<f64>::new();
+    let tol2 = tol * tol;
 
     for i in 0..n {
         let p = input.points.get(i);
-        let gx = (p[0] * inv_tol).round() as i64;
-        let gy = (p[1] * inv_tol).round() as i64;
-        let gz = (p[2] * inv_tol).round() as i64;
+        let gx = (p[0] * inv_tol).floor() as i64;
+        let gy = (p[1] * inv_tol).floor() as i64;
+        let gz = (p[2] * inv_tol).floor() as i64;
         let key = (gx, gy, gz);
 
-        let out_idx = if let Some(&idx) = grid_map.get(&key) {
+        let out_idx = if let Some(idx) = find_existing_point(p, key, &buckets, &out_points, tol2) {
             idx
         } else {
             let idx = out_points.len();
             out_points.push(p);
-            grid_map.insert(key, idx);
+            buckets.entry(key).or_default().push(idx);
             idx
         };
         point_remap[i] = out_idx;
     }
 
+    // Remap verts
+    let mut out_verts = CellArray::new();
+    for cell in input.verts.iter() {
+        if let Some(mapped) = remap_cell(cell, &point_remap) {
+            let mut unique = mapped.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            if !unique.is_empty() {
+                out_verts.push_cell(&mapped);
+            }
+        }
+    }
+
     // Remap polys
     let mut out_polys = CellArray::new();
     for cell in input.polys.iter() {
-        let mapped: Vec<i64> = cell
-            .iter()
-            .map(|&id| point_remap[id as usize] as i64)
-            .collect();
-        // Remove degenerate cells
-        let mut unique = mapped.clone();
-        unique.sort();
-        unique.dedup();
-        if unique.len() >= 3 {
-            out_polys.push_cell(&mapped);
+        if let Some(mapped) = remap_cell(cell, &point_remap) {
+            // Remove degenerate cells
+            let mut unique = mapped.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            if unique.len() >= 3 {
+                out_polys.push_cell(&mapped);
+            }
         }
     }
 
     // Remap lines
     let mut out_lines = CellArray::new();
     for cell in input.lines.iter() {
-        let mapped: Vec<i64> = cell
-            .iter()
-            .map(|&id| point_remap[id as usize] as i64)
-            .collect();
-        let mut unique = mapped.clone();
-        unique.sort();
-        unique.dedup();
-        if unique.len() >= 2 {
-            out_lines.push_cell(&mapped);
+        if let Some(mapped) = remap_cell(cell, &point_remap) {
+            let mut unique = mapped.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            if unique.len() >= 2 {
+                out_lines.push_cell(&mapped);
+            }
+        }
+    }
+
+    // Remap triangle strips
+    let mut out_strips = CellArray::new();
+    for cell in input.strips.iter() {
+        if let Some(mapped) = remap_cell(cell, &point_remap) {
+            let mut unique = mapped.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            if unique.len() >= 3 {
+                out_strips.push_cell(&mapped);
+            }
         }
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
+    pd.verts = out_verts;
     pd.polys = out_polys;
     pd.lines = out_lines;
+    pd.strips = out_strips;
     pd
+}
+
+fn remap_cell(cell: &[i64], point_remap: &[usize]) -> Option<Vec<i64>> {
+    let mut mapped = Vec::with_capacity(cell.len());
+    for &id in cell {
+        if id < 0 || (id as usize) >= point_remap.len() {
+            return None;
+        }
+        mapped.push(point_remap[id as usize] as i64);
+    }
+    Some(mapped)
+}
+
+fn find_existing_point(
+    p: [f64; 3],
+    key: (i64, i64, i64),
+    buckets: &HashMap<(i64, i64, i64), Vec<usize>>,
+    out_points: &Points<f64>,
+    tol2: f64,
+) -> Option<usize> {
+    for dz in -1..=1 {
+        for dy in -1..=1 {
+            for dx in -1..=1 {
+                let neighbor_key = (key.0 + dx, key.1 + dy, key.2 + dz);
+                let Some(candidates) = buckets.get(&neighbor_key) else {
+                    continue;
+                };
+                for &candidate in candidates {
+                    let q = out_points.get(candidate);
+                    let d2 = (p[0] - q[0]) * (p[0] - q[0])
+                        + (p[1] - q[1]) * (p[1] - q[1])
+                        + (p[2] - q[2]) * (p[2] - q[2]);
+                    if d2 <= tol2 {
+                        return Some(candidate);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -135,5 +202,17 @@ mod tests {
         // Very large tolerance merges points 0 and 1
         let result = vertex_glue(&pd, 1.0);
         assert!(result.points.len() <= 3);
+    }
+
+    #[test]
+    fn merges_across_bucket_boundary() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.49, 0.0, 0.0]);
+        pd.points.push([0.51, 0.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.verts.push_cell(&[1]);
+
+        let result = vertex_glue(&pd, 0.05);
+        assert_eq!(result.points.len(), 1);
     }
 }

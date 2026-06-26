@@ -8,7 +8,7 @@ use crate::types::CellType;
 /// Each coarse cell becomes a hexahedron (3D) or quad (2D).
 pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> UnstructuredGrid {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -22,7 +22,7 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
 
     let mut grid = UnstructuredGrid::new();
 
-    if htg.dimension() == 2 {
+    if htg.dimensions()[2] <= 1 {
         // 2D: generate quads
         let mut pt_map: std::collections::HashMap<[i64; 2], usize> =
             std::collections::HashMap::new();
@@ -102,7 +102,7 @@ mod tests {
     fn htg_2d_to_ug() {
         let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let ug = hyper_tree_grid_to_unstructured_grid(&htg);
-        assert_eq!(ug.cells().num_cells(), 9);
+        assert_eq!(ug.cells().num_cells(), 4);
         assert_eq!(ug.cell_types()[0], CellType::Quad);
     }
 
@@ -110,7 +110,7 @@ mod tests {
     fn htg_3d_to_ug() {
         let htg = HyperTreeGrid::new([2, 2, 2], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let ug = hyper_tree_grid_to_unstructured_grid(&htg);
-        assert_eq!(ug.cells().num_cells(), 8);
+        assert_eq!(ug.cells().num_cells(), 1);
         assert_eq!(ug.cell_types()[0], CellType::Hexahedron);
     }
 
@@ -128,7 +128,16 @@ mod tests {
     fn single_cell_3d() {
         let htg = HyperTreeGrid::new([1, 1, 2], [0.0, 0.0, 0.0], [2.0, 3.0, 4.0]);
         let ug = hyper_tree_grid_to_unstructured_grid(&htg);
-        assert_eq!(ug.cells().num_cells(), 2); // 1x1x2
+        assert_eq!(ug.cells().num_cells(), 1); // singleton axes keep one root cell
         assert_eq!(ug.cell_types()[0], CellType::Hexahedron);
+    }
+
+    #[test]
+    fn empty_grid_uses_full_grid_bounds() {
+        let htg = HyperTreeGrid::new([3, 2, 1], [10.0, 20.0, 0.0], [2.0, 3.0, 1.0]);
+        assert!(htg.bounds().is_empty());
+        let ug = hyper_tree_grid_to_unstructured_grid(&htg);
+        assert_eq!(ug.cells().num_cells(), 2);
+        assert_eq!(ug.points.get(0), [10.0, 20.0, 0.0]);
     }
 }

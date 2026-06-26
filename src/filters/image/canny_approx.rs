@@ -20,6 +20,14 @@ pub fn image_canny(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let n = nx * ny;
+    if n == 0 {
+        return input.clone();
+    }
+    let sigma = if sigma.is_finite() && sigma > 0.0 {
+        sigma
+    } else {
+        f64::EPSILON
+    };
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
@@ -92,8 +100,8 @@ pub fn image_canny(
                 if di == 0 && dj == 0 {
                     continue;
                 }
-                let ni = (px as i64 + di);
-                let nj = (py as i64 + dj);
+                let ni = px as i64 + di;
+                let nj = py as i64 + dj;
                 if ni >= 0 && ni < nx as i64 && nj >= 0 && nj < ny as i64 {
                     let idx = nj as usize * nx + ni as usize;
                     if edges[idx] == 0.0 && mag[idx] >= low_threshold {

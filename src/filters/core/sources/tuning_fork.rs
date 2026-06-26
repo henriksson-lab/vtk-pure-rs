@@ -25,9 +25,24 @@ pub fn tuning_fork(prong_length: f64, prong_gap: f64, handle_length: f64, na: us
             polys.push_cell(&[(b0 + j) as i64, (b1 + j1) as i64, (b0 + j1) as i64]);
         }
     }
-    // U-bend at top (semicircle connecting two prongs)
-    let _bend_na = 8;
-    let _bend_r = prong_gap / 2.0;
+    // Bridge at the base of the prongs.
+    let bridge_b = pts.len();
+    let bridge_w = prong_gap + 2.0 * prong_r;
+    pts.push([-bridge_w * 0.5, -prong_r, 0.0]);
+    pts.push([bridge_w * 0.5, -prong_r, 0.0]);
+    pts.push([bridge_w * 0.5, prong_r, 0.0]);
+    pts.push([-bridge_w * 0.5, prong_r, 0.0]);
+    pts.push([-bridge_w * 0.5, -prong_r, prong_r * 2.0]);
+    pts.push([bridge_w * 0.5, -prong_r, prong_r * 2.0]);
+    pts.push([bridge_w * 0.5, prong_r, prong_r * 2.0]);
+    pts.push([-bridge_w * 0.5, prong_r, prong_r * 2.0]);
+    let f = |i: usize| (bridge_b + i) as i64;
+    polys.push_cell(&[f(0), f(3), f(2), f(1)]);
+    polys.push_cell(&[f(4), f(5), f(6), f(7)]);
+    polys.push_cell(&[f(0), f(1), f(5), f(4)]);
+    polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+    polys.push_cell(&[f(0), f(4), f(7), f(3)]);
+    polys.push_cell(&[f(1), f(2), f(6), f(5)]);
     for &x_side in &[-1.0f64, 1.0] {
         // Prong (cylinder along +Z)
         let pb = pts.len();

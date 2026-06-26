@@ -30,11 +30,12 @@ pub fn running_track(
     for lane in 0..nl {
         let r0 = lane * ring_size;
         let r1 = (lane + 1) * ring_size;
-        for i in 0..ring_size - 1 {
+        for i in 0..ring_size {
+            let j = (i + 1) % ring_size;
             polys.push_cell(&[
                 (r0 + i) as i64,
-                (r0 + i + 1) as i64,
-                (r1 + i + 1) as i64,
+                (r0 + j) as i64,
+                (r1 + j) as i64,
                 (r1 + i) as i64,
             ]);
         }

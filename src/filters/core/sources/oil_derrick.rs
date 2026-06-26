@@ -2,7 +2,6 @@
 use crate::data::{CellArray, Points, PolyData};
 pub fn oil_derrick(base_w: f64, tower_h: f64, beam_l: f64, horsehead_r: f64) -> PolyData {
     let hw = base_w / 2.0;
-    let _bt = base_w * 0.05;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
@@ -70,6 +69,8 @@ pub fn oil_derrick(base_w: f64, tower_h: f64, beam_l: f64, horsehead_r: f64) -> 
     polys.push_cell(&[f(4), f(5), f(6), f(7)]);
     polys.push_cell(&[f(0), f(1), f(5), f(4)]);
     polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+    polys.push_cell(&[f(0), f(4), f(7), f(3)]);
+    polys.push_cell(&[f(1), f(2), f(6), f(5)]);
     // Pitman arm (connecting crank to beam)
     let pab = pts.len();
     pts.push([-beam_back * 0.5, 0.0, tower_h * 0.3]);

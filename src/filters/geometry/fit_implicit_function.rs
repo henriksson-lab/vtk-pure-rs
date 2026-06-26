@@ -4,6 +4,46 @@
 //! to a set of 3D points using least-squares.
 
 use crate::data::PolyData;
+use crate::types::ImplicitFunction;
+
+/// Extract points lying on an implicit surface, matching `vtkFitImplicitFunction`.
+///
+/// A point is kept when `-threshold <= f(x,y,z) < threshold`. The output is a
+/// `PolyData` with points only; no vertex cells are generated, matching VTK.
+pub fn fit_implicit_function(
+    input: &PolyData,
+    function: &dyn ImplicitFunction,
+    threshold: f64,
+) -> PolyData {
+    let (output, _) = fit_implicit_function_with_point_map(input, function, threshold);
+    output
+}
+
+/// Extract points on an implicit surface and return the input-to-output map.
+///
+/// Removed points have a map value of `-1`, as in VTK's point map.
+pub fn fit_implicit_function_with_point_map(
+    input: &PolyData,
+    function: &dyn ImplicitFunction,
+    threshold: f64,
+) -> (PolyData, Vec<i64>) {
+    let threshold = threshold.max(0.0);
+    let t_min = -threshold;
+    let t_max = threshold;
+    let mut output = PolyData::new();
+    let mut point_map = vec![-1; input.points.len()];
+
+    for (pt_id, map) in point_map.iter_mut().enumerate() {
+        let p = input.points.get(pt_id);
+        let value = function.evaluate(p[0], p[1], p[2]);
+        if value >= t_min && value < t_max {
+            *map = output.points.len() as i64;
+            output.points.push(p);
+        }
+    }
+
+    (output, point_map)
+}
 
 /// Coefficients of a quadric surface:
 /// a*x² + b*y² + c*z² + d*xy + e*xz + f*yz + g*x + h*y + i*z + j = 0
@@ -274,6 +314,23 @@ fn mat_vec_3(m: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
 mod tests {
     use super::*;
     use crate::data::Points;
+    use crate::types::ImplicitSphere;
+
+    #[test]
+    fn fit_implicit_function_keeps_threshold_band() {
+        let input = PolyData::from_vertices(vec![
+            [1.0, 0.0, 0.0],
+            [1.01, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ]);
+        let sphere = ImplicitSphere::new([0.0, 0.0, 0.0], 1.0);
+
+        let (output, point_map) = fit_implicit_function_with_point_map(&input, &sphere, 0.05);
+
+        assert_eq!(output.points.len(), 2);
+        assert_eq!(point_map, vec![0, 1, -1, -1]);
+    }
 
     #[test]
     fn fit_plane_to_points() {

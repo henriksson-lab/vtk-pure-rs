@@ -24,7 +24,7 @@ fn label_impl(input: &ImageData, scalars: &str, eight: bool) -> ImageData {
     let fg: Vec<bool> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] > 0.5
+            buf[0] >= 0.5
         })
         .collect();
     let mut parent: Vec<usize> = (0..n).collect();
@@ -112,7 +112,7 @@ mod tests {
             "v",
             |x, y, _| {
                 if ((x - 0.0).abs() < 0.5 && (y - 0.0).abs() < 0.5)
-                    || ((x - 2.0).abs() < 0.5 && (y - 2.0).abs() < 0.5)
+                    || ((x - 1.0).abs() < 0.5 && (y - 1.0).abs() < 0.5)
                 {
                     1.0
                 } else {
@@ -133,6 +133,22 @@ mod tests {
             mx as usize
         };
         assert_eq!(count(&l4), 2);
-        assert_eq!(count(&l8), 2); // still 2 since not adjacent diagonally
+        assert_eq!(count(&l8), 1);
+    }
+
+    #[test]
+    fn threshold_is_inclusive() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 0.5,
+        );
+        let labeled = label_components_4(&img, "v");
+        let arr = labeled.point_data().get_array("Labels").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

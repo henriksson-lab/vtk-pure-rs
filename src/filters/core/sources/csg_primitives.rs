@@ -50,9 +50,29 @@ pub fn sdf_difference(a: &ImageData, b: &ImageData) -> ImageData {
 }
 
 fn sdf_binary_op(a: &ImageData, b: &ImageData, op: impl Fn(f64, f64) -> f64) -> ImageData {
+    assert_eq!(
+        a.dimensions(),
+        b.dimensions(),
+        "SDF operands must have matching dimensions"
+    );
+    assert_eq!(
+        a.spacing(),
+        b.spacing(),
+        "SDF operands must have matching spacing"
+    );
+    assert_eq!(
+        a.origin(),
+        b.origin(),
+        "SDF operands must have matching origin"
+    );
     let arr_a = a.point_data().get_array("SDF").unwrap();
     let arr_b = b.point_data().get_array("SDF").unwrap();
-    let n = arr_a.num_tuples().min(arr_b.num_tuples());
+    assert_eq!(
+        arr_a.num_tuples(),
+        arr_b.num_tuples(),
+        "SDF operands must have the same number of tuples"
+    );
+    let n = arr_a.num_tuples();
     let mut ba = [0.0f64];
     let mut bb = [0.0f64];
     let data: Vec<f64> = (0..n)

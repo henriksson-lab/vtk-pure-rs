@@ -7,14 +7,14 @@ pub fn rope_bridge(span: f64, sag: f64, width: f64, n_planks: usize) -> PolyData
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
-    // Main cables (catenary on each side)
+    // Main cables (parabolic catenary approximation on each side)
     for &side in &[-1.0f64, 1.0] {
         let y = side * hw;
         let cable_base = pts.len();
         for i in 0..=np {
             let t = i as f64 / np as f64;
             let x = span * (t - 0.5);
-            let z = -sag * (2.0 * t - 1.0).powi(2) + sag; // parabola, higher at ends
+            let z = sag * (2.0 * t - 1.0).powi(2);
             pts.push([x, y, z]);
         }
         for i in 0..np {
@@ -25,7 +25,7 @@ pub fn rope_bridge(span: f64, sag: f64, width: f64, n_planks: usize) -> PolyData
     for i in 0..=np {
         let t = i as f64 / np as f64;
         let x = span * (t - 0.5);
-        let z = -sag * (2.0 * t - 1.0).powi(2) + sag - 0.1;
+        let z = sag * (2.0 * t - 1.0).powi(2) - 0.1;
         let pb = pts.len();
         let pw = width * 0.05; // plank thickness
         pts.push([x - pw, -hw, z]);

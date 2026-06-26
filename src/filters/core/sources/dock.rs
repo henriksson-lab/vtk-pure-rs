@@ -5,10 +5,12 @@ pub fn dock(
     width: f64,
     height: f64,
     num_pilings: usize,
-    _piling_radius: f64,
+    piling_radius: f64,
 ) -> PolyData {
     let hw = width / 2.0;
     let np = num_pilings.max(2);
+    let piling_radius = piling_radius.abs();
+    let piling_resolution = 12;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
@@ -24,10 +26,29 @@ pub fn dock(
     for pi in 0..np {
         let x = pi as f64 * spacing;
         for &y in &[-hw * 0.8, hw * 0.8] {
-            let pb = pts.len();
+            if piling_radius > 0.0 {
+                let pb = pts.len();
+                for iz in 0..2 {
+                    let z = if iz == 0 { -height * 0.5 } else { height };
+                    for i in 0..piling_resolution {
+                        let a = 2.0 * std::f64::consts::PI * i as f64 / piling_resolution as f64;
+                        pts.push([x + piling_radius * a.cos(), y + piling_radius * a.sin(), z]);
+                    }
+                }
+                for i in 0..piling_resolution {
+                    let i1 = (i + 1) % piling_resolution;
+                    polys.push_cell(&[
+                        (pb + i) as i64,
+                        (pb + i1) as i64,
+                        (pb + piling_resolution + i1) as i64,
+                        (pb + piling_resolution + i) as i64,
+                    ]);
+                }
+            }
+            let lb = pts.len();
             pts.push([x, y, -height * 0.5]);
             pts.push([x, y, height]);
-            lines.push_cell(&[pb as i64, (pb + 1) as i64]);
+            lines.push_cell(&[lb as i64, (lb + 1) as i64]);
         }
     }
     // Cross bracing
@@ -63,5 +84,6 @@ mod tests {
         let d = dock(15.0, 3.0, 2.0, 6, 0.15);
         assert!(d.polys.num_cells() >= 1);
         assert!(d.lines.num_cells() > 10);
+        assert!(d.polys.num_cells() > 1);
     }
 }

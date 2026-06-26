@@ -23,64 +23,63 @@ impl Default for PlaneParams {
 
 /// Generate a rectangular plane as PolyData with normals and texture coordinates.
 pub fn plane(params: &PlaneParams) -> PolyData {
-    let nx = params.x_resolution.max(1);
-    let ny = params.y_resolution.max(1);
+    let x_resolution = params.x_resolution.max(1);
+    let y_resolution = params.y_resolution.max(1);
 
-    let o = params.origin;
-    // Axes
-    let ax = [
-        params.point1[0] - o[0],
-        params.point1[1] - o[1],
-        params.point1[2] - o[2],
+    let origin = params.origin;
+    let point1 = params.point1;
+    let point2 = params.point2;
+    let v1 = [
+        point1[0] - origin[0],
+        point1[1] - origin[1],
+        point1[2] - origin[2],
     ];
-    let ay = [
-        params.point2[0] - o[0],
-        params.point2[1] - o[1],
-        params.point2[2] - o[2],
+    let v2 = [
+        point2[0] - origin[0],
+        point2[1] - origin[1],
+        point2[2] - origin[2],
     ];
 
-    // Normal = ax x ay, normalized
-    let n = [
-        ax[1] * ay[2] - ax[2] * ay[1],
-        ax[2] * ay[0] - ax[0] * ay[2],
-        ax[0] * ay[1] - ax[1] * ay[0],
+    let mut normal = [
+        v1[1] * v2[2] - v1[2] * v2[1],
+        v1[2] * v2[0] - v1[0] * v2[2],
+        v1[0] * v2[1] - v1[1] * v2[0],
     ];
-    let nlen = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-    let normal = if nlen > 1e-10 {
-        [n[0] / nlen, n[1] / nlen, n[2] / nlen]
-    } else {
-        [0.0, 0.0, 1.0]
-    };
+    let normal_length =
+        (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if normal_length == 0.0 {
+        return PolyData::new();
+    }
+    for value in &mut normal {
+        *value /= normal_length;
+    }
 
     let mut points = Points::new();
     let mut normals = DataArray::<f64>::new("Normals", 3);
-    let mut tcoords = DataArray::<f64>::new("TCoords", 2);
+    let mut tcoords = DataArray::<f64>::new("TextureCoordinates", 2);
     let mut polys = CellArray::new();
 
-    // Generate (nx+1) x (ny+1) points
-    for j in 0..=ny {
-        let v = j as f64 / ny as f64;
-        for i in 0..=nx {
-            let u = i as f64 / nx as f64;
+    for i in 0..=y_resolution {
+        let tc1 = i as f64 / y_resolution as f64;
+        for j in 0..=x_resolution {
+            let tc0 = j as f64 / x_resolution as f64;
             points.push([
-                o[0] + u * ax[0] + v * ay[0],
-                o[1] + u * ax[1] + v * ay[1],
-                o[2] + u * ax[2] + v * ay[2],
+                origin[0] + tc0 * v1[0] + tc1 * v2[0],
+                origin[1] + tc0 * v1[1] + tc1 * v2[1],
+                origin[2] + tc0 * v1[2] + tc1 * v2[2],
             ]);
             normals.push_tuple(&normal);
-            tcoords.push_tuple(&[u, v]);
+            tcoords.push_tuple(&[tc0, tc1]);
         }
     }
 
-    // Generate quads
-    let row_size = nx + 1;
-    for j in 0..ny {
-        for i in 0..nx {
-            let p0 = (j * row_size + i) as i64;
-            let p1 = p0 + 1;
-            let p2 = p0 + row_size as i64 + 1;
-            let p3 = p0 + row_size as i64;
-            polys.push_cell(&[p0, p1, p2, p3]);
+    for i in 0..y_resolution {
+        for j in 0..x_resolution {
+            let pt0 = (j + i * (x_resolution + 1)) as i64;
+            let pt1 = pt0 + 1;
+            let pt2 = pt0 + x_resolution as i64 + 2;
+            let pt3 = pt0 + x_resolution as i64 + 1;
+            polys.push_cell(&[pt0, pt1, pt2, pt3]);
         }
     }
 
@@ -90,7 +89,7 @@ pub fn plane(params: &PlaneParams) -> PolyData {
     pd.point_data_mut().add_array(normals.into());
     pd.point_data_mut().set_active_normals("Normals");
     pd.point_data_mut().add_array(tcoords.into());
-    pd.point_data_mut().set_active_tcoords("TCoords");
+    pd.point_data_mut().set_active_tcoords("TextureCoordinates");
     pd
 }
 
@@ -114,5 +113,16 @@ mod tests {
         });
         assert_eq!(pd.points.len(), 4 * 3); // 4 cols * 3 rows
         assert_eq!(pd.polys.num_cells(), 3 * 2); // 3x2 quads
+    }
+
+    #[test]
+    fn degenerate_plane_is_empty() {
+        let pd = plane(&PlaneParams {
+            point1: [-0.5, 0.5, 0.0],
+            point2: [-0.5, 0.5, 0.0],
+            ..Default::default()
+        });
+        assert_eq!(pd.points.len(), 0);
+        assert_eq!(pd.polys.num_cells(), 0);
     }
 }

@@ -11,12 +11,7 @@ use crate::data::PolyData;
 /// `alpha` controls the attraction back to the original position (0..1).
 /// `beta` controls the smoothing of the correction vectors (0..1).
 /// Typical values: alpha = 0.0, beta = 0.5.
-pub fn smooth_hc(
-    input: &PolyData,
-    iterations: usize,
-    alpha: f64,
-    beta: f64,
-) -> PolyData {
+pub fn smooth_hc(input: &PolyData, iterations: usize, alpha: f64, beta: f64) -> PolyData {
     let mut output = input.clone();
     let n = output.points.len();
     if n == 0 || iterations == 0 {
@@ -33,8 +28,10 @@ pub fn smooth_hc(
         for j in 0..len {
             let a = cell[j] as usize;
             let b = cell[(j + 1) % len] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
+            if a < n && b < n {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
         }
     }
 
@@ -104,11 +101,14 @@ pub fn smooth_hc(
                 beta_clamped * b[i][2] + (1.0 - beta_clamped) * avg_b[2],
             ];
 
-            output.points.set(i, [
-                q[i][0] - correction[0],
-                q[i][1] - correction[1],
-                q[i][2] - correction[2],
-            ]);
+            output.points.set(
+                i,
+                [
+                    q[i][0] - correction[0],
+                    q[i][1] - correction[1],
+                    q[i][2] - correction[2],
+                ],
+            );
         }
     }
 

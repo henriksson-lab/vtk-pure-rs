@@ -7,8 +7,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Adds "HessianDet" scalar array.
 pub fn image_hessian_det(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -17,6 +17,9 @@ pub fn image_hessian_det(input: &ImageData, scalars: &str) -> ImageData {
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
     let sp = input.spacing();
+    if arr.num_tuples() != n {
+        return input.clone();
+    }
 
     let mut values = vec![0.0f64; n];
     let mut buf = [0.0f64];

@@ -31,7 +31,12 @@ pub fn parking_garage(
         pts.push([x1, y1, z1]);
         pts.push([x0, y1, z1]);
         let f = |i: usize| (b + i) as i64;
-        polys.push_cell(&[f(4), f(5), f(6), f(7)]); // top (floor slab)
+        polys.push_cell(&[f(0), f(3), f(2), f(1)]);
+        polys.push_cell(&[f(4), f(5), f(6), f(7)]);
+        polys.push_cell(&[f(0), f(1), f(5), f(4)]);
+        polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+        polys.push_cell(&[f(0), f(4), f(7), f(3)]);
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]);
     };
     // Floor slabs
     for li in 0..=nl {

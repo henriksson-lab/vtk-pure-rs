@@ -120,11 +120,9 @@ pub fn reconstruct_from_harmonics(
 
         // Keep direction, replace radius
         let scale: f64 = new_r / r;
-        output.points.set(i, [
-            cx + dx * scale,
-            cy + dy * scale,
-            cz + dz * scale,
-        ]);
+        output
+            .points
+            .set(i, [cx + dx * scale, cy + dy * scale, cz + dz * scale]);
     }
 
     output
@@ -228,7 +226,11 @@ mod tests {
         let pd = make_sphere_points(200);
         let coeffs = spherical_harmonic_coefficients(&pd, 3);
         // For a sphere centered at origin, Y(0,0) should be nonzero and dominant
-        assert!(coeffs[0].abs() > 0.1, "l=0 coeff should be significant, got {}", coeffs[0]);
+        assert!(
+            coeffs[0].abs() > 0.1,
+            "l=0 coeff should be significant, got {}",
+            coeffs[0]
+        );
         // Higher order coefficients should be small compared to l=0
         for (idx, c) in coeffs[1..].iter().enumerate() {
             assert!(
@@ -260,7 +262,11 @@ mod tests {
             }
         }
         // The SH reconstruction of a constant-radius sphere should be reasonable
-        assert!(max_r_diff < 2.0, "max radius difference {} is too large", max_r_diff);
+        assert!(
+            max_r_diff < 2.0,
+            "max radius difference {} is too large",
+            max_r_diff
+        );
     }
 
     #[test]

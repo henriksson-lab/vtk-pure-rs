@@ -66,6 +66,8 @@ pub fn synchrotron_ring(
         polys.push_cell(&[f(1), f(5), f(7), f(3)]);
         polys.push_cell(&[f(0), f(1), f(3), f(2)]);
         polys.push_cell(&[f(4), f(6), f(7), f(5)]);
+        polys.push_cell(&[f(0), f(4), f(5), f(1)]);
+        polys.push_cell(&[f(2), f(3), f(7), f(6)]);
     }
     // Detector halls (larger boxes at 4 positions)
     for di in 0..4 {
@@ -87,6 +89,8 @@ pub fn synchrotron_ring(
         polys.push_cell(&[g(4), g(5), g(6), g(7)]);
         polys.push_cell(&[g(0), g(1), g(5), g(4)]);
         polys.push_cell(&[g(2), g(3), g(7), g(6)]);
+        polys.push_cell(&[g(0), g(4), g(7), g(3)]);
+        polys.push_cell(&[g(1), g(2), g(6), g(5)]);
     }
     let mut r = PolyData::new();
     r.points = pts;

@@ -19,7 +19,8 @@ pub fn bollard(radius: f64, height: f64, cap_radius: f64, resolution: usize) -> 
     }
     // Dome cap
     let cap_rings = 4;
-    for ir in 1..=cap_rings {
+    let cap_base = pts.len();
+    for ir in 0..cap_rings {
         let t = ir as f64 / cap_rings as f64;
         let a = t * std::f64::consts::FRAC_PI_2;
         let cr = cap_radius * (a.cos());
@@ -29,25 +30,32 @@ pub fn bollard(radius: f64, height: f64, cap_radius: f64, resolution: usize) -> 
             pts.push([cr * ang.cos(), cr * ang.sin(), cz]);
         }
     }
-    let base = res;
+    let pole = pts.len();
+    pts.push([0.0, 0.0, height * 0.85 + cap_radius]);
+    for i in 0..res {
+        let j = (i + 1) % res;
+        polys.push_cell(&[
+            (res + i) as i64,
+            (res + j) as i64,
+            (cap_base + j) as i64,
+            (cap_base + i) as i64,
+        ]);
+    }
     for ir in 0..cap_rings {
-        let _r0 = if ir == 0 { 0 } else { res + (ir - 1) * res };
-        let r1 = res + ir * res;
-        let ring0_base = if ir == 0 {
-            base
-        } else {
-            res + base + (ir - 1) * res
-        };
         for i in 0..res {
             let j = (i + 1) % res;
-            let a0 = if ir == 0 { base + i } else { ring0_base + i };
-            let a1 = if ir == 0 { base + j } else { ring0_base + j };
-            polys.push_cell(&[
-                a0 as i64,
-                a1 as i64,
-                (r1 + j + res) as i64,
-                (r1 + i + res) as i64,
-            ]);
+            let r0 = cap_base + ir * res;
+            if ir + 1 == cap_rings {
+                polys.push_cell(&[(r0 + i) as i64, (r0 + j) as i64, pole as i64]);
+            } else {
+                let r1 = cap_base + (ir + 1) * res;
+                polys.push_cell(&[
+                    (r0 + i) as i64,
+                    (r0 + j) as i64,
+                    (r1 + j) as i64,
+                    (r1 + i) as i64,
+                ]);
+            }
         }
     }
     let mut r = PolyData::new();

@@ -10,7 +10,7 @@ pub fn image_bet_adsorption(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] / ((1.0 - buf[0]) * (1.0 + (50.0 - 1.0) * buf[0]))
+            50.0 * buf[0] / ((1.0 - buf[0]) * (1.0 + (50.0 - 1.0) * buf[0]))
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,12 @@ mod tests {
         );
         let r = image_bet_adsorption(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn includes_bet_constant_in_numerator() {
+        let x = 0.1f64;
+        let expected = 50.0 * x / ((1.0 - x) * (1.0 + (50.0 - 1.0) * x));
+        assert!((expected - 0.941_619_585_687_382_4).abs() < 1e-12);
     }
 }

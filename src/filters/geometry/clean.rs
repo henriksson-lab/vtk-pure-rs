@@ -1,4 +1,5 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
+use crate::types::Scalar;
 
 /// Parameters for cleaning PolyData.
 pub struct CleanParams {
@@ -13,7 +14,7 @@ pub struct CleanParams {
 impl Default for CleanParams {
     fn default() -> Self {
         Self {
-            tolerance: 1e-6,
+            tolerance: 0.0,
             merge_points: true,
             remove_degenerate: true,
         }
@@ -22,109 +23,132 @@ impl Default for CleanParams {
 
 /// Clean a PolyData by merging duplicate points and removing degenerate cells.
 pub fn clean(input: &PolyData, params: &CleanParams) -> PolyData {
-    let (new_points, point_map) = if params.merge_points {
-        merge_points(&input.points, params.tolerance)
+    let point_reps = if params.merge_points {
+        merge_point_representatives(&input.points, params.tolerance)
     } else {
-        // Identity mapping
-        let map: Vec<usize> = (0..input.points.len()).collect();
-        let pts = input.points.clone();
-        (pts, map)
+        (0..input.points.len()).collect()
     };
 
     let mut output = PolyData::new();
-    output.points = new_points;
+    let mut point_map = vec![-1isize; input.points.len()];
+    let mut point_ids = Vec::new();
+    let mut points_flat = Vec::new();
+    let mut kept_cells = Vec::new();
+    let mut global_cell_id = 0usize;
 
-    // Remap cells
-    output.verts = remap_cells(&input.verts, &point_map, params.remove_degenerate, 1);
-    output.lines = remap_cells(&input.lines, &point_map, params.remove_degenerate, 2);
-    output.polys = remap_cells(&input.polys, &point_map, params.remove_degenerate, 3);
-    output.strips = remap_cells(&input.strips, &point_map, params.remove_degenerate, 3);
+    output.verts = remap_cells(
+        &input.verts,
+        input,
+        &point_reps,
+        &mut point_map,
+        &mut point_ids,
+        &mut points_flat,
+        &mut kept_cells,
+        &mut global_cell_id,
+        params.remove_degenerate,
+        1,
+        true,
+    );
+    output.lines = remap_cells(
+        &input.lines,
+        input,
+        &point_reps,
+        &mut point_map,
+        &mut point_ids,
+        &mut points_flat,
+        &mut kept_cells,
+        &mut global_cell_id,
+        params.remove_degenerate,
+        2,
+        false,
+    );
+    output.polys = remap_cells(
+        &input.polys,
+        input,
+        &point_reps,
+        &mut point_map,
+        &mut point_ids,
+        &mut points_flat,
+        &mut kept_cells,
+        &mut global_cell_id,
+        params.remove_degenerate,
+        3,
+        true,
+    );
+    output.strips = remap_cells(
+        &input.strips,
+        input,
+        &point_reps,
+        &mut point_map,
+        &mut point_ids,
+        &mut points_flat,
+        &mut kept_cells,
+        &mut global_cell_id,
+        params.remove_degenerate,
+        3,
+        true,
+    );
+    output.points = Points::from_flat_vec(points_flat);
+    copy_arrays_by_indices(input.point_data(), output.point_data_mut(), &point_ids);
+    copy_arrays_by_indices(input.cell_data(), output.cell_data_mut(), &kept_cells);
 
     output
 }
 
-/// Merge points within `tolerance` using quantized grid deduplication.
-///
-/// Quantizes each point to a grid cell and uses a flat hash table for O(1) lookup.
-/// Only checks same cell (no 27-neighbor scan) — cell size is tolerance,
-/// so points further than tolerance apart land in different cells.
-fn merge_points(points: &Points<f64>, tolerance: f64) -> (Points<f64>, Vec<usize>) {
+fn merge_point_representatives(points: &Points<f64>, tolerance: f64) -> Vec<usize> {
     let n = points.len();
-    if n == 0 {
-        return (Points::new(), vec![]);
-    }
-
-    let cell_size = if tolerance > 0.0 { tolerance } else { 1e-12 };
-    let inv_cell = 1.0 / cell_size;
-
-    let mut point_map = vec![0usize; n];
-
-    // Sort-based approach: quantize to grid cell, group by cell, pick first in each group
-    // This avoids per-point hash table operations entirely.
-
-    // Quantize all points to grid keys using flat slice access
+    let tol2 = tolerance.max(0.0) * tolerance.max(0.0);
     let pts = points.as_flat_slice();
-    let mut keyed: Vec<(u64, u32)> = Vec::with_capacity(n);
+    let mut reps = vec![0usize; n];
+
     for i in 0..n {
-        let b = i * 3;
-        let gx = (pts[b] * inv_cell).floor() as i64;
-        let gy = (pts[b + 1] * inv_cell).floor() as i64;
-        let gz = (pts[b + 2] * inv_cell).floor() as i64;
-        keyed.push((morton_encode(gx, gy, gz), i as u32));
-    }
-
-    // Sort by Morton key — points in the same cell are adjacent
-    keyed.sort_unstable_by_key(|&(k, _)| k);
-
-    // Deduplicate: first point in each group becomes the representative
-    let mut new_points_flat: Vec<f64> = Vec::with_capacity(n * 3);
-    let mut current_key = u64::MAX;
-    let mut current_idx = 0usize;
-
-    for &(key, orig_idx) in &keyed {
-        if key != current_key {
-            current_key = key;
-            current_idx = new_points_flat.len() / 3;
-            let b = orig_idx as usize * 3;
-            new_points_flat.extend_from_slice(&pts[b..b + 3]);
+        reps[i] = i;
+        let bi = i * 3;
+        for j in 0..i {
+            let bj = j * 3;
+            let dx = pts[bi] - pts[bj];
+            let dy = pts[bi + 1] - pts[bj + 1];
+            let dz = pts[bi + 2] - pts[bj + 2];
+            if dx * dx + dy * dy + dz * dz <= tol2 {
+                reps[i] = reps[j];
+                break;
+            }
         }
-        point_map[orig_idx as usize] = current_idx;
     }
-
-    (Points::from_flat_vec(new_points_flat), point_map)
-}
-
-#[inline]
-fn morton_encode(x: i64, y: i64, z: i64) -> u64 {
-    // Simple hash-based encoding (not true Morton, but orders spatially)
-    let ux = x as u64;
-    let uy = y as u64;
-    let uz = z as u64;
-    // FNV-1a style mixing
-    let mut h = 0xcbf29ce484222325u64;
-    h ^= ux;
-    h = h.wrapping_mul(0x100000001b3);
-    h ^= uy;
-    h = h.wrapping_mul(0x100000001b3);
-    h ^= uz;
-    h = h.wrapping_mul(0x100000001b3);
-    h
+    reps
 }
 
 /// Remap cell point indices and optionally remove degenerate cells.
 fn remap_cells(
     cells: &CellArray,
-    point_map: &[usize],
+    input: &PolyData,
+    point_reps: &[usize],
+    point_map: &mut [isize],
+    point_ids: &mut Vec<usize>,
+    points_flat: &mut Vec<f64>,
+    kept_cells: &mut Vec<usize>,
+    global_cell_id: &mut usize,
     remove_degenerate: bool,
     min_unique: usize,
+    closed_cell: bool,
 ) -> CellArray {
     let mut out = CellArray::new();
 
     for cell in cells.iter() {
-        let remapped: Vec<i64> = cell
-            .iter()
-            .map(|&id| point_map[id as usize] as i64)
-            .collect();
+        let in_cell_id = *global_cell_id;
+        *global_cell_id += 1;
+        let mut remapped: Vec<i64> = Vec::with_capacity(cell.len());
+
+        for &id in cell {
+            let rep = point_reps[id as usize];
+            if point_map[rep] < 0 {
+                point_map[rep] = (points_flat.len() / 3) as isize;
+                let p = input.points.get(rep);
+                points_flat.extend_from_slice(&p);
+                point_ids.push(rep);
+            }
+            remapped.push(point_map[rep] as i64);
+        }
 
         if remove_degenerate {
             // Remove consecutive duplicates
@@ -134,20 +158,112 @@ fn remap_cells(
                     deduped.push(id);
                 }
             }
-            // Also check if first == last for polygons
-            if deduped.len() > 1 && deduped.first() == deduped.last() {
+            // Also check if first == last for closed cells
+            if closed_cell && deduped.len() > 1 && deduped.first() == deduped.last() {
                 deduped.pop();
             }
 
-            if deduped.len() >= min_unique {
+            let unique = count_unique_ids(&deduped);
+            if unique >= min_unique {
                 out.push_cell(&deduped);
+                kept_cells.push(in_cell_id);
             }
         } else {
             out.push_cell(&remapped);
+            kept_cells.push(in_cell_id);
         }
     }
 
     out
+}
+
+fn count_unique_ids(ids: &[i64]) -> usize {
+    let mut unique = Vec::new();
+    for &id in ids {
+        if !unique.contains(&id) {
+            unique.push(id);
+        }
+    }
+    unique.len()
+}
+
+fn copy_arrays_by_indices(
+    input: &DataSetAttributes,
+    output: &mut DataSetAttributes,
+    indices: &[usize],
+) {
+    for arr in input.iter() {
+        output.add_array(copy_array_by_indices(arr, indices));
+    }
+    preserve_active_attributes(input, output);
+}
+
+fn copy_array_by_indices(arr: &AnyDataArray, indices: &[usize]) -> AnyDataArray {
+    macro_rules! copy {
+        ($array:expr, $variant:ident) => {{
+            AnyDataArray::$variant(copy_typed_array($array, indices))
+        }};
+    }
+    match arr {
+        AnyDataArray::F32(a) => copy!(a, F32),
+        AnyDataArray::F64(a) => copy!(a, F64),
+        AnyDataArray::I8(a) => copy!(a, I8),
+        AnyDataArray::I16(a) => copy!(a, I16),
+        AnyDataArray::I32(a) => copy!(a, I32),
+        AnyDataArray::I64(a) => copy!(a, I64),
+        AnyDataArray::U8(a) => copy!(a, U8),
+        AnyDataArray::U16(a) => copy!(a, U16),
+        AnyDataArray::U32(a) => copy!(a, U32),
+        AnyDataArray::U64(a) => copy!(a, U64),
+    }
+}
+
+fn copy_typed_array<T: Scalar>(array: &DataArray<T>, indices: &[usize]) -> DataArray<T> {
+    let nc = array.num_components();
+    let mut data = Vec::with_capacity(indices.len() * nc);
+    for &idx in indices {
+        data.extend_from_slice(array.tuple(idx));
+    }
+    DataArray::from_vec(array.name(), data, nc)
+}
+
+fn preserve_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(arr) = input.scalars() {
+        output.set_active_scalars(arr.name());
+    }
+    if let Some(arr) = input.vectors() {
+        output.set_active_vectors(arr.name());
+    }
+    if let Some(arr) = input.normals() {
+        output.set_active_normals(arr.name());
+    }
+    if let Some(arr) = input.tcoords() {
+        output.set_active_tcoords(arr.name());
+    }
+    if let Some(arr) = input.tensors() {
+        output.set_active_tensors(arr.name());
+    }
+    if let Some(arr) = input.global_ids() {
+        output.set_active_global_ids(arr.name());
+    }
+    if let Some(arr) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(arr.name());
+    }
+    if let Some(arr) = input.edge_flags() {
+        output.set_active_edge_flags(arr.name());
+    }
+    if let Some(arr) = input.tangents() {
+        output.set_active_tangents(arr.name());
+    }
+    if let Some(arr) = input.rational_weights() {
+        output.set_active_rational_weights(arr.name());
+    }
+    if let Some(arr) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(arr.name());
+    }
+    if let Some(arr) = input.process_ids() {
+        output.set_active_process_ids(arr.name());
+    }
 }
 
 #[cfg(test)]
@@ -186,6 +302,16 @@ mod tests {
 
         let result = clean(&pd, &CleanParams::default());
         assert_eq!(result.polys.num_cells(), 0); // degenerate removed
+    }
+
+    #[test]
+    fn remove_nonconsecutive_degenerate_poly() {
+        let mut pd = PolyData::new();
+        pd.points = Points::from_vec(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        pd.polys.push_cell(&[0, 1, 0, 1]);
+
+        let result = clean(&pd, &CleanParams::default());
+        assert_eq!(result.polys.num_cells(), 0);
     }
 
     #[test]

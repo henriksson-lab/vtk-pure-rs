@@ -24,11 +24,14 @@ pub fn spiral_staircase(
         polys.push_cell(&[b as i64, (b + 1) as i64, (b + 2) as i64, (b + 3) as i64]);
     }
     // Central pole
-    let _bc = pts.len();
+    let bc = pts.len();
     pts.push([0.0, 0.0, 0.0]);
     pts.push([0.0, 0.0, height]);
+    let mut lines = CellArray::new();
+    lines.push_cell(&[bc as i64, (bc + 1) as i64]);
     let mut r = PolyData::new();
     r.points = pts;
+    r.lines = lines;
     r.polys = polys;
     r
 }

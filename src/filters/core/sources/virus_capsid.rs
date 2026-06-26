@@ -40,11 +40,11 @@ pub fn virus_capsid(
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let theta = std::f64::consts::PI * ((rng >> 33) as f64 / u32::MAX as f64);
+        let theta = std::f64::consts::PI * ((rng >> 32) as u32 as f64 / u32::MAX as f64);
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        let phi = 2.0 * std::f64::consts::PI * ((rng >> 33) as f64 / u32::MAX as f64);
+        let phi = 2.0 * std::f64::consts::PI * ((rng >> 32) as u32 as f64 / u32::MAX as f64);
         let st = theta.sin();
         let ct = theta.cos();
         let nx = st * phi.cos();

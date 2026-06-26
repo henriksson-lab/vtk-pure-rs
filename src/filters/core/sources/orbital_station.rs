@@ -5,12 +5,14 @@ pub fn orbital_station(
     spoke_count: usize,
     spoke_l: f64,
     module_r: f64,
-    _module_l: f64,
+    module_l: f64,
     ring_r: f64,
     resolution: usize,
 ) -> PolyData {
     let res = resolution.max(6);
     let ns = spoke_count.max(2);
+    let ring_radius = if ring_r > 0.0 { ring_r } else { spoke_l };
+    let module_steps = ((module_l.abs() / module_r.abs().max(1e-15)).ceil() as usize).max(1);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut lines = CellArray::new();
@@ -31,42 +33,30 @@ pub fn orbital_station(
         let a = 2.0 * std::f64::consts::PI * si as f64 / ns as f64;
         let sb = pts.len();
         pts.push([0.0, 0.0, 0.0]);
-        pts.push([0.0, ring_r * a.cos(), ring_r * a.sin()]);
+        pts.push([0.0, ring_radius * a.cos(), ring_radius * a.sin()]);
         lines.push_cell(&[sb as i64, (sb + 1) as i64]);
     }
-    // Habitat ring (torus segment at each spoke end)
-    for si in 0..ns {
-        let sa = 2.0 * std::f64::consts::PI * si as f64 / ns as f64;
-        let sa2 = 2.0 * std::f64::consts::PI * ((si + 1) % ns) as f64 / ns as f64;
-        let cx1 = ring_r * sa.cos();
-        let cy1 = ring_r * sa.sin();
-        let cx2 = ring_r * sa2.cos();
-        let cy2 = ring_r * sa2.sin();
-        // Arc segment as quad strip
-        let arc_steps = res;
-        for ai in 0..=arc_steps {
-            let t = ai as f64 / arc_steps as f64;
-            let cx = cx1 + (cx2 - cx1) * t;
-            let cy = cy1 + (cy2 - cy1) * t;
-            for ri in 0..res {
-                let ra = 2.0 * std::f64::consts::PI * ri as f64 / res as f64;
-                let dx = cx * (1.0 + module_r * ra.cos() / ring_r.max(1e-15));
-                let dy = cy * (1.0 + module_r * ra.cos() / ring_r.max(1e-15));
-                let dz = module_r * ra.sin();
-                pts.push([0.0, dx, dy + dz]);
-            }
+    // Habitat ring
+    let ring_steps = ns * res * module_steps;
+    let ring_base = pts.len();
+    for ai in 0..ring_steps {
+        let a = 2.0 * std::f64::consts::PI * ai as f64 / ring_steps as f64;
+        for ri in 0..res {
+            let ra = 2.0 * std::f64::consts::PI * ri as f64 / res as f64;
+            let r = ring_radius + module_r * ra.cos();
+            pts.push([module_r * ra.sin(), r * a.cos(), r * a.sin()]);
         }
-        let base = pts.len() - (arc_steps + 1) * res;
-        for ai in 0..arc_steps {
-            for ri in 0..res {
-                let ri1 = (ri + 1) % res;
-                polys.push_cell(&[
-                    (base + ai * res + ri) as i64,
-                    (base + ai * res + ri1) as i64,
-                    (base + (ai + 1) * res + ri1) as i64,
-                    (base + (ai + 1) * res + ri) as i64,
-                ]);
-            }
+    }
+    for ai in 0..ring_steps {
+        let ai1 = (ai + 1) % ring_steps;
+        for ri in 0..res {
+            let ri1 = (ri + 1) % res;
+            polys.push_cell(&[
+                (ring_base + ai * res + ri) as i64,
+                (ring_base + ai * res + ri1) as i64,
+                (ring_base + ai1 * res + ri1) as i64,
+                (ring_base + ai1 * res + ri) as i64,
+            ]);
         }
     }
     // Solar panels
@@ -74,8 +64,8 @@ pub fn orbital_station(
         let a = 2.0 * std::f64::consts::PI * si as f64 / ns as f64;
         let pw = spoke_l * 0.4;
         let ph = spoke_l * 0.2;
-        let mid_y = ring_r * 0.5 * a.cos();
-        let mid_z = ring_r * 0.5 * a.sin();
+        let mid_y = ring_radius * 0.5 * a.cos();
+        let mid_z = ring_radius * 0.5 * a.sin();
         let pb = pts.len();
         pts.push([-pw / 2.0, mid_y - ph / 2.0, mid_z]);
         pts.push([pw / 2.0, mid_y - ph / 2.0, mid_z]);

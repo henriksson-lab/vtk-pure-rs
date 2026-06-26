@@ -2,7 +2,7 @@
 //!
 //! Uses marching squares to produce contour polylines on a 2D grid.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, ImageData, Points, PolyData};
+use crate::data::{CellArray, ImageData, Points, PolyData};
 
 /// Extract contour lines at a given isovalue from a 2D ImageData.
 ///
@@ -75,10 +75,11 @@ pub fn image_contour_to_poly_data(image: &ImageData, array_name: &str, isovalue:
             };
 
             // Edge midpoints
-            let bottom = [lerp_x(v00, v10, x0, x1), y0, 0.0];
-            let right = [x1, lerp_x(v10, v11, y0, y1), 0.0];
-            let top = [lerp_x(v01, v11, x0, x1), y1, 0.0];
-            let left = [x0, lerp_x(v00, v01, y0, y1), 0.0];
+            let z = origin[2];
+            let bottom = [lerp_x(v00, v10, x0, x1), y0, z];
+            let right = [x1, lerp_x(v10, v11, y0, y1), z];
+            let top = [lerp_x(v01, v11, x0, x1), y1, z];
+            let left = [x0, lerp_x(v00, v01, y0, y1), z];
 
             let segments: Vec<([f64; 3], [f64; 3])> = match case {
                 1 | 14 => vec![(bottom, left)],
@@ -118,7 +119,6 @@ pub fn image_multi_contour(image: &ImageData, array_name: &str, isovalues: &[f64
         .iter()
         .map(|&iso| image_contour_to_poly_data(image, array_name, iso))
         .collect();
-    let refs: Vec<&PolyData> = contours.iter().collect();
     // Inline append
     let mut pts = crate::data::Points::<f64>::new();
     let mut lines = CellArray::new();
@@ -179,5 +179,19 @@ mod tests {
         );
         let contour = image_contour_to_poly_data(&image, "val", 5.0);
         assert_eq!(contour.lines.num_cells(), 0);
+    }
+
+    #[test]
+    fn preserves_origin_z() {
+        let image = ImageData::from_function(
+            [2, 2, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 7.0],
+            "val",
+            |x, _y, _z| x,
+        );
+        let contour = image_contour_to_poly_data(&image, "val", 0.5);
+        assert!(contour.points.len() > 0);
+        assert_eq!(contour.points.get(0)[2], 7.0);
     }
 }

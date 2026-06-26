@@ -10,7 +10,8 @@ pub fn image_clarity_c80(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            10.0 * ((buf[0] + 0.001) / (1.0 - buf[0].clamp(0.0, 0.999) + 0.001)).log10()
+            let early = buf[0].clamp(0.0, 0.999);
+            10.0 * ((early + 0.001) / (1.0 - early + 0.001)).log10()
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,24 @@ mod tests {
         );
         let r = image_clarity_c80(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn clamps_fraction_before_log() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![-1.0, 0.5, 2.0],
+                1,
+            )));
+
+        let r = image_clarity_c80(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..3 {
+            arr.tuple_as_f64(i, &mut buf);
+            assert!(buf[0].is_finite());
+        }
     }
 }

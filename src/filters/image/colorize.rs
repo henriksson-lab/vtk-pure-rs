@@ -47,8 +47,8 @@ pub fn image_colorize(input: &ImageData, scalars: &str) -> ImageData {
 
 /// Apply a custom lookup table to a scalar ImageData.
 ///
-/// `lut` maps integer indices to RGB colors. Scalar values are rounded
-/// to the nearest integer index.
+/// `lut` maps scalar values to RGB colors. Fractional scalar values are
+/// linearly interpolated between adjacent lookup-table entries.
 pub fn image_apply_lut(input: &ImageData, scalars: &str, lut: &[[f64; 3]]) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
@@ -65,11 +65,15 @@ pub fn image_apply_lut(input: &ImageData, scalars: &str, lut: &[[f64; 3]]) -> Im
     let mut rgb = Vec::with_capacity(n * 3);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let idx = (buf[0].round() as usize).min(lut_len - 1);
-        let c = lut[idx];
-        rgb.push(c[0]);
-        rgb.push(c[1]);
-        rgb.push(c[2]);
+        let x = buf[0].clamp(0.0, (lut_len - 1) as f64);
+        let idx = x.floor() as usize;
+        let next_idx = (idx + 1).min(lut_len - 1);
+        let t = x - idx as f64;
+        let c0 = lut[idx];
+        let c1 = lut[next_idx];
+        rgb.push(c0[0] + t * (c1[0] - c0[0]));
+        rgb.push(c0[1] + t * (c1[1] - c0[1]));
+        rgb.push(c0[2] + t * (c1[2] - c0[2]));
     }
 
     let mut img = input.clone();
@@ -118,6 +122,19 @@ mod tests {
         assert_eq!(buf, [1.0, 0.0, 0.0]);
         arr.tuple_as_f64(2, &mut buf);
         assert_eq!(buf, [0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn lut_interpolates_fractional_indices() {
+        let lut = [[0.0, 0.0, 0.0], [1.0, 0.5, 0.0]];
+        let mut img = ImageData::with_dimensions(1, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![0.5], 1)));
+        let result = image_apply_lut(&img, "v", &lut);
+        let arr = result.point_data().get_array("RGB").unwrap();
+        let mut buf = [0.0f64; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [0.5, 0.25, 0.0]);
     }
 
     #[test]

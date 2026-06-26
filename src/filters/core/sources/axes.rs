@@ -1,40 +1,77 @@
-use crate::data::{CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Generate XYZ axis lines (a triad) for orientation visualization.
 ///
-/// Creates 3 line segments from the origin along X (red), Y (green), Z (blue).
-/// Optionally includes arrowhead cones.
+/// Creates the same point, line, scalar, and normal layout as VTK's `vtkAxes`
+/// with origin `(0, 0, 0)`, the requested scale factor, no symmetry, and normals.
 pub fn axes(length: f64) -> PolyData {
+    axes_with_options([0.0, 0.0, 0.0], length, false, true)
+}
+
+/// Generate VTK-style axes with explicit origin, symmetry, and normal controls.
+pub fn axes_with_options(
+    origin: [f64; 3],
+    scale_factor: f64,
+    symmetric: bool,
+    compute_normals: bool,
+) -> PolyData {
     let mut points = Points::new();
     let mut lines = CellArray::new();
-    let mut colors = DataArray::<f64>::new("Colors", 3);
+    let mut scalars = Vec::with_capacity(6);
+    let mut normals = Vec::with_capacity(18);
 
-    // X axis (red)
-    points.push([0.0, 0.0, 0.0]);
-    colors.push_tuple(&[1.0, 0.0, 0.0]);
-    points.push([length, 0.0, 0.0]);
-    colors.push_tuple(&[1.0, 0.0, 0.0]);
+    let x0 = if symmetric {
+        [origin[0] - scale_factor, origin[1], origin[2]]
+    } else {
+        origin
+    };
+    points.push(x0);
+    scalars.push(0.0);
+    normals.extend_from_slice(&[0.0, 1.0, 0.0]);
+    points.push([origin[0] + scale_factor, origin[1], origin[2]]);
+    scalars.push(0.0);
+    normals.extend_from_slice(&[0.0, 1.0, 0.0]);
     lines.push_cell(&[0, 1]);
 
-    // Y axis (green)
-    points.push([0.0, 0.0, 0.0]);
-    colors.push_tuple(&[0.0, 1.0, 0.0]);
-    points.push([0.0, length, 0.0]);
-    colors.push_tuple(&[0.0, 1.0, 0.0]);
+    let y0 = if symmetric {
+        [origin[0], origin[1] - scale_factor, origin[2]]
+    } else {
+        origin
+    };
+    points.push(y0);
+    scalars.push(0.25);
+    normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+    points.push([origin[0], origin[1] + scale_factor, origin[2]]);
+    scalars.push(0.25);
+    normals.extend_from_slice(&[0.0, 0.0, 1.0]);
     lines.push_cell(&[2, 3]);
 
-    // Z axis (blue)
-    points.push([0.0, 0.0, 0.0]);
-    colors.push_tuple(&[0.0, 0.0, 1.0]);
-    points.push([0.0, 0.0, length]);
-    colors.push_tuple(&[0.0, 0.0, 1.0]);
+    let z0 = if symmetric {
+        [origin[0], origin[1], origin[2] - scale_factor]
+    } else {
+        origin
+    };
+    points.push(z0);
+    scalars.push(0.5);
+    normals.extend_from_slice(&[1.0, 0.0, 0.0]);
+    points.push([origin[0], origin[1], origin[2] + scale_factor]);
+    scalars.push(0.5);
+    normals.extend_from_slice(&[1.0, 0.0, 0.0]);
     lines.push_cell(&[4, 5]);
 
     let mut pd = PolyData::new();
     pd.points = points;
     pd.lines = lines;
-    pd.point_data_mut().add_array(colors.into());
-    pd.point_data_mut().set_active_scalars("Colors");
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Axes", scalars, 1)));
+    pd.point_data_mut().set_active_scalars("Axes");
+    if compute_normals {
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals", normals, 3,
+            )));
+        pd.point_data_mut().set_active_normals("Normals");
+    }
     pd
 }
 
@@ -149,9 +186,19 @@ mod tests {
         let pd = axes(1.0);
         assert_eq!(pd.points.len(), 6);
         assert_eq!(pd.lines.num_cells(), 3);
+        assert!(pd.point_data().get_array("Axes").is_some());
+        assert!(pd.point_data().get_array("Normals").is_some());
         // X axis endpoint
         let p = pd.points.get(1);
         assert!((p[0] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn symmetric_axes() {
+        let pd = axes_with_options([1.0, 2.0, 3.0], 0.5, true, false);
+        assert_eq!(pd.points.get(0), [0.5, 2.0, 3.0]);
+        assert_eq!(pd.points.get(1), [1.5, 2.0, 3.0]);
+        assert!(pd.point_data().get_array("Normals").is_none());
     }
 
     #[test]

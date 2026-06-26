@@ -7,43 +7,50 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Adds "NormalDeviation" scalar (angle in degrees).
 pub fn normal_deviation(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    if n == 0 { return input.clone(); }
+    if n == 0 {
+        return input.clone();
+    }
 
-    // Compute vertex normals (area-weighted average)
-    let mut vnormals = vec![[0.0f64;3]; n];
-    let mut face_normals_per_vertex: Vec<Vec<[f64;3]>> = vec![Vec::new(); n];
+    let mut vertex_normals = vec![[0.0f64; 3]; n];
+    let mut face_normals_per_vertex: Vec<Vec<[f64; 3]>> = vec![Vec::new(); n];
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
-        let v0=input.points.get(cell[0] as usize);
-        let v1=input.points.get(cell[1] as usize);
-        let v2=input.points.get(cell[2] as usize);
-        let e1=[v1[0]-v0[0],v1[1]-v0[1],v1[2]-v0[2]];
-        let e2=[v2[0]-v0[0],v2[1]-v0[1],v2[2]-v0[2]];
-        let fn_=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-        let fl=(fn_[0]*fn_[0]+fn_[1]*fn_[1]+fn_[2]*fn_[2]).sqrt();
-        let fn_n = if fl>1e-15 { [fn_[0]/fl,fn_[1]/fl,fn_[2]/fl] } else { [0.0;3] };
+        let face_normal = polygon_normal(input, cell);
+        let length = norm(face_normal);
+        if length == 0.0 {
+            continue;
+        }
+        let unit_face_normal = [
+            face_normal[0] / length,
+            face_normal[1] / length,
+            face_normal[2] / length,
+        ];
 
-        for &id in cell.iter() {
-            let i=id as usize;
-            vnormals[i][0]+=fn_[0]; vnormals[i][1]+=fn_[1]; vnormals[i][2]+=fn_[2];
-            face_normals_per_vertex[i].push(fn_n);
+        for &point_id in cell {
+            let point_id = point_id as usize;
+            if point_id >= n {
+                continue;
+            }
+            vertex_normals[point_id][0] += face_normal[0];
+            vertex_normals[point_id][1] += face_normal[1];
+            vertex_normals[point_id][2] += face_normal[2];
+            face_normals_per_vertex[point_id].push(unit_face_normal);
         }
     }
 
-    // Normalize vertex normals
-    for nm in &mut vnormals {
-        let l=(nm[0]*nm[0]+nm[1]*nm[1]+nm[2]*nm[2]).sqrt();
-        if l>1e-15 { nm[0]/=l; nm[1]/=l; nm[2]/=l; }
+    for normal in &mut vertex_normals {
+        normalize(normal);
     }
 
-    // Compute max deviation angle for each vertex
     let mut deviation = vec![0.0f64; n];
     for i in 0..n {
-        let vn = vnormals[i];
+        let vertex_normal = vertex_normals[i];
         let mut max_angle = 0.0f64;
-        for fn_ in &face_normals_per_vertex[i] {
-            let dot = (vn[0]*fn_[0]+vn[1]*fn_[1]+vn[2]*fn_[2]).clamp(-1.0,1.0);
+        for face_normal in &face_normals_per_vertex[i] {
+            let dot = (vertex_normal[0] * face_normal[0]
+                + vertex_normal[1] * face_normal[1]
+                + vertex_normal[2] * face_normal[2])
+                .clamp(-1.0, 1.0);
             let angle = dot.acos().to_degrees();
             max_angle = max_angle.max(angle);
         }
@@ -51,8 +58,78 @@ pub fn normal_deviation(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(DataArray::from_vec("NormalDeviation", deviation, 1)));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "NormalDeviation",
+            deviation,
+            1,
+        )));
+    pd.point_data_mut().set_active_scalars("NormalDeviation");
     pd
+}
+
+fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
+    if cell.len() < 3 {
+        return [0.0; 3];
+    }
+
+    let mut common = None;
+    let mut point_id = 0;
+    let mut v1 = [0.0; 3];
+    while point_id < cell.len() - 2 {
+        let p0 = input.points.get(cell[point_id] as usize);
+        let p1 = input.points.get(cell[point_id + 1] as usize);
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        if norm_squared(v1) > 0.0 {
+            common = Some(point_id);
+            point_id += 2;
+            break;
+        }
+        point_id += 1;
+    }
+
+    let Some(common_id) = common else {
+        return [0.0; 3];
+    };
+    if point_id >= cell.len() {
+        return [0.0; 3];
+    }
+
+    let p0 = input.points.get(cell[common_id] as usize);
+    let mut normal = [0.0; 3];
+    while point_id < cell.len() {
+        let p = input.points.get(cell[point_id] as usize);
+        let v2 = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
+        let cross = [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+        normal[0] += cross[0];
+        normal[1] += cross[1];
+        normal[2] += cross[2];
+        v1 = v2;
+        point_id += 1;
+    }
+
+    normal
+}
+
+fn normalize(vector: &mut [f64; 3]) {
+    let length = norm(*vector);
+    if length > 0.0 {
+        vector[0] /= length;
+        vector[1] /= length;
+        vector[2] /= length;
+    }
+}
+
+fn norm(vector: [f64; 3]) -> f64 {
+    norm_squared(vector).sqrt()
+}
+
+fn norm_squared(vector: [f64; 3]) -> f64 {
+    vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]
 }
 
 #[cfg(test)]
@@ -62,29 +139,38 @@ mod tests {
     #[test]
     fn flat_zero_deviation() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([1.0,1.0,0.0]); pd.points.push([0.0,1.0,0.0]);
-        pd.polys.push_cell(&[0,1,2]); pd.polys.push_cell(&[0,2,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
 
         let result = normal_deviation(&pd);
         let arr = result.point_data().get_array("NormalDeviation").unwrap();
         let mut buf = [0.0f64];
-        // Flat surface: all normals agree -> low deviation
-        for i in 0..4 { arr.tuple_as_f64(i, &mut buf); assert!(buf[0] < 5.0); }
+        for i in 0..4 {
+            arr.tuple_as_f64(i, &mut buf);
+            assert!(buf[0] < 5.0);
+        }
+        assert!(result.point_data().scalars().is_some());
     }
 
     #[test]
     fn sharp_high_deviation() {
         let mut pd = PolyData::new();
-        pd.points.push([0.0,0.0,0.0]); pd.points.push([1.0,0.0,0.0]);
-        pd.points.push([0.5,1.0,0.0]); pd.points.push([0.5,0.0,1.0]);
-        pd.polys.push_cell(&[0,1,2]); pd.polys.push_cell(&[0,1,3]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.points.push([0.5, 0.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 3]);
 
         let result = normal_deviation(&pd);
         let arr = result.point_data().get_array("NormalDeviation").unwrap();
         let mut buf = [0.0f64];
-        // Vertices 0 and 1 are on the sharp edge -> high deviation
-        arr.tuple_as_f64(0, &mut buf); assert!(buf[0] > 10.0);
+        arr.tuple_as_f64(0, &mut buf);
+        assert!(buf[0] > 10.0);
     }
 
     #[test]
@@ -92,5 +178,20 @@ mod tests {
         let pd = PolyData::new();
         let result = normal_deviation(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn polygon_normal_skips_initial_collinear_vertices() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.points.push([2.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3, 4]);
+
+        let result = normal_deviation(&pd);
+        let arr = result.point_data().get_array("NormalDeviation").unwrap();
+        assert_eq!(arr.num_tuples(), 5);
     }
 }

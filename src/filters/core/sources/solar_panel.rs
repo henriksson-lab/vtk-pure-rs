@@ -1,6 +1,6 @@
 //! Solar panel array geometry.
 use crate::data::{CellArray, Points, PolyData};
-pub fn solar_panel_array(
+pub fn solar_panel(
     panel_w: f64,
     panel_h: f64,
     rows: usize,
@@ -46,7 +46,7 @@ mod tests {
     use super::*;
     #[test]
     fn test() {
-        let s = solar_panel_array(2.0, 1.0, 2, 3, 30.0, 0.2, 1.5);
+        let s = solar_panel(2.0, 1.0, 2, 3, 30.0, 0.2, 1.5);
         assert_eq!(s.polys.num_cells(), 6);
         assert!(s.lines.num_cells() >= 12);
     }

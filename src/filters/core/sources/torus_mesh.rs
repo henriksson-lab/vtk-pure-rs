@@ -10,7 +10,7 @@ pub fn torus_mesh(major_radius: f64, minor_radius: f64, u_res: usize, v_res: usi
         for iu in 0..ur {
             let u = 2.0 * std::f64::consts::PI * iu as f64 / ur as f64;
             let r = major_radius + minor_radius * u.cos();
-            pts.push([r * v.cos(), r * v.sin(), minor_radius * u.sin()]);
+            pts.push([r * v.sin(), r * v.cos(), minor_radius * u.sin()]);
         }
     }
     for iv in 0..vr {

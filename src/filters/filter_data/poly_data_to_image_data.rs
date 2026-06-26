@@ -27,6 +27,7 @@ pub fn poly_data_to_image_data(input: &PolyData, dimensions: [usize; 3]) -> Imag
     let tris: Vec<[[f64; 3]; 3]> = input
         .polys
         .iter()
+        .filter(|cell| cell.len() >= 3)
         .flat_map(|cell| {
             let v0 = input.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {

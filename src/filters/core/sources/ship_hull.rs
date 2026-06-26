@@ -35,13 +35,26 @@ pub fn ship_hull(
             polys.push_cell(&[i0 as i64, (i1 + 1) as i64, (i0 + 1) as i64]);
         }
     }
-    // Mirror for port side
+    // Mirror for port side and duplicate the starboard faces with reversed winding.
     let n_half = pts.len();
+    let starboard_polys: Vec<Vec<i64>> = polys.iter().map(|cell| cell.to_vec()).collect();
+    let mut mirror_point = Vec::with_capacity(n_half);
     for i in 0..n_half {
         let p = pts.get(i);
         if p[1].abs() > 1e-10 {
+            mirror_point.push(pts.len());
             pts.push([p[0], -p[1], p[2]]);
+        } else {
+            mirror_point.push(i);
         }
+    }
+    for cell in starboard_polys {
+        let mirrored: Vec<i64> = cell
+            .iter()
+            .rev()
+            .map(|&id| mirror_point[id as usize] as i64)
+            .collect();
+        polys.push_cell(&mirrored);
     }
     let mut m = PolyData::new();
     m.points = pts;
@@ -56,6 +69,6 @@ mod tests {
     fn test_hull() {
         let m = ship_hull(20.0, 5.0, 2.0, 10, 5);
         assert!(m.points.len() > 50);
-        assert!(m.polys.num_cells() > 30);
+        assert_eq!(m.polys.num_cells(), 200);
     }
 }

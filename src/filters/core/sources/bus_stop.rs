@@ -1,10 +1,13 @@
 //! Bus stop shelter geometry.
 use crate::data::{CellArray, Points, PolyData};
 pub fn bus_stop(width: f64, depth: f64, height: f64, roof_overhang: f64) -> PolyData {
+    let width = width.max(0.0);
+    let depth = depth.max(0.0);
+    let height = height.max(0.0);
+    let roof_overhang = roof_overhang.max(0.0);
     let hw = width / 2.0;
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let _lines = CellArray::new();
     let ab = |pts: &mut Points<f64>,
               polys: &mut CellArray,
               x0: f64,

@@ -5,7 +5,9 @@ use crate::data::PolyData;
 /// Volume-preserving smooth: Laplacian smooth followed by uniform scale to restore volume.
 pub fn smooth_volume_preserving(mesh: &PolyData, iterations: usize, lambda: f64) -> PolyData {
     let orig_vol = signed_volume(mesh).abs();
-    if orig_vol < 1e-30 || mesh.points.len() == 0 { return mesh.clone(); }
+    if orig_vol < 1e-30 || mesh.points.len() == 0 {
+        return mesh.clone();
+    }
 
     let n = mesh.points.len();
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -15,8 +17,12 @@ pub fn smooth_volume_preserving(mesh: &PolyData, iterations: usize, lambda: f64)
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
             if a < n && b < n {
-                if !neighbors[a].contains(&b) { neighbors[a].push(b); }
-                if !neighbors[b].contains(&a) { neighbors[b].push(a); }
+                if !neighbors[a].contains(&b) {
+                    neighbors[a].push(b);
+                }
+                if !neighbors[b].contains(&a) {
+                    neighbors[b].push(a);
+                }
             }
         }
     }
@@ -26,10 +32,14 @@ pub fn smooth_volume_preserving(mesh: &PolyData, iterations: usize, lambda: f64)
     for _ in 0..iterations {
         let mut new_pos = positions.clone();
         for i in 0..n {
-            if neighbors[i].is_empty() { continue; }
+            if neighbors[i].is_empty() {
+                continue;
+            }
             let mut avg = [0.0, 0.0, 0.0];
             for &nb in &neighbors[i] {
-                avg[0] += positions[nb][0]; avg[1] += positions[nb][1]; avg[2] += positions[nb][2];
+                avg[0] += positions[nb][0];
+                avg[1] += positions[nb][1];
+                avg[2] += positions[nb][2];
             }
             let k = neighbors[i].len() as f64;
             new_pos[i][0] = positions[i][0] + lambda * (avg[0] / k - positions[i][0]);
@@ -41,22 +51,36 @@ pub fn smooth_volume_preserving(mesh: &PolyData, iterations: usize, lambda: f64)
 
     // Compute new volume and scale to restore
     let mut result = mesh.clone();
-    for i in 0..n { result.points.set(i, positions[i]); }
+    for i in 0..n {
+        result.points.set(i, positions[i]);
+    }
     let new_vol = signed_volume(&result).abs();
     if new_vol > 1e-30 {
         let scale = (orig_vol / new_vol).powf(1.0 / 3.0);
         // Compute centroid
-        let mut cx = 0.0; let mut cy = 0.0; let mut cz = 0.0;
-        for i in 0..n { let p = result.points.get(i); cx += p[0]; cy += p[1]; cz += p[2]; }
-        cx /= n as f64; cy /= n as f64; cz /= n as f64;
+        let mut cx = 0.0;
+        let mut cy = 0.0;
+        let mut cz = 0.0;
+        for i in 0..n {
+            let p = result.points.get(i);
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
+        }
+        cx /= n as f64;
+        cy /= n as f64;
+        cz /= n as f64;
         // Scale from centroid
         for i in 0..n {
             let p = result.points.get(i);
-            result.points.set(i, [
-                cx + (p[0] - cx) * scale,
-                cy + (p[1] - cy) * scale,
-                cz + (p[2] - cz) * scale,
-            ]);
+            result.points.set(
+                i,
+                [
+                    cx + (p[0] - cx) * scale,
+                    cy + (p[1] - cy) * scale,
+                    cz + (p[2] - cz) * scale,
+                ],
+            );
         }
     }
     result
@@ -65,12 +89,25 @@ pub fn smooth_volume_preserving(mesh: &PolyData, iterations: usize, lambda: f64)
 fn signed_volume(mesh: &PolyData) -> f64 {
     let mut vol = 0.0;
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 { continue; }
-        let a = mesh.points.get(cell[0] as usize);
+        if cell.len() < 3 {
+            continue;
+        }
+        let a_idx = cell[0] as usize;
+        if a_idx >= mesh.points.len() {
+            continue;
+        }
+        let a = mesh.points.get(a_idx);
         for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            vol += a[0]*(b[1]*c[2]-b[2]*c[1]) + a[1]*(b[2]*c[0]-b[0]*c[2]) + a[2]*(b[0]*c[1]-b[1]*c[0]);
+            let b_idx = cell[i] as usize;
+            let c_idx = cell[i + 1] as usize;
+            if b_idx >= mesh.points.len() || c_idx >= mesh.points.len() {
+                continue;
+            }
+            let b = mesh.points.get(b_idx);
+            let c = mesh.points.get(c_idx);
+            vol += a[0] * (b[1] * c[2] - b[2] * c[1])
+                + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
         }
     }
     vol / 6.0
@@ -87,6 +124,9 @@ mod tests {
         let orig_vol = signed_volume(&c).abs();
         let smoothed = smooth_volume_preserving(&c, 5, 0.5);
         let new_vol = signed_volume(&smoothed).abs();
-        assert!((orig_vol - new_vol).abs() / orig_vol < 0.05, "volume changed too much: {orig_vol} vs {new_vol}");
+        assert!(
+            (orig_vol - new_vol).abs() / orig_vol < 0.05,
+            "volume changed too much: {orig_vol} vs {new_vol}"
+        );
     }
 }

@@ -40,64 +40,55 @@ pub fn slice_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> P
             continue;
         }
 
-        // Find edge crossings using flat point access
-        let mut c0x = 0.0f64;
-        let mut c0y = 0.0f64;
-        let mut c0z = 0.0f64;
-        let mut c1x = 0.0f64;
-        let mut c1y = 0.0f64;
-        let mut c1z = 0.0f64;
-        let mut num_crossings = 0u32;
+        let mut crossings = Vec::<[f64; 3]>::new();
+        let mut valid_cell = true;
 
         for i in 0..n {
             let j = if i + 1 < n { i + 1 } else { 0 };
+            if cell[i] < 0 || cell[j] < 0 {
+                valid_cell = false;
+                break;
+            }
             let ai = cell[i] as usize;
             let aj = cell[j] as usize;
-            let di = unsafe { *dists.get_unchecked(ai) };
-            let dj = unsafe { *dists.get_unchecked(aj) };
+            if ai >= np || aj >= np {
+                valid_cell = false;
+                break;
+            }
 
-            if (di >= 0.0) != (dj >= 0.0) {
+            let di = dists[ai];
+            let dj = dists[aj];
+            let bi = ai * 3;
+            let bj = aj * 3;
+            let pi = [pts[bi], pts[bi + 1], pts[bi + 2]];
+            let pj = [pts[bj], pts[bj + 1], pts[bj + 2]];
+            let on_i = di.abs() < 1e-10;
+            let on_j = dj.abs() < 1e-10;
+
+            if on_i && on_j {
+                push_unique_point(&mut crossings, pi);
+                push_unique_point(&mut crossings, pj);
+            } else if on_i {
+                push_unique_point(&mut crossings, pi);
+            } else if on_j {
+                push_unique_point(&mut crossings, pj);
+            } else if (di > 0.0) != (dj > 0.0) {
                 let t = di / (di - dj);
-                let bi = ai * 3;
-                let bj = aj * 3;
-                let px = pts[bi] + t * (pts[bj] - pts[bi]);
-                let py = pts[bi + 1] + t * (pts[bj + 1] - pts[bi + 1]);
-                let pz = pts[bi + 2] + t * (pts[bj + 2] - pts[bi + 2]);
-                if num_crossings == 0 {
-                    c0x = px;
-                    c0y = py;
-                    c0z = pz;
-                    num_crossings = 1;
-                } else if num_crossings == 1 {
-                    c1x = px;
-                    c1y = py;
-                    c1z = pz;
-                    num_crossings = 2;
-                }
-            } else if di.abs() < 1e-10 && dj.abs() >= 1e-10 {
-                let bi = ai * 3;
-                if num_crossings == 0 {
-                    c0x = pts[bi];
-                    c0y = pts[bi + 1];
-                    c0z = pts[bi + 2];
-                    num_crossings = 1;
-                } else if num_crossings == 1 {
-                    c1x = pts[bi];
-                    c1y = pts[bi + 1];
-                    c1z = pts[bi + 2];
-                    num_crossings = 2;
-                }
+                push_unique_point(
+                    &mut crossings,
+                    [
+                        pi[0] + t * (pj[0] - pi[0]),
+                        pi[1] + t * (pj[1] - pi[1]),
+                        pi[2] + t * (pj[2] - pi[2]),
+                    ],
+                );
             }
         }
 
-        if num_crossings == 2 {
+        if valid_cell && crossings.len() == 2 {
             let idx = (pts_flat.len() / 3) as i64;
-            pts_flat.push(c0x);
-            pts_flat.push(c0y);
-            pts_flat.push(c0z);
-            pts_flat.push(c1x);
-            pts_flat.push(c1y);
-            pts_flat.push(c1z);
+            pts_flat.extend_from_slice(&crossings[0]);
+            pts_flat.extend_from_slice(&crossings[1]);
             line_conn.push(idx);
             line_conn.push(idx + 1);
             line_off.push(line_conn.len() as i64);
@@ -108,6 +99,16 @@ pub fn slice_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> P
     pd.points = Points::from_flat_vec(pts_flat);
     pd.lines = CellArray::from_raw(line_off, line_conn);
     pd
+}
+
+fn push_unique_point(points: &mut Vec<[f64; 3]>, point: [f64; 3]) {
+    if !points.iter().any(|p| {
+        (p[0] - point[0]).abs() < 1e-10
+            && (p[1] - point[1]).abs() < 1e-10
+            && (p[2] - point[2]).abs() < 1e-10
+    }) {
+        points.push(point);
+    }
 }
 
 #[cfg(test)]
@@ -155,5 +156,19 @@ mod tests {
 
         let result = slice_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         assert_eq!(result.lines.num_cells(), 2);
+    }
+
+    #[test]
+    fn slice_preserves_edge_on_plane() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+
+        let result = slice_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.points.len(), 2);
+        assert_eq!(result.points.get(0)[0], 0.0);
+        assert_eq!(result.points.get(1)[0], 0.0);
     }
 }

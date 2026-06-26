@@ -12,8 +12,14 @@ pub fn image_brillouin_function(input: &ImageData, scalars: &str) -> ImageData {
             arr.tuple_as_f64(i, &mut buf);
             let x = buf[0] * 0.01;
             let j = 3.5;
-            (2.0 * j + 1.0) / (2.0 * j) * ((2.0 * j + 1.0) / (2.0 * j) * x).tanh()
-                - 1.0 / (2.0 * j) * (x / (2.0 * j)).tanh()
+            if x.abs() < 1e-8 {
+                (j + 1.0) / (3.0 * j) * x
+            } else {
+                let two_j = 2.0 * j;
+                let coth = |v: f64| 1.0 / v.tanh();
+                (two_j + 1.0) / two_j * coth((two_j + 1.0) / two_j * x)
+                    - 1.0 / two_j * coth(x / two_j)
+            }
         })
         .collect();
     let dims = input.dimensions();
@@ -36,5 +42,10 @@ mod tests {
         );
         let r = image_brillouin_function(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!(buf[0] > 0.0);
+        assert!(buf[0] < 0.01);
     }
 }

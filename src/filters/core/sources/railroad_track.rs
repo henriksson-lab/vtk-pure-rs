@@ -38,9 +38,12 @@ pub fn railroad_track(
         pts.push([x + hw, hg * 1.3, tie_height]);
         pts.push([x - hw, hg * 1.3, tie_height]);
         let f = |j: usize| (tb + j) as i64;
+        polys.push_cell(&[f(0), f(3), f(2), f(1)]); // bottom
         polys.push_cell(&[f(4), f(5), f(6), f(7)]); // top
         polys.push_cell(&[f(0), f(1), f(5), f(4)]); // front
+        polys.push_cell(&[f(1), f(2), f(6), f(5)]); // right end
         polys.push_cell(&[f(2), f(3), f(7), f(6)]); // back
+        polys.push_cell(&[f(3), f(0), f(4), f(7)]); // left end
     }
     let mut r = PolyData::new();
     r.points = pts;

@@ -7,14 +7,16 @@ use crate::data::PolyData;
 pub fn signed_volume(input: &PolyData) -> f64 {
     let mut vol = 0.0;
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if !valid_cell(cell, input.points.len()) {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len()-1 {
+        for i in 1..cell.len() - 1 {
             let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i+1] as usize);
-            vol += v0[0]*(v1[1]*v2[2]-v2[1]*v1[2])
-                 - v1[0]*(v0[1]*v2[2]-v2[1]*v0[2])
-                 + v2[0]*(v0[1]*v1[2]-v1[1]*v0[2]);
+            let v2 = input.points.get(cell[i + 1] as usize);
+            vol += v0[0] * (v1[1] * v2[2] - v1[2] * v2[1])
+                + v0[1] * (v1[2] * v2[0] - v1[0] * v2[2])
+                + v0[2] * (v1[0] * v2[1] - v1[1] * v2[0]);
         }
     }
     vol / 6.0
@@ -24,15 +26,21 @@ pub fn signed_volume(input: &PolyData) -> f64 {
 pub fn surface_area(input: &PolyData) -> f64 {
     let mut area = 0.0;
     for cell in input.polys.iter() {
-        if cell.len() < 3 { continue; }
+        if !valid_cell(cell, input.points.len()) {
+            continue;
+        }
         let v0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len()-1 {
+        for i in 1..cell.len() - 1 {
             let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i+1] as usize);
-            let e1 = [v1[0]-v0[0],v1[1]-v0[1],v1[2]-v0[2]];
-            let e2 = [v2[0]-v0[0],v2[1]-v0[1],v2[2]-v0[2]];
-            let c = [e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
-            area += 0.5*(c[0]*c[0]+c[1]*c[1]+c[2]*c[2]).sqrt();
+            let v2 = input.points.get(cell[i + 1] as usize);
+            let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+            let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+            let c = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            area += 0.5 * (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt();
         }
     }
     area
@@ -43,7 +51,15 @@ pub fn surface_area(input: &PolyData) -> f64 {
 pub fn compactness(input: &PolyData) -> f64 {
     let v = signed_volume(input).abs();
     let a = surface_area(input);
-    if a > 1e-15 { 36.0 * std::f64::consts::PI * v * v / (a * a * a) } else { 0.0 }
+    if a > 1e-15 {
+        36.0 * std::f64::consts::PI * v * v / (a * a * a)
+    } else {
+        0.0
+    }
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]
@@ -52,13 +68,30 @@ mod tests {
 
     fn make_box_mesh() -> PolyData {
         let mut pd = PolyData::new();
-        let c = [[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0],
-                  [0.0,0.0,1.0],[1.0,0.0,1.0],[1.0,1.0,1.0],[0.0,1.0,1.0]];
-        for p in &c { pd.points.push(*p); }
-        let faces = [[0,3,2,1],[4,5,6,7],[0,1,5,4],[2,3,7,6],[0,4,7,3],[1,2,6,5]];
+        let c = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+        for p in &c {
+            pd.points.push(*p);
+        }
+        let faces = [
+            [0, 3, 2, 1],
+            [4, 5, 6, 7],
+            [0, 1, 5, 4],
+            [2, 3, 7, 6],
+            [0, 4, 7, 3],
+            [1, 2, 6, 5],
+        ];
         for f in &faces {
-            pd.polys.push_cell(&[f[0] as i64,f[1] as i64,f[2] as i64]);
-            pd.polys.push_cell(&[f[0] as i64,f[2] as i64,f[3] as i64]);
+            pd.polys.push_cell(&[f[0] as i64, f[1] as i64, f[2] as i64]);
+            pd.polys.push_cell(&[f[0] as i64, f[2] as i64, f[3] as i64]);
         }
         pd
     }

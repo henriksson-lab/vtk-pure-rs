@@ -42,21 +42,9 @@ pub fn torii_gate(width: f64, height: f64, pillar_radius: f64, na: usize) -> Pol
     pts.push([hw + overhang, -pillar_radius * 2.0, height + beam_h]);
     pts.push([hw + overhang, pillar_radius * 2.0, height + beam_h]);
     pts.push([-hw - overhang, pillar_radius * 2.0, height + beam_h]);
-    // Top and front faces
-    polys.push_cell(&[
-        (bb + 4) as i64,
-        (bb + 5) as i64,
-        (bb + 6) as i64,
-        (bb + 7) as i64,
-    ]); // top
-    polys.push_cell(&[bb as i64, (bb + 1) as i64, (bb + 5) as i64, (bb + 4) as i64]); // front
-    polys.push_cell(&[
-        (bb + 2) as i64,
-        (bb + 3) as i64,
-        (bb + 7) as i64,
-        (bb + 6) as i64,
-    ]); // back
-        // Nuki (cross beam, lower)
+    push_box_faces(&mut polys, bb);
+
+    // Nuki (cross beam, lower)
     let nuki_z = height * 0.75;
     let nb = pts.len();
     pts.push([-hw, -pillar_radius, nuki_z]);
@@ -67,17 +55,21 @@ pub fn torii_gate(width: f64, height: f64, pillar_radius: f64, na: usize) -> Pol
     pts.push([hw, -pillar_radius, nuki_z + beam_h * 0.7]);
     pts.push([hw, pillar_radius, nuki_z + beam_h * 0.7]);
     pts.push([-hw, pillar_radius, nuki_z + beam_h * 0.7]);
-    polys.push_cell(&[
-        (nb + 4) as i64,
-        (nb + 5) as i64,
-        (nb + 6) as i64,
-        (nb + 7) as i64,
-    ]);
-    polys.push_cell(&[nb as i64, (nb + 1) as i64, (nb + 5) as i64, (nb + 4) as i64]);
+    push_box_faces(&mut polys, nb);
     let mut m = PolyData::new();
     m.points = pts;
     m.polys = polys;
     m
+}
+
+fn push_box_faces(polys: &mut CellArray, base: usize) {
+    let f = |i: usize| (base + i) as i64;
+    polys.push_cell(&[f(0), f(3), f(2), f(1)]);
+    polys.push_cell(&[f(4), f(5), f(6), f(7)]);
+    polys.push_cell(&[f(0), f(1), f(5), f(4)]);
+    polys.push_cell(&[f(2), f(3), f(7), f(6)]);
+    polys.push_cell(&[f(0), f(4), f(7), f(3)]);
+    polys.push_cell(&[f(1), f(2), f(6), f(5)]);
 }
 
 #[cfg(test)]

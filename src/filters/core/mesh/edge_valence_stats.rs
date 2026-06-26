@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashSet;
 
 /// Compute per-vertex edge valence (number of edges meeting at each vertex).
 ///
@@ -7,33 +8,66 @@ pub fn compute_edge_valence(input: &PolyData) -> PolyData {
     let num_pts: usize = input.points.len();
     let mut valence = vec![0i32; num_pts];
 
-    // Track unique edges so each edge is counted once per vertex endpoint.
-    let mut seen_edges: std::collections::HashSet<(usize, usize)> =
-        std::collections::HashSet::new();
-
-    for cell in input.polys.iter() {
-        let n = cell.len();
-        if n < 2 {
-            continue;
-        }
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            let edge = if a < b { (a, b) } else { (b, a) };
-            if seen_edges.insert(edge) {
-                valence[a] += 1;
-                valence[b] += 1;
-            }
-        }
+    for (a, b) in unique_edges(input) {
+        valence[a] += 1;
+        valence[b] += 1;
     }
 
     let valence_f64: Vec<f64> = valence.iter().map(|&v| v as f64).collect();
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("EdgeValence", valence_f64, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "EdgeValence",
+            valence_f64,
+            1,
+        )));
     pd
+}
+
+fn unique_edges(input: &PolyData) -> HashSet<(usize, usize)> {
+    let mut edges = HashSet::new();
+    let num_pts = input.points.len();
+
+    for cell in input.lines.iter() {
+        for pair in cell.windows(2) {
+            insert_edge(&mut edges, pair[0], pair[1], num_pts);
+        }
+    }
+
+    for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_edge(&mut edges, cell[i], cell[(i + 1) % cell.len()], num_pts);
+        }
+    }
+
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for tri in strip.windows(3) {
+            insert_edge(&mut edges, tri[0], tri[1], num_pts);
+            insert_edge(&mut edges, tri[1], tri[2], num_pts);
+            insert_edge(&mut edges, tri[2], tri[0], num_pts);
+        }
+    }
+
+    edges
+}
+
+fn insert_edge(edges: &mut HashSet<(usize, usize)>, a: i64, b: i64, num_pts: usize) {
+    if a < 0 || b < 0 || a == b {
+        return;
+    }
+    let a = a as usize;
+    let b = b as usize;
+    if a >= num_pts || b >= num_pts {
+        return;
+    }
+    edges.insert(if a < b { (a, b) } else { (b, a) });
 }
 
 /// Statistics about edge valence across the whole mesh.
@@ -117,6 +151,20 @@ mod tests {
         assert_eq!(stats.max_valence, 3);
         // mean = (3+3+2+2)/4 = 2.5
         assert!((stats.mean_valence - 2.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn polyline_edges_contribute_to_valence() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let stats = edge_valence_stats(&pd).unwrap();
+        assert_eq!(stats.min_valence, 1);
+        assert_eq!(stats.max_valence, 2);
+        assert!((stats.mean_valence - 4.0 / 3.0).abs() < 1e-10);
     }
 
     #[test]

@@ -14,7 +14,7 @@ pub fn debris_field(
         *rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((*rng >> 33) as f64) / (u32::MAX as f64)
+        ((*rng >> 32) as f64) / ((u32::MAX as f64) + 1.0)
     };
     for _ in 0..num_objects {
         let r = orbit_r_min + (orbit_r_max - orbit_r_min) * next(&mut rng);

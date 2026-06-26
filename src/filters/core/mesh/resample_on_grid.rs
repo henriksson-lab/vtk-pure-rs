@@ -22,10 +22,10 @@ pub fn resample_on_grid(input: &PolyData, array_name: &str, nx: usize, ny: usize
     }
 
     // Compute bounding box in XY
-    let mut x_min: f64 = f64::MAX;
-    let mut x_max: f64 = f64::MIN;
-    let mut y_min: f64 = f64::MAX;
-    let mut y_max: f64 = f64::MIN;
+    let mut x_min: f64 = f64::INFINITY;
+    let mut x_max: f64 = f64::NEG_INFINITY;
+    let mut y_min: f64 = f64::INFINITY;
+    let mut y_max: f64 = f64::NEG_INFINITY;
 
     for i in 0..n_pts {
         let p = input.points.get(i);
@@ -35,8 +35,16 @@ pub fn resample_on_grid(input: &PolyData, array_name: &str, nx: usize, ny: usize
         y_max = y_max.max(p[1]);
     }
 
-    let dx: f64 = if nx > 1 { (x_max - x_min) / (nx - 1) as f64 } else { 1.0 };
-    let dy: f64 = if ny > 1 { (y_max - y_min) / (ny - 1) as f64 } else { 1.0 };
+    let dx: f64 = if nx > 1 {
+        (x_max - x_min) / (nx - 1) as f64
+    } else {
+        1.0
+    };
+    let dy: f64 = if ny > 1 {
+        (y_max - y_min) / (ny - 1) as f64
+    } else {
+        1.0
+    };
 
     // Read scalar values
     let mut buf = [0.0f64];
@@ -51,7 +59,10 @@ pub fn resample_on_grid(input: &PolyData, array_name: &str, nx: usize, ny: usize
     let mut tris: Vec<[usize; 3]> = Vec::new();
     for cell in input.polys.iter() {
         if cell.len() == 3 {
-            tris.push([cell[0] as usize, cell[1] as usize, cell[2] as usize]);
+            let tri = [cell[0], cell[1], cell[2]];
+            if tri.iter().all(|&id| id >= 0 && (id as usize) < n_pts) {
+                tris.push([tri[0] as usize, tri[1] as usize, tri[2] as usize]);
+            }
         }
     }
 
@@ -70,9 +81,21 @@ pub fn resample_on_grid(input: &PolyData, array_name: &str, nx: usize, ny: usize
 
                 let (u, v, w) = barycentric_2d(gx, gy, p0, p1, p2);
                 if u >= -1e-10 && v >= -1e-10 && w >= -1e-10 {
-                    let s0 = if tri[0] < scalars.len() { scalars[tri[0]] } else { 0.0 };
-                    let s1 = if tri[1] < scalars.len() { scalars[tri[1]] } else { 0.0 };
-                    let s2 = if tri[2] < scalars.len() { scalars[tri[2]] } else { 0.0 };
+                    let s0 = if tri[0] < scalars.len() {
+                        scalars[tri[0]]
+                    } else {
+                        0.0
+                    };
+                    let s1 = if tri[1] < scalars.len() {
+                        scalars[tri[1]]
+                    } else {
+                        0.0
+                    };
+                    let s2 = if tri[2] < scalars.len() {
+                        scalars[tri[2]]
+                    } else {
+                        0.0
+                    };
                     grid[row][col] = u * s0 + v * s1 + w * s2;
                     break;
                 }
@@ -120,9 +143,12 @@ mod tests {
             vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
             vec![[0, 1, 2]],
         );
-        pd.point_data_mut().add_array(AnyDataArray::F64(
-            DataArray::from_vec("temperature", vec![0.0, 1.0, 2.0], 1),
-        ));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "temperature",
+                vec![0.0, 1.0, 2.0],
+                1,
+            )));
         pd
     }
 

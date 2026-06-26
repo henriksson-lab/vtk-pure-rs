@@ -1,7 +1,5 @@
 #![allow(ambiguous_glob_reexports)]
 //! Geometry sources.
-
-//! Geometry sources.
 #[cfg(feature = "sources-extra")]
 pub mod abacus;
 #[cfg(feature = "sources-extra")]

@@ -1,5 +1,9 @@
 //! Comoving distance (flat universe)
 use crate::data::{AnyDataArray, DataArray, ImageData};
+
+const SPEED_OF_LIGHT_KM_PER_S: f64 = 299_792.458;
+const HUBBLE_CONSTANT_KM_PER_S_PER_MPC: f64 = 70.0;
+
 pub fn image_comoving_distance(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
@@ -10,7 +14,7 @@ pub fn image_comoving_distance(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            3e8 / 70.0 * buf[0].abs().max(0.001)
+            SPEED_OF_LIGHT_KM_PER_S / HUBBLE_CONSTANT_KM_PER_S_PER_MPC * buf[0].max(0.0)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +37,21 @@ mod tests {
         );
         let r = image_comoving_distance(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn zero_redshift_has_zero_distance() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "z",
+            |_, _, _| 0.0,
+        );
+        let r = image_comoving_distance(&img, "z");
+        let arr = r.point_data().get_array("z").unwrap();
+        let mut buf = [1.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

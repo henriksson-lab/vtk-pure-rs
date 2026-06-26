@@ -38,7 +38,7 @@ pub fn half_pipe(radius: f64, width: f64, flat_length: f64, resolution: usize) -
     // Left quarter
     for i in 0..=res {
         let t = i as f64 / res as f64;
-        let a = std::f64::consts::PI * 0.5 + t * std::f64::consts::FRAC_PI_2;
+        let a = std::f64::consts::PI + t * std::f64::consts::FRAC_PI_2;
         let x = -hl + radius * a.cos();
         let z = radius + radius * a.sin();
         pts.push([x, -hw, z]);
@@ -55,7 +55,7 @@ pub fn half_pipe(radius: f64, width: f64, flat_length: f64, resolution: usize) -
     let rb = pts.len();
     for i in 0..=res {
         let t = i as f64 / res as f64;
-        let a = std::f64::consts::PI + t * std::f64::consts::FRAC_PI_2;
+        let a = std::f64::consts::PI * 1.5 + t * std::f64::consts::FRAC_PI_2;
         let x = hl + radius * a.cos();
         let z = radius + radius * a.sin();
         pts.push([x, -hw, z]);
@@ -85,5 +85,13 @@ mod tests {
     fn test_half() {
         let h = half_pipe(2.0, 3.0, 4.0, 8);
         assert!(h.polys.num_cells() > 10);
+        assert!((h.points[0][0] + 4.0).abs() < 1e-12);
+        assert!((h.points[0][2] - 2.0).abs() < 1e-12);
+        assert!((h.points[16][0] + 2.0).abs() < 1e-12);
+        assert!(h.points[16][2].abs() < 1e-12);
+        assert!((h.points[22][0] - 2.0).abs() < 1e-12);
+        assert!(h.points[22][2].abs() < 1e-12);
+        assert!((h.points[38][0] - 4.0).abs() < 1e-12);
+        assert!((h.points[38][2] - 2.0).abs() < 1e-12);
     }
 }

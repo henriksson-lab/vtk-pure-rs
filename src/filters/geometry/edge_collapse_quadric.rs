@@ -62,7 +62,7 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
                 let edge = if a < b { (a, b) } else { (b, a) };
                 if seen.insert(edge) {
                     let cost = edge_cost(&quadrics[a], &quadrics[b], &pts[a], &pts[b]);
-                    let cost_bits = cost.to_bits();
+                    let cost_bits = cost_key(cost);
                     heap.push((
                         Reverse(cost_bits),
                         version[edge.0],
@@ -170,7 +170,7 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
 
         for &nb in &neighbors {
             let cost = edge_cost(&quadrics[a], &quadrics[nb], &pts[a], &pts[nb]);
-            let cost_bits = cost.to_bits();
+            let cost_bits = cost_key(cost);
             heap.push((Reverse(cost_bits), version[a], version[nb], a, nb));
         }
     }
@@ -266,6 +266,15 @@ fn eval_quadric(q: &[f64; 10], v: &[f64; 3]) -> f64 {
         + q[9]
 }
 
+fn cost_key(cost: f64) -> u64 {
+    let finite = if cost.is_finite() {
+        cost.max(0.0)
+    } else {
+        f64::INFINITY
+    };
+    finite.to_bits()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,5 +317,12 @@ mod tests {
         let pd = PolyData::new();
         let result = edge_collapse_quadric(&pd, 0.5);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn cost_key_orders_positive_costs() {
+        let mut costs = vec![10.0, 0.5, 2.0, 1.0];
+        costs.sort_by_key(|&cost| cost_key(cost));
+        assert_eq!(costs, vec![0.5, 1.0, 2.0, 10.0]);
     }
 }

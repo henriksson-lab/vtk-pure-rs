@@ -2,6 +2,8 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn horoscope_wheel(outer_radius: f64, inner_radius: f64) -> PolyData {
+    let outer_radius = outer_radius.abs();
+    let inner_radius = inner_radius.abs().min(outer_radius);
     let n_segments = 12;
     let na_per_seg = 4;
     let na = n_segments * na_per_seg;

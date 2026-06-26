@@ -30,6 +30,7 @@ pub fn ballista(frame_length: f64, arm_span: f64) -> PolyData {
     lines.push_cell(&[u0 as i64, u1 as i64]); // crossbar
                                               // Bow arms (from crossbar outward and curved)
     let na = 6;
+    let mut bow_tips = Vec::with_capacity(2);
     for &side in &[-1.0f64, 1.0] {
         let arm_base = pts.len();
         for i in 0..=na {
@@ -42,10 +43,10 @@ pub fn ballista(frame_length: f64, arm_span: f64) -> PolyData {
         for i in 0..na {
             lines.push_cell(&[(arm_base + i) as i64, (arm_base + i + 1) as i64]);
         }
+        bow_tips.push(arm_base + na);
     }
     // Bowstring
-    let _left_tip = pts.len() - na - 1 + na; // approximate
-    let _right_tip = pts.len() - 1;
+    lines.push_cell(&[bow_tips[0] as i64, bow_tips[1] as i64]);
     // Track/slide
     let s0 = pts.len();
     pts.push([-fl * 0.1, 0.0, h * 0.8]);

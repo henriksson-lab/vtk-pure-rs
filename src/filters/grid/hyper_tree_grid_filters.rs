@@ -10,7 +10,7 @@ use crate::data::{AnyDataArray, DataArray, HyperTreeGrid, ImageData, Points, Pol
 /// Creates one quad per visible coarse-grid face on the boundary.
 pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -27,7 +27,7 @@ pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
     let mut point_map: std::collections::HashMap<[i64; 3], usize> =
         std::collections::HashMap::new();
 
-    if htg.dimension() == 2 {
+    if htg.dimensions()[2] <= 1 {
         // 2D: one quad per coarse cell
         for j in 0..gs[1] {
             for i in 0..gs[0] {
@@ -117,7 +117,7 @@ pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
 /// Extract cell centers of all coarse cells as points.
 pub fn hyper_tree_grid_cell_centers(htg: &HyperTreeGrid) -> PolyData {
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -163,8 +163,9 @@ pub fn hyper_tree_grid_cell_centers(htg: &HyperTreeGrid) -> PolyData {
 
 /// Convert a HyperTreeGrid to a uniform ImageData at the coarse level.
 pub fn hyper_tree_grid_to_image_data(htg: &HyperTreeGrid) -> ImageData {
+    let dims = htg.dimensions();
     let gs = htg.grid_size();
-    let bounds = htg.bounds();
+    let bounds = htg.grid_bounds();
     let spacing = [
         (bounds.x_max - bounds.x_min) / gs[0] as f64,
         (bounds.y_max - bounds.y_min) / gs[1] as f64,
@@ -175,7 +176,7 @@ pub fn hyper_tree_grid_to_image_data(htg: &HyperTreeGrid) -> ImageData {
         },
     ];
 
-    ImageData::with_dimensions(gs[0], gs[1], gs[2].max(1))
+    ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(spacing)
         .with_origin([bounds.x_min, bounds.y_min, bounds.z_min])
 }
@@ -202,7 +203,7 @@ mod tests {
     fn geometry_2d() {
         let htg = HyperTreeGrid::new([3, 3, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let geom = hyper_tree_grid_geometry(&htg);
-        assert_eq!(geom.polys.num_cells(), 9); // one quad per coarse cell
+        assert_eq!(geom.polys.num_cells(), 4); // one quad per coarse cell
         assert!(geom.points.len() > 0);
     }
 
@@ -217,7 +218,7 @@ mod tests {
     fn cell_centers() {
         let htg = HyperTreeGrid::new([3, 4, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
         let centers = hyper_tree_grid_cell_centers(&htg);
-        assert_eq!(centers.points.len(), 12); // 3*4
+        assert_eq!(centers.points.len(), 6); // 2*3
 
         let p0 = centers.points.get(0);
         assert!((p0[0] - 0.5).abs() < 1e-10);
@@ -229,6 +230,16 @@ mod tests {
         let htg = HyperTreeGrid::new([5, 5, 5], [1.0, 2.0, 3.0], [0.5, 0.5, 0.5]);
         let img = hyper_tree_grid_to_image_data(&htg);
         assert_eq!(img.dimensions(), [5, 5, 5]);
+        assert_eq!(img.origin(), [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn geometry_empty_grid_uses_grid_bounds() {
+        let htg = HyperTreeGrid::new([3, 2, 1], [10.0, 20.0, 0.0], [2.0, 3.0, 1.0]);
+        assert!(htg.bounds().is_empty());
+        let geom = hyper_tree_grid_geometry(&htg);
+        assert_eq!(geom.polys.num_cells(), 2);
+        assert_eq!(geom.points.get(0), [10.0, 20.0, 0.0]);
     }
 
     #[test]

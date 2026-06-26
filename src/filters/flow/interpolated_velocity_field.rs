@@ -38,8 +38,15 @@ impl<'a> VelocityField for ImageVelocityField<'a> {
         let spacing = self.field.spacing();
         let origin = self.field.origin();
 
+        if dims.iter().any(|&d| d == 0) || spacing.iter().any(|&s| s == 0.0) {
+            return None;
+        }
+
         for i in 0..3 {
-            if point[i] < origin[i] || point[i] > origin[i] + (dims[i] as f64 - 1.0) * spacing[i] {
+            let end = origin[i] + (dims[i] as f64 - 1.0) * spacing[i];
+            let lo = origin[i].min(end);
+            let hi = origin[i].max(end);
+            if point[i] < lo || point[i] > hi {
                 return None;
             }
         }
@@ -141,17 +148,44 @@ fn trilinear_interp(
     let fx = (pos[0] - origin[0]) / spacing[0];
     let fy = (pos[1] - origin[1]) / spacing[1];
     let fz = (pos[2] - origin[2]) / spacing[2];
-    let ix = (fx.floor() as usize).min(dims[0].saturating_sub(2));
-    let iy = (fy.floor() as usize).min(dims[1].saturating_sub(2));
-    let iz = (fz.floor() as usize).min(dims[2].saturating_sub(2));
-    let tx = (fx - ix as f64).clamp(0.0, 1.0);
-    let ty = (fy - iy as f64).clamp(0.0, 1.0);
-    let tz = (fz - iz as f64).clamp(0.0, 1.0);
+    let ix = if dims[0] > 1 {
+        (fx.floor() as usize).min(dims[0] - 2)
+    } else {
+        0
+    };
+    let iy = if dims[1] > 1 {
+        (fy.floor() as usize).min(dims[1] - 2)
+    } else {
+        0
+    };
+    let iz = if dims[2] > 1 {
+        (fz.floor() as usize).min(dims[2] - 2)
+    } else {
+        0
+    };
+    let tx = if dims[0] > 1 {
+        (fx - ix as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let ty = if dims[1] > 1 {
+        (fy - iy as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let tz = if dims[2] > 1 {
+        (fz - iz as f64).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let mut r = [0.0; 3];
     let mut buf = [0.0f64; 3];
-    for dz in 0..2usize {
-        for dy in 0..2usize {
-            for dx in 0..2usize {
+    let nz = if dims[2] > 1 { 2 } else { 1 };
+    let ny = if dims[1] > 1 { 2 } else { 1 };
+    let nx = if dims[0] > 1 { 2 } else { 1 };
+    for dz in 0..nz {
+        for dy in 0..ny {
+            for dx in 0..nx {
                 let idx = (ix + dx) + (iy + dy) * dims[0] + (iz + dz) * dims[0] * dims[1];
                 if idx < arr.num_tuples() {
                     arr.tuple_as_f64(idx, &mut buf);
@@ -171,6 +205,7 @@ fn trilinear_interp(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::DataArray;
 
     fn make_field() -> ImageData {
         let dims = [10, 10, 10];
@@ -207,6 +242,15 @@ mod tests {
         assert!(cvf.evaluate([5.0, 5.0, 5.0]).is_some());
         assert!(cvf.evaluate([15.0, 5.0, 5.0]).is_some());
         assert!(cvf.evaluate([25.0, 5.0, 5.0]).is_none());
+    }
+
+    #[test]
+    fn negative_spacing_bounds() {
+        let mut field = make_field();
+        field.set_spacing([-1.0, 1.0, 1.0]);
+        let vf = ImageVelocityField::new(&field);
+        assert!(vf.evaluate([-5.0, 5.0, 5.0]).is_some());
+        assert!(vf.evaluate([5.0, 5.0, 5.0]).is_none());
     }
 
     #[test]

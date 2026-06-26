@@ -21,7 +21,8 @@ pub fn corkscrew(helix_length: f64, helix_radius: f64, turns: f64, handle_width:
     pts.push([0.0, 0.0, 0.0]);
     lines.push_cell(&[shaft_top as i64, shaft_bot as i64]);
     // Helix (spiral worm)
-    let n_pts = (turns * 20.0) as usize;
+    let n_pts = (turns.abs() * 20.0).ceil() as usize;
+    let n_pts = n_pts.max(4);
     let hb = pts.len();
     for i in 0..=n_pts {
         let t = i as f64 / n_pts as f64;

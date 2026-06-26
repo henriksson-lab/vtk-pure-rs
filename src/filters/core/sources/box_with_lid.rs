@@ -1,10 +1,10 @@
 //! Open box with optional lid geometry.
 use crate::data::{CellArray, Points, PolyData};
 pub fn open_box(width: f64, depth: f64, height: f64, wall_thickness: f64) -> PolyData {
-    let w = width;
-    let d = depth;
-    let h = height;
-    let t = wall_thickness;
+    let w = width.max(0.0);
+    let d = depth.max(0.0);
+    let h = height.max(0.0);
+    let t = wall_thickness.max(0.0).min(w * 0.5).min(d * 0.5).min(h);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut add_quad = |a: [f64; 3], b: [f64; 3], c: [f64; 3], d: [f64; 3]| {

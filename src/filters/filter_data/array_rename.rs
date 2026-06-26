@@ -33,7 +33,7 @@ fn rename_in_attributes(attrs: &mut DataSetAttributes, from: &str, to: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::DataArray;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn rename_point_data() {

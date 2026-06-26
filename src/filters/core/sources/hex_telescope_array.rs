@@ -6,33 +6,24 @@ pub fn hex_telescope_array(segment_radius: f64, n_rings: usize) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let gap = segment_radius * 0.05;
-    let dx = (segment_radius + gap) * 3.0f64.sqrt();
-    let dy = (segment_radius + gap) * 1.5;
-    // Generate hex center positions
-    let mut centers = vec![[0.0f64; 2]];
-    for ring in 1..=nr {
-        for side in 0..6 {
-            for step in 0..ring {
-                let _a0 = std::f64::consts::PI / 3.0 * side as f64;
-                let _a1 = std::f64::consts::PI / 3.0 * ((side + 2) % 6) as f64;
-                let cx = ring as f64
-                    * dx
-                    * (std::f64::consts::PI / 3.0 * side as f64 + std::f64::consts::PI / 6.0).cos()
-                    + step as f64
-                        * dx
-                        * (std::f64::consts::PI / 3.0 * ((side + 2) % 6) as f64
-                            + std::f64::consts::PI / 6.0)
-                            .cos();
-                let cy = ring as f64 * dy * 2.0 / 3.0
-                    * (std::f64::consts::PI / 3.0 * side as f64 + std::f64::consts::PI / 6.0).sin()
-                    + step as f64 * dy * 2.0 / 3.0
-                        * (std::f64::consts::PI / 3.0 * ((side + 2) % 6) as f64
-                            + std::f64::consts::PI / 6.0)
-                            .sin();
-                centers.push([cx, cy]);
+    let spacing = segment_radius + gap;
+    let axial_to_xy = |q: isize, r: isize| -> [f64; 2] {
+        [
+            spacing * 3.0f64.sqrt() * (q as f64 + r as f64 / 2.0),
+            spacing * 1.5 * r as f64,
+        ]
+    };
+
+    let mut centers = Vec::new();
+    for q in -(nr as isize)..=(nr as isize) {
+        for r in -(nr as isize)..=(nr as isize) {
+            let s = -q - r;
+            if q.abs().max(r.abs()).max(s.abs()) <= nr as isize {
+                centers.push(axial_to_xy(q, r));
             }
         }
     }
+
     // Place hexagonal segments at each center
     for &[cx, cy] in &centers {
         let base = pts.len();
@@ -65,7 +56,7 @@ mod tests {
     #[test]
     fn test_hex_array() {
         let m = hex_telescope_array(1.0, 2);
-        assert!(m.points.len() > 30);
-        assert!(m.polys.num_cells() > 5);
+        assert_eq!(m.points.len(), 19 * 6);
+        assert_eq!(m.polys.num_cells(), 19);
     }
 }

@@ -2,8 +2,9 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Compute the gradient of a scalar field on ImageData using central differences.
 ///
-/// Adds a "Gradient" 3-component point data array containing [dF/dx, dF/dy, dF/dz]
-/// at each grid point. Optionally also adds a "GradientMagnitude" scalar array.
+/// Adds a "Gradient" point data array containing [dF/dx, dF/dy] at each grid point,
+/// matching vtkImageGradient's default 2D dimensionality. Optionally also adds a
+/// "GradientMagnitude" scalar array.
 pub fn image_gradient(input: &ImageData, scalars: &str, compute_magnitude: bool) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
@@ -26,7 +27,7 @@ pub fn image_gradient(input: &ImageData, scalars: &str, compute_magnitude: bool)
 
     let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
 
-    let mut grad = vec![0.0f64; n * 3];
+    let mut grad = vec![0.0f64; n * 2];
     let mut mag = if compute_magnitude {
         vec![0.0f64; n]
     } else {
@@ -43,12 +44,9 @@ pub fn image_gradient(input: &ImageData, scalars: &str, compute_magnitude: bool)
                 let ip = if i + 1 < nx { i + 1 } else { nx - 1 };
                 let jm = if j > 0 { j - 1 } else { 0 };
                 let jp = if j + 1 < ny { j + 1 } else { ny - 1 };
-                let km = if k > 0 { k - 1 } else { 0 };
-                let kp = if k + 1 < nz { k + 1 } else { nz - 1 };
 
                 let dx_span = (ip - im) as f64 * spacing[0];
                 let dy_span = (jp - jm) as f64 * spacing[1];
-                let dz_span = (kp - km) as f64 * spacing[2];
 
                 let gx = if dx_span > 1e-15 {
                     (values[idx(ip, j, k)] - values[idx(im, j, k)]) / dx_span
@@ -60,18 +58,12 @@ pub fn image_gradient(input: &ImageData, scalars: &str, compute_magnitude: bool)
                 } else {
                     0.0
                 };
-                let gz = if dz_span > 1e-15 {
-                    (values[idx(i, j, kp)] - values[idx(i, j, km)]) / dz_span
-                } else {
-                    0.0
-                };
 
-                grad[pi * 3] = gx;
-                grad[pi * 3 + 1] = gy;
-                grad[pi * 3 + 2] = gz;
+                grad[pi * 2] = gx;
+                grad[pi * 2 + 1] = gy;
 
                 if compute_magnitude {
-                    mag[pi] = (gx * gx + gy * gy + gz * gz).sqrt();
+                    mag[pi] = (gx * gx + gy * gy).sqrt();
                 }
             }
         }
@@ -79,7 +71,7 @@ pub fn image_gradient(input: &ImageData, scalars: &str, compute_magnitude: bool)
 
     let mut img = input.clone();
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Gradient", grad, 3)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Gradient", grad, 2)));
     if compute_magnitude {
         img.point_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -106,12 +98,12 @@ mod tests {
 
         let result = image_gradient(&img, "val", true);
         let grad = result.point_data().get_array("Gradient").unwrap();
+        assert_eq!(grad.num_components(), 2);
         let mut buf = [0.0f64; 3];
         // Interior point
         grad.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 1.0).abs() < 1e-10);
         assert!(buf[1].abs() < 1e-10);
-        assert!(buf[2].abs() < 1e-10);
     }
 
     #[test]
@@ -134,6 +126,23 @@ mod tests {
         // Interior point: gradient = (1,1,0), magnitude = sqrt(2)
         mag.tuple_as_f64(12, &mut buf); // (2,2,0)
         assert!((buf[0] - 2.0_f64.sqrt()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn default_dimensionality_ignores_z() {
+        let mut img = ImageData::with_dimensions(1, 1, 5);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        let values: Vec<f64> = (0..5).map(|k| k as f64).collect();
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 1)));
+
+        let result = image_gradient(&img, "val", true);
+        let grad = result.point_data().get_array("Gradient").unwrap();
+        assert_eq!(grad.num_components(), 2);
+        let mag = result.point_data().get_array("GradientMagnitude").unwrap();
+        let mut buf = [1.0f64];
+        mag.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 
     #[test]

@@ -32,13 +32,24 @@ pub fn cross_shape(arm_length: f64, arm_width: f64, thickness: f64) -> PolyData 
     }
 
     let mut polys = CellArray::new();
-    // Bottom face (fan)
-    for i in 1..np - 1 {
-        polys.push_cell(&[0, (i + 1) as i64, i as i64]);
+    // Cap the concave cross as five convex quads: four arms plus the center.
+    let cap_quads = [
+        [0, 1, 2, 11],
+        [2, 3, 4, 5],
+        [5, 6, 7, 8],
+        [8, 9, 10, 11],
+        [11, 2, 5, 8],
+    ];
+    for q in &cap_quads {
+        polys.push_cell(&[q[0] as i64, q[3] as i64, q[2] as i64, q[1] as i64]);
     }
-    // Top face
-    for i in 1..np - 1 {
-        polys.push_cell(&[np as i64, (np + i) as i64, (np + i + 1) as i64]);
+    for q in &cap_quads {
+        polys.push_cell(&[
+            (np + q[0]) as i64,
+            (np + q[1]) as i64,
+            (np + q[2]) as i64,
+            (np + q[3]) as i64,
+        ]);
     }
     // Side faces
     for i in 0..np {

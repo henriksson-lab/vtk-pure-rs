@@ -2,16 +2,16 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Compute a 2D Voronoi diagram from a set of points.
 ///
-/// Uses the dual of the Delaunay triangulation: for each input point,
-/// constructs the Voronoi cell from the circumcenters of the surrounding
-/// triangles. Returns a PolyData with polygon cells and a "SiteId" cell
+/// Constructs each Voronoi tile by clipping a padded bounding rectangle with
+/// the perpendicular bisector half-spaces induced by the other input points.
+/// Returns a PolyData with polygon cells and a "SiteId" cell
 /// data array mapping each cell to its generator point.
 ///
 /// Points are projected to the XY plane. The result is clipped to a
-/// bounding rectangle with the given `padding` around the point set.
-pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
+/// bounding rectangle padded by `padding` times the point-set diagonal.
+pub fn voronoi_2d(input: &PolyData, padding: f64) -> PolyData {
     let n = input.points.len();
-    if n < 3 {
+    if n == 0 {
         return PolyData::new();
     }
 
@@ -22,55 +22,43 @@ pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
         })
         .collect();
 
-    // First compute Delaunay triangulation
-    let tris = delaunay(&pts);
+    let (min_x, max_x, min_y, max_y) = bounds_2d(&pts);
+    let dx = max_x - min_x;
+    let dy = max_y - min_y;
+    let diagonal = (dx * dx + dy * dy).sqrt();
+    let pad = padding.max(0.0) * diagonal.max(1.0);
+    let bounds = [min_x - pad, max_x + pad, min_y - pad, max_y + pad];
 
-    // Build adjacency: for each point, which triangles it belongs to (in order)
-    let mut pt_tris: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (ti, tri) in tris.iter().enumerate() {
-        for &v in tri {
-            pt_tris[v].push(ti);
-        }
-    }
-
-    // Compute circumcenters
-    let circumcenters: Vec<[f64; 2]> = tris
-        .iter()
-        .map(|tri| circumcenter(pts[tri[0]], pts[tri[1]], pts[tri[2]]))
-        .collect();
-
-    // Build Voronoi cells
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
     let mut site_ids: Vec<f64> = Vec::new();
 
     for pi in 0..n {
-        let adj = &pt_tris[pi];
-        if adj.len() < 3 {
-            continue; // boundary point, skip for now
+        let site = pts[pi];
+        let mut tile = vec![
+            [bounds[0], bounds[2]],
+            [bounds[1], bounds[2]],
+            [bounds[1], bounds[3]],
+            [bounds[0], bounds[3]],
+        ];
+
+        for (pj, &other) in pts.iter().enumerate() {
+            if pi == pj || same_point(site, other) {
+                continue;
+            }
+            tile = clip_to_nearest_halfspace(&tile, site, other);
+            if tile.len() < 3 {
+                break;
+            }
         }
 
-        // Order circumcenters around the point by angle
-        let mut angles: Vec<(usize, f64)> = adj
-            .iter()
-            .map(|&ti| {
-                let cc = circumcenters[ti];
-                let dx = cc[0] - pts[pi][0];
-                let dy = cc[1] - pts[pi][1];
-                (ti, dy.atan2(dx))
-            })
-            .collect();
-        angles.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-
-        let base = out_points.len() as i64;
-        let mut cell_ids: Vec<i64> = Vec::new();
-        for (i, &(ti, _)) in angles.iter().enumerate() {
-            let cc = circumcenters[ti];
-            out_points.push([cc[0], cc[1], 0.0]);
-            cell_ids.push(base + i as i64);
-        }
-
-        if cell_ids.len() >= 3 {
+        if tile.len() >= 3 {
+            let base = out_points.len() as i64;
+            let mut cell_ids = Vec::with_capacity(tile.len());
+            for (i, p) in tile.iter().enumerate() {
+                out_points.push([p[0], p[1], 0.0]);
+                cell_ids.push(base + i as i64);
+            }
             out_polys.push_cell(&cell_ids);
             site_ids.push(pi as f64);
         }
@@ -86,122 +74,67 @@ pub fn voronoi_2d(input: &PolyData, _padding: f64) -> PolyData {
     pd
 }
 
-fn circumcenter(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> [f64; 2] {
-    let ax = a[0];
-    let ay = a[1];
-    let bx = b[0];
-    let by = b[1];
-    let cx = c[0];
-    let cy = c[1];
-
-    let d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-    if d.abs() < 1e-15 {
-        return [(ax + bx + cx) / 3.0, (ay + by + cy) / 3.0];
-    }
-
-    let ux = ((ax * ax + ay * ay) * (by - cy)
-        + (bx * bx + by * by) * (cy - ay)
-        + (cx * cx + cy * cy) * (ay - by))
-        / d;
-    let uy = ((ax * ax + ay * ay) * (cx - bx)
-        + (bx * bx + by * by) * (ax - cx)
-        + (cx * cx + cy * cy) * (bx - ax))
-        / d;
-    [ux, uy]
-}
-
-/// Simple Bowyer-Watson Delaunay. Returns triangle vertex indices.
-fn delaunay(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
-    let n = pts.len();
-    if n < 3 {
-        return vec![];
-    }
-
-    let mut min_x = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut min_y = f64::MAX;
-    let mut max_y = f64::MIN;
+fn bounds_2d(pts: &[[f64; 2]]) -> (f64, f64, f64, f64) {
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
     for p in pts {
         min_x = min_x.min(p[0]);
         max_x = max_x.max(p[0]);
         min_y = min_y.min(p[1]);
         max_y = max_y.max(p[1]);
     }
-    let dx = (max_x - min_x).max(1e-10);
-    let dy = (max_y - min_y).max(1e-10);
-    let margin = (dx + dy) * 10.0;
-
-    let super_pts = [
-        [min_x - margin, min_y - margin],
-        [max_x + margin * 2.0, min_y - margin],
-        [min_x - margin, max_y + margin * 2.0],
-    ];
-
-    let mut all_pts: Vec<[f64; 2]> = pts.to_vec();
-    all_pts.extend_from_slice(&super_pts);
-
-    let mut triangles: Vec<[usize; 3]> = vec![[n, n + 1, n + 2]];
-
-    for pi in 0..n {
-        let p = all_pts[pi];
-        let mut bad = vec![false; triangles.len()];
-        for (ti, tri) in triangles.iter().enumerate() {
-            if in_circumcircle(all_pts[tri[0]], all_pts[tri[1]], all_pts[tri[2]], p) {
-                bad[ti] = true;
-            }
-        }
-
-        let mut polygon: Vec<(usize, usize)> = Vec::new();
-        for (ti, tri) in triangles.iter().enumerate() {
-            if !bad[ti] {
-                continue;
-            }
-            let edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
-            for &(a, b) in &edges {
-                let shared = triangles.iter().enumerate().any(|(tj, other)| {
-                    if tj == ti || !bad[tj] {
-                        return false;
-                    }
-                    let oedges = [
-                        (other[0], other[1]),
-                        (other[1], other[2]),
-                        (other[2], other[0]),
-                    ];
-                    oedges.contains(&(b, a))
-                });
-                if !shared {
-                    polygon.push((a, b));
-                }
-            }
-        }
-
-        let mut new_tris: Vec<[usize; 3]> = triangles
-            .iter()
-            .enumerate()
-            .filter(|(ti, _)| !bad[*ti])
-            .map(|(_, t)| *t)
-            .collect();
-        for &(a, b) in &polygon {
-            new_tris.push([a, b, pi]);
-        }
-        triangles = new_tris;
+    if min_x == max_x {
+        min_x -= 0.5;
+        max_x += 0.5;
     }
-
-    triangles.retain(|tri| tri[0] < n && tri[1] < n && tri[2] < n);
-    triangles
+    if min_y == max_y {
+        min_y -= 0.5;
+        max_y += 0.5;
+    }
+    (min_x, max_x, min_y, max_y)
 }
 
-fn in_circumcircle(a: [f64; 2], b: [f64; 2], c: [f64; 2], p: [f64; 2]) -> bool {
-    let ax = a[0] - p[0];
-    let ay = a[1] - p[1];
-    let bx = b[0] - p[0];
-    let by = b[1] - p[1];
-    let cx = c[0] - p[0];
-    let cy = c[1] - p[1];
-    let det = ax * (by * (cx * cx + cy * cy) - cy * (bx * bx + by * by))
-        - ay * (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by))
-        + (ax * ax + ay * ay) * (bx * cy - by * cx);
-    det > 0.0
+fn clip_to_nearest_halfspace(poly: &[[f64; 2]], site: [f64; 2], other: [f64; 2]) -> Vec<[f64; 2]> {
+    let mut out = Vec::new();
+    let mut prev = poly[poly.len() - 1];
+    let mut prev_val = bisector_value(prev, site, other);
+    let mut prev_inside = prev_val <= 1e-12;
+
+    for &curr in poly {
+        let curr_val = bisector_value(curr, site, other);
+        let curr_inside = curr_val <= 1e-12;
+
+        if curr_inside != prev_inside {
+            let t = prev_val / (prev_val - curr_val);
+            out.push([
+                prev[0] + t * (curr[0] - prev[0]),
+                prev[1] + t * (curr[1] - prev[1]),
+            ]);
+        }
+        if curr_inside {
+            out.push(curr);
+        }
+
+        prev = curr;
+        prev_val = curr_val;
+        prev_inside = curr_inside;
+    }
+
+    out
+}
+
+fn bisector_value(x: [f64; 2], site: [f64; 2], other: [f64; 2]) -> f64 {
+    2.0 * (x[0] * (other[0] - site[0]) + x[1] * (other[1] - site[1]))
+        + site[0] * site[0]
+        + site[1] * site[1]
+        - other[0] * other[0]
+        - other[1] * other[1]
+}
+
+fn same_point(a: [f64; 2], b: [f64; 2]) -> bool {
+    (a[0] - b[0]).abs() <= 1e-15 && (a[1] - b[1]).abs() <= 1e-15
 }
 
 #[cfg(test)]
@@ -217,8 +150,7 @@ mod tests {
             }
         }
         let result = voronoi_2d(&pd, 1.0);
-        // Interior point (1,1) should produce a Voronoi cell
-        assert!(result.polys.num_cells() > 0);
+        assert_eq!(result.polys.num_cells(), 9);
         assert!(result.cell_data().get_array("SiteId").is_some());
     }
 
@@ -228,7 +160,7 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
         let result = voronoi_2d(&pd, 1.0);
-        assert_eq!(result.polys.num_cells(), 0);
+        assert_eq!(result.polys.num_cells(), 2);
     }
 
     #[test]

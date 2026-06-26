@@ -34,10 +34,10 @@ pub fn hubble_telescope(
     for &side in &[-1.0f64, 1.0] {
         let py = side * (tube_r + solar_w / 2.0 + tube_r * 0.3);
         let pb = pts.len();
-        pts.push([tube_l * 0.3, -solar_h / 2.0 + py, 0.0]);
-        pts.push([tube_l * 0.7, -solar_h / 2.0 + py, 0.0]);
-        pts.push([tube_l * 0.7, solar_h / 2.0 + py, 0.0]);
-        pts.push([tube_l * 0.3, solar_h / 2.0 + py, 0.0]);
+        pts.push([tube_l * 0.5 - solar_h / 2.0, py - solar_w / 2.0, 0.0]);
+        pts.push([tube_l * 0.5 + solar_h / 2.0, py - solar_w / 2.0, 0.0]);
+        pts.push([tube_l * 0.5 + solar_h / 2.0, py + solar_w / 2.0, 0.0]);
+        pts.push([tube_l * 0.5 - solar_h / 2.0, py + solar_w / 2.0, 0.0]);
         polys.push_cell(&[pb as i64, (pb + 1) as i64, (pb + 2) as i64, (pb + 3) as i64]);
         // Panel arm
         let ab = pts.len();

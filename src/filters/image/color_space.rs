@@ -2,6 +2,72 @@
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+fn vtk_rgb_to_hsv(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
+    let one_third = 1.0 / 3.0;
+    let one_sixth = 1.0 / 6.0;
+    let two_third = 2.0 / 3.0;
+
+    let mut cmax = r;
+    let mut cmin = r;
+    if g > cmax {
+        cmax = g;
+    } else if g < cmin {
+        cmin = g;
+    }
+    if b > cmax {
+        cmax = b;
+    } else if b < cmin {
+        cmin = b;
+    }
+
+    let v = cmax;
+    let s = if v > 0.0 { (cmax - cmin) / cmax } else { 0.0 };
+    let h = if s > 0.0 {
+        let mut h = if r == cmax {
+            one_sixth * (g - b) / (cmax - cmin)
+        } else if g == cmax {
+            one_third + one_sixth * (b - r) / (cmax - cmin)
+        } else {
+            two_third + one_sixth * (r - g) / (cmax - cmin)
+        };
+        if h < 0.0 {
+            h += 1.0;
+        }
+        h
+    } else {
+        0.0
+    };
+
+    (h, s, v)
+}
+
+fn vtk_hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
+    let one_third = 1.0 / 3.0;
+    let one_sixth = 1.0 / 6.0;
+    let two_third = 2.0 / 3.0;
+    let five_sixth = 5.0 / 6.0;
+
+    let (mut r, mut g, mut b) = if h > one_sixth && h <= one_third {
+        ((one_third - h) / one_sixth, 1.0, 0.0)
+    } else if h > one_third && h <= 0.5 {
+        (0.0, 1.0, (h - one_third) / one_sixth)
+    } else if h > 0.5 && h <= two_third {
+        (0.0, (two_third - h) / one_sixth, 1.0)
+    } else if h > two_third && h <= five_sixth {
+        ((h - two_third) / one_sixth, 0.0, 1.0)
+    } else if h > five_sixth && h <= 1.0 {
+        (1.0, 0.0, (1.0 - h) / one_sixth)
+    } else {
+        (1.0, h / one_sixth, 0.0)
+    };
+
+    r = s * r + (1.0 - s);
+    g = s * g + (1.0 - s);
+    b = s * b + (1.0 - s);
+
+    (r * v, g * v, b * v)
+}
+
 /// Convert RGB image (3-component array) to grayscale (1-component).
 pub fn rgb_to_grayscale(input: &ImageData, array_name: &str) -> ImageData {
     let arr = match input.point_data().get_array(array_name) {
@@ -13,7 +79,7 @@ pub fn rgb_to_grayscale(input: &ImageData, array_name: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.299 * buf[0] + 0.587 * buf[1] + 0.114 * buf[2]
+            0.30 * buf[0] + 0.59 * buf[1] + 0.11 * buf[2]
         })
         .collect();
     let dims = input.dimensions();
@@ -23,84 +89,62 @@ pub fn rgb_to_grayscale(input: &ImageData, array_name: &str) -> ImageData {
         .with_point_array(AnyDataArray::F64(DataArray::from_vec("Grayscale", data, 1)))
 }
 
-/// Convert RGB to HSV (each component in [0,1] assuming input in [0,255]).
+/// Convert RGB to HSV using VTK's default maximum value of 255.
 pub fn rgb_to_hsv(input: &ImageData, array_name: &str) -> ImageData {
     let arr = match input.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 3 => a,
+        Some(a) if a.num_components() >= 3 => a,
         _ => return input.clone(),
     };
     let n = arr.num_tuples();
-    let mut buf = [0.0f64; 3];
-    let mut data = Vec::with_capacity(n * 3);
+    let nc = arr.num_components();
+    let maximum = 255.0;
+    let mut buf = vec![0.0f64; nc];
+    let mut data = Vec::with_capacity(n * nc);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let r = buf[0] / 255.0;
-        let g = buf[1] / 255.0;
-        let b = buf[2] / 255.0;
-        let mx = r.max(g).max(b);
-        let mn = r.min(g).min(b);
-        let d = mx - mn;
-        let h = if d < 1e-15 {
-            0.0
-        } else if (mx - r).abs() < 1e-15 {
-            (((g - b) / d) % 6.0) / 6.0
-        } else if (mx - g).abs() < 1e-15 {
-            ((b - r) / d + 2.0) / 6.0
-        } else {
-            ((r - g) / d + 4.0) / 6.0
-        };
-        let s = if mx < 1e-15 { 0.0 } else { d / mx };
-        let v = mx;
-        data.push(h.rem_euclid(1.0));
-        data.push(s);
-        data.push(v);
+        let r = buf[0] / maximum;
+        let g = buf[1] / maximum;
+        let b = buf[2] / maximum;
+        let (h, s, v) = vtk_rgb_to_hsv(r, g, b);
+        data.push((h * maximum).min(maximum));
+        data.push((s * maximum).min(maximum));
+        data.push((v * maximum).min(maximum));
+        data.extend_from_slice(&buf[3..]);
     }
     let dims = input.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("HSV", data, 3)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec("HSV", data, nc)))
 }
 
-/// Convert HSV ([0,1] range) back to RGB ([0,255] range).
+/// Convert HSV back to RGB using VTK's default maximum value of 255.
 pub fn hsv_to_rgb(input: &ImageData, array_name: &str) -> ImageData {
     let arr = match input.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 3 => a,
+        Some(a) if a.num_components() >= 3 => a,
         _ => return input.clone(),
     };
     let n = arr.num_tuples();
-    let mut buf = [0.0f64; 3];
-    let mut data = Vec::with_capacity(n * 3);
+    let nc = arr.num_components();
+    let maximum = 255.0;
+    let mut buf = vec![0.0f64; nc];
+    let mut data = Vec::with_capacity(n * nc);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        let h = buf[0] * 6.0;
-        let s = buf[1];
-        let v = buf[2];
-        let c = v * s;
-        let x = c * (1.0 - ((h % 2.0) - 1.0).abs());
-        let m = v - c;
-        let (r, g, b) = if h < 1.0 {
-            (c, x, 0.0)
-        } else if h < 2.0 {
-            (x, c, 0.0)
-        } else if h < 3.0 {
-            (0.0, c, x)
-        } else if h < 4.0 {
-            (0.0, x, c)
-        } else if h < 5.0 {
-            (x, 0.0, c)
-        } else {
-            (c, 0.0, x)
-        };
-        data.push((r + m) * 255.0);
-        data.push((g + m) * 255.0);
-        data.push((b + m) * 255.0);
+        let h = buf[0] / maximum;
+        let s = buf[1] / maximum;
+        let v = buf[2] / maximum;
+        let (r, g, b) = vtk_hsv_to_rgb(h, s, v);
+        data.push((r * maximum).min(maximum));
+        data.push((g * maximum).min(maximum));
+        data.push((b * maximum).min(maximum));
+        data.extend_from_slice(&buf[3..]);
     }
     let dims = input.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("RGB", data, 3)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec("RGB", data, nc)))
 }
 
 #[cfg(test)]
@@ -140,5 +184,37 @@ mod tests {
         let mut buf = [0.0; 3];
         arr.tuple_as_f64(0, &mut buf);
         assert!((buf[0] - 255.0).abs() < 1.0); // red
+    }
+
+    #[test]
+    fn test_rgb_hsv_preserves_extra_components() {
+        let img = ImageData::with_dimensions(1, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("RGBA", vec![0.0, 255.0, 0.0, 64.0], 4),
+        ));
+        let hsv = rgb_to_hsv(&img, "RGBA");
+        let arr = hsv.point_data().get_array("HSV").unwrap();
+        assert_eq!(arr.num_components(), 4);
+        let mut buf = [0.0; 4];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 85.0).abs() < 1e-10);
+        assert!((buf[1] - 255.0).abs() < 1e-10);
+        assert!((buf[2] - 255.0).abs() < 1e-10);
+        assert_eq!(buf[3], 64.0);
+    }
+
+    #[test]
+    fn test_hsv_to_rgb_matches_vtk_edge_hue_behavior() {
+        let img = ImageData::with_dimensions(2, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("HSV", vec![255.0, 255.0, 255.0, -1.0, 255.0, 255.0], 3),
+        ));
+        let rgb = hsv_to_rgb(&img, "HSV");
+        let arr = rgb.point_data().get_array("RGB").unwrap();
+        let mut buf = [0.0; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [255.0, 0.0, 0.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 255.0).abs() < 1e-10);
+        assert!((buf[1] + 6.0).abs() < 1e-10);
+        assert_eq!(buf[2], 0.0);
     }
 }

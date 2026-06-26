@@ -4,11 +4,7 @@ use crate::data::{CellArray, Points, PolyData};
 ///
 /// Keeps the half-space where `dot(p - point, normal) >= 0`.
 /// Triangles that cross the plane are split, generating new vertices on the plane.
-pub fn clip_by_plane(
-    input: &PolyData,
-    point: [f64; 3],
-    normal: [f64; 3],
-) -> PolyData {
+pub fn clip_by_plane(input: &PolyData, point: [f64; 3], normal: [f64; 3]) -> PolyData {
     let mut points = input.points.clone();
     let mut polys = CellArray::new();
 
@@ -47,8 +43,30 @@ pub fn clip_by_plane(
     }
 
     let mut output = PolyData::new();
-    output.points = points;
-    output.polys = polys;
+    let mut used = vec![false; points.len()];
+    for cell in polys.iter() {
+        for &vid in cell {
+            used[vid as usize] = true;
+        }
+    }
+
+    let mut point_map = vec![0i64; points.len()];
+    let mut compact_points = Points::new();
+    for (i, is_used) in used.iter().enumerate() {
+        if *is_used {
+            point_map[i] = compact_points.len() as i64;
+            compact_points.push(points.get(i));
+        }
+    }
+
+    let mut compact_polys = CellArray::new();
+    for cell in polys.iter() {
+        let remapped: Vec<i64> = cell.iter().map(|&v| point_map[v as usize]).collect();
+        compact_polys.push_cell(&remapped);
+    }
+
+    output.points = compact_points;
+    output.polys = compact_polys;
     output
 }
 
@@ -116,6 +134,7 @@ mod tests {
         );
         let result = clip_by_plane(&pd, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]);
         assert_eq!(result.polys.num_cells(), 0);
+        assert_eq!(result.points.len(), 0);
     }
 
     #[test]

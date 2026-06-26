@@ -4,7 +4,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Alpha blend two ImageData volumes.
 ///
-/// result = alpha * a + (1-alpha) * b
+/// result = (1-alpha) * a + alpha * b
 pub fn blend_images(a: &ImageData, b: &ImageData, array_name: &str, alpha: f64) -> ImageData {
     let a_arr = match a.point_data().get_array(array_name) {
         Some(x) => x,
@@ -15,6 +15,7 @@ pub fn blend_images(a: &ImageData, b: &ImageData, array_name: &str, alpha: f64) 
         None => return a.clone(),
     };
     let n = a_arr.num_tuples().min(b_arr.num_tuples());
+    let alpha = alpha.clamp(0.0, 1.0);
 
     let mut output = Vec::with_capacity(n);
     let mut ab = [0.0f64];
@@ -22,7 +23,7 @@ pub fn blend_images(a: &ImageData, b: &ImageData, array_name: &str, alpha: f64) 
     for i in 0..n {
         a_arr.tuple_as_f64(i, &mut ab);
         b_arr.tuple_as_f64(i, &mut bb);
-        output.push(alpha * ab[0] + (1.0 - alpha) * bb[0]);
+        output.push((1.0 - alpha) * ab[0] + alpha * bb[0]);
     }
     let mut result = a.clone();
     result
@@ -49,14 +50,17 @@ pub fn weighted_average_images(
         return None;
     }
 
+    for img in images {
+        img.point_data().get_array(array_name)?;
+    }
+
     let mut output = vec![0.0f64; n];
     let mut buf = [0.0f64];
     for (img, &w) in images.iter().zip(weights) {
-        if let Some(arr) = img.point_data().get_array(array_name) {
-            for i in 0..n.min(arr.num_tuples()) {
-                arr.tuple_as_f64(i, &mut buf);
-                output[i] += w * buf[0] / w_sum;
-            }
+        let arr = img.point_data().get_array(array_name)?;
+        for i in 0..n.min(arr.num_tuples()) {
+            arr.tuple_as_f64(i, &mut buf);
+            output[i] += w * buf[0] / w_sum;
         }
     }
     let mut result = first.clone();

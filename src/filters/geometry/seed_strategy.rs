@@ -32,6 +32,10 @@ pub fn seed_plane(
     n1: usize,
     n2: usize,
 ) -> Vec<[f64; 3]> {
+    if n1 == 0 || n2 == 0 {
+        return Vec::new();
+    }
+
     let mut seeds = Vec::with_capacity(n1 * n2);
     for j in 0..n2 {
         for i in 0..n1 {
@@ -57,6 +61,10 @@ pub fn seed_plane(
 
 /// Generate seed points on a sphere surface.
 pub fn seed_sphere(center: [f64; 3], radius: f64, n_theta: usize, n_phi: usize) -> Vec<[f64; 3]> {
+    if n_theta == 0 || n_phi == 0 {
+        return Vec::new();
+    }
+
     let mut seeds = Vec::with_capacity(n_theta * n_phi);
     for j in 0..n_phi {
         let phi = std::f64::consts::PI * (j as f64 + 0.5) / n_phi as f64;

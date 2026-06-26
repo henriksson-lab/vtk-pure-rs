@@ -28,12 +28,14 @@ pub fn simplify_reeb_graph(input: &ReebGraph, persistence_threshold: f64) -> Ree
         x
     }
 
-    fn union(parent: &mut [usize], a: usize, b: usize) {
+    fn union(parent: &mut [usize], input: &ReebGraph, a: usize, b: usize) {
         let ra = find(parent, a);
         let rb = find(parent, b);
         if ra != rb {
-            // Keep the one with the smaller index as representative
-            if ra < rb {
+            // Keep the endpoint with the lower scalar value as representative.
+            let sa = input.nodes[ra].scalar_value;
+            let sb = input.nodes[rb].scalar_value;
+            if sa < sb || (sa == sb && ra < rb) {
                 parent[rb] = ra;
             } else {
                 parent[ra] = rb;
@@ -47,7 +49,7 @@ pub fn simplify_reeb_graph(input: &ReebGraph, persistence_threshold: f64) -> Ree
         let s1 = input.nodes[arc.target].scalar_value;
         let persistence = (s1 - s0).abs();
         if persistence < persistence_threshold {
-            union(&mut parent, arc.source, arc.target);
+            union(&mut parent, input, arc.source, arc.target);
         }
     }
 

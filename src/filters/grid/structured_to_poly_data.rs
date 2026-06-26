@@ -92,6 +92,11 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = points;
     pd.polys = polys;
+    for i in 0..input.point_data().num_arrays() {
+        if let Some(array) = input.point_data().get_array_by_index(i) {
+            pd.point_data_mut().add_array(array.clone());
+        }
+    }
     pd
 }
 

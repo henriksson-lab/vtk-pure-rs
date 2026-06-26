@@ -48,10 +48,12 @@ pub fn soccer_ball(radius: f64) -> PolyData {
     for &[a, b, c] in &ico_f {
         let edges = [(a, b), (b, c), (c, a)];
         for &(u, v) in &edges {
-            let key = (u.min(v), u.max(v));
+            let lo = u.min(v);
+            let hi = u.max(v);
+            let key = (lo, hi);
             edge_pts.entry(key).or_insert_with(|| {
-                let pu = ico_v[u];
-                let pv = ico_v[v];
+                let pu = ico_v[lo];
+                let pv = ico_v[hi];
                 let p1 = [
                     pu[0] + (pv[0] - pu[0]) / 3.0,
                     pu[1] + (pv[1] - pu[1]) / 3.0,
@@ -103,18 +105,65 @@ pub fn soccer_ball(radius: f64) -> PolyData {
             ab0 as i64, ab1 as i64, bc0 as i64, bc1 as i64, ca0 as i64, ca1 as i64,
         ]);
     }
+    for v in 0..ico_v.len() {
+        let center = ico_v[v];
+        let n_len = (center[0] * center[0] + center[1] * center[1] + center[2] * center[2]).sqrt();
+        let normal = [center[0] / n_len, center[1] / n_len, center[2] / n_len];
+        let reference = if normal[0].abs() < 0.9 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
+        let tangent = normalize(cross(normal, reference));
+        let bitangent = cross(normal, tangent);
+        let mut pentagon = Vec::new();
+        for u in 0..ico_v.len() {
+            if u == v {
+                continue;
+            }
+            let key = (u.min(v), u.max(v));
+            if let Some(ep) = edge_pts.get(&key) {
+                let point_id = if v < u { ep[0] } else { ep[1] };
+                let p = &pts[point_id];
+                let d = [p[0] - center[0], p[1] - center[1], p[2] - center[2]];
+                let angle = dot(d, bitangent).atan2(dot(d, tangent));
+                pentagon.push((angle, point_id as i64));
+            }
+        }
+        pentagon.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        let face: Vec<i64> = pentagon.into_iter().map(|(_, point_id)| point_id).collect();
+        polys.push_cell(&face);
+    }
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;
     r
 }
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn normalize(v: [f64; 3]) -> [f64; 3] {
+    let len = dot(v, v).sqrt();
+    [v[0] / len, v[1] / len, v[2] / len]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test() {
         let s = soccer_ball(1.0);
-        assert!(s.points.len() >= 30);
-        assert_eq!(s.polys.num_cells(), 20);
+        assert_eq!(s.points.len(), 60);
+        assert_eq!(s.polys.num_cells(), 32);
     }
 }

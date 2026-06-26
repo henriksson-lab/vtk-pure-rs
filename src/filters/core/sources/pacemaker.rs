@@ -8,7 +8,7 @@ pub fn pacemaker(
     num_leads: usize,
     resolution: usize,
 ) -> PolyData {
-    let _res = resolution.max(6);
+    let res = resolution.max(6);
     let nl = num_leads.max(1);
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
@@ -46,12 +46,16 @@ pub fn pacemaker(
     pts.push([header_w / 2.0, hh + header_h, (body_t * 0.3)]);
     pts.push([-header_w / 2.0, hh + header_h, (body_t * 0.3)]);
     let g = |i: usize| (hb + i) as i64;
+    polys.push_cell(&[g(0), g(3), g(2), g(1)]);
     polys.push_cell(&[g(4), g(5), g(6), g(7)]);
     polys.push_cell(&[g(0), g(1), g(5), g(4)]);
+    polys.push_cell(&[g(2), g(3), g(7), g(6)]);
+    polys.push_cell(&[g(0), g(4), g(7), g(3)]);
+    polys.push_cell(&[g(1), g(2), g(6), g(5)]);
     // Lead wires (curved lines from header to heart)
     for li in 0..nl {
         let lx = (li as f64 - nl as f64 / 2.0 + 0.5) * header_w / (nl as f64);
-        let lead_steps = 16;
+        let lead_steps = res * 2;
         let mut lead_ids = Vec::new();
         for si in 0..=lead_steps {
             let t = si as f64 / lead_steps as f64;

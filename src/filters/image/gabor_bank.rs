@@ -17,6 +17,9 @@ pub fn gabor_filter(
     let dims = input.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
     let n = arr.num_tuples();
+    if n != nx * ny * dims[2] {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -31,8 +34,11 @@ pub fn gabor_filter(
 
     let data: Vec<f64> = (0..n)
         .map(|idx| {
-            let iy = idx / nx;
-            let ix = idx % nx;
+            let slice = nx * ny;
+            let iz = idx / slice;
+            let rem = idx - iz * slice;
+            let iy = rem / nx;
+            let ix = rem % nx;
             let mut sum = 0.0;
             for dy in -r..=r {
                 for dx in -r..=r {
@@ -72,6 +78,9 @@ pub fn gabor_bank_max(
     };
     let dims = input.dimensions();
     let n = arr.num_tuples();
+    if n != dims[0] * dims[1] * dims[2] {
+        return input.clone();
+    }
     let mut max_response = vec![0.0f64; n];
     for oi in 0..n_orientations {
         let theta = std::f64::consts::PI * oi as f64 / n_orientations as f64;
@@ -119,5 +128,19 @@ mod tests {
         );
         let r = gabor_bank_max(&img, "v", 0.3, 2.0, 4);
         assert!(r.point_data().get_array("GaborMax").is_some());
+    }
+
+    #[test]
+    fn test_gabor_multiple_slices() {
+        let img = ImageData::from_function(
+            [5, 5, 2],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, z| x + y + z * 10.0,
+        );
+        let r = gabor_filter(&img, "v", 0.3, 0.0, 1.0);
+        let arr = r.point_data().get_array("v").unwrap();
+        assert_eq!(arr.num_tuples(), 50);
     }
 }

@@ -1,5 +1,5 @@
-use std::collections::BTreeSet;
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::BTreeSet;
 
 /// Edge length statistics for a mesh.
 #[derive(Debug, Clone)]
@@ -19,18 +19,7 @@ pub struct EdgeLengthStats {
 /// Also returns a line-based PolyData containing all unique edges as line
 /// segments with an "EdgeLength" cell data array.
 pub fn edge_length_stats(input: &PolyData) -> (EdgeLengthStats, PolyData) {
-    // Collect unique edges using sorted (min,max) pairs
-    let mut edge_set: BTreeSet<(usize, usize)> = BTreeSet::new();
-
-    for cell in input.polys.iter() {
-        let n = cell.len();
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            let key = if a < b { (a, b) } else { (b, a) };
-            edge_set.insert(key);
-        }
-    }
+    let edge_set = collect_unique_edges(input);
 
     let mut points = Points::new();
     let mut lines = CellArray::new();
@@ -71,9 +60,12 @@ pub fn edge_length_stats(input: &PolyData) -> (EdgeLengthStats, PolyData) {
     let mut pd = PolyData::new();
     pd.points = points;
     pd.lines = lines;
-    pd.cell_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("EdgeLength", lengths, 1),
-    ));
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "EdgeLength",
+            lengths,
+            1,
+        )));
 
     let stats = EdgeLengthStats {
         min: min_l,
@@ -83,6 +75,50 @@ pub fn edge_length_stats(input: &PolyData) -> (EdgeLengthStats, PolyData) {
     };
 
     (stats, pd)
+}
+
+fn collect_unique_edges(input: &PolyData) -> BTreeSet<(usize, usize)> {
+    let mut edge_set: BTreeSet<(usize, usize)> = BTreeSet::new();
+
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut edge_set, input.points.len(), edge[0], edge[1]);
+        }
+    }
+
+    for cell in input.polys.iter() {
+        let n = cell.len();
+        for i in 0..n {
+            insert_edge(
+                &mut edge_set,
+                input.points.len(),
+                cell[i],
+                cell[(i + 1) % n],
+            );
+        }
+    }
+
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edge_set, input.points.len(), tri[0], tri[1]);
+            insert_edge(&mut edge_set, input.points.len(), tri[1], tri[2]);
+            insert_edge(&mut edge_set, input.points.len(), tri[2], tri[0]);
+        }
+    }
+
+    edge_set
+}
+
+fn insert_edge(edge_set: &mut BTreeSet<(usize, usize)>, num_points: usize, a: i64, b: i64) {
+    if a == b || a < 0 || b < 0 {
+        return;
+    }
+    let a = a as usize;
+    let b = b as usize;
+    if a >= num_points || b >= num_points {
+        return;
+    }
+    edge_set.insert(if a < b { (a, b) } else { (b, a) });
 }
 
 #[cfg(test)]
@@ -135,5 +171,20 @@ mod tests {
         let (stats, line_pd) = edge_length_stats(&pd);
         assert_eq!(stats.count, 5);
         assert_eq!(line_pd.lines.num_cells(), 5);
+    }
+
+    #[test]
+    fn line_cells_are_edges() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([3.0, 0.0, 0.0]);
+        pd.points.push([3.0, 4.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let (stats, line_pd) = edge_length_stats(&pd);
+        assert_eq!(stats.count, 2);
+        assert!((stats.min - 3.0).abs() < 1e-10);
+        assert!((stats.max - 4.0).abs() < 1e-10);
+        assert_eq!(line_pd.lines.num_cells(), 2);
     }
 }

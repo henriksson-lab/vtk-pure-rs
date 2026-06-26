@@ -3,9 +3,9 @@ use crate::data::{CellArray, Points, PolyData};
 
 pub fn chess_pawn(height: f64, n_angular: usize, n_profile: usize) -> PolyData {
     let na = n_angular.max(8);
-    let _np = n_profile.max(10);
+    let np = n_profile.max(10);
     // Profile points: (radius, height_fraction)
-    let profile = vec![
+    let control_profile = [
         (0.4, 0.0),
         (0.45, 0.02),
         (0.42, 0.05),
@@ -21,6 +21,11 @@ pub fn chess_pawn(height: f64, n_angular: usize, n_profile: usize) -> PolyData {
         (0.12, 0.9),
         (0.0, 1.0),
     ];
+    let profile = if np <= control_profile.len() {
+        control_profile.to_vec()
+    } else {
+        resample_profile(&control_profile, np)
+    };
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     for (_pi, &(r, h)) in profile.iter().enumerate() {
@@ -84,6 +89,26 @@ pub fn chess_pawn(height: f64, n_angular: usize, n_profile: usize) -> PolyData {
     m
 }
 
+fn resample_profile(control_profile: &[(f64, f64)], n_profile: usize) -> Vec<(f64, f64)> {
+    let mut profile = Vec::with_capacity(n_profile);
+    for i in 0..n_profile {
+        let h = i as f64 / (n_profile - 1) as f64;
+        let mut k = 0;
+        while k + 1 < control_profile.len() && control_profile[k + 1].1 < h {
+            k += 1;
+        }
+        if k + 1 == control_profile.len() {
+            profile.push(control_profile[k]);
+        } else {
+            let (r0, h0) = control_profile[k];
+            let (r1, h1) = control_profile[k + 1];
+            let t = if h1 > h0 { (h - h0) / (h1 - h0) } else { 0.0 };
+            profile.push((r0 + (r1 - r0) * t, h));
+        }
+    }
+    profile
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +117,13 @@ mod tests {
         let m = chess_pawn(3.0, 12, 14);
         assert!(m.points.len() > 50);
         assert!(m.polys.num_cells() > 30);
+    }
+
+    #[test]
+    fn n_profile_refines_profile() {
+        let coarse = chess_pawn(3.0, 12, 14);
+        let fine = chess_pawn(3.0, 12, 28);
+        assert!(fine.points.len() > coarse.points.len());
+        assert!(fine.polys.num_cells() > coarse.polys.num_cells());
     }
 }

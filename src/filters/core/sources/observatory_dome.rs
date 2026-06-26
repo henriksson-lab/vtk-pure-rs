@@ -11,7 +11,9 @@ pub fn observatory_dome(
     let slit_half = (slit_width_degrees / 2.0).to_radians();
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
-    for iv in 0..=vr {
+    let apex = pts.len();
+    pts.push([0.0, 0.0, radius]);
+    for iv in 1..=vr {
         let v = std::f64::consts::FRAC_PI_2 * iv as f64 / vr as f64;
         let sv = v.sin();
         let cv = v.cos();
@@ -21,19 +23,26 @@ pub fn observatory_dome(
         }
     }
     let w = ur + 1;
-    for iv in 0..vr {
+    for iu in 0..ur {
+        let u0 = 2.0 * std::f64::consts::PI * iu as f64 / ur as f64;
+        let u1 = 2.0 * std::f64::consts::PI * (iu + 1) as f64 / ur as f64;
+        if angle_in_slit(u0, slit_half) || angle_in_slit(u1, slit_half) {
+            continue;
+        }
+        polys.push_cell(&[apex as i64, (1 + iu) as i64, (1 + iu + 1) as i64]);
+    }
+    for iv in 0..vr - 1 {
         for iu in 0..ur {
             let u_angle = 2.0 * std::f64::consts::PI * iu as f64 / ur as f64;
             // Skip slit region
-            if u_angle.abs() < slit_half || (2.0 * std::f64::consts::PI - u_angle).abs() < slit_half
-            {
+            if angle_in_slit(u_angle, slit_half) {
                 continue;
             }
             polys.push_cell(&[
-                (iv * w + iu) as i64,
-                (iv * w + iu + 1) as i64,
-                ((iv + 1) * w + iu + 1) as i64,
-                ((iv + 1) * w + iu) as i64,
+                (1 + iv * w + iu) as i64,
+                (1 + iv * w + iu + 1) as i64,
+                (1 + (iv + 1) * w + iu + 1) as i64,
+                (1 + (iv + 1) * w + iu) as i64,
             ]);
         }
     }
@@ -58,6 +67,9 @@ pub fn observatory_dome(
     r.points = pts;
     r.polys = polys;
     r
+}
+fn angle_in_slit(angle: f64, slit_half: f64) -> bool {
+    angle.abs() < slit_half || (2.0 * std::f64::consts::PI - angle).abs() < slit_half
 }
 #[cfg(test)]
 mod tests {

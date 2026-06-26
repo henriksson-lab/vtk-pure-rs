@@ -24,9 +24,9 @@ pub fn stella_octangula(radius: f64) -> PolyData {
     }
     for f in &faces {
         polys.push_cell(&[
-            f[0] as i64 + offset,
-            f[1] as i64 + offset,
             f[2] as i64 + offset,
+            f[1] as i64 + offset,
+            f[0] as i64 + offset,
         ]);
     }
 

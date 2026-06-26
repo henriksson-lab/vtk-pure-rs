@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
+use std::collections::BTreeMap;
 
 /// Extract boundary edges from a polygon mesh.
 ///
@@ -7,24 +7,8 @@ use crate::data::{CellArray, Points, PolyData};
 /// Returns a new PolyData containing the boundary edges as lines,
 /// with the same point coordinates as the input.
 pub fn extract_boundary_edges(input: &PolyData) -> PolyData {
-    // Count how many faces share each edge.
-    let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
-
-    for cell in input.polys.iter() {
-        let n = cell.len();
-        if n < 2 {
-            continue;
-        }
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            let edge = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(edge).or_insert(0usize) += 1;
-        }
-    }
-
     let mut lines = CellArray::new();
-    for (&(a, b), &count) in &edge_count {
+    for ((a, b), count) in polygon_edge_counts(input) {
         if count == 1 {
             lines.push_cell(&[a as i64, b as i64]);
         }
@@ -38,22 +22,33 @@ pub fn extract_boundary_edges(input: &PolyData) -> PolyData {
 
 /// Count the number of boundary edges in the mesh.
 pub fn count_boundary_edges(input: &PolyData) -> usize {
-    let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
+    polygon_edge_counts(input)
+        .values()
+        .filter(|&&count| count == 1)
+        .count()
+}
 
+fn polygon_edge_counts(input: &PolyData) -> BTreeMap<(usize, usize), usize> {
+    let mut edge_count = BTreeMap::new();
+    let num_points = input.points.len() as i64;
     for cell in input.polys.iter() {
         let n = cell.len();
         if n < 2 {
             continue;
         }
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % n];
+            if a_id < 0 || b_id < 0 || a_id >= num_points || b_id >= num_points || a_id == b_id {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
             let edge = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(edge).or_insert(0usize) += 1;
         }
     }
-
-    edge_count.values().filter(|&&c| c == 1).count()
+    edge_count
 }
 
 #[cfg(test)]

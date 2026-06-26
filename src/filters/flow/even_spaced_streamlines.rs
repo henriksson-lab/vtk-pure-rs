@@ -50,9 +50,15 @@ pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamPa
     if dims[0] < 2 || dims[1] < 2 {
         return PolyData::new();
     }
+    if params.separation <= 0.0 || params.step_size <= 0.0 {
+        return PolyData::new();
+    }
 
-    let domain_w = (dims[0] - 1) as f64 * spacing[0];
-    let domain_h = (dims[1] - 1) as f64 * spacing[1];
+    let end_x = origin[0] + (dims[0] - 1) as f64 * spacing[0];
+    let end_y = origin[1] + (dims[1] - 1) as f64 * spacing[1];
+    let domain_min = [origin[0].min(end_x), origin[1].min(end_y), origin[2]];
+    let domain_w = (end_x - origin[0]).abs();
+    let domain_h = (end_y - origin[1]).abs();
 
     // Grid for checking separation distance
     let cell_size = params.separation * 0.5;
@@ -67,8 +73,8 @@ pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamPa
     let mut num_lines = 0;
 
     // Start with center of domain
-    let cx = origin[0] + domain_w / 2.0;
-    let cy = origin[1] + domain_h / 2.0;
+    let cx = (origin[0] + end_x) / 2.0;
+    let cy = (origin[1] + end_y) / 2.0;
     seed_queue.push([cx, cy]);
 
     while let Some(seed) = seed_queue.pop() {
@@ -80,7 +86,7 @@ pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamPa
         if is_too_close(
             seed,
             &occupied,
-            origin,
+            domain_min,
             cell_size,
             grid_nx,
             grid_ny,
@@ -117,7 +123,7 @@ pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamPa
             line_id_data.push(num_lines as f64);
             line_ids.push(idx);
 
-            mark_occupied(&mut occupied, pt, origin, cell_size, grid_nx, grid_ny);
+            mark_occupied(&mut occupied, pt, domain_min, cell_size, grid_nx, grid_ny);
 
             // Generate perpendicular seeds at separation distance
             if pi > 0 && pi < line_points.len() - 1 {
@@ -133,11 +139,11 @@ pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamPa
                     let s1 = [pt[0] + nx, pt[1] + ny];
                     let s2 = [pt[0] - nx, pt[1] - ny];
 
-                    if in_domain(s1, origin, domain_w, domain_h)
+                    if in_domain(s1, domain_min, domain_w, domain_h)
                         && !is_too_close(
                             s1,
                             &occupied,
-                            origin,
+                            domain_min,
                             cell_size,
                             grid_nx,
                             grid_ny,
@@ -146,11 +152,11 @@ pub fn even_spaced_streamlines_2d(field: &ImageData, params: &EvenSpacedStreamPa
                     {
                         seed_queue.push(s1);
                     }
-                    if in_domain(s2, origin, domain_w, domain_h)
+                    if in_domain(s2, domain_min, domain_w, domain_h)
                         && !is_too_close(
                             s2,
                             &occupied,
-                            origin,
+                            domain_min,
                             cell_size,
                             grid_nx,
                             grid_ny,
@@ -194,15 +200,21 @@ fn integrate_2d(
     let dt = params.step_size * direction;
 
     for _ in 0..params.max_steps {
-        let max_x = origin[0] + (dims[0] - 1) as f64 * spacing[0];
-        let max_y = origin[1] + (dims[1] - 1) as f64 * spacing[1];
-        if pos[0] < origin[0] || pos[0] > max_x || pos[1] < origin[1] || pos[1] > max_y {
+        let end_x = origin[0] + (dims[0] - 1) as f64 * spacing[0];
+        let end_y = origin[1] + (dims[1] - 1) as f64 * spacing[1];
+        let min_x = origin[0].min(end_x);
+        let max_x = origin[0].max(end_x);
+        let min_y = origin[1].min(end_y);
+        let max_y = origin[1].max(end_y);
+        if pos[0] < min_x || pos[0] > max_x || pos[1] < min_y || pos[1] > max_y {
             break;
         }
 
         points.push(pos);
 
-        let v = interp_vec2(vectors, pos, origin, spacing, dims);
+        let Some(v) = interp_vec2(vectors, pos, origin, spacing, dims) else {
+            break;
+        };
         let speed = (v[0] * v[0] + v[1] * v[1]).sqrt();
         if speed < params.terminal_speed {
             break;
@@ -210,7 +222,9 @@ fn integrate_2d(
 
         // RK2 midpoint method
         let mid = [pos[0] + 0.5 * dt * v[0], pos[1] + 0.5 * dt * v[1]];
-        let vm = interp_vec2(vectors, mid, origin, spacing, dims);
+        let Some(vm) = interp_vec2(vectors, mid, origin, spacing, dims) else {
+            break;
+        };
 
         pos = [pos[0] + dt * vm[0], pos[1] + dt * vm[1]];
     }
@@ -224,7 +238,20 @@ fn interp_vec2(
     origin: [f64; 3],
     spacing: [f64; 3],
     dims: [usize; 3],
-) -> [f64; 2] {
+) -> Option<[f64; 2]> {
+    if dims[0] < 2 || dims[1] < 2 || spacing[0] == 0.0 || spacing[1] == 0.0 {
+        return None;
+    }
+    let end_x = origin[0] + (dims[0] - 1) as f64 * spacing[0];
+    let end_y = origin[1] + (dims[1] - 1) as f64 * spacing[1];
+    let min_x = origin[0].min(end_x);
+    let max_x = origin[0].max(end_x);
+    let min_y = origin[1].min(end_y);
+    let max_y = origin[1].max(end_y);
+    if pos[0] < min_x || pos[0] > max_x || pos[1] < min_y || pos[1] > max_y {
+        return None;
+    }
+
     let fx = (pos[0] - origin[0]) / spacing[0];
     let fy = (pos[1] - origin[1]) / spacing[1];
     let ix = fx.floor() as usize;
@@ -250,7 +277,7 @@ fn interp_vec2(
             }
         }
     }
-    result
+    Some(result)
 }
 
 fn grid_idx(

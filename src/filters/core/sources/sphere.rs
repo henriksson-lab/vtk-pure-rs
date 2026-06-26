@@ -15,24 +15,23 @@ impl Default for SphereParams {
         Self {
             center: [0.0, 0.0, 0.0],
             radius: 0.5,
-            theta_resolution: 16,
-            phi_resolution: 16,
+            theta_resolution: 8,
+            phi_resolution: 8,
         }
     }
 }
 
-/// Generate a UV sphere as PolyData with normals.
-/// Uses pre-allocated flat buffers to avoid per-element Arc::make_mut overhead.
+/// Generate a VTK-style sphere as PolyData with normals.
 pub fn sphere(params: &SphereParams) -> PolyData {
     let n_theta = params.theta_resolution.max(3);
     let n_phi = params.phi_resolution.max(3);
     let [cx, cy, cz] = params.center;
     let r = params.radius;
 
-    let n_pts = 2 + (n_phi - 1) * n_theta; // poles + rings
-    let n_tris = n_theta + 2 * n_theta * (n_phi - 2) + n_theta; // caps + body
+    let phi_resolution = n_phi - 2;
+    let n_pts = 2 + phi_resolution * n_theta;
+    let n_tris = 2 * n_theta + 2 * n_theta * (phi_resolution - 1);
 
-    // Pre-allocate flat buffers
     let mut pts_flat = Vec::with_capacity(n_pts * 3);
     let mut nrm_flat = Vec::with_capacity(n_pts * 3);
     let mut conn = Vec::with_capacity(n_tris * 3);
@@ -43,57 +42,60 @@ pub fn sphere(params: &SphereParams) -> PolyData {
     pts_flat.extend_from_slice(&[cx, cy, cz + r]);
     nrm_flat.extend_from_slice(&[0.0, 0.0, 1.0]);
 
-    // Interior rings
-    for j in 1..n_phi {
-        let phi = PI * j as f64 / n_phi as f64;
-        let sp = phi.sin();
-        let cp = phi.cos();
-        for i in 0..n_theta {
-            let theta = 2.0 * PI * i as f64 / n_theta as f64;
-            let (st, ct) = (theta.sin(), theta.cos());
-            let (nx, ny, nz) = (sp * ct, sp * st, cp);
-            pts_flat.extend_from_slice(&[cx + r * nx, cy + r * ny, cz + r * nz]);
-            nrm_flat.extend_from_slice(&[nx, ny, nz]);
-        }
-    }
-
     // South pole
     pts_flat.extend_from_slice(&[cx, cy, cz - r]);
     nrm_flat.extend_from_slice(&[0.0, 0.0, -1.0]);
-    let south_pole = (n_pts - 1) as i64;
 
-    // North cap
+    let delta_phi = PI / (n_phi - 1) as f64;
+    let delta_theta = 2.0 * PI / n_theta as f64;
+
     for i in 0..n_theta {
-        let next = (i + 1) % n_theta;
-        conn.extend_from_slice(&[0, (1 + i) as i64, (1 + next) as i64]);
-        offsets.push(conn.len() as i64);
-    }
+        let theta = i as f64 * delta_theta;
+        for j in 1..n_phi - 1 {
+            let phi = j as f64 * delta_phi;
+            let radius = r * phi.sin();
+            let n = [radius * theta.cos(), radius * theta.sin(), r * phi.cos()];
+            pts_flat.extend_from_slice(&[n[0] + cx, n[1] + cy, n[2] + cz]);
 
-    // Body quads → 2 triangles each
-    for j in 0..n_phi - 2 {
-        let rs = 1 + j * n_theta;
-        let nrs = 1 + (j + 1) * n_theta;
-        for i in 0..n_theta {
-            let next = (i + 1) % n_theta;
-            let (a, b, c, d) = (
-                (rs + i) as i64,
-                (nrs + i) as i64,
-                (nrs + next) as i64,
-                (rs + next) as i64,
-            );
-            conn.extend_from_slice(&[a, b, c]);
-            offsets.push(conn.len() as i64);
-            conn.extend_from_slice(&[a, c, d]);
-            offsets.push(conn.len() as i64);
+            let mut norm = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            if norm == 0.0 {
+                norm = 1.0;
+            }
+            nrm_flat.extend_from_slice(&[n[0] / norm, n[1] / norm, n[2] / norm]);
         }
     }
 
-    // South cap
-    let lrs = 1 + (n_phi - 2) * n_theta;
+    let num_poles = 2;
+    let base = phi_resolution * n_theta;
+
+    // North cap
     for i in 0..n_theta {
-        let next = (i + 1) % n_theta;
-        conn.extend_from_slice(&[(lrs + i) as i64, south_pole, (lrs + next) as i64]);
+        let p0 = (phi_resolution * i + num_poles) as i64;
+        let p1 = ((phi_resolution * (i + 1)) % base + num_poles) as i64;
+        conn.extend_from_slice(&[p0, p1, 0]);
         offsets.push(conn.len() as i64);
+    }
+
+    // South cap
+    let num_offset = phi_resolution - 1 + num_poles;
+    for i in 0..n_theta {
+        let p0 = (phi_resolution * i + num_offset) as i64;
+        let p2 = ((phi_resolution * (i + 1)) % base + num_offset) as i64;
+        conn.extend_from_slice(&[p0, 1, p2]);
+        offsets.push(conn.len() as i64);
+    }
+
+    // Bands between poles
+    for i in 0..n_theta {
+        for j in 0..phi_resolution - 1 {
+            let p0 = (phi_resolution * i + j + num_poles) as i64;
+            let p1 = p0 + 1;
+            let p2 = ((phi_resolution * (i + 1) + j) % base + num_poles + 1) as i64;
+            conn.extend_from_slice(&[p0, p1, p2]);
+            offsets.push(conn.len() as i64);
+            conn.extend_from_slice(&[p0, p2, p2 - 1]);
+            offsets.push(conn.len() as i64);
+        }
     }
 
     let mut pd = PolyData::new();
@@ -112,9 +114,8 @@ mod tests {
     #[test]
     fn default_sphere() {
         let pd = sphere(&SphereParams::default());
-        // poles (2) + rings (14 * 16)
-        assert_eq!(pd.points.len(), 2 + 15 * 16);
-        assert!(pd.polys.num_cells() > 0);
+        assert_eq!(pd.points.len(), 2 + 6 * 8);
+        assert_eq!(pd.polys.num_cells(), 96);
         assert!(pd.point_data().normals().is_some());
     }
 

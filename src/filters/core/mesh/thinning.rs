@@ -1,4 +1,4 @@
-use crate::data::{CellArray, PolyData, Points};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Mesh thinning: iteratively remove vertices with low connectivity
 /// (valence) while preserving topology.
@@ -14,12 +14,12 @@ pub fn thin_mesh(input: &PolyData, target_vertices: usize) -> PolyData {
     }
 
     // Copy points
-    let mut points: Vec<[f64; 3]> = (0..n_pts).map(|i| input.points.get(i)).collect();
+    let points: Vec<[f64; 3]> = (0..n_pts).map(|i| input.points.get(i)).collect();
 
     // Copy triangles
     let mut triangles: Vec<Option<[usize; 3]>> = Vec::new();
     for cell in input.polys.iter() {
-        if cell.len() == 3 {
+        if cell.len() == 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_pts) {
             triangles.push(Some([cell[0] as usize, cell[1] as usize, cell[2] as usize]));
         }
     }
@@ -126,7 +126,11 @@ pub fn thin_mesh(input: &PolyData, target_vertices: usize) -> PolyData {
     let mut new_polys = CellArray::new();
     for tri in triangles.iter().flatten() {
         if alive[tri[0]] && alive[tri[1]] && alive[tri[2]] {
-            new_polys.push_cell(&[remap[tri[0]] as i64, remap[tri[1]] as i64, remap[tri[2]] as i64]);
+            new_polys.push_cell(&[
+                remap[tri[0]] as i64,
+                remap[tri[1]] as i64,
+                remap[tri[2]] as i64,
+            ]);
         }
     }
 
@@ -168,7 +172,11 @@ mod tests {
         assert_eq!(pd.points.len(), 16);
         // 4 interior vertices can be removed; ask to go down to 14
         let result = thin_mesh(&pd, 14);
-        assert!(result.points.len() <= 14, "expected <= 14 vertices, got {}", result.points.len());
+        assert!(
+            result.points.len() <= 14,
+            "expected <= 14 vertices, got {}",
+            result.points.len()
+        );
     }
 
     #[test]

@@ -1,10 +1,10 @@
 //! L-bracket and angle bracket geometry.
 use crate::data::{CellArray, Points, PolyData};
 pub fn l_bracket(width: f64, height: f64, thickness: f64, depth: f64) -> PolyData {
-    let w = width;
-    let h = height;
-    let t = thickness;
-    let d = depth;
+    let w = width.max(0.0);
+    let h = height.max(0.0);
+    let t = thickness.max(0.0).min(w).min(h);
+    let d = depth.max(0.0);
     let hd = d / 2.0;
     let profile = [[0.0, 0.0], [w, 0.0], [w, t], [t, t], [t, h], [0.0, h]];
     let np = profile.len();

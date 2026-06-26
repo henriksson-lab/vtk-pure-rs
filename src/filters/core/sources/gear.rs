@@ -6,9 +6,9 @@ use crate::data::{CellArray, DataArray, Points, PolyData};
 pub struct GearParams {
     /// Number of teeth on the gear. Default: 12
     pub num_teeth: usize,
-    /// Inner radius (root circle). Default: 0.7
+    /// Inner radius for the center bore. Default: 0.7
     pub inner_radius: f64,
-    /// Outer radius (base of teeth). Default: 1.0
+    /// Outer radius (root circle / base of teeth). Default: 1.0
     pub outer_radius: f64,
     /// Height of the teeth above outer_radius. Default: 0.2
     pub tooth_height: f64,
@@ -34,10 +34,11 @@ impl Default for GearParams {
 /// Generate a 2D gear (extruded gear profile) as PolyData with normals.
 ///
 /// The gear profile is created on the XY plane, then extruded along Z by
-/// `thickness`. Each tooth is a trapezoidal bump on the outer radius.
+/// `thickness`. Each tooth is a trapezoidal bump on the outer radius, with
+/// `inner_radius` forming the center bore when it is smaller than `outer_radius`.
 pub fn gear(params: &GearParams) -> PolyData {
     let nt = params.num_teeth.max(3);
-    let _r_inner = params.inner_radius;
+    let r_inner = params.inner_radius.max(0.0);
     let r_outer = params.outer_radius;
     let r_tip = r_outer + params.tooth_height;
     let half_t = params.thickness / 2.0;
@@ -74,6 +75,7 @@ pub fn gear(params: &GearParams) -> PolyData {
     }
 
     let n_profile = profile.len();
+    let has_bore = r_inner > 0.0 && r_inner < r_outer;
 
     let mut points = Points::new();
     let mut normals = DataArray::<f64>::new("Normals", 3);
@@ -90,27 +92,103 @@ pub fn gear(params: &GearParams) -> PolyData {
         normals.push_tuple(&[0.0, 0.0, 1.0]);
     }
 
-    // Bottom face: fan triangulation from center-ish.
-    // Add a center point for the bottom face.
-    let bot_center = points.len() as i64;
-    points.push([cx, cy, cz - half_t]);
-    normals.push_tuple(&[0.0, 0.0, -1.0]);
-
-    for i in 0..n_profile {
-        let next = (i + 1) % n_profile;
-        // Bottom face winding: clockwise from below => counter-clockwise indices
-        polys.push_cell(&[bot_center, next as i64, i as i64]);
-    }
-
-    // Top face: fan triangulation.
-    let top_center = points.len() as i64;
-    points.push([cx, cy, cz + half_t]);
-    normals.push_tuple(&[0.0, 0.0, 1.0]);
-
     let top_offset = n_profile as i64;
-    for i in 0..n_profile {
-        let next = (i + 1) % n_profile;
-        polys.push_cell(&[top_center, top_offset + i as i64, top_offset + next as i64]);
+
+    if has_bore {
+        let bottom_inner_offset = points.len() as i64;
+        for i in 0..n_profile {
+            let angle = 2.0 * PI * i as f64 / n_profile as f64;
+            points.push([
+                cx + r_inner * angle.cos(),
+                cy + r_inner * angle.sin(),
+                cz - half_t,
+            ]);
+            normals.push_tuple(&[0.0, 0.0, -1.0]);
+        }
+
+        let top_inner_offset = points.len() as i64;
+        for i in 0..n_profile {
+            let angle = 2.0 * PI * i as f64 / n_profile as f64;
+            points.push([
+                cx + r_inner * angle.cos(),
+                cy + r_inner * angle.sin(),
+                cz + half_t,
+            ]);
+            normals.push_tuple(&[0.0, 0.0, 1.0]);
+        }
+
+        for i in 0..n_profile {
+            let next = (i + 1) % n_profile;
+            polys.push_cell(&[
+                i as i64,
+                bottom_inner_offset + i as i64,
+                bottom_inner_offset + next as i64,
+                next as i64,
+            ]);
+            polys.push_cell(&[
+                top_offset + i as i64,
+                top_offset + next as i64,
+                top_inner_offset + next as i64,
+                top_inner_offset + i as i64,
+            ]);
+        }
+
+        for i in 0..n_profile {
+            let next = (i + 1) % n_profile;
+            let angle0 = 2.0 * PI * i as f64 / n_profile as f64;
+            let angle1 = 2.0 * PI * next as f64 / n_profile as f64;
+            let nx = -((angle0 + angle1) * 0.5).cos();
+            let ny = -((angle0 + angle1) * 0.5).sin();
+            let si = points.len() as i64;
+            points.push([
+                cx + r_inner * angle0.cos(),
+                cy + r_inner * angle0.sin(),
+                cz - half_t,
+            ]);
+            normals.push_tuple(&[nx, ny, 0.0]);
+            points.push([
+                cx + r_inner * angle0.cos(),
+                cy + r_inner * angle0.sin(),
+                cz + half_t,
+            ]);
+            normals.push_tuple(&[nx, ny, 0.0]);
+            points.push([
+                cx + r_inner * angle1.cos(),
+                cy + r_inner * angle1.sin(),
+                cz + half_t,
+            ]);
+            normals.push_tuple(&[nx, ny, 0.0]);
+            points.push([
+                cx + r_inner * angle1.cos(),
+                cy + r_inner * angle1.sin(),
+                cz - half_t,
+            ]);
+            normals.push_tuple(&[nx, ny, 0.0]);
+
+            polys.push_cell(&[si, si + 1, si + 2]);
+            polys.push_cell(&[si, si + 2, si + 3]);
+        }
+    } else {
+        // Bottom face: fan triangulation from center-ish.
+        // Add a center point for the bottom face.
+        let bot_center = points.len() as i64;
+        points.push([cx, cy, cz - half_t]);
+        normals.push_tuple(&[0.0, 0.0, -1.0]);
+
+        for i in 0..n_profile {
+            let next = (i + 1) % n_profile;
+            polys.push_cell(&[bot_center, next as i64, i as i64]);
+        }
+
+        // Top face: fan triangulation.
+        let top_center = points.len() as i64;
+        points.push([cx, cy, cz + half_t]);
+        normals.push_tuple(&[0.0, 0.0, 1.0]);
+
+        for i in 0..n_profile {
+            let next = (i + 1) % n_profile;
+            polys.push_cell(&[top_center, top_offset + i as i64, top_offset + next as i64]);
+        }
     }
 
     // Side faces: quads connecting bottom and top profiles.
@@ -185,5 +263,20 @@ mod tests {
         let zmin = zs.iter().cloned().fold(f64::INFINITY, f64::min);
         let zmax = zs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         assert!((zmax - zmin - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn gear_respects_inner_radius() {
+        let pd = gear(&GearParams {
+            inner_radius: 0.4,
+            outer_radius: 1.0,
+            ..Default::default()
+        });
+        let min_radius = pd
+            .points
+            .iter()
+            .map(|p| (p[0] * p[0] + p[1] * p[1]).sqrt())
+            .fold(f64::INFINITY, f64::min);
+        assert!((min_radius - 0.4).abs() < 1e-10);
     }
 }

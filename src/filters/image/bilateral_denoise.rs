@@ -59,10 +59,11 @@ pub fn bilateral_filter(
         })
         .collect();
 
-    ImageData::with_dimensions(nx, ny, dims[2])
-        .with_spacing(input.spacing())
-        .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+    let mut output = input.clone();
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output
 }
 
 #[cfg(test)]
@@ -75,7 +76,7 @@ mod tests {
             [1.0, 1.0, 1.0],
             [0.0, 0.0, 0.0],
             "v",
-            |x, y, _| {
+            |x, _y, _| {
                 if x > 5.0 {
                     100.0
                 } else {

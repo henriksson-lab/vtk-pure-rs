@@ -31,8 +31,10 @@ pub fn laplacian_deform_simple(
         for j in 0..len {
             let a: usize = cell[j] as usize;
             let b: usize = cell[(j + 1) % len] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
+            if a < n && b < n {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
         }
     }
 

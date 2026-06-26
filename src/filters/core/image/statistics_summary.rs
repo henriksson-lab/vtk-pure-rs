@@ -67,9 +67,21 @@ pub fn image_stats(image: &ImageData) -> ImageStats {
         if let Some(arr) = pd.get_array_by_index(ai) {
             let nc = arr.num_components();
             let nt = arr.num_tuples();
+            if nt == 0 {
+                array_stats.push(ArrayStats {
+                    name: arr.name().to_string(),
+                    components: nc,
+                    min: 0.0,
+                    max: 0.0,
+                    mean: 0.0,
+                    std: 0.0,
+                    non_zero_count: 0,
+                });
+                continue;
+            }
             let mut buf = vec![0.0f64; nc];
-            let mut min_v = f64::MAX;
-            let mut max_v = f64::MIN;
+            let mut min_v = f64::INFINITY;
+            let mut max_v = f64::NEG_INFINITY;
             let mut sum = 0.0;
             let mut sum2 = 0.0;
             let mut nonzero = 0;
@@ -85,12 +97,13 @@ pub fn image_stats(image: &ImageData) -> ImageStats {
                     nonzero += 1;
                 }
             }
-            let mean = if nt > 0 { sum / nt as f64 } else { 0.0 };
-            let std = if nt > 0 {
-                ((sum2 / nt as f64) - mean * mean).max(0.0).sqrt()
+            let mean = sum / nt as f64;
+            let variance = if nt > 1 {
+                (sum2 - sum * mean) / (nt - 1) as f64
             } else {
                 0.0
             };
+            let std = variance.max(0.0).sqrt();
 
             array_stats.push(ArrayStats {
                 name: arr.name().to_string(),

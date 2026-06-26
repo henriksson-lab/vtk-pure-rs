@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Estimate mean curvature at each vertex using the cotangent Laplacian.
@@ -38,7 +37,8 @@ pub fn compute_mean_curvature(input: &PolyData) -> PolyData {
             ab[2] * ac[0] - ab[0] * ac[2],
             ab[0] * ac[1] - ab[1] * ac[0],
         ];
-        let tri_area: f64 = 0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+        let tri_area: f64 =
+            0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
         if tri_area < 1e-30 {
             continue;
         }
@@ -87,9 +87,12 @@ pub fn compute_mean_curvature(input: &PolyData) -> PolyData {
     }
 
     let mut pd = input.clone();
-    pd.point_data_mut().add_array(AnyDataArray::F64(
-        DataArray::from_vec("MeanCurvature", curvature, 1),
-    ));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MeanCurvature",
+            curvature,
+            1,
+        )));
     pd
 }
 
@@ -144,10 +147,14 @@ mod tests {
                 [2.0, 2.0, 0.0], // 8
             ],
             vec![
-                [0, 1, 4], [0, 4, 3],
-                [1, 2, 5], [1, 5, 4],
-                [3, 4, 7], [3, 7, 6],
-                [4, 5, 8], [4, 8, 7],
+                [0, 1, 4],
+                [0, 4, 3],
+                [1, 2, 5],
+                [1, 5, 4],
+                [3, 4, 7],
+                [3, 7, 6],
+                [4, 5, 8],
+                [4, 8, 7],
             ],
         );
         let result = compute_mean_curvature(&pd);
@@ -156,7 +163,11 @@ mod tests {
         // Interior vertex (index 4) on a flat plane: curvature should be ~0
         let mut val = [0.0f64];
         arr.tuple_as_f64(4, &mut val);
-        assert!(val[0] < 0.01, "interior vertex curvature = {} expected ~0", val[0]);
+        assert!(
+            val[0] < 0.01,
+            "interior vertex curvature = {} expected ~0",
+            val[0]
+        );
     }
 
     #[test]

@@ -77,11 +77,7 @@ fn ray_triangle(
 ///
 /// Uses the Moller-Trumbore algorithm. Only triangular cells in `polys`
 /// are tested. Results are sorted by increasing `t`.
-pub fn ray_intersect_mesh(
-    origin: [f64; 3],
-    direction: [f64; 3],
-    mesh: &PolyData,
-) -> Vec<RayHit> {
+pub fn ray_intersect_mesh(origin: [f64; 3], direction: [f64; 3], mesh: &PolyData) -> Vec<RayHit> {
     let mut hits: Vec<RayHit> = Vec::new();
     let dir = normalize(direction);
 
@@ -91,25 +87,35 @@ pub fn ray_intersect_mesh(
         }
         // Fan-triangulate polygons with more than 3 vertices
         let v0 = mesh.points.get(cell[0] as usize);
+        let mut cell_hit: Option<RayHit> = None;
         for tri in 1..cell.len() - 1 {
             let v1 = mesh.points.get(cell[tri] as usize);
             let v2 = mesh.points.get(cell[tri + 1] as usize);
             if let Some(t) = ray_triangle(origin, dir, v0, v1, v2) {
-                let point = [
-                    origin[0] + t * dir[0],
-                    origin[1] + t * dir[1],
-                    origin[2] + t * dir[2],
-                ];
-                let e1 = sub(v1, v0);
-                let e2 = sub(v2, v0);
-                let normal = normalize(cross(e1, e2));
-                hits.push(RayHit {
-                    t,
-                    point,
-                    cell_id,
-                    normal,
-                });
+                let hit = match &cell_hit {
+                    Some(existing) => t < existing.t,
+                    None => true,
+                };
+                if hit {
+                    let point = [
+                        origin[0] + t * dir[0],
+                        origin[1] + t * dir[1],
+                        origin[2] + t * dir[2],
+                    ];
+                    let e1 = sub(v1, v0);
+                    let e2 = sub(v2, v0);
+                    let normal = normalize(cross(e1, e2));
+                    cell_hit = Some(RayHit {
+                        t,
+                        point,
+                        cell_id,
+                        normal,
+                    });
+                }
             }
+        }
+        if let Some(hit) = cell_hit {
+            hits.push(hit);
         }
     }
 
@@ -123,11 +129,7 @@ mod tests {
 
     fn make_triangle() -> PolyData {
         PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [2.0, 0.0, 0.0],
-                [0.0, 2.0, 0.0],
-            ],
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
             vec![[0, 1, 2]],
         )
     }
@@ -171,5 +173,19 @@ mod tests {
         assert!(hits[0].t < hits[1].t);
         assert!((hits[0].point[2] - 3.0).abs() < 1e-9);
         assert!((hits[1].point[2]).abs() < 1e-9);
+    }
+
+    #[test]
+    fn polygon_fan_internal_edge_counts_as_one_cell_hit() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 1.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2, 3]);
+
+        let hits = ray_intersect_mesh([0.5, 0.5, 1.0], [0.0, 0.0, -1.0], &mesh);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].cell_id, 0);
     }
 }

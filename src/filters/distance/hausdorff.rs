@@ -160,7 +160,7 @@ impl KdTree {
 /// The Hausdorff distance is `max(d(A→B), d(B→A))` where
 /// `d(A→B) = max over a in A of (min over b in B of dist(a, b))`.
 ///
-/// Returns `(hausdorff_distance, mean_distance_a_to_b, mean_distance_b_to_a)`.
+/// Returns `(hausdorff_distance, relative_distance_a_to_b, relative_distance_b_to_a)`.
 pub fn hausdorff_distance(a: &PolyData, b: &PolyData) -> (f64, f64, f64) {
     let pts_a = extract_points(a);
     let pts_b = extract_points(b);
@@ -168,9 +168,13 @@ pub fn hausdorff_distance(a: &PolyData, b: &PolyData) -> (f64, f64, f64) {
     let tree_b = KdTree::build(pts_b.clone());
     let tree_a = KdTree::build(pts_a.clone());
 
-    let (max_ab, mean_ab) = directed_hausdorff_kd(&pts_a, &tree_b);
-    let (max_ba, mean_ba) = directed_hausdorff_kd(&pts_b, &tree_a);
-    (max_ab.max(max_ba), mean_ab, mean_ba)
+    let relative_distance_a_to_b = directed_hausdorff_kd(&pts_a, &tree_b);
+    let relative_distance_b_to_a = directed_hausdorff_kd(&pts_b, &tree_a);
+    (
+        relative_distance_a_to_b.max(relative_distance_b_to_a),
+        relative_distance_a_to_b,
+        relative_distance_b_to_a,
+    )
 }
 
 fn extract_points(pd: &PolyData) -> Vec<[f64; 3]> {
@@ -183,24 +187,21 @@ fn extract_points(pd: &PolyData) -> Vec<[f64; 3]> {
 }
 
 /// Directed Hausdorff from a set of query points to the points stored in `tree`.
-fn directed_hausdorff_kd(queries: &[[f64; 3]], tree: &KdTree) -> (f64, f64) {
-    let n = queries.len();
-    if n == 0 || tree.nodes.len() <= 1 {
-        return (0.0, 0.0);
+fn directed_hausdorff_kd(queries: &[[f64; 3]], tree: &KdTree) -> f64 {
+    if queries.is_empty() || tree.nodes.len() <= 1 {
+        return 0.0;
     }
 
     let mut max_d = 0.0f64;
-    let mut sum_d = 0.0f64;
 
     for &q in queries {
         let d = tree.nearest_sq(q).sqrt();
         if d > max_d {
             max_d = d;
         }
-        sum_d += d;
     }
 
-    (max_d, sum_d / n as f64)
+    max_d
 }
 
 #[cfg(test)]
@@ -239,9 +240,10 @@ mod tests {
         b.points.push([1.0, 0.0, 0.0]);
         b.points.push([5.0, 0.0, 0.0]); // extra far point
 
-        let (h, mean_ab, mean_ba) = hausdorff_distance(&a, &b);
+        let (h, relative_ab, relative_ba) = hausdorff_distance(&a, &b);
         // Hausdorff should be driven by b→a: point (5,0,0) is 4 from nearest in a
         assert!((h - 4.0).abs() < 1e-10);
-        assert!(mean_ab < mean_ba); // a→b is closer on average
+        assert!((relative_ab - 0.0).abs() < 1e-10);
+        assert!((relative_ba - 4.0).abs() < 1e-10);
     }
 }
