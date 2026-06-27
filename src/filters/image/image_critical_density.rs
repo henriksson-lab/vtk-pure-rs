@@ -10,7 +10,7 @@ pub fn image_critical_density(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            3.0 * (70.0f64 / 3.086e22).powi(2) / (8.0 * std::f64::consts::PI * 6.674e-11)
+            3.0 * (buf[0] / 3.086e22).powi(2) / (8.0 * std::f64::consts::PI * 6.674e-11)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,12 @@ mod tests {
         );
         let r = image_critical_density(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        let expected = 3.0 * (1.0f64 / 3.086e22).powi(2) / (8.0 * std::f64::consts::PI * 6.674e-11);
+        assert!((tuple[0] - expected).abs() < expected * 1e-12);
+        arr.tuple_as_f64(4, &mut tuple);
+        assert!(tuple[0] > expected);
     }
 }

@@ -10,7 +10,7 @@ pub fn image_huffman_code_length(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            -(buf[0].clamp(0.001, 0.999)).log2().ceil()
+            (-(buf[0].clamp(0.001, 0.999)).log2()).ceil()
         })
         .collect();
     let dims = input.dimensions();

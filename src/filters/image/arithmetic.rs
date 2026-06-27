@@ -19,7 +19,7 @@ pub fn image_multiply(a: &ImageData, b: &ImageData, name: &str) -> ImageData {
 
 /// Element-wise divide (with zero protection).
 pub fn image_divide(a: &ImageData, b: &ImageData, name: &str) -> ImageData {
-    binary_arith(a, b, name, |x, y| if y.abs() > 1e-15 { x / y } else { 0.0 })
+    binary_arith(a, b, name, |x, y| if y != 0.0 { x / y } else { f64::MAX })
 }
 
 /// Element-wise maximum.
@@ -47,19 +47,19 @@ pub fn image_abs(image: &ImageData, name: &str) -> ImageData {
     unary_arith(image, name, |x| x.abs())
 }
 
-/// Square root (clamped to non-negative).
+/// Square root.
 pub fn image_sqrt(image: &ImageData, name: &str) -> ImageData {
-    unary_arith(image, name, |x| x.max(0.0).sqrt())
+    unary_arith(image, name, |x| x.sqrt())
 }
 
-/// Natural logarithm (clamped to positive).
+/// Natural logarithm.
 pub fn image_ln(image: &ImageData, name: &str) -> ImageData {
-    unary_arith(image, name, |x| if x > 0.0 { x.ln() } else { 0.0 })
+    unary_arith(image, name, |x| x.ln())
 }
 
 /// Exponential.
 pub fn image_exp(image: &ImageData, name: &str) -> ImageData {
-    unary_arith(image, name, |x| x.exp().min(1e30))
+    unary_arith(image, name, |x| x.exp())
 }
 
 fn binary_arith(
@@ -170,6 +170,6 @@ mod tests {
         let arr = r.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
-        assert_eq!(buf[0], 0.0);
+        assert_eq!(buf[0], f64::MAX);
     }
 }

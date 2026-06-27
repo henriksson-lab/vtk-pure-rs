@@ -4,11 +4,17 @@
 //! the public API, primarily operating on the cell data arrays.
 
 use crate::data::{AnyDataArray, DataArray, HyperTreeGrid, ImageData, Points, PolyData};
+use crate::types::BoundingBox;
 
 /// Extract the surface geometry of a HyperTreeGrid as quads on the coarse grid.
 ///
 /// Creates one quad per visible coarse-grid face on the boundary.
 pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
+    let leaves = htg.leaves();
+    if !leaves.is_empty() {
+        return leaf_geometry(htg, leaves.iter().map(|leaf| leaf.bounds));
+    }
+
     let gs = htg.grid_size();
     let bounds = htg.grid_bounds();
     let spacing = [
@@ -116,6 +122,23 @@ pub fn hyper_tree_grid_geometry(htg: &HyperTreeGrid) -> PolyData {
 
 /// Extract cell centers of all coarse cells as points.
 pub fn hyper_tree_grid_cell_centers(htg: &HyperTreeGrid) -> PolyData {
+    let leaves = htg.leaves();
+    if !leaves.is_empty() {
+        let mut mesh = PolyData::new();
+        let mut depth_data = Vec::with_capacity(leaves.len());
+        for leaf in leaves {
+            mesh.points.push(leaf.bounds.center());
+            depth_data.push(leaf.depth as f64);
+        }
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "CoarseDepth",
+                depth_data,
+                1,
+            )));
+        return mesh;
+    }
+
     let gs = htg.grid_size();
     let bounds = htg.grid_bounds();
     let spacing = [
@@ -193,6 +216,136 @@ pub fn hyper_tree_grid_info(htg: &HyperTreeGrid) -> String {
         htg.num_cells(),
         htg.max_depth(),
     )
+}
+
+fn leaf_geometry<I>(htg: &HyperTreeGrid, bounds_iter: I) -> PolyData
+where
+    I: IntoIterator<Item = BoundingBox>,
+{
+    let grid_bounds = htg.grid_bounds();
+    let mut points = Points::<f64>::new();
+    let mut polys = crate::data::CellArray::new();
+    let mut point_map: std::collections::HashMap<[i64; 3], usize> =
+        std::collections::HashMap::new();
+
+    for bounds in bounds_iter {
+        if htg.dimension() < 3 {
+            let corners = [
+                [bounds.x_min, bounds.y_min, bounds.z_min],
+                [bounds.x_max, bounds.y_min, bounds.z_min],
+                [bounds.x_max, bounds.y_max, bounds.z_min],
+                [bounds.x_min, bounds.y_max, bounds.z_min],
+            ];
+            add_face(&mut points, &mut polys, &mut point_map, &corners);
+        } else {
+            if (bounds.x_min - grid_bounds.x_min).abs() <= 1e-12 {
+                add_face(
+                    &mut points,
+                    &mut polys,
+                    &mut point_map,
+                    &[
+                        [bounds.x_min, bounds.y_min, bounds.z_min],
+                        [bounds.x_min, bounds.y_max, bounds.z_min],
+                        [bounds.x_min, bounds.y_max, bounds.z_max],
+                        [bounds.x_min, bounds.y_min, bounds.z_max],
+                    ],
+                );
+            }
+            if (bounds.x_max - grid_bounds.x_max).abs() <= 1e-12 {
+                add_face(
+                    &mut points,
+                    &mut polys,
+                    &mut point_map,
+                    &[
+                        [bounds.x_max, bounds.y_min, bounds.z_min],
+                        [bounds.x_max, bounds.y_min, bounds.z_max],
+                        [bounds.x_max, bounds.y_max, bounds.z_max],
+                        [bounds.x_max, bounds.y_max, bounds.z_min],
+                    ],
+                );
+            }
+            if (bounds.y_min - grid_bounds.y_min).abs() <= 1e-12 {
+                add_face(
+                    &mut points,
+                    &mut polys,
+                    &mut point_map,
+                    &[
+                        [bounds.x_min, bounds.y_min, bounds.z_min],
+                        [bounds.x_min, bounds.y_min, bounds.z_max],
+                        [bounds.x_max, bounds.y_min, bounds.z_max],
+                        [bounds.x_max, bounds.y_min, bounds.z_min],
+                    ],
+                );
+            }
+            if (bounds.y_max - grid_bounds.y_max).abs() <= 1e-12 {
+                add_face(
+                    &mut points,
+                    &mut polys,
+                    &mut point_map,
+                    &[
+                        [bounds.x_min, bounds.y_max, bounds.z_min],
+                        [bounds.x_max, bounds.y_max, bounds.z_min],
+                        [bounds.x_max, bounds.y_max, bounds.z_max],
+                        [bounds.x_min, bounds.y_max, bounds.z_max],
+                    ],
+                );
+            }
+            if (bounds.z_min - grid_bounds.z_min).abs() <= 1e-12 {
+                add_face(
+                    &mut points,
+                    &mut polys,
+                    &mut point_map,
+                    &[
+                        [bounds.x_min, bounds.y_min, bounds.z_min],
+                        [bounds.x_max, bounds.y_min, bounds.z_min],
+                        [bounds.x_max, bounds.y_max, bounds.z_min],
+                        [bounds.x_min, bounds.y_max, bounds.z_min],
+                    ],
+                );
+            }
+            if (bounds.z_max - grid_bounds.z_max).abs() <= 1e-12 {
+                add_face(
+                    &mut points,
+                    &mut polys,
+                    &mut point_map,
+                    &[
+                        [bounds.x_min, bounds.y_min, bounds.z_max],
+                        [bounds.x_min, bounds.y_max, bounds.z_max],
+                        [bounds.x_max, bounds.y_max, bounds.z_max],
+                        [bounds.x_max, bounds.y_min, bounds.z_max],
+                    ],
+                );
+            }
+        }
+    }
+
+    let mut mesh = PolyData::new();
+    mesh.points = points;
+    mesh.polys = polys;
+    mesh
+}
+
+fn add_face(
+    points: &mut Points<f64>,
+    polys: &mut crate::data::CellArray,
+    point_map: &mut std::collections::HashMap<[i64; 3], usize>,
+    corners: &[[f64; 3]; 4],
+) {
+    let mut ids = Vec::new();
+    for c in corners {
+        let key = [
+            (c[0] * 1e6) as i64,
+            (c[1] * 1e6) as i64,
+            (c[2] * 1e6) as i64,
+        ];
+        let idx = *point_map.entry(key).or_insert_with(|| {
+            let idx = points.len();
+            points.push(*c);
+            idx
+        });
+        ids.push(idx as i64);
+    }
+    polys.push_cell(&ids);
 }
 
 #[cfg(test)]

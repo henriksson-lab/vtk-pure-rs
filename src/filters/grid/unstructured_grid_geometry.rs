@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::data::{CellArray, Points, PolyData, UnstructuredGrid};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData, UnstructuredGrid};
 use crate::types::CellType;
 
 /// Extract boundary faces from an UnstructuredGrid as PolyData.
@@ -10,7 +10,7 @@ use crate::types::CellType;
 /// A boundary face is a face that is not shared by two cells.
 pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
     let mut face_count: HashMap<Vec<usize>, usize> = HashMap::new();
-    let mut all_faces: Vec<Vec<usize>> = Vec::new();
+    let mut all_faces: Vec<(Vec<usize>, usize)> = Vec::new();
 
     for (cell_id, cell) in grid.cells().iter().enumerate() {
         let faces = cell_faces(grid.cell_type(cell_id), cell);
@@ -18,7 +18,7 @@ pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
             let mut sorted = face.clone();
             sorted.sort_unstable();
             *face_count.entry(sorted).or_insert(0) += 1;
-            all_faces.push(face);
+            all_faces.push((face, cell_id));
         }
     }
 
@@ -26,8 +26,10 @@ pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut point_map: HashMap<usize, usize> = HashMap::new();
+    let mut old_point_ids = Vec::new();
+    let mut source_cell_ids = Vec::new();
 
-    for face in &all_faces {
+    for (face, source_cell_id) in &all_faces {
         let mut sorted = face.clone();
         sorted.sort_unstable();
         if face_count.get(&sorted) != Some(&1) {
@@ -41,18 +43,22 @@ pub fn extract_boundary_faces(grid: &UnstructuredGrid) -> PolyData {
             let new_idx = *point_map.entry(pid).or_insert_with(|| {
                 let idx = points.len();
                 points.push(grid.points.get(pid));
+                old_point_ids.push(pid);
                 idx
             });
             ids.push(new_idx as i64);
         }
         if ids.len() >= 3 {
             polys.push_cell(&ids);
+            source_cell_ids.push(*source_cell_id);
         }
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
+    copy_point_data(grid, &old_point_ids, &mut mesh);
+    copy_cell_data(grid, &source_cell_ids, &mut mesh);
     mesh
 }
 
@@ -61,6 +67,8 @@ pub fn extract_all_faces(grid: &UnstructuredGrid) -> PolyData {
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut point_map: HashMap<usize, usize> = HashMap::new();
+    let mut old_point_ids = Vec::new();
+    let mut source_cell_ids = Vec::new();
     let mut seen_faces: HashSet<Vec<usize>> = HashSet::new();
 
     for (cell_id, cell) in grid.cells().iter().enumerate() {
@@ -77,12 +85,14 @@ pub fn extract_all_faces(grid: &UnstructuredGrid) -> PolyData {
                 let new_idx = *point_map.entry(pid).or_insert_with(|| {
                     let idx = points.len();
                     points.push(grid.points.get(pid));
+                    old_point_ids.push(pid);
                     idx
                 });
                 ids.push(new_idx as i64);
             }
             if ids.len() >= 3 {
                 polys.push_cell(&ids);
+                source_cell_ids.push(cell_id);
             }
         }
     }
@@ -90,6 +100,8 @@ pub fn extract_all_faces(grid: &UnstructuredGrid) -> PolyData {
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
+    copy_point_data(grid, &old_point_ids, &mut mesh);
+    copy_cell_data(grid, &source_cell_ids, &mut mesh);
     mesh
 }
 
@@ -99,6 +111,8 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut point_map: HashMap<usize, usize> = HashMap::new();
+    let mut old_point_ids = Vec::new();
+    let mut source_cell_ids = Vec::new();
 
     for (ci, cell) in grid.cells().iter().enumerate() {
         if ci >= types.len() || types[ci] != cell_type {
@@ -111,12 +125,14 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
                 let new_idx = *point_map.entry(pid).or_insert_with(|| {
                     let idx = points.len();
                     points.push(grid.points.get(pid));
+                    old_point_ids.push(pid);
                     idx
                 });
                 ids.push(new_idx as i64);
             }
             if ids.len() >= 3 {
                 polys.push_cell(&ids);
+                source_cell_ids.push(ci);
             }
         }
     }
@@ -124,7 +140,60 @@ pub fn extract_faces_by_cell_type(grid: &UnstructuredGrid, cell_type: CellType) 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
+    copy_point_data(grid, &old_point_ids, &mut mesh);
+    copy_cell_data(grid, &source_cell_ids, &mut mesh);
     mesh
+}
+
+fn copy_point_data(input: &UnstructuredGrid, old_point_ids: &[usize], output: &mut PolyData) {
+    for i in 0..input.point_data().num_arrays() {
+        let Some(array) = input.point_data().get_array_by_index(i) else {
+            continue;
+        };
+        if array.num_tuples() == input.num_points() {
+            output
+                .point_data_mut()
+                .add_array(select_tuples(array, old_point_ids));
+        }
+    }
+}
+
+fn copy_cell_data(input: &UnstructuredGrid, source_cell_ids: &[usize], output: &mut PolyData) {
+    for i in 0..input.cell_data().num_arrays() {
+        let Some(array) = input.cell_data().get_array_by_index(i) else {
+            continue;
+        };
+        if array.num_tuples() == input.num_cells() {
+            output
+                .cell_data_mut()
+                .add_array(select_tuples(array, source_cell_ids));
+        }
+    }
+}
+
+fn select_tuples(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
+    macro_rules! select {
+        ($array:expr, $variant:ident) => {{
+            let mut out = DataArray::new($array.name(), $array.num_components());
+            for &tuple_id in tuple_ids {
+                out.push_tuple($array.tuple(tuple_id));
+            }
+            AnyDataArray::$variant(out)
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(a) => select!(a, F32),
+        AnyDataArray::F64(a) => select!(a, F64),
+        AnyDataArray::I8(a) => select!(a, I8),
+        AnyDataArray::I16(a) => select!(a, I16),
+        AnyDataArray::I32(a) => select!(a, I32),
+        AnyDataArray::I64(a) => select!(a, I64),
+        AnyDataArray::U8(a) => select!(a, U8),
+        AnyDataArray::U16(a) => select!(a, U16),
+        AnyDataArray::U32(a) => select!(a, U32),
+        AnyDataArray::U64(a) => select!(a, U64),
+    }
 }
 
 fn cell_faces(cell_type: CellType, cell: &[i64]) -> Vec<Vec<usize>> {

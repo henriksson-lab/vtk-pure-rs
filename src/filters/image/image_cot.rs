@@ -14,11 +14,7 @@ pub fn image_cot(input: &ImageData, scalars: &str) -> ImageData {
         data.extend(buf.iter().map(|value| {
             let s = value.sin();
             let c = value.cos();
-            if s.abs() > 1e-15 {
-                c / s
-            } else {
-                0.0
-            }
+            c / s
         }));
     }
     let dims = input.dimensions();
@@ -70,7 +66,7 @@ mod tests {
         assert!((tuple[0] - 1.0).abs() < 1e-12);
         assert!(tuple[1].abs() < 1e-12);
         arr.tuple_as_f64(1, &mut tuple);
-        assert_eq!(tuple[0], 0.0);
+        assert!(tuple[0].is_infinite());
         assert!((tuple[1] - (1.0f64.cos() / 1.0f64.sin())).abs() < 1e-12);
     }
 }

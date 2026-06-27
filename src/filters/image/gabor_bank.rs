@@ -51,7 +51,7 @@ pub fn gabor_filter(
                     let yr = -dx as f64 * st + dy as f64 * ct;
                     let g = (-((xr * xr + yr * yr) / s2)).exp();
                     let wave = (2.0 * std::f64::consts::PI * frequency * xr).cos();
-                    sum += vals[sx as usize + sy as usize * nx] * g * wave;
+                    sum += vals[iz * slice + sx as usize + sy as usize * nx] * g * wave;
                 }
             }
             sum

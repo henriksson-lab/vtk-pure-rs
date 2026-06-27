@@ -10,7 +10,7 @@ pub fn image_depletion_width(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (2.0 * 11.7 * 8.85e-12 * buf[0] / (1.6e-19 * 1e16)).sqrt()
+            (2.0 * 11.7 * 8.85e-12 * buf[0].abs().max(0.01) / (1.6e-19 * 1e16)).sqrt()
         })
         .collect();
     let dims = input.dimensions();
@@ -22,16 +22,39 @@ pub fn image_depletion_width(input: &ImageData, scalars: &str) -> ImageData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn image(values: &[f64]) -> ImageData {
+        ImageData::with_dimensions(values.len(), 1, 1)
+            .with_spacing([0.5, 2.0, 1.0])
+            .with_origin([1.0, -1.0, 0.0])
+            .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                values.to_vec(),
+                1,
+            )))
+    }
+
+    fn assert_close(actual: &[f64], expected: &[f64]) {
+        assert_eq!(actual.len(), expected.len());
+        for (a, e) in actual.iter().zip(expected) {
+            assert!((a - e).abs() <= e.abs().max(1.0) * 1e-12, "{a} != {e}");
+        }
+    }
+
     #[test]
-    fn test() {
-        let img = ImageData::from_function(
-            [5, 5, 1],
-            [1.0, 1.0, 1.0],
-            [0.0, 0.0, 0.0],
-            "v",
-            |x, _, _| x + 1.0,
-        );
+    fn computes_depletion_width_with_voltage_magnitude_floor() {
+        let img = image(&[-4.0, 0.0, 9.0]);
         let r = image_depletion_width(&img, "v");
-        assert_eq!(r.dimensions(), [5, 5, 1]);
+        assert_eq!(r.dimensions(), [3, 1, 1]);
+        assert_eq!(r.spacing(), img.spacing());
+        assert_eq!(r.origin(), img.origin());
+        assert_close(
+            &r.point_data().get_array("v").unwrap().to_f64_vec(),
+            &[
+                (2.0 * 11.7 * 8.85e-12 * 4.0 / (1.6e-19f64 * 1e16)).sqrt(),
+                (2.0 * 11.7 * 8.85e-12 * 0.01 / (1.6e-19f64 * 1e16)).sqrt(),
+                (2.0 * 11.7 * 8.85e-12 * 9.0 / (1.6e-19f64 * 1e16)).sqrt(),
+            ],
+        );
     }
 }

@@ -10,8 +10,11 @@ pub fn image_ggx_distribution(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            let a2 = 0.1f64;
-            a2 / (std::f64::consts::PI * (buf[0] * buf[0] * (a2 - 1.0) + 1.0).powi(2))
+            let roughness = 0.1f64;
+            let alpha = roughness * roughness;
+            let alpha2 = alpha * alpha;
+            let denom = buf[0] * buf[0] * (alpha2 - 1.0) + 1.0;
+            alpha2 / (std::f64::consts::PI * denom * denom)
         })
         .collect();
     let dims = input.dimensions();

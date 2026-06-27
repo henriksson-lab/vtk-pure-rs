@@ -70,14 +70,15 @@ pub fn image_largest_component(input: &ImageData, scalars: &str, threshold: f64)
         }
     }
 
-    // Find largest
-    let largest = label_sizes
-        .iter()
-        .enumerate()
-        .skip(1)
-        .max_by_key(|(_, &s)| s)
-        .map(|(i, _)| i as u32)
-        .unwrap_or(0);
+    // VTK's vtkImageConnectivityFilter keeps the first region when sizes tie.
+    let mut largest = 0u32;
+    let mut largest_size = 0usize;
+    for (label, &size) in label_sizes.iter().enumerate().skip(1) {
+        if size > largest_size {
+            largest = label as u32;
+            largest_size = size;
+        }
+    }
 
     let result: Vec<f64> = labels
         .iter()
@@ -205,5 +206,28 @@ mod tests {
         let img = ImageData::with_dimensions(3, 1, 1);
         let r = image_largest_component(&img, "nope", 0.5);
         assert!(r.point_data().get_array("LargestComponent").is_none());
+    }
+
+    #[test]
+    fn largest_tie_keeps_first_region() {
+        let mut img = ImageData::with_dimensions(5, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 1.0, 0.0, 1.0, 1.0],
+                1,
+            )));
+
+        let result = image_largest_component(&img, "v", 0.5);
+        let arr = result.point_data().get_array("LargestComponent").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0);
+        arr.tuple_as_f64(3, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(4, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

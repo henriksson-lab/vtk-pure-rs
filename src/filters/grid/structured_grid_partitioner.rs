@@ -1,6 +1,6 @@
 //! Partition structured grids into sub-grids.
 
-use crate::data::{AnyDataArray, DataArray, StructuredGrid};
+use crate::data::{AnyDataArray, Block, DataArray, MultiBlockDataSet, Points, StructuredGrid};
 
 /// Partition a StructuredGrid into N sub-grids along the longest dimension.
 ///
@@ -48,6 +48,61 @@ pub fn partition_structured_grid(grid: &StructuredGrid, n_partitions: usize) -> 
             1,
         )));
     result
+}
+
+/// Partition a StructuredGrid into sub-grids, matching vtkStructuredGridPartitioner's output shape.
+///
+/// Sub-extents are contiguous along the longest point dimension and duplicate boundary nodes.
+pub fn partition_structured_grid_blocks(
+    grid: &StructuredGrid,
+    n_partitions: usize,
+) -> MultiBlockDataSet {
+    let dims = grid.dimensions();
+    let mut multiblock = MultiBlockDataSet::new();
+    if dims.contains(&0) || n_partitions == 0 {
+        return multiblock;
+    }
+
+    let axis = if dims[0] >= dims[1] && dims[0] >= dims[2] {
+        0
+    } else if dims[1] >= dims[2] {
+        1
+    } else {
+        2
+    };
+
+    let n_points = dims[axis];
+    let n_segments = n_points.saturating_sub(1).max(1);
+    let n_blocks = n_partitions.min(n_segments);
+
+    for block_id in 0..n_blocks {
+        let start_cell = block_id * n_segments / n_blocks;
+        let end_cell = ((block_id + 1) * n_segments / n_blocks).max(start_cell + 1);
+        let start = start_cell;
+        let end = end_cell.min(n_segments);
+
+        let mut sub_dims = dims;
+        sub_dims[axis] = end - start + 1;
+
+        let mut points = Points::<f64>::new();
+        for k in 0..sub_dims[2] {
+            for j in 0..sub_dims[1] {
+                for i in 0..sub_dims[0] {
+                    let mut ijk = [i, j, k];
+                    ijk[axis] += start;
+                    points.push(grid.points.get(grid.index_from_ijk(ijk[0], ijk[1], ijk[2])));
+                }
+            }
+        }
+
+        let subgrid = StructuredGrid::from_dimensions_and_points(sub_dims, points);
+        multiblock.add_block(
+            format!("partition_{block_id}"),
+            Block::StructuredGrid(subgrid),
+        );
+    }
+
+    multiblock
 }
 
 /// Compute load balance quality (ratio of min to max cells per partition).

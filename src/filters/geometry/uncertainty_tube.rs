@@ -24,6 +24,7 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
+    let mut out_strips = CellArray::new();
     let mut out_normals = DataArray::<f64>::new("TubeNormals", 3);
 
     // Get uncertainty array
@@ -116,11 +117,24 @@ pub fn uncertainty_tube(input: &PolyData, base_radius: f64, sides: usize) -> Pol
                 ]);
             }
         }
+
+        // VTK stores each tube side as one triangle strip running along the
+        // polyline. Keep the quads above for existing callers that read polys.
+        for s in 0..sides {
+            let sn = (s + 1) % sides;
+            let mut strip = Vec::with_capacity(rings.len() * 2);
+            for ring in &rings {
+                strip.push(ring[s] as i64);
+                strip.push(ring[sn] as i64);
+            }
+            out_strips.push_cell(&strip);
+        }
     }
 
     let mut output = PolyData::new();
     output.points = out_points;
     output.polys = out_polys;
+    output.strips = out_strips;
     output.point_data_mut().add_array(out_normals.into());
     output.point_data_mut().set_active_normals("TubeNormals");
     output

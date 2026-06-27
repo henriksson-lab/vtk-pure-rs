@@ -10,7 +10,7 @@ pub fn image_henry_constant_co2(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 3.4e-2 * (-2400.0 * (1.0 / buf[0].abs().max(1.0) - 1.0 / 298.0)).exp()
+            3.4e-2 * (2400.0 * (1.0 / buf[0].abs().max(1.0) - 1.0 / 298.0)).exp()
         })
         .collect();
     let dims = input.dimensions();

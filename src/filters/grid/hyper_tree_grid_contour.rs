@@ -3,12 +3,23 @@
 //! Extracts contour lines/surfaces at scalar isovalues on the coarse grid.
 
 use crate::data::{CellArray, HyperTreeGrid, Points, PolyData};
+use crate::types::BoundingBox;
 
 /// Extract contour at an isovalue from HyperTreeGrid cell data.
 ///
 /// Operates on the coarse grid level: for each pair of adjacent coarse cells
 /// where the scalar crosses the isovalue, generates a contour face.
 pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: f64) -> PolyData {
+    let arr = match htg.cell_data().get_array(array_name) {
+        Some(a) => a,
+        None => return PolyData::new(),
+    };
+
+    let leaves = htg.leaves();
+    if !leaves.is_empty() {
+        return contour_leaves(htg, &leaves, arr.as_ref(), isovalue);
+    }
+
     let gs = htg.grid_size();
     let bounds = htg.grid_bounds();
     let spacing = [
@@ -21,11 +32,6 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
         },
     ];
     let origin = [bounds.x_min, bounds.y_min, bounds.z_min];
-
-    let arr = match htg.cell_data().get_array(array_name) {
-        Some(a) => a,
-        None => return PolyData::new(),
-    };
 
     let cell_idx = |i: usize, j: usize, k: usize| -> usize { i + j * gs[0] + k * gs[0] * gs[1] };
 
@@ -52,8 +58,7 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
                 }
 
                 let t = (isovalue - v0) / (v1 - v0);
-                let _x = origin[0] + (i as f64 + 1.0 + t - 0.5) * spacing[0]; // approximate
-                let x = origin[0] + (i + 1) as f64 * spacing[0]; // exact interface
+                let x = origin[0] + (i as f64 + 0.5 + t) * spacing[0];
                 let y0 = origin[1] + j as f64 * spacing[1];
                 let y1 = y0 + spacing[1];
                 let z0 = origin[2] + k as f64 * spacing[2];
@@ -82,7 +87,8 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
                     continue;
                 }
 
-                let y = origin[1] + (j + 1) as f64 * spacing[1];
+                let t = (isovalue - v0) / (v1 - v0);
+                let y = origin[1] + (j as f64 + 0.5 + t) * spacing[1];
                 let x0 = origin[0] + i as f64 * spacing[0];
                 let x1 = x0 + spacing[0];
                 let z0 = origin[2] + k as f64 * spacing[2];
@@ -112,7 +118,8 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
                         continue;
                     }
 
-                    let z = origin[2] + (k + 1) as f64 * spacing[2];
+                    let t = (isovalue - v0) / (v1 - v0);
+                    let z = origin[2] + (k as f64 + 0.5 + t) * spacing[2];
                     let x0 = origin[0] + i as f64 * spacing[0];
                     let x1 = x0 + spacing[0];
                     let y0 = origin[1] + j as f64 * spacing[1];
@@ -129,6 +136,120 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
     mesh.points = points;
     mesh.polys = polys;
     mesh
+}
+
+fn contour_leaves(
+    htg: &HyperTreeGrid,
+    leaves: &[crate::data::HyperTreeLeaf],
+    arr: &dyn crate::data::DataArrayTrait,
+    isovalue: f64,
+) -> PolyData {
+    let mut points = Points::<f64>::new();
+    let mut polys = CellArray::new();
+    let mut pt_map: std::collections::HashMap<[i64; 3], usize> = std::collections::HashMap::new();
+    let mut buf = [0.0f64];
+
+    for i in 0..leaves.len() {
+        if leaves[i].global_id >= arr.num_tuples() {
+            continue;
+        }
+        arr.tuple_as_f64(leaves[i].global_id, &mut buf);
+        let v0 = buf[0];
+
+        for j in i + 1..leaves.len() {
+            if leaves[j].global_id >= arr.num_tuples() {
+                continue;
+            }
+            let Some((axis, overlap)) = shared_face(&leaves[i].bounds, &leaves[j].bounds) else {
+                continue;
+            };
+
+            arr.tuple_as_f64(leaves[j].global_id, &mut buf);
+            let v1 = buf[0];
+            if (v0 - isovalue) * (v1 - isovalue) >= 0.0 {
+                continue;
+            }
+
+            let c0 = leaves[i].bounds.center();
+            let c1 = leaves[j].bounds.center();
+            let denom = v1 - v0;
+            if denom.abs() <= 1e-15 {
+                continue;
+            }
+            let t = (isovalue - v0) / denom;
+            let coord = c0[axis] + t * (c1[axis] - c0[axis]);
+            let corners = contour_face_corners(htg.dimension(), axis, coord, overlap);
+            add_quad(&mut points, &mut polys, &mut pt_map, &corners);
+        }
+    }
+
+    let mut mesh = PolyData::new();
+    mesh.points = points;
+    mesh.polys = polys;
+    mesh
+}
+
+fn shared_face(a: &BoundingBox, b: &BoundingBox) -> Option<(usize, [[f64; 2]; 3])> {
+    const EPS: f64 = 1e-12;
+    let mins_a = [a.x_min, a.y_min, a.z_min];
+    let maxs_a = [a.x_max, a.y_max, a.z_max];
+    let mins_b = [b.x_min, b.y_min, b.z_min];
+    let maxs_b = [b.x_max, b.y_max, b.z_max];
+
+    for axis in 0..3 {
+        let touches = (maxs_a[axis] - mins_b[axis]).abs() <= EPS
+            || (maxs_b[axis] - mins_a[axis]).abs() <= EPS;
+        if !touches {
+            continue;
+        }
+
+        let mut overlap = [[0.0; 2]; 3];
+        let mut valid = true;
+        for other in 0..3 {
+            overlap[other] = [
+                mins_a[other].max(mins_b[other]),
+                maxs_a[other].min(maxs_b[other]),
+            ];
+            if other != axis && overlap[other][1] - overlap[other][0] <= EPS {
+                valid = false;
+                break;
+            }
+        }
+        if valid {
+            return Some((axis, overlap));
+        }
+    }
+    None
+}
+
+fn contour_face_corners(
+    dimension: usize,
+    axis: usize,
+    coord: f64,
+    overlap: [[f64; 2]; 3],
+) -> [[f64; 3]; 4] {
+    let z0 = if dimension < 3 { 0.0 } else { overlap[2][0] };
+    let z1 = if dimension < 3 { 1.0 } else { overlap[2][1] };
+    match axis {
+        0 => [
+            [coord, overlap[1][0], z0],
+            [coord, overlap[1][1], z0],
+            [coord, overlap[1][1], z1],
+            [coord, overlap[1][0], z1],
+        ],
+        1 => [
+            [overlap[0][0], coord, z0],
+            [overlap[0][1], coord, z0],
+            [overlap[0][1], coord, z1],
+            [overlap[0][0], coord, z1],
+        ],
+        _ => [
+            [overlap[0][0], overlap[1][0], coord],
+            [overlap[0][1], overlap[1][0], coord],
+            [overlap[0][1], overlap[1][1], coord],
+            [overlap[0][0], overlap[1][1], coord],
+        ],
+    }
 }
 
 fn add_quad(
@@ -167,6 +288,20 @@ mod tests {
             .add_array(AnyDataArray::F64(DataArray::from_vec("temp", vals, 1)));
         let contour = hyper_tree_grid_contour(&htg, "temp", 5.5);
         assert!(contour.polys.num_cells() > 0);
+    }
+
+    #[test]
+    fn contour_interpolates_between_cell_centers() {
+        let mut htg = HyperTreeGrid::new([3, 2, 1], [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        htg.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 2.0],
+                1,
+            )));
+        let contour = hyper_tree_grid_contour(&htg, "v", 0.5);
+        assert_eq!(contour.polys.num_cells(), 1);
+        assert!((contour.points.get(0)[0] - 0.75).abs() < 1e-12);
     }
 
     #[test]

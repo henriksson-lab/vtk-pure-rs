@@ -10,7 +10,7 @@ pub fn image_defuzzify_centroid(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * buf[0].abs().max(0.001) / buf[0].abs().max(0.001)
+            buf[0]
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,7 @@ mod tests {
         );
         let r = image_defuzzify_centroid(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+        assert_eq!(values[0], 1.0);
     }
 }

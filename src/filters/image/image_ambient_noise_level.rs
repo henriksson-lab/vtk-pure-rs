@@ -10,7 +10,7 @@ pub fn image_ambient_noise_level(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            50.0 + 20.0 * (buf[0] / 10.0).log10().max(-5.0)
+            50.0 + 20.0 * (buf[0].abs().max(1e-4) / 10.0).log10().max(-5.0)
         })
         .collect();
     let dims = input.dimensions();

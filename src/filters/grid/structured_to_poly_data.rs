@@ -1,4 +1,4 @@
-use crate::data::{CellArray, DataSet, Points, PolyData, StructuredGrid};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSet, Points, PolyData, StructuredGrid};
 
 /// Convert the outer surface of a StructuredGrid to PolyData quads.
 pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
@@ -13,6 +13,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
 
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
+    let mut source_cell_ids = Vec::new();
 
     // Copy all points
     let n_pts = nx * ny * nz;
@@ -21,6 +22,8 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
     }
 
     let point_idx = |i: usize, j: usize, k: usize| -> i64 { (k * ny * nx + j * nx + i) as i64 };
+    let cell_idx =
+        |i: usize, j: usize, k: usize| -> usize { k * (ny - 1) * (nx - 1) + j * (nx - 1) + i };
 
     // -X face
     for k in 0..nz - 1 {
@@ -31,6 +34,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
                 point_idx(0, j + 1, k + 1),
                 point_idx(0, j + 1, k),
             ]);
+            source_cell_ids.push(cell_idx(0, j, k));
         }
     }
     // +X face
@@ -42,6 +46,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
                 point_idx(nx - 1, j + 1, k + 1),
                 point_idx(nx - 1, j, k + 1),
             ]);
+            source_cell_ids.push(cell_idx(nx - 2, j, k));
         }
     }
     // -Y face
@@ -53,6 +58,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
                 point_idx(i + 1, 0, k + 1),
                 point_idx(i, 0, k + 1),
             ]);
+            source_cell_ids.push(cell_idx(i, 0, k));
         }
     }
     // +Y face
@@ -64,6 +70,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
                 point_idx(i + 1, ny - 1, k + 1),
                 point_idx(i + 1, ny - 1, k),
             ]);
+            source_cell_ids.push(cell_idx(i, ny - 2, k));
         }
     }
     // -Z face
@@ -75,6 +82,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
                 point_idx(i + 1, j + 1, 0),
                 point_idx(i + 1, j, 0),
             ]);
+            source_cell_ids.push(cell_idx(i, j, 0));
         }
     }
     // +Z face
@@ -86,6 +94,7 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
                 point_idx(i + 1, j + 1, nz - 1),
                 point_idx(i, j + 1, nz - 1),
             ]);
+            source_cell_ids.push(cell_idx(i, j, nz - 2));
         }
     }
 
@@ -97,7 +106,46 @@ pub fn structured_to_poly_data(input: &StructuredGrid) -> PolyData {
             pd.point_data_mut().add_array(array.clone());
         }
     }
+    copy_cell_data(input, &source_cell_ids, &mut pd);
     pd
+}
+
+fn copy_cell_data(input: &StructuredGrid, source_cell_ids: &[usize], output: &mut PolyData) {
+    for i in 0..input.cell_data().num_arrays() {
+        let Some(array) = input.cell_data().get_array_by_index(i) else {
+            continue;
+        };
+        if array.num_tuples() >= input.num_cells() {
+            output
+                .cell_data_mut()
+                .add_array(select_tuples(array, source_cell_ids));
+        }
+    }
+}
+
+fn select_tuples(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
+    macro_rules! select {
+        ($array:expr, $variant:ident) => {{
+            let mut out = DataArray::new($array.name(), $array.num_components());
+            for &tuple_id in tuple_ids {
+                out.push_tuple($array.tuple(tuple_id));
+            }
+            AnyDataArray::$variant(out)
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(a) => select!(a, F32),
+        AnyDataArray::F64(a) => select!(a, F64),
+        AnyDataArray::I8(a) => select!(a, I8),
+        AnyDataArray::I16(a) => select!(a, I16),
+        AnyDataArray::I32(a) => select!(a, I32),
+        AnyDataArray::I64(a) => select!(a, I64),
+        AnyDataArray::U8(a) => select!(a, U8),
+        AnyDataArray::U16(a) => select!(a, U16),
+        AnyDataArray::U32(a) => select!(a, U32),
+        AnyDataArray::U64(a) => select!(a, U64),
+    }
 }
 
 #[cfg(test)]

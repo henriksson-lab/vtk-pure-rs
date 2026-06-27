@@ -11,7 +11,7 @@ pub fn image_folium(input: &ImageData, scalars: &str) -> ImageData {
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             if buf[0].abs() > 0.01 {
-                3.0 * buf[0] / (1.0 + buf[0].powi(3).abs())
+                3.0 * buf[0] / (1.0 + buf[0].powi(3))
             } else {
                 0.0
             }

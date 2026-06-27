@@ -1,15 +1,15 @@
-//! GPU-accelerated face normal computation for triangle meshes.
+//! GPU-accelerated polygon cell normal computation.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 use crate::filters::gpu::GpuContext;
 
-/// Compute per-face normals on the GPU.
+/// Compute per-polygon cell normals on the GPU.
 ///
 /// Returns a PolyData with a "Normals" cell data array (3-component).
 /// Much faster than CPU for large meshes (>100K triangles).
 pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
-    let num_tris = input.polys.num_cells();
-    if num_tris == 0 {
+    let num_polys = input.polys.num_cells();
+    if num_polys == 0 {
         return input.clone();
     }
 
@@ -23,22 +23,14 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
         positions.push(p[2] as f32);
     }
 
-    // Flatten triangle indices to u32 buffer
-    let mut indices = Vec::with_capacity(num_tris * 3);
-    for ci in 0..num_tris {
-        let cell = input.polys.cell(ci);
-        if cell.len() >= 3 {
-            indices.push(cell[0] as u32);
-            indices.push(cell[1] as u32);
-            indices.push(cell[2] as u32);
-        } else {
-            indices.push(0);
-            indices.push(0);
-            indices.push(0);
-        }
-    }
-
-    let actual_tris = indices.len() / 3;
+    // VTK's vtkPolyDataNormals computes cell normals over all polygon vertices.
+    let offsets: Vec<u32> = input.polys.offsets().iter().map(|&o| o as u32).collect();
+    let connectivity: Vec<u32> = input
+        .polys
+        .connectivity()
+        .iter()
+        .map(|&id| id as u32)
+        .collect();
 
     let shader = ctx
         .device
@@ -48,17 +40,26 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
         });
 
     let pos_buf = ctx.create_storage_buffer(&positions);
-    let idx_buf = {
+    let offsets_buf = {
         use wgpu::util::DeviceExt;
         ctx.device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("indices"),
-                contents: bytemuck::cast_slice(&indices),
+                label: Some("offsets"),
+                contents: bytemuck::cast_slice(&offsets),
                 usage: wgpu::BufferUsages::STORAGE,
             })
     };
-    let normals_buf = ctx.create_output_buffer((actual_tris * 3 * 4) as u64);
-    let params = [actual_tris as f32, 0.0, 0.0, 0.0];
+    let connectivity_buf = {
+        use wgpu::util::DeviceExt;
+        ctx.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("connectivity"),
+                contents: bytemuck::cast_slice(&connectivity),
+                usage: wgpu::BufferUsages::STORAGE,
+            })
+    };
+    let normals_buf = ctx.create_output_buffer((num_polys * 3 * 4) as u64);
+    let params = [num_polys as u32, 0, 0, 0];
     let params_buf = {
         use wgpu::util::DeviceExt;
         ctx.device
@@ -76,9 +77,10 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
             entries: &[
                 bgl_entry(0, true),
                 bgl_entry(1, true),
-                bgl_entry(2, false),
+                bgl_entry(2, true),
+                bgl_entry(3, false),
                 wgpu::BindGroupLayoutEntry {
-                    binding: 3,
+                    binding: 4,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
@@ -119,22 +121,26 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
             },
             wgpu::BindGroupEntry {
                 binding: 1,
-                resource: idx_buf.as_entire_binding(),
+                resource: offsets_buf.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: normals_buf.as_entire_binding(),
+                resource: connectivity_buf.as_entire_binding(),
             },
             wgpu::BindGroupEntry {
                 binding: 3,
+                resource: normals_buf.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
                 resource: params_buf.as_entire_binding(),
             },
         ],
     });
 
-    ctx.dispatch(&pipeline, &bind_group, ((actual_tris as u32) + 255) / 256);
+    ctx.dispatch(&pipeline, &bind_group, ((num_polys as u32) + 255) / 256);
 
-    let normals_f32 = ctx.read_buffer(&normals_buf, (actual_tris * 3 * 4) as u64);
+    let normals_f32 = ctx.read_buffer(&normals_buf, (num_polys * 3 * 4) as u64);
     let normals_f64: Vec<f64> = normals_f32.iter().map(|&v| v as f64).collect();
 
     let mut result = input.clone();
@@ -145,6 +151,7 @@ pub fn gpu_compute_normals(ctx: &GpuContext, input: &PolyData) -> PolyData {
             normals_f64,
             3,
         )));
+    result.cell_data_mut().set_active_normals("Normals");
     result
 }
 

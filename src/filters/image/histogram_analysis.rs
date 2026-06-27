@@ -201,4 +201,28 @@ mod tests {
         let result = auto_threshold(&img, "v");
         assert!(result.point_data().get_array("v").is_some());
     }
+
+    #[test]
+    fn zero_bins_are_clamped() {
+        let img = ImageData::from_function(
+            [2, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| x,
+        );
+        let (centers, counts) = compute_histogram(&img, "v", 0);
+        assert_eq!(centers.len(), 1);
+        assert_eq!(counts.iter().sum::<usize>(), 2);
+    }
+
+    #[test]
+    fn histogram_handles_all_negative_values() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-3.0, -2.0, -1.0], 1),
+        ));
+        let (centers, counts) = compute_histogram(&img, "v", 2);
+        assert!(centers[0] < 0.0);
+        assert_eq!(counts.iter().sum::<usize>(), 3);
+    }
 }

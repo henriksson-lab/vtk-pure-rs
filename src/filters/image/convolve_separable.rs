@@ -6,15 +6,21 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// More efficient than a full 3D convolution for separable kernels.
 pub fn image_convolve_separable(input: &ImageData, scalars: &str, kernel: &[f64]) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
+    if kernel.is_empty() || kernel.len() % 2 == 0 {
+        return input.clone();
+    }
 
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
+    if n == 0 {
+        return input.clone();
+    }
     let r = kernel.len() / 2;
 
     let mut buf = [0.0f64];
@@ -31,9 +37,9 @@ pub fn image_convolve_separable(input: &ImageData, scalars: &str, kernel: &[f64]
         for j in 0..ny {
             for i in 0..nx {
                 let mut sum = 0.0;
-                for (ki, &w) in kernel.iter().enumerate() {
+                for ki in 0..kernel.len() {
                     let ii = (i as i64 + ki as i64 - r as i64).clamp(0, nx as i64 - 1) as usize;
-                    sum += values[k * ny * nx + j * nx + ii] * w;
+                    sum += values[k * ny * nx + j * nx + ii] * kernel[kernel.len() - 1 - ki];
                 }
                 tmp[k * ny * nx + j * nx + i] = sum;
             }
@@ -46,9 +52,9 @@ pub fn image_convolve_separable(input: &ImageData, scalars: &str, kernel: &[f64]
         for j in 0..ny {
             for i in 0..nx {
                 let mut sum = 0.0;
-                for (ki, &w) in kernel.iter().enumerate() {
+                for ki in 0..kernel.len() {
                     let jj = (j as i64 + ki as i64 - r as i64).clamp(0, ny as i64 - 1) as usize;
-                    sum += tmp[k * ny * nx + jj * nx + i] * w;
+                    sum += tmp[k * ny * nx + jj * nx + i] * kernel[kernel.len() - 1 - ki];
                 }
                 tmp2[k * ny * nx + j * nx + i] = sum;
             }
@@ -61,9 +67,9 @@ pub fn image_convolve_separable(input: &ImageData, scalars: &str, kernel: &[f64]
         for j in 0..ny {
             for i in 0..nx {
                 let mut sum = 0.0;
-                for (ki, &w) in kernel.iter().enumerate() {
+                for ki in 0..kernel.len() {
                     let kk = (k as i64 + ki as i64 - r as i64).clamp(0, nz as i64 - 1) as usize;
-                    sum += tmp2[kk * ny * nx + j * nx + i] * w;
+                    sum += tmp2[kk * ny * nx + j * nx + i] * kernel[kernel.len() - 1 - ki];
                 }
                 result[k * ny * nx + j * nx + i] = sum;
             }

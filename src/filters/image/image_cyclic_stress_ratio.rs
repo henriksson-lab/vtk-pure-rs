@@ -10,7 +10,11 @@ pub fn image_cyclic_stress_ratio(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.65 * buf[0] * 9.81 * buf[0].abs().max(0.01) / (buf[0].abs().max(0.01) * 2500.0 * 9.81)
+            let peak_acceleration = buf[0].abs();
+            let depth = peak_acceleration.max(0.01);
+            let total_vertical_stress = 2500.0 * 9.81 * depth;
+            let cyclic_shear_stress = 0.65 * peak_acceleration * 9.81 * depth;
+            cyclic_shear_stress / total_vertical_stress
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +37,21 @@ mod tests {
         );
         let r = image_cyclic_stress_ratio(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn computes_positive_ratio_for_signed_input() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| -2.0,
+        );
+        let r = image_cyclic_stress_ratio(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.00052).abs() < 1e-12);
     }
 }

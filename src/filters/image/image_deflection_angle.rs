@@ -33,5 +33,7 @@ mod tests {
         );
         let r = image_deflection_angle(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+        assert!((values[0] - 633e-9 / 5900.0).abs() < 1e-18);
     }
 }

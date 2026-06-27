@@ -10,7 +10,8 @@ pub fn image_devitrification_risk(input: &ImageData, scalars: &str) -> ImageData
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].powi(2) * 1e-10 * (buf[0] * 0.1).exp().min(1e10)
+            let value = buf[0];
+            value.powi(2) * 1e-10 * (value * 0.1).exp().min(1e10)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,9 @@ mod tests {
         );
         let r = image_devitrification_risk(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - (1.0f64.powi(2) * 1e-10 * (1.0f64 * 0.1).exp().min(1e10))).abs() < 1e-20);
     }
 }

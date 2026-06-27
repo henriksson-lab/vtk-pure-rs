@@ -10,8 +10,21 @@ pub fn rectilinear_to_poly_data(input: &RectilinearGrid) -> PolyData {
     let ny = dims[1];
     let nz = dims[2];
 
-    if nx < 2 || ny < 2 || nz < 2 {
+    let active_axes: Vec<usize> = dims
+        .iter()
+        .enumerate()
+        .filter_map(|(axis, &dim)| if dim > 1 { Some(axis) } else { None })
+        .collect();
+
+    if active_axes.len() < 2 {
+        if active_axes.len() == 1 {
+            return rectilinear_line_to_poly_data(input, active_axes[0]);
+        }
         return PolyData::new();
+    }
+
+    if active_axes.len() == 2 {
+        return rectilinear_plane_to_poly_data(input, active_axes[0], active_axes[1]);
     }
 
     let mut points = Points::<f64>::new();
@@ -98,6 +111,66 @@ pub fn rectilinear_to_poly_data(input: &RectilinearGrid) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = points;
     pd.polys = polys;
+    pd
+}
+
+fn rectilinear_plane_to_poly_data(
+    input: &RectilinearGrid,
+    axis_a: usize,
+    axis_b: usize,
+) -> PolyData {
+    let dims = input.dimensions();
+    let mut points = Points::<f64>::new();
+    let mut polys = CellArray::new();
+
+    let point_idx = |ia: usize, ib: usize, dims_a: usize| -> i64 { (ib * dims_a + ia) as i64 };
+    let dims_a = dims[axis_a];
+    let dims_b = dims[axis_b];
+
+    for ib in 0..dims_b {
+        for ia in 0..dims_a {
+            let mut ijk = [0usize; 3];
+            ijk[axis_a] = ia;
+            ijk[axis_b] = ib;
+            points.push(input.point_from_ijk(ijk[0], ijk[1], ijk[2]));
+        }
+    }
+
+    for ib in 0..dims_b - 1 {
+        for ia in 0..dims_a - 1 {
+            polys.push_cell(&[
+                point_idx(ia, ib, dims_a),
+                point_idx(ia + 1, ib, dims_a),
+                point_idx(ia + 1, ib + 1, dims_a),
+                point_idx(ia, ib + 1, dims_a),
+            ]);
+        }
+    }
+
+    let mut pd = PolyData::new();
+    pd.points = points;
+    pd.polys = polys;
+    pd
+}
+
+fn rectilinear_line_to_poly_data(input: &RectilinearGrid, axis: usize) -> PolyData {
+    let dims = input.dimensions();
+    let mut points = Points::<f64>::new();
+    let mut lines = CellArray::new();
+
+    for i in 0..dims[axis] {
+        let mut ijk = [0usize; 3];
+        ijk[axis] = i;
+        points.push(input.point_from_ijk(ijk[0], ijk[1], ijk[2]));
+    }
+
+    for i in 0..dims[axis] - 1 {
+        lines.push_cell(&[i as i64, (i + 1) as i64]);
+    }
+
+    let mut pd = PolyData::new();
+    pd.points = points;
+    pd.lines = lines;
     pd
 }
 

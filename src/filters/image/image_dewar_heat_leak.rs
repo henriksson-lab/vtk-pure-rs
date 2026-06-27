@@ -10,7 +10,8 @@ pub fn image_dewar_heat_leak(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            5.67e-8 * (buf[0].powi(4) - 77.0f64.powi(4)) * 0.05
+            let value = buf[0];
+            5.67e-8 * (value.powi(4) - 77.0f64.powi(4)) * 0.05
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,9 @@ mod tests {
         );
         let r = image_dewar_heat_leak(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - (5.67e-8 * (1.0f64.powi(4) - 77.0f64.powi(4)) * 0.05)).abs() < 1e-12);
     }
 }

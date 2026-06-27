@@ -9,7 +9,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 ///
 /// Uses Cooley-Tukey radix-2 FFT. Dimensions are zero-padded to the next
 /// power of two.
-pub fn image_fft_2d(input: &ImageData, scalar_name: &str) -> ImageData {
+pub fn image_fft_real(input: &ImageData, scalar_name: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalar_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return input.clone(),
@@ -158,7 +158,7 @@ mod tests {
             "val",
             |_, _, _| 1.0,
         );
-        let result = image_fft_2d(&img, "val");
+        let result = image_fft_real(&img, "val");
         let mag = result.point_data().get_array("Magnitude").unwrap();
         let phase = result.point_data().get_array("Phase").unwrap();
         assert_eq!(mag.num_tuples(), 16);
@@ -179,7 +179,7 @@ mod tests {
             "s",
             |x, y, _| (x + y) as f64,
         );
-        let result = image_fft_2d(&img, "s");
+        let result = image_fft_real(&img, "s");
         assert!(result.point_data().get_array("Magnitude").is_some());
         assert!(result.point_data().get_array("Phase").is_some());
     }
@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn fft_missing_array() {
         let img = ImageData::with_dimensions(4, 4, 1);
-        let result = image_fft_2d(&img, "nonexistent");
+        let result = image_fft_real(&img, "nonexistent");
         assert_eq!(result.dimensions(), [4, 4, 1]);
     }
 }

@@ -10,7 +10,8 @@ pub fn image_detonation_wave(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (1.0 + buf[0].max(0.01)) * (0.5 + 0.5 / buf[0].max(0.01))
+            let value = buf[0];
+            (1.0 + value.max(0.01)) * (0.5 + 0.5 / value.max(0.01))
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,9 @@ mod tests {
         );
         let r = image_detonation_wave(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - ((1.0 + 1.0) * (0.5 + 0.5 / 1.0))).abs() < 1e-12);
     }
 }

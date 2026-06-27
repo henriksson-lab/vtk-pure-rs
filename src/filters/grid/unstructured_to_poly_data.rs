@@ -14,7 +14,8 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
     let mut out_polys = CellArray::new();
     let mut pt_map = std::collections::HashMap::new();
     let mut old_point_ids = Vec::new();
-    let mut face_usage: HashMap<Vec<i64>, (Vec<i64>, usize)> = HashMap::new();
+    let mut source_cell_ids = Vec::new();
+    let mut face_usage: HashMap<Vec<i64>, (Vec<i64>, usize, usize)> = HashMap::new();
 
     let mut map_point = |id: i64, input: &UnstructuredGrid, out: &mut Points<f64>| -> i64 {
         *pt_map.entry(id).or_insert_with(|| {
@@ -37,6 +38,7 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
                         .map(|&id| map_point(id, input, &mut out_points))
                         .collect();
                     out_polys.push_cell(&mapped);
+                    source_cell_ids.push(ci);
                 }
             }
             CellType::Quad | CellType::Polygon => {
@@ -46,6 +48,7 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
                         .map(|&id| map_point(id, input, &mut out_points))
                         .collect();
                     out_polys.push_cell(&mapped);
+                    source_cell_ids.push(ci);
                 }
             }
             CellType::Tetra
@@ -58,15 +61,15 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
                     key.sort_unstable();
                     face_usage
                         .entry(key)
-                        .and_modify(|(_, count)| *count += 1)
-                        .or_insert((face, 1));
+                        .and_modify(|(_, count, _)| *count += 1)
+                        .or_insert((face, 1, ci));
                 }
             }
             _ => {} // skip other cell types
         }
     }
 
-    for (face, count) in face_usage.values() {
+    for (face, count, source_cell_id) in face_usage.values() {
         if *count != 1 {
             continue;
         }
@@ -75,12 +78,14 @@ pub fn unstructured_to_poly_data(input: &UnstructuredGrid) -> PolyData {
             .map(|&id| map_point(id, input, &mut out_points))
             .collect();
         out_polys.push_cell(&mapped);
+        source_cell_ids.push(*source_cell_id);
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
     copy_point_data(input, &old_point_ids, &mut pd);
+    copy_cell_data(input, &source_cell_ids, &mut pd);
     pd
 }
 
@@ -135,6 +140,19 @@ fn copy_point_data(input: &UnstructuredGrid, old_point_ids: &[usize], output: &m
             output
                 .point_data_mut()
                 .add_array(select_tuples(array, old_point_ids));
+        }
+    }
+}
+
+fn copy_cell_data(input: &UnstructuredGrid, source_cell_ids: &[usize], output: &mut PolyData) {
+    for i in 0..input.cell_data().num_arrays() {
+        let Some(array) = input.cell_data().get_array_by_index(i) else {
+            continue;
+        };
+        if array.num_tuples() == input.num_cells() {
+            output
+                .cell_data_mut()
+                .add_array(select_tuples(array, source_cell_ids));
         }
     }
 }

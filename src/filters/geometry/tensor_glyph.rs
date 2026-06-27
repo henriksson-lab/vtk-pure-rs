@@ -17,7 +17,10 @@ pub fn tensor_glyph(input: &PolyData, tensor_name: &str, glyph: &PolyData) -> Po
     let glyph_n = glyph.points.len();
 
     let mut out_points = Points::<f64>::new();
+    let mut out_verts = CellArray::new();
+    let mut out_lines = CellArray::new();
     let mut out_polys = CellArray::new();
+    let mut out_strips = CellArray::new();
 
     let mut buf = [0.0f64; 9];
     for i in 0..n {
@@ -64,16 +67,26 @@ pub fn tensor_glyph(input: &PolyData, tensor_name: &str, glyph: &PolyData) -> Po
             ]);
         }
 
-        for cell in glyph.polys.iter() {
-            let shifted: Vec<i64> = cell.iter().map(|&id| id + base).collect();
-            out_polys.push_cell(&shifted);
-        }
+        append_shifted_cells(&glyph.verts, &mut out_verts, base);
+        append_shifted_cells(&glyph.lines, &mut out_lines, base);
+        append_shifted_cells(&glyph.polys, &mut out_polys, base);
+        append_shifted_cells(&glyph.strips, &mut out_strips, base);
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
+    pd.verts = out_verts;
+    pd.lines = out_lines;
     pd.polys = out_polys;
+    pd.strips = out_strips;
     pd
+}
+
+fn append_shifted_cells(source: &CellArray, target: &mut CellArray, offset: i64) {
+    for cell in source.iter() {
+        let shifted: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
+        target.push_cell(&shifted);
+    }
 }
 
 fn symmetric_eigensystem(tensor: &[f64; 9]) -> ([f64; 3], [[f64; 3]; 3]) {

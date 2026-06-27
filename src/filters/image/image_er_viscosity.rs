@@ -10,7 +10,7 @@ pub fn image_er_viscosity(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.1 + buf[0] * buf[0].powi(2) * 1e-12
+            0.1 + buf[0].powi(2) * 1e-12
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,9 @@ mod tests {
         );
         let r = image_er_viscosity(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(1, &mut tuple);
+        assert!((tuple[0] - (0.1 + 4.0e-12)).abs() <= 1e-15);
     }
 }

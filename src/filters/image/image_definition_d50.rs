@@ -22,16 +22,28 @@ pub fn image_definition_d50(input: &ImageData, scalars: &str) -> ImageData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn image(values: &[f64]) -> ImageData {
+        ImageData::with_dimensions(values.len(), 1, 1)
+            .with_spacing([0.5, 2.0, 1.0])
+            .with_origin([1.0, -1.0, 0.0])
+            .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                values.to_vec(),
+                1,
+            )))
+    }
+
     #[test]
-    fn test() {
-        let img = ImageData::from_function(
-            [5, 5, 1],
-            [1.0, 1.0, 1.0],
-            [0.0, 0.0, 0.0],
-            "v",
-            |x, _, _| x + 1.0,
-        );
+    fn clamps_definition_d50() {
+        let img = image(&[-0.5, 0.25, 1.5]);
         let r = image_definition_d50(&img, "v");
-        assert_eq!(r.dimensions(), [5, 5, 1]);
+        assert_eq!(r.dimensions(), [3, 1, 1]);
+        assert_eq!(r.spacing(), img.spacing());
+        assert_eq!(r.origin(), img.origin());
+        assert_eq!(
+            r.point_data().get_array("v").unwrap().to_f64_vec(),
+            vec![0.0, 0.25, 1.0]
+        );
     }
 }

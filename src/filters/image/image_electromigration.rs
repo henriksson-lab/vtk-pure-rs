@@ -10,10 +10,10 @@ pub fn image_electromigration(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            1e6 * (buf[0] / buf[0].abs().max(1e-6)).powf(-2.0)
-                * (0.7 * 1.6e-19 / (1.381e-23 * buf[0].abs().max(1.0)))
-                    .exp()
-                    .min(1e20)
+            let current_density = buf[0].abs().max(1e-6);
+            let temperature = buf[0].abs().max(1.0);
+            (1e6 * current_density.powf(-2.0) * (0.7 * 1.6e-19 / (1.381e-23 * temperature)).exp())
+                .min(1e20)
         })
         .collect();
     let dims = input.dimensions();

@@ -10,7 +10,7 @@ pub fn image_d_excess(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 8.0 - 10.0
+            10.0 - 8.0 * buf[0]
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,21 @@ mod tests {
         );
         let r = image_d_excess(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn uses_deuterium_excess_sign_convention() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 2.0,
+        );
+        let r = image_d_excess(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], -6.0);
     }
 }

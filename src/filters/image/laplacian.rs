@@ -24,6 +24,7 @@ pub fn image_laplacian_with_dimensionality(
         Some(a) => a,
         None => return input.clone(),
     };
+    let num_components = arr.num_components();
 
     let dims = input.dimensions();
     let nx = dims[0] as usize;
@@ -33,11 +34,11 @@ pub fn image_laplacian_with_dimensionality(
     let n: usize = nx * ny * nz;
 
     // Read scalar values
-    let mut values = vec![0.0f64; n];
-    let mut buf = [0.0f64];
+    let mut values = vec![0.0f64; n * num_components];
+    let mut buf = vec![0.0f64; num_components];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = buf[0];
+        values[i * num_components..(i + 1) * num_components].copy_from_slice(&buf);
     }
 
     let idx = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
@@ -47,42 +48,47 @@ pub fn image_laplacian_with_dimensionality(
     let dz2: f64 = spacing[2] * spacing[2];
     let dimensionality = dimensionality.clamp(2, 3);
 
-    let mut laplacian = vec![0.0f64; n];
+    let mut laplacian = vec![0.0f64; n * num_components];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
                 let pi = idx(i, j, k);
-                let center: f64 = values[pi];
-
-                // d²f/dx²
                 let im = if i > 0 { i - 1 } else { 0 };
                 let ip = if i + 1 < nx { i + 1 } else { nx - 1 };
-                let d2x: f64 = if dx2 > 1e-30 {
-                    (values[idx(ip, j, k)] - 2.0 * center + values[idx(im, j, k)]) / dx2
-                } else {
-                    0.0
-                };
-
-                // d²f/dy²
                 let jm = if j > 0 { j - 1 } else { 0 };
                 let jp = if j + 1 < ny { j + 1 } else { ny - 1 };
-                let d2y: f64 = if dy2 > 1e-30 {
-                    (values[idx(i, jp, k)] - 2.0 * center + values[idx(i, jm, k)]) / dy2
-                } else {
-                    0.0
-                };
-
-                // d²f/dz²
                 let km = if k > 0 { k - 1 } else { 0 };
                 let kp = if k + 1 < nz { k + 1 } else { nz - 1 };
-                let d2z: f64 = if dz2 > 1e-30 {
-                    (values[idx(i, j, kp)] - 2.0 * center + values[idx(i, j, km)]) / dz2
-                } else {
-                    0.0
-                };
 
-                laplacian[pi] = d2x + d2y + if dimensionality == 3 { d2z } else { 0.0 };
+                for c in 0..num_components {
+                    let value_at = |point: usize| values[point * num_components + c];
+                    let center: f64 = value_at(pi);
+
+                    // d²f/dx²
+                    let d2x: f64 = if dx2 > 1e-30 {
+                        (value_at(idx(ip, j, k)) - 2.0 * center + value_at(idx(im, j, k))) / dx2
+                    } else {
+                        0.0
+                    };
+
+                    // d²f/dy²
+                    let d2y: f64 = if dy2 > 1e-30 {
+                        (value_at(idx(i, jp, k)) - 2.0 * center + value_at(idx(i, jm, k))) / dy2
+                    } else {
+                        0.0
+                    };
+
+                    // d²f/dz²
+                    let d2z: f64 = if dz2 > 1e-30 {
+                        (value_at(idx(i, j, kp)) - 2.0 * center + value_at(idx(i, j, km))) / dz2
+                    } else {
+                        0.0
+                    };
+
+                    laplacian[pi * num_components + c] =
+                        d2x + d2y + if dimensionality == 3 { d2z } else { 0.0 };
+                }
             }
         }
     }
@@ -92,7 +98,7 @@ pub fn image_laplacian_with_dimensionality(
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Laplacian",
             laplacian,
-            1,
+            num_components,
         )));
     img
 }
@@ -181,5 +187,26 @@ mod tests {
         let arr = result.point_data().get_array("Laplacian").unwrap();
         arr.tuple_as_f64(3, &mut val);
         assert!((val[0] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn multi_component_scalars_are_processed_per_component() {
+        let mut img = ImageData::with_dimensions(5, 1, 1);
+        img.set_spacing([1.0, 1.0, 1.0]);
+        let mut values = Vec::new();
+        for i in 0..5 {
+            values.push((i as f64) * (i as f64));
+            values.push(2.0 * (i as f64) * (i as f64));
+        }
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", values, 2)));
+
+        let result = image_laplacian(&img, "val");
+        let arr = result.point_data().get_array("Laplacian").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut val = [0.0f64; 2];
+        arr.tuple_as_f64(2, &mut val);
+        assert!((val[0] - 2.0).abs() < 1e-10);
+        assert!((val[1] - 4.0).abs() < 1e-10);
     }
 }

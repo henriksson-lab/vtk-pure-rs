@@ -1,6 +1,38 @@
 //! Color space conversions for multi-component image data.
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::types::{Scalar, ScalarType};
+
+fn array_from_f64_values(
+    name: &str,
+    values: Vec<f64>,
+    num_components: usize,
+    scalar_type: ScalarType,
+) -> AnyDataArray {
+    fn cast_array<T: Scalar>(name: &str, values: Vec<f64>, num_components: usize) -> AnyDataArray
+    where
+        AnyDataArray: From<DataArray<T>>,
+    {
+        AnyDataArray::from(DataArray::from_vec(
+            name,
+            values.into_iter().map(T::from_f64).collect(),
+            num_components,
+        ))
+    }
+
+    match scalar_type {
+        ScalarType::F32 => cast_array::<f32>(name, values, num_components),
+        ScalarType::F64 => cast_array::<f64>(name, values, num_components),
+        ScalarType::I8 => cast_array::<i8>(name, values, num_components),
+        ScalarType::I16 => cast_array::<i16>(name, values, num_components),
+        ScalarType::I32 => cast_array::<i32>(name, values, num_components),
+        ScalarType::I64 => cast_array::<i64>(name, values, num_components),
+        ScalarType::U8 => cast_array::<u8>(name, values, num_components),
+        ScalarType::U16 => cast_array::<u16>(name, values, num_components),
+        ScalarType::U32 => cast_array::<u32>(name, values, num_components),
+        ScalarType::U64 => cast_array::<u64>(name, values, num_components),
+    }
+}
 
 fn vtk_rgb_to_hsv(r: f64, g: f64, b: f64) -> (f64, f64, f64) {
     let one_third = 1.0 / 3.0;
@@ -86,7 +118,12 @@ pub fn rgb_to_grayscale(input: &ImageData, array_name: &str) -> ImageData {
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("Grayscale", data, 1)))
+        .with_point_array(array_from_f64_values(
+            "Grayscale",
+            data,
+            1,
+            arr.scalar_type(),
+        ))
 }
 
 /// Convert RGB to HSV using VTK's default maximum value of 255.
@@ -115,7 +152,7 @@ pub fn rgb_to_hsv(input: &ImageData, array_name: &str) -> ImageData {
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("HSV", data, nc)))
+        .with_point_array(array_from_f64_values("HSV", data, nc, arr.scalar_type()))
 }
 
 /// Convert HSV back to RGB using VTK's default maximum value of 255.
@@ -144,7 +181,7 @@ pub fn hsv_to_rgb(input: &ImageData, array_name: &str) -> ImageData {
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec("RGB", data, nc)))
+        .with_point_array(array_from_f64_values("RGB", data, nc, arr.scalar_type()))
 }
 
 #[cfg(test)]
@@ -216,5 +253,30 @@ mod tests {
         assert!((buf[0] - 255.0).abs() < 1e-10);
         assert!((buf[1] + 6.0).abs() < 1e-10);
         assert_eq!(buf[2], 0.0);
+    }
+
+    #[test]
+    fn test_color_conversions_preserve_scalar_type() {
+        let rgb = ImageData::with_dimensions(1, 1, 1).with_point_array(AnyDataArray::U8(
+            DataArray::from_vec("RGB", vec![255u8, 0, 0], 3),
+        ));
+        let gray = rgb_to_grayscale(&rgb, "RGB");
+        assert_eq!(
+            gray.point_data()
+                .get_array("Grayscale")
+                .unwrap()
+                .scalar_type(),
+            ScalarType::U8
+        );
+        let hsv = rgb_to_hsv(&rgb, "RGB");
+        assert_eq!(
+            hsv.point_data().get_array("HSV").unwrap().scalar_type(),
+            ScalarType::U8
+        );
+        let back = hsv_to_rgb(&hsv, "HSV");
+        assert_eq!(
+            back.point_data().get_array("RGB").unwrap().scalar_type(),
+            ScalarType::U8
+        );
     }
 }

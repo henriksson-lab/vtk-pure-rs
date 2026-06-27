@@ -10,7 +10,7 @@ pub fn image_degrees(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].to_degrees()
+            buf[0] * 57.29577951308232
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,7 @@ mod tests {
         );
         let r = image_degrees(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+        assert!((values[0] - 57.29577951308232).abs() < 1e-12);
     }
 }

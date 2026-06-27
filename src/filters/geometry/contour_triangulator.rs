@@ -26,6 +26,13 @@ pub fn contour_triangulator(input: &PolyData) -> PolyData {
             continue;
         }
 
+        if !cell
+            .iter()
+            .all(|&id| id >= 0 && (id as usize) < input.points.len())
+        {
+            continue;
+        }
+
         // Remove duplicate last vertex if the contour is explicitly closed
         let mut indices: Vec<usize> = cell.iter().map(|&id| id as usize).collect();
         if indices.len() > 1 && indices[0] == indices[indices.len() - 1] {
@@ -183,6 +190,17 @@ mod tests {
     #[test]
     fn empty_input() {
         let pd = PolyData::new();
+        let result = contour_triangulator(&pd);
+        assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn skips_invalid_contour_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
         let result = contour_triangulator(&pd);
         assert_eq!(result.polys.num_cells(), 0);
     }

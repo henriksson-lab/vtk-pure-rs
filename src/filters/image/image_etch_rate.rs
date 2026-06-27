@@ -10,7 +10,7 @@ pub fn image_etch_rate(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 0.1 * (buf[0] / buf[0].abs().max(0.01)).sqrt()
+            buf[0] * 0.1 * (buf[0].abs() / buf[0].abs().max(0.01)).sqrt()
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,22 @@ mod tests {
         );
         let r = image_etch_rate(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn negative_values_do_not_make_sqrt_nan() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| -2.0,
+        );
+        let r = image_etch_rate(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        assert!(tuple[0].is_finite());
+        assert!((tuple[0] + 0.2).abs() <= 1e-12);
     }
 }

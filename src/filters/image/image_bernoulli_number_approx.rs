@@ -13,9 +13,9 @@ fn bernoulli_number_approx(x: f64) -> f64 {
     let factorial = (2..=n).fold(1.0, |acc, k| acc * k as f64);
     let magnitude = 2.0 * factorial / (2.0 * std::f64::consts::PI).powi(n as i32);
     if (n / 2) % 2 == 0 {
-        -magnitude
-    } else {
         magnitude
+    } else {
+        -magnitude
     }
 }
 

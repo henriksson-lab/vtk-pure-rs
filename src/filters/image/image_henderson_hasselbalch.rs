@@ -10,7 +10,8 @@ pub fn image_henderson_hasselbalch(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            7.0 + (buf[0] / (1.0 - buf[0].clamp(0.01, 0.99))).log10()
+            let alpha = buf[0].clamp(0.01, 0.99);
+            7.0 + (alpha / (1.0 - alpha)).log10()
         })
         .collect();
     let dims = input.dimensions();

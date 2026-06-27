@@ -33,5 +33,7 @@ mod tests {
         );
         let r = image_deformation_rate(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+        assert!((values[0] - 0.001 * 1.0 / 2.0).abs() < 1e-15);
     }
 }

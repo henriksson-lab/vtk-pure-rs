@@ -15,8 +15,12 @@ pub fn bilateral_filter(
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
     let n = arr.num_tuples();
+    if n != nx * ny * nz || sigma_spatial <= 0.0 || sigma_range <= 0.0 {
+        return input.clone();
+    }
+
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -28,27 +32,42 @@ pub fn bilateral_filter(
     let radius = (3.0 * sigma_spatial).ceil() as isize;
     let ss2 = 2.0 * sigma_spatial * sigma_spatial;
     let sr2 = 2.0 * sigma_range * sigma_range;
+    let spacing = input.spacing();
 
     let data: Vec<f64> = (0..n)
         .map(|idx| {
-            let iy = idx / nx;
-            let ix = idx % nx;
+            let iz = idx / (nx * ny);
+            let rem = idx % (nx * ny);
+            let iy = rem / nx;
+            let ix = rem % nx;
             let center = vals[idx];
             let mut sum = 0.0;
             let mut wsum = 0.0;
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    let sx = ix as isize + dx;
+            for dz in -radius..=radius {
+                let sz = iz as isize + dz;
+                if sz < 0 || sz >= nz as isize {
+                    continue;
+                }
+                for dy in -radius..=radius {
                     let sy = iy as isize + dy;
-                    if sx < 0 || sx >= nx as isize || sy < 0 || sy >= ny as isize {
+                    if sy < 0 || sy >= ny as isize {
                         continue;
                     }
-                    let v = vals[sx as usize + sy as usize * nx];
-                    let ds2 = (dx * dx + dy * dy) as f64;
-                    let dr2 = (v - center) * (v - center);
-                    let w = (-ds2 / ss2 - dr2 / sr2).exp();
-                    sum += w * v;
-                    wsum += w;
+                    for dx in -radius..=radius {
+                        let sx = ix as isize + dx;
+                        if sx < 0 || sx >= nx as isize {
+                            continue;
+                        }
+                        let v = vals[sz as usize * ny * nx + sy as usize * nx + sx as usize];
+                        let wx = dx as f64 * spacing[0];
+                        let wy = dy as f64 * spacing[1];
+                        let wz = dz as f64 * spacing[2];
+                        let ds2 = wx * wx + wy * wy + wz * wz;
+                        let dr2 = (v - center) * (v - center);
+                        let w = (-ds2 / ss2 - dr2 / sr2).exp();
+                        sum += w * v;
+                        wsum += w;
+                    }
                 }
             }
             if wsum > 1e-15 {
@@ -59,11 +78,10 @@ pub fn bilateral_filter(
         })
         .collect();
 
-    let mut output = input.clone();
-    output
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
-    output
+    ImageData::with_dimensions(nx, ny, dims[2])
+        .with_spacing(input.spacing())
+        .with_origin(input.origin())
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
 }
 
 #[cfg(test)]

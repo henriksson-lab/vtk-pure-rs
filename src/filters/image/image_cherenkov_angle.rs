@@ -10,7 +10,7 @@ pub fn image_cherenkov_angle(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            if buf[0] > 1.0 {
+            if 1.33 * buf[0] > 1.0 {
                 (1.0 / (1.33 * buf[0])).clamp(-1.0, 1.0).acos()
             } else {
                 0.0
@@ -37,5 +37,24 @@ mod tests {
         );
         let r = image_cherenkov_angle(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn uses_refractive_index_threshold() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 0.8,
+        );
+
+        let r = image_cherenkov_angle(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut value = [0.0];
+        arr.tuple_as_f64(0, &mut value);
+
+        let expected = (1.0f64 / (1.33 * 0.8)).acos();
+        assert!((value[0] - expected).abs() < 1e-12);
     }
 }

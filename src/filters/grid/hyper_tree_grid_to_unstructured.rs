@@ -7,6 +7,11 @@ use crate::types::CellType;
 ///
 /// Each coarse cell becomes a hexahedron (3D) or quad (2D).
 pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> UnstructuredGrid {
+    let leaves = htg.leaves();
+    if !leaves.is_empty() {
+        return leaves_to_unstructured_grid(htg, leaves.iter().map(|leaf| leaf.bounds));
+    }
+
     let gs = htg.grid_size();
     let bounds = htg.grid_bounds();
     let spacing = [
@@ -92,6 +97,69 @@ pub fn hyper_tree_grid_to_unstructured_grid(htg: &HyperTreeGrid) -> Unstructured
     }
 
     grid
+}
+
+fn leaves_to_unstructured_grid<I>(htg: &HyperTreeGrid, bounds_iter: I) -> UnstructuredGrid
+where
+    I: IntoIterator<Item = crate::types::BoundingBox>,
+{
+    let mut grid = UnstructuredGrid::new();
+
+    if htg.dimension() < 3 {
+        let mut pt_map: std::collections::HashMap<[i64; 3], usize> =
+            std::collections::HashMap::new();
+        for bounds in bounds_iter {
+            let corners = [
+                [bounds.x_min, bounds.y_min, bounds.z_min],
+                [bounds.x_max, bounds.y_min, bounds.z_min],
+                [bounds.x_max, bounds.y_max, bounds.z_min],
+                [bounds.x_min, bounds.y_max, bounds.z_min],
+            ];
+            let ids = point_ids(&mut grid, &mut pt_map, &corners);
+            grid.push_cell(CellType::Quad, &ids);
+        }
+    } else {
+        let mut pt_map: std::collections::HashMap<[i64; 3], usize> =
+            std::collections::HashMap::new();
+        for bounds in bounds_iter {
+            let corners = [
+                [bounds.x_min, bounds.y_min, bounds.z_min],
+                [bounds.x_max, bounds.y_min, bounds.z_min],
+                [bounds.x_max, bounds.y_max, bounds.z_min],
+                [bounds.x_min, bounds.y_max, bounds.z_min],
+                [bounds.x_min, bounds.y_min, bounds.z_max],
+                [bounds.x_max, bounds.y_min, bounds.z_max],
+                [bounds.x_max, bounds.y_max, bounds.z_max],
+                [bounds.x_min, bounds.y_max, bounds.z_max],
+            ];
+            let ids = point_ids(&mut grid, &mut pt_map, &corners);
+            grid.push_cell(CellType::Hexahedron, &ids);
+        }
+    }
+
+    grid
+}
+
+fn point_ids(
+    grid: &mut UnstructuredGrid,
+    pt_map: &mut std::collections::HashMap<[i64; 3], usize>,
+    corners: &[[f64; 3]],
+) -> Vec<i64> {
+    let mut ids = Vec::with_capacity(corners.len());
+    for c in corners {
+        let key = [
+            (c[0] * 1e6) as i64,
+            (c[1] * 1e6) as i64,
+            (c[2] * 1e6) as i64,
+        ];
+        let idx = *pt_map.entry(key).or_insert_with(|| {
+            let idx = grid.points.len();
+            grid.points.push(*c);
+            idx
+        });
+        ids.push(idx as i64);
+    }
+    ids
 }
 
 #[cfg(test)]

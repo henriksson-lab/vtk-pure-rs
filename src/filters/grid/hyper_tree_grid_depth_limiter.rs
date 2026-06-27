@@ -24,6 +24,9 @@ pub fn limit_resolution(htg: &HyperTreeGrid, max_coarse_cells_per_axis: usize) -
         gs[1].min(max_cells),
         gs[2].min(max_cells),
     ];
+    if new_cell_dims == gs {
+        return htg.clone();
+    }
     let new_dims = [
         if dims[0] > 1 { new_cell_dims[0] + 1 } else { 1 },
         if dims[1] > 1 { new_cell_dims[1] + 1 } else { 1 },
@@ -40,11 +43,13 @@ pub fn limit_resolution(htg: &HyperTreeGrid, max_coarse_cells_per_axis: usize) -
         },
     ];
 
-    HyperTreeGrid::new(
+    let mut limited = HyperTreeGrid::new(
         new_dims,
         [bounds.x_min, bounds.y_min, bounds.z_min],
         new_spacing,
-    )
+    );
+    limited.set_branch_factor(htg.branch_factor());
+    limited
 }
 
 /// Convert a HyperTreeGrid to a uniform grid at a specified resolution.

@@ -11,6 +11,10 @@ pub fn dft_magnitude(input: &ImageData, scalars: &str) -> ImageData {
     let dims = input.dimensions();
     let (nx, ny) = (dims[0], dims[1]);
     let n = nx * ny;
+    if dims[2] != 1 || arr.num_tuples() != n {
+        return input.clone();
+    }
+
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -50,7 +54,10 @@ pub fn dft_magnitude(input: &ImageData, scalars: &str) -> ImageData {
 /// Compute power spectrum (log-scaled magnitude^2).
 pub fn power_spectrum(input: &ImageData, scalars: &str) -> ImageData {
     let dft = dft_magnitude(input, scalars);
-    let arr = dft.point_data().get_array("DFTMagnitude").unwrap();
+    let arr = match dft.point_data().get_array("DFTMagnitude") {
+        Some(a) => a,
+        None => return dft,
+    };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
     let data: Vec<f64> = (0..n)
@@ -97,5 +104,27 @@ mod tests {
         );
         let r = power_spectrum(&img, "v");
         assert!(r.point_data().get_array("PowerSpectrum").is_some());
+    }
+
+    #[test]
+    fn test_dft_rejects_3d_image() {
+        let img = ImageData::from_function(
+            [4, 4, 2],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, z| x + y + z,
+        );
+        let r = dft_magnitude(&img, "v");
+        assert_eq!(r.dimensions(), [4, 4, 2]);
+        assert!(r.point_data().get_array("DFTMagnitude").is_none());
+    }
+
+    #[test]
+    fn test_power_missing_array_returns_input() {
+        let img = ImageData::with_dimensions(4, 4, 1);
+        let r = power_spectrum(&img, "missing");
+        assert_eq!(r.dimensions(), [4, 4, 1]);
+        assert!(r.point_data().get_array("PowerSpectrum").is_none());
     }
 }

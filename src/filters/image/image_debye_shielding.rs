@@ -22,16 +22,35 @@ pub fn image_debye_shielding(input: &ImageData, scalars: &str) -> ImageData {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn image(values: &[f64]) -> ImageData {
+        ImageData::with_dimensions(values.len(), 1, 1)
+            .with_spacing([0.5, 2.0, 1.0])
+            .with_origin([1.0, -1.0, 0.0])
+            .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                values.to_vec(),
+                1,
+            )))
+    }
+
+    fn assert_close(actual: &[f64], expected: &[f64]) {
+        assert_eq!(actual.len(), expected.len());
+        for (a, e) in actual.iter().zip(expected) {
+            assert!((a - e).abs() <= e.abs().max(1.0) * 1e-12, "{a} != {e}");
+        }
+    }
+
     #[test]
-    fn test() {
-        let img = ImageData::from_function(
-            [5, 5, 1],
-            [1.0, 1.0, 1.0],
-            [0.0, 0.0, 0.0],
-            "v",
-            |x, _, _| x + 1.0,
-        );
+    fn computes_abs_distance_screened_potential() {
+        let img = image(&[-2.0, 0.0, 0.01]);
         let r = image_debye_shielding(&img, "v");
-        assert_eq!(r.dimensions(), [5, 5, 1]);
+        assert_eq!(r.dimensions(), [3, 1, 1]);
+        assert_eq!(r.spacing(), img.spacing());
+        assert_eq!(r.origin(), img.origin());
+        assert_close(
+            &r.point_data().get_array("v").unwrap().to_f64_vec(),
+            &[(-2.0f64).exp() / 2.0, 100.0, (-0.01f64).exp() / 0.01],
+        );
     }
 }

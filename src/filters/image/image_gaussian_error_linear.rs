@@ -10,13 +10,15 @@ pub fn image_gaussian_error_linear(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.5 * buf[0]
-                * (1.0
-                    + (buf[0]
-                        * std::f64::consts::FRAC_2_SQRT_PI
-                        * 0.5
-                        * (buf[0] * buf[0] * (-0.5)).exp())
-                    .min(1.0))
+            let x = buf[0];
+            let z = x * std::f64::consts::FRAC_1_SQRT_2;
+            let t = 1.0 / (1.0 + 0.3275911 * z.abs());
+            let p = t
+                * (0.254829592
+                    + t * (-0.284496736
+                        + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+            let erf = (1.0 - p * (-z * z).exp()) * z.signum();
+            0.5 * x * (1.0 + erf)
         })
         .collect();
     let dims = input.dimensions();
@@ -39,5 +41,9 @@ mod tests {
         );
         let r = image_gaussian_error_linear(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        assert!((tuple[0] - 0.8413447361676363).abs() <= 1e-12);
     }
 }

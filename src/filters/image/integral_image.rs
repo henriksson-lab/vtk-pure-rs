@@ -9,29 +9,35 @@ pub fn integral_image(input: &ImageData, scalars: &str) -> ImageData {
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
+    if nx == 0 || ny == 0 || nz == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
-    let mut sat = vec![0.0f64; nx * ny];
+    let mut sat = vec![0.0f64; nx * ny * nz];
 
-    for iy in 0..ny {
-        for ix in 0..nx {
-            let idx = ix + iy * nx;
-            arr.tuple_as_f64(idx, &mut buf);
-            let mut val = buf[0];
-            if ix > 0 {
-                val += sat[idx - 1];
+    for iz in 0..nz {
+        let slice_offset = iz * nx * ny;
+        for iy in 0..ny {
+            for ix in 0..nx {
+                let idx = slice_offset + ix + iy * nx;
+                arr.tuple_as_f64(idx, &mut buf);
+                let mut val = buf[0];
+                if ix > 0 {
+                    val += sat[idx - 1];
+                }
+                if iy > 0 {
+                    val += sat[idx - nx];
+                }
+                if ix > 0 && iy > 0 {
+                    val -= sat[idx - nx - 1];
+                }
+                sat[idx] = val;
             }
-            if iy > 0 {
-                val += sat[idx - nx];
-            }
-            if ix > 0 && iy > 0 {
-                val -= sat[idx - nx - 1];
-            }
-            sat[idx] = val;
         }
     }
 
-    ImageData::with_dimensions(nx, ny, dims[2])
+    ImageData::with_dimensions(nx, ny, nz)
         .with_spacing(input.spacing())
         .with_origin(input.origin())
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(
@@ -47,7 +53,18 @@ pub fn query_rect_sum(integral: &ImageData, x0: usize, y0: usize, x1: usize, y1:
         Some(a) => a,
         None => return 0.0,
     };
-    let nx = integral.dimensions()[0];
+    let dims = integral.dimensions();
+    let (nx, ny) = (dims[0], dims[1]);
+    if nx == 0 || ny == 0 {
+        return 0.0;
+    }
+    let x0 = x0.min(nx - 1);
+    let y0 = y0.min(ny - 1);
+    let x1 = x1.min(nx - 1);
+    let y1 = y1.min(ny - 1);
+    if x0 > x1 || y0 > y1 {
+        return 0.0;
+    }
     let mut buf2 = [0.0f64];
     let mut get = |x: usize, y: usize| -> f64 {
         arr.tuple_as_f64(x + y * nx, &mut buf2);
@@ -69,6 +86,9 @@ pub fn query_rect_sum(integral: &ImageData, x0: usize, y0: usize, x1: usize, y1:
 /// Fast box mean using integral image.
 pub fn box_mean_from_integral(integral: &ImageData, cx: usize, cy: usize, radius: usize) -> f64 {
     let dims = integral.dimensions();
+    if dims[0] == 0 || dims[1] == 0 {
+        return 0.0;
+    }
     let x0 = if cx >= radius { cx - radius } else { 0 };
     let y0 = if cy >= radius { cy - radius } else { 0 };
     let x1 = (cx + radius).min(dims[0] - 1);

@@ -1,10 +1,10 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
-/// Perona-Malik anisotropic diffusion on ImageData.
+/// VTK-style thresholded anisotropic diffusion on ImageData.
 ///
-/// Edge-preserving smoothing that diffuses along flat regions but
-/// reduces diffusion across edges. `kappa` controls edge sensitivity
-/// (higher = smoother), `dt` is time step, `iterations` controls amount.
+/// `kappa` maps to VTK's diffusion threshold and `dt` maps to its diffusion
+/// factor. Faces, edges, and corners are all enabled, matching
+/// vtkImageAnisotropicDiffusion3D defaults.
 pub fn anisotropic_diffusion(
     input: &ImageData,
     scalars: &str,
@@ -22,6 +22,9 @@ pub fn anisotropic_diffusion(
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
+    if n == 0 || arr.num_tuples() != n || kappa <= 0.0 || dt == 0.0 {
+        return input.clone();
+    }
 
     let mut buf = [0.0f64];
     let mut u: Vec<f64> = (0..n)
@@ -31,8 +34,35 @@ pub fn anisotropic_diffusion(
         })
         .collect();
 
-    let k2 = kappa * kappa;
+    let spacing = input.spacing();
     let idx = |i: usize, j: usize, k: usize| k * ny * nx + j * nx + i;
+    let mut neighbors = Vec::new();
+    let mut factor_sum = 0.0;
+    for dk in -1i64..=1 {
+        for dj in -1i64..=1 {
+            for di in -1i64..=1 {
+                if di == 0 && dj == 0 && dk == 0 {
+                    continue;
+                }
+                let distance = ((di as f64 * spacing[0]).powi(2)
+                    + (dj as f64 * spacing[1]).powi(2)
+                    + (dk as f64 * spacing[2]).powi(2))
+                .sqrt();
+                if distance > 0.0 {
+                    let factor = 1.0 / distance;
+                    factor_sum += factor;
+                    neighbors.push((di, dj, dk, distance * kappa, factor));
+                }
+            }
+        }
+    }
+    if factor_sum == 0.0 {
+        return input.clone();
+    }
+    let scale = dt / factor_sum;
+    for neighbor in &mut neighbors {
+        neighbor.4 *= scale;
+    }
 
     for _ in 0..iterations {
         let mut new_u = u.clone();
@@ -40,18 +70,8 @@ pub fn anisotropic_diffusion(
             for j in 0..ny {
                 for i in 0..nx {
                     let c = u[idx(i, j, k)];
-                    let mut flux = 0.0;
 
-                    // 6-connected neighbors
-                    let nbrs: [(i64, i64, i64); 6] = [
-                        (-1, 0, 0),
-                        (1, 0, 0),
-                        (0, -1, 0),
-                        (0, 1, 0),
-                        (0, 0, -1),
-                        (0, 0, 1),
-                    ];
-                    for &(di, dj, dk) in &nbrs {
+                    for &(di, dj, dk, threshold, factor) in &neighbors {
                         let ni = i as i64 + di;
                         let nj = j as i64 + dj;
                         let nk = k as i64 + dk;
@@ -64,12 +84,11 @@ pub fn anisotropic_diffusion(
                         {
                             let nv = u[idx(ni as usize, nj as usize, nk as usize)];
                             let diff = nv - c;
-                            // Perona-Malik conductance: g = 1/(1 + (|∇I|/κ)²)
-                            let g = 1.0 / (1.0 + diff * diff / k2);
-                            flux += g * diff;
+                            if diff.abs() < threshold {
+                                new_u[idx(i, j, k)] += diff * factor;
+                            }
                         }
                     }
-                    new_u[idx(i, j, k)] = c + dt * flux;
                 }
             }
         }

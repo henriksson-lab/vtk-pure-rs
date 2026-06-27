@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, PolyData};
 
 /// Interpolate source data at probe point locations.
 ///
@@ -41,30 +41,97 @@ pub fn probe(source: &PolyData, probe_points: &PolyData) -> PolyData {
         nearest.push(best_idx);
     }
 
-    // Copy data for each array using pre-computed nearest indices
-    for arr_idx in 0..source.point_data().num_arrays() {
-        let arr = match source.point_data().get_array_by_index(arr_idx) {
-            Some(a) => a,
-            None => continue,
-        };
-
-        let nc = arr.num_components();
-        let mut out_data = vec![0.0f64; n_probe * nc];
-        let mut buf = vec![0.0f64; nc];
-
-        for pi in 0..n_probe {
-            arr.tuple_as_f64(nearest[pi], &mut buf);
-            let off = pi * nc;
-            for c in 0..nc {
-                out_data[off + c] = buf[c];
-            }
-        }
-
-        let out_arr = AnyDataArray::F64(DataArray::from_vec(arr.name(), out_data, nc));
-        pd.point_data_mut().add_array(out_arr);
-    }
+    copy_point_data_by_ids(source.point_data(), pd.point_data_mut(), &nearest);
 
     pd
+}
+
+fn copy_point_data_by_ids(
+    source: &DataSetAttributes,
+    target: &mut DataSetAttributes,
+    tuple_ids: &[usize],
+) {
+    for array in source.iter() {
+        if let Some(subset) = subset_array(array, tuple_ids) {
+            let name = subset.name().to_string();
+            target.add_array(subset);
+            copy_active_attribute_for_array(source, target, &name);
+        }
+    }
+}
+
+fn copy_active_attribute_for_array(
+    source: &DataSetAttributes,
+    target: &mut DataSetAttributes,
+    name: &str,
+) {
+    if source.scalars().map(|a| a.name()) == Some(name) {
+        target.set_active_scalars(name);
+    }
+    if source.vectors().map(|a| a.name()) == Some(name) {
+        target.set_active_vectors(name);
+    }
+    if source.normals().map(|a| a.name()) == Some(name) {
+        target.set_active_normals(name);
+    }
+    if source.tcoords().map(|a| a.name()) == Some(name) {
+        target.set_active_tcoords(name);
+    }
+    if source.tensors().map(|a| a.name()) == Some(name) {
+        target.set_active_tensors(name);
+    }
+    if source.global_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_global_ids(name);
+    }
+    if source.pedigree_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_pedigree_ids(name);
+    }
+    if source.edge_flags().map(|a| a.name()) == Some(name) {
+        target.set_active_edge_flags(name);
+    }
+    if source.tangents().map(|a| a.name()) == Some(name) {
+        target.set_active_tangents(name);
+    }
+    if source.rational_weights().map(|a| a.name()) == Some(name) {
+        target.set_active_rational_weights(name);
+    }
+    if source.higher_order_degrees().map(|a| a.name()) == Some(name) {
+        target.set_active_higher_order_degrees(name);
+    }
+    if source.process_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_process_ids(name);
+    }
+}
+
+fn subset_array(array: &AnyDataArray, tuple_ids: &[usize]) -> Option<AnyDataArray> {
+    macro_rules! subset_variant {
+        ($variant:ident, $a:expr) => {{
+            let nc = $a.num_components();
+            let mut data = Vec::with_capacity(tuple_ids.len() * nc);
+            for &tuple_id in tuple_ids {
+                let from = tuple_id.checked_mul(nc)?;
+                let to = from.checked_add(nc)?;
+                data.extend_from_slice($a.as_slice().get(from..to)?);
+            }
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                $a.name(),
+                data,
+                nc,
+            )))
+        }};
+    }
+    match array {
+        AnyDataArray::F32(a) => subset_variant!(F32, a),
+        AnyDataArray::F64(a) => subset_variant!(F64, a),
+        AnyDataArray::I8(a) => subset_variant!(I8, a),
+        AnyDataArray::I16(a) => subset_variant!(I16, a),
+        AnyDataArray::I32(a) => subset_variant!(I32, a),
+        AnyDataArray::I64(a) => subset_variant!(I64, a),
+        AnyDataArray::U8(a) => subset_variant!(U8, a),
+        AnyDataArray::U16(a) => subset_variant!(U16, a),
+        AnyDataArray::U32(a) => subset_variant!(U32, a),
+        AnyDataArray::U64(a) => subset_variant!(U64, a),
+    }
 }
 
 #[cfg(test)]
@@ -110,5 +177,36 @@ mod tests {
         let mut val = [0.0f64; 3];
         arr.tuple_as_f64(0, &mut val);
         assert!((val[1] - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn probe_preserves_array_type_and_active_scalars() {
+        let mut source = PolyData::new();
+        source.points.push([0.0, 0.0, 0.0]);
+        source.points.push([1.0, 0.0, 0.0]);
+        source
+            .point_data_mut()
+            .add_array(AnyDataArray::U8(DataArray::from_vec(
+                "labels",
+                vec![7, 9],
+                1,
+            )));
+        source.point_data_mut().set_active_scalars("labels");
+
+        let mut probe_pts = PolyData::new();
+        probe_pts.points.push([0.8, 0.0, 0.0]);
+
+        let result = probe(&source, &probe_pts);
+        assert!(matches!(
+            result.point_data().scalars().unwrap(),
+            AnyDataArray::U8(_)
+        ));
+        let mut value = [0.0f64; 1];
+        result
+            .point_data()
+            .scalars()
+            .unwrap()
+            .tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 9.0);
     }
 }

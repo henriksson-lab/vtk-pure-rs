@@ -10,7 +10,8 @@ pub fn image_dark_matter_profile(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            1.0 / (buf[0].max(0.01) * (1.0 + buf[0]).powi(2))
+            let r = buf[0].max(0.01);
+            1.0 / (r * (1.0 + r).powi(2))
         })
         .collect();
     let dims = input.dimensions();

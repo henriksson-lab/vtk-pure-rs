@@ -33,5 +33,7 @@ mod tests {
         );
         let r = image_degree_days_heating(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+        assert_eq!(values[0], 17.0);
     }
 }

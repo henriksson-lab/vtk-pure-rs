@@ -17,8 +17,9 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
     let mut tris: Vec<[usize; 3]> = input
         .polys
         .iter()
-        .filter(|c| c.len() >= 3)
+        .filter(|c| c.len() >= 3 && c.iter().all(|&id| id >= 0 && (id as usize) < n))
         .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter(|tri| tri[0] != tri[1] && tri[1] != tri[2] && tri[0] != tri[2])
         .collect();
 
     let num_tris = tris.len();
@@ -317,6 +318,18 @@ mod tests {
         let pd = PolyData::new();
         let result = edge_collapse_quadric(&pd, 0.5);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn ignores_invalid_and_degenerate_triangles() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 1]);
+
+        let result = edge_collapse_quadric(&pd, 0.5);
+        assert_eq!(result.polys.num_cells(), 2);
     }
 
     #[test]

@@ -10,7 +10,7 @@ pub fn image_frequency_modulation(input: &ImageData, scalars: &str) -> ImageData
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (buf[0] + 5.0 * (buf[0]).sin()).cos()
+            (buf[0] + (5.0 * buf[0]).sin()).cos()
         })
         .collect();
     let dims = input.dimensions();

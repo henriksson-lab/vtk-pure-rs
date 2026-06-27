@@ -10,7 +10,7 @@ pub fn vertex_valence(input: &PolyData) -> PolyData {
     let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
 
     add_poly_edges(&input.polys, n, &mut neighbors);
-    add_poly_edges(&input.strips, n, &mut neighbors);
+    add_triangle_strip_edges(&input.strips, n, &mut neighbors);
     add_line_edges(&input.lines, n, &mut neighbors);
 
     let valences: Vec<f64> = neighbors.iter().map(|s| s.len() as f64).collect();
@@ -29,7 +29,7 @@ pub fn valence_histogram(input: &PolyData) -> Vec<(usize, usize)> {
     let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
 
     add_poly_edges(&input.polys, n, &mut neighbors);
-    add_poly_edges(&input.strips, n, &mut neighbors);
+    add_triangle_strip_edges(&input.strips, n, &mut neighbors);
     add_line_edges(&input.lines, n, &mut neighbors);
 
     let mut counts = std::collections::HashMap::new();
@@ -64,6 +64,23 @@ fn add_line_edges(cells: &crate::data::CellArray, n: usize, neighbors: &mut [Has
         }
         for edge in cell.windows(2) {
             add_edge(edge[0] as usize, edge[1] as usize, neighbors);
+        }
+    }
+}
+
+fn add_triangle_strip_edges(
+    cells: &crate::data::CellArray,
+    n: usize,
+    neighbors: &mut [HashSet<usize>],
+) {
+    for cell in cells.iter() {
+        if cell.len() < 3 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for tri in cell.windows(3) {
+            add_edge(tri[0] as usize, tri[1] as usize, neighbors);
+            add_edge(tri[1] as usize, tri[2] as usize, neighbors);
+            add_edge(tri[2] as usize, tri[0] as usize, neighbors);
         }
     }
 }
@@ -126,6 +143,24 @@ mod tests {
 
         let hist = valence_histogram(&pd);
         assert!(!hist.is_empty());
+    }
+
+    #[test]
+    fn strip_valence_uses_triangle_edges() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let result = vertex_valence(&pd);
+        let arr = result.point_data().get_array("Valence").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 2.0);
+        arr.tuple_as_f64(3, &mut buf);
+        assert_eq!(buf[0], 2.0);
     }
 
     #[test]

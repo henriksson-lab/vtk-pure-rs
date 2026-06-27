@@ -103,7 +103,10 @@ pub fn local_contrast_enhance(input: &ImageData, scalars: &str, tile_size: usize
 
     let data: Vec<f64> = (0..n)
         .map(|idx| {
-            let iy = (idx / nx) % ny;
+            let slice = nx * ny;
+            let iz = idx / slice;
+            let rem = idx - iz * slice;
+            let iy = rem / nx;
             let ix = idx % nx;
             let x0 = if ix >= half { ix - half } else { 0 };
             let x1 = (ix + half).min(nx - 1);
@@ -113,7 +116,7 @@ pub fn local_contrast_enhance(input: &ImageData, scalars: &str, tile_size: usize
             let mut mx = f64::NEG_INFINITY;
             for yy in y0..=y1 {
                 for xx in x0..=x1 {
-                    let v = vals[xx + yy * nx];
+                    let v = vals[iz * slice + yy * nx + xx];
                     mn = mn.min(v);
                     mx = mx.max(v);
                 }
@@ -174,5 +177,23 @@ mod tests {
         );
         let r = local_contrast_enhance(&img, "v", 4);
         assert_eq!(r.dimensions(), [10, 10, 1]);
+    }
+
+    #[test]
+    fn local_contrast_keeps_slices_independent() {
+        let img = ImageData::from_function(
+            [3, 3, 2],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, z| x + z * 100.0,
+        );
+        let r = local_contrast_enhance(&img, "v", 3);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut a = [0.0f64];
+        let mut b = [0.0f64];
+        arr.tuple_as_f64(1, &mut a);
+        arr.tuple_as_f64(9 + 1, &mut b);
+        assert!((a[0] - b[0]).abs() < 1e-10);
     }
 }

@@ -10,7 +10,8 @@ pub fn image_cubic_spline_blend(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            3.0 * buf[0].powi(2) - 2.0 * buf[0].powi(3)
+            let t = buf[0].clamp(0.0, 1.0);
+            3.0 * t.powi(2) - 2.0 * t.powi(3)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,21 @@ mod tests {
         );
         let r = image_cubic_spline_blend(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn clamps_blend_parameter() {
+        let img = ImageData::with_dimensions(5, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-1.0, 0.0, 0.5, 1.0, 2.0], 1),
+        ));
+
+        let r = image_cubic_spline_blend(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut value = [0.0];
+        let expected = [0.0, 0.0, 0.5, 1.0, 1.0];
+        for (i, expected_value) in expected.into_iter().enumerate() {
+            arr.tuple_as_f64(i, &mut value);
+            assert!((value[0] - expected_value).abs() < 1e-12);
+        }
     }
 }

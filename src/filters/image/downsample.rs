@@ -18,28 +18,37 @@ pub fn image_downsample(input: &ImageData, scalars: &str, factor: usize) -> Imag
     let spacing = input.spacing();
     let origin = input.origin();
 
-    let nnx = (nx + f - 1) / f;
-    let nny = (ny + f - 1) / f;
-    let nnz = (nz + f - 1) / f;
+    let factor_z = if nz == 1 { 1 } else { f };
+    let nnx = shrink_len(nx, f);
+    let nny = shrink_len(ny, f);
+    let nnz = shrink_len(nz, factor_z);
+    let num_components = arr.num_components();
+    if num_components == 0 || nnx == 0 || nny == 0 || nnz == 0 {
+        return input.clone();
+    }
 
-    let mut values = vec![0.0f64; nnx * nny * nnz];
-    let mut buf = [0.0f64];
+    let mut values = vec![0.0f64; nnx * nny * nnz * num_components];
+    let mut buf = vec![0.0f64; num_components];
+    let norm = 1.0 / (f * f * factor_z) as f64;
 
     for dk in 0..nnz {
         for dj in 0..nny {
             for di in 0..nnx {
-                let mut sum = 0.0;
-                let mut count = 0;
-                for k in dk * f..(dk * f + f).min(nz) {
-                    for j in dj * f..(dj * f + f).min(ny) {
-                        for i in di * f..(di * f + f).min(nx) {
+                let mut sum = vec![0.0; num_components];
+                for k in dk * factor_z..dk * factor_z + factor_z {
+                    for j in dj * f..dj * f + f {
+                        for i in di * f..di * f + f {
                             arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
-                            sum += buf[0];
-                            count += 1;
+                            for comp in 0..num_components {
+                                sum[comp] += buf[comp];
+                            }
                         }
                     }
                 }
-                values[dk * nny * nnx + dj * nnx + di] = sum / count as f64;
+                let out_idx = (dk * nny * nnx + dj * nnx + di) * num_components;
+                for comp in 0..num_components {
+                    values[out_idx + comp] = sum[comp] * norm;
+                }
             }
         }
     }
@@ -53,8 +62,20 @@ pub fn image_downsample(input: &ImageData, scalars: &str, factor: usize) -> Imag
     img.set_origin(origin);
     img.set_spacing(new_spacing);
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars,
+            values,
+            num_components,
+        )));
     img
+}
+
+fn shrink_len(len: usize, factor: usize) -> usize {
+    if len < factor {
+        0
+    } else {
+        len / factor
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +119,16 @@ mod tests {
 
         let result = image_downsample(&img, "v", 1);
         assert_eq!(result.dimensions(), [3, 3, 1]);
+    }
+
+    #[test]
+    fn excludes_trailing_partial_blocks() {
+        let mut img = ImageData::with_dimensions(5, 5, 2);
+        let values: Vec<f64> = (0..50).map(|i| i as f64).collect();
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
+
+        let result = image_downsample(&img, "v", 2);
+        assert_eq!(result.dimensions(), [2, 2, 1]);
     }
 }

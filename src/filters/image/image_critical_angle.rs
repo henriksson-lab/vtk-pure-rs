@@ -10,7 +10,7 @@ pub fn image_critical_angle(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (1.0 / 1.5f64).clamp(-1.0, 1.0).asin()
+            (1.0 / buf[0].abs().max(1e-9)).clamp(-1.0, 1.0).asin()
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,11 @@ mod tests {
         );
         let r = image_critical_angle(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        assert!((tuple[0] - (1.0f64 / 1.0).asin()).abs() < 1e-12);
+        arr.tuple_as_f64(4, &mut tuple);
+        assert!((tuple[0] - (1.0f64 / 5.0).asin()).abs() < 1e-12);
     }
 }

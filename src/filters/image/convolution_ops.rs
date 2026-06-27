@@ -21,29 +21,37 @@ pub fn sobel_2d(image: &ImageData, array_name: &str) -> ImageData {
             }
         })
         .collect();
-    let v = |x: usize, y: usize| -> f64 {
-        if x < dims[0] && y < dims[1] {
-            vals[x + y * dims[0]]
-        } else {
-            0.0
-        }
+    let v = |x: isize, y: isize| -> f64 {
+        let x = x.clamp(0, dims[0].saturating_sub(1) as isize) as usize;
+        let y = y.clamp(0, dims[1].saturating_sub(1) as isize) as usize;
+        vals[x + y * dims[0]]
     };
 
     let mut mag = vec![0.0f64; n];
-    for y in 1..dims[1].saturating_sub(1) {
-        for x in 1..dims[0].saturating_sub(1) {
-            let gx = -v(x - 1, y - 1) - 2.0 * v(x - 1, y) - v(x - 1, y + 1)
-                + v(x + 1, y - 1)
-                + 2.0 * v(x + 1, y)
-                + v(x + 1, y + 1);
-            let gy = -v(x - 1, y - 1) - 2.0 * v(x, y - 1) - v(x + 1, y - 1)
-                + v(x - 1, y + 1)
-                + 2.0 * v(x, y + 1)
-                + v(x + 1, y + 1);
-            mag[x + y * dims[0]] = (gx * gx + gy * gy).sqrt();
+    let mut vecs = vec![0.0f64; n * 2];
+    let sx = 0.125 / image.spacing()[0];
+    let sy = 0.125 / image.spacing()[1];
+    for y in 0..dims[1] {
+        for x in 0..dims[0] {
+            let x = x as isize;
+            let y = y as isize;
+            let gx = (2.0 * (v(x + 1, y) - v(x - 1, y)) + v(x + 1, y - 1) + v(x + 1, y + 1)
+                - v(x - 1, y - 1)
+                - v(x - 1, y + 1))
+                * sx;
+            let gy = (2.0 * (v(x, y + 1) - v(x, y - 1)) + v(x - 1, y + 1) + v(x + 1, y + 1)
+                - v(x - 1, y - 1)
+                - v(x + 1, y - 1))
+                * sy;
+            let idx = x as usize + y as usize * dims[0];
+            vecs[2 * idx] = gx;
+            vecs[2 * idx + 1] = gy;
+            mag[idx] = (gx * gx + gy * gy).sqrt();
         }
     }
     let mut r = image.clone();
+    r.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec("Sobel", vecs, 2)));
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "SobelMagnitude",
@@ -163,7 +171,11 @@ pub fn gaussian_blur_2d(image: &ImageData, array_name: &str, sigma: f64) -> Imag
     };
     let dims = image.dimensions();
     let n = dims[0] * dims[1];
-    let radius = (sigma * 3.0).ceil() as i64;
+    if sigma == 0.0 {
+        return image.clone();
+    }
+
+    let radius = (sigma * 1.5) as i64;
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -176,25 +188,34 @@ pub fn gaussian_blur_2d(image: &ImageData, array_name: &str, sigma: f64) -> Imag
         })
         .collect();
 
-    let mut output = vec![0.0f64; n];
-    for y in 0..dims[1] {
-        for x in 0..dims[0] {
-            let mut sum = 0.0;
-            let mut w_sum = 0.0;
-            for dy in -radius..=radius {
-                for dx in -radius..=radius {
-                    let nx = x as i64 + dx;
-                    let ny = y as i64 + dy;
+    let gaussian = |d: i64| (-(d * d) as f64 / (2.0 * sigma * sigma)).exp();
+    let convolve_axis = |input: &[f64], axis: usize| -> Vec<f64> {
+        let mut output = vec![0.0f64; n];
+        for y in 0..dims[1] {
+            for x in 0..dims[0] {
+                let mut sum = 0.0;
+                let mut w_sum = 0.0;
+                for d in -radius..=radius {
+                    let (nx, ny) = if axis == 0 {
+                        (x as i64 + d, y as i64)
+                    } else {
+                        (x as i64, y as i64 + d)
+                    };
                     if nx >= 0 && ny >= 0 && (nx as usize) < dims[0] && (ny as usize) < dims[1] {
-                        let w = (-(dx * dx + dy * dy) as f64 / (2.0 * sigma * sigma)).exp();
-                        sum += w * vals[nx as usize + ny as usize * dims[0]];
+                        let w = gaussian(d);
+                        sum += w * input[nx as usize + ny as usize * dims[0]];
                         w_sum += w;
                     }
                 }
+                output[x + y * dims[0]] = if w_sum > 0.0 { sum / w_sum } else { 0.0 };
             }
-            output[x + y * dims[0]] = if w_sum > 1e-15 { sum / w_sum } else { 0.0 };
         }
-    }
+        output
+    };
+
+    let tmp = convolve_axis(&vals, 0);
+    let output = convolve_axis(&tmp, 1);
+
     let mut r = image.clone();
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(

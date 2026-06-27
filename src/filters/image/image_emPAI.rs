@@ -1,5 +1,6 @@
 //! Exponentially modified protein abundance
 use crate::data::{AnyDataArray, DataArray, ImageData};
+#[allow(non_snake_case)]
 pub fn image_emPAI(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,

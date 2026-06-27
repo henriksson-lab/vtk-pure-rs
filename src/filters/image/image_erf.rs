@@ -11,7 +11,7 @@ pub fn image_erf(input: &ImageData, scalars: &str) -> ImageData {
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             {
-                let x = buf[0] * 0.7071067811865476;
+                let x = buf[0];
                 let t = 1.0 / (1.0 + 0.3275911 * x.abs());
                 let p = t
                     * (0.254829592
@@ -41,5 +41,9 @@ mod tests {
         );
         let r = image_erf(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        assert!((tuple[0] - 0.8427006897475899).abs() <= 1e-7);
     }
 }

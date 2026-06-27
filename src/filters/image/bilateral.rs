@@ -15,8 +15,8 @@ pub fn image_bilateral(
     radius: usize,
 ) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -24,6 +24,9 @@ pub fn image_bilateral(
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
+    if n == 0 || arr.num_tuples() != n || sigma_spatial <= 0.0 || sigma_range <= 0.0 {
+        return input.clone();
+    }
     let r = radius.max(1) as i64;
     let inv_2ss = 1.0 / (2.0 * sigma_spatial * sigma_spatial);
     let inv_2sr = 1.0 / (2.0 * sigma_range * sigma_range);

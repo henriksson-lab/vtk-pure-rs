@@ -52,20 +52,20 @@ pub fn ribbon(input: &PolyData, width: f64, up: [f64; 3]) -> PolyData {
             }
             let side = normalize(side);
 
-            let left = [
-                p[0] + side[0] * width,
-                p[1] + side[1] * width,
-                p[2] + side[2] * width,
-            ];
-            let right = [
+            let sm = [
                 p[0] - side[0] * width,
                 p[1] - side[1] * width,
                 p[2] - side[2] * width,
             ];
+            let sp = [
+                p[0] + side[0] * width,
+                p[1] + side[1] * width,
+                p[2] + side[2] * width,
+            ];
 
             let base = points.len() as i64;
-            points.push(left);
-            points.push(right);
+            points.push(sm);
+            points.push(sp);
             left_ids.push(base);
             right_ids.push(base + 1);
             strip.push(base);

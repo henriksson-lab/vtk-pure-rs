@@ -15,8 +15,14 @@ pub fn image_diffraction_grating(input: &ImageData, scalars: &str) -> ImageData 
                 if x.abs() < 1e-15 {
                     1.0
                 } else {
-                    (x.sin() / x).powi(2) * (3.0 * x).sin().powi(2)
-                        / (3.0 * x.sin()).powi(2).max(1e-15)
+                    let sinc = x.sin() / x;
+                    let denominator = 3.0 * x.sin();
+                    let grating = if denominator.abs() < 1e-15 {
+                        1.0
+                    } else {
+                        (3.0 * x).sin() / denominator
+                    };
+                    sinc.powi(2) * grating.powi(2)
                 }
             }
         })
@@ -30,16 +36,35 @@ pub fn image_diffraction_grating(input: &ImageData, scalars: &str) -> ImageData 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn image(values: &[f64]) -> ImageData {
+        ImageData::with_dimensions(values.len(), 1, 1)
+            .with_spacing([0.5, 2.0, 1.0])
+            .with_origin([1.0, -1.0, 0.0])
+            .with_point_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                values.to_vec(),
+                1,
+            )))
+    }
+
+    fn assert_close(actual: &[f64], expected: &[f64]) {
+        assert_eq!(actual.len(), expected.len());
+        for (a, e) in actual.iter().zip(expected) {
+            assert!((a - e).abs() <= 1e-12, "{a} != {e}");
+        }
+    }
+
     #[test]
-    fn test() {
-        let img = ImageData::from_function(
-            [5, 5, 1],
-            [1.0, 1.0, 1.0],
-            [0.0, 0.0, 0.0],
-            "v",
-            |x, _, _| x + 1.0,
-        );
+    fn computes_three_slit_grating_response() {
+        let img = image(&[0.0, 1.0 / 6.0, 1.0 / 3.0]);
         let r = image_diffraction_grating(&img, "v");
-        assert_eq!(r.dimensions(), [5, 5, 1]);
+        assert_eq!(r.dimensions(), [3, 1, 1]);
+        assert_eq!(r.spacing(), img.spacing());
+        assert_eq!(r.origin(), img.origin());
+        assert_close(
+            &r.point_data().get_array("v").unwrap().to_f64_vec(),
+            &[1.0, 0.0, 0.0],
+        );
     }
 }

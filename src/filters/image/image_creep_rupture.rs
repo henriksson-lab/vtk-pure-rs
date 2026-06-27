@@ -10,7 +10,7 @@ pub fn image_creep_rupture(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (buf[0] / buf[0].abs().max(0.01)).powf(-5.0) * 1e6
+            buf[0].abs().max(0.01).powf(-5.0) * 1e6
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,9 @@ mod tests {
         );
         let r = image_creep_rupture(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0];
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 31250.0).abs() < 1e-10);
     }
 }

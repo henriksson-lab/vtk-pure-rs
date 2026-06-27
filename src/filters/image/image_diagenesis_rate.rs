@@ -10,7 +10,8 @@ pub fn image_diagenesis_rate(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            1e-6 * buf[0].abs().max(1.0).powf(2.0)
+            let value = buf[0];
+            1e-6 * value.abs().max(1.0).powf(2.0)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +34,9 @@ mod tests {
         );
         let r = image_diagenesis_rate(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - (1e-6 * 1.0f64.abs().max(1.0).powf(2.0))).abs() < 1e-12);
     }
 }

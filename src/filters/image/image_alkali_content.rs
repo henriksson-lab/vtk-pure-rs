@@ -1,4 +1,4 @@
-//! Alkite content Na2Oeq
+//! Alkali content Na2Oeq
 use crate::data::{AnyDataArray, DataArray, ImageData};
 pub fn image_alkali_content(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {

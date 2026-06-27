@@ -10,7 +10,14 @@ pub fn image_erfc(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (1.0 - (buf[0] * 0.7071067811865476).tanh()) * 0.5
+            let x = buf[0];
+            let t = 1.0 / (1.0 + 0.3275911 * x.abs());
+            let p = t
+                * (0.254829592
+                    + t * (-0.284496736
+                        + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+            let erf = (1.0 - p * (-x * x).exp()) * x.signum();
+            1.0 - erf
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +40,9 @@ mod tests {
         );
         let r = image_erfc(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        assert!((tuple[0] - 0.15729931025241006).abs() <= 1e-7);
     }
 }

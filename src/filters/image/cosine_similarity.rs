@@ -12,22 +12,28 @@ pub fn image_cosine_similarity(a: &ImageData, b: &ImageData, scalars: &str) -> f
         Some(x) => x,
         None => return 0.0,
     };
+    if aa.num_components() != ba.num_components() {
+        return 0.0;
+    }
     let n = aa.num_tuples().min(ba.num_tuples());
     if n == 0 {
         return 0.0;
     }
 
-    let mut buf_a = [0.0f64];
-    let mut buf_b = [0.0f64];
+    let num_components = aa.num_components();
+    let mut buf_a = vec![0.0f64; num_components];
+    let mut buf_b = vec![0.0f64; num_components];
     let mut dot = 0.0;
     let mut na2 = 0.0;
     let mut nb2 = 0.0;
     for i in 0..n {
         aa.tuple_as_f64(i, &mut buf_a);
         ba.tuple_as_f64(i, &mut buf_b);
-        dot += buf_a[0] * buf_b[0];
-        na2 += buf_a[0] * buf_a[0];
-        nb2 += buf_b[0] * buf_b[0];
+        for c in 0..num_components {
+            dot += buf_a[c] * buf_b[c];
+            na2 += buf_a[c] * buf_a[c];
+            nb2 += buf_b[c] * buf_b[c];
+        }
     }
 
     let denom = (na2 * nb2).sqrt();
@@ -48,18 +54,24 @@ pub fn image_euclidean_distance(a: &ImageData, b: &ImageData, scalars: &str) -> 
         Some(x) => x,
         None => return 0.0,
     };
+    if aa.num_components() != ba.num_components() {
+        return 0.0;
+    }
     let n = aa.num_tuples().min(ba.num_tuples());
     if n == 0 {
         return 0.0;
     }
 
-    let mut buf_a = [0.0f64];
-    let mut buf_b = [0.0f64];
+    let num_components = aa.num_components();
+    let mut buf_a = vec![0.0f64; num_components];
+    let mut buf_b = vec![0.0f64; num_components];
     let mut sum = 0.0;
     for i in 0..n {
         aa.tuple_as_f64(i, &mut buf_a);
         ba.tuple_as_f64(i, &mut buf_b);
-        sum += (buf_a[0] - buf_b[0]).powi(2);
+        for c in 0..num_components {
+            sum += (buf_a[c] - buf_b[c]).powi(2);
+        }
     }
     sum.sqrt()
 }
@@ -74,18 +86,24 @@ pub fn image_l1_distance(a: &ImageData, b: &ImageData, scalars: &str) -> f64 {
         Some(x) => x,
         None => return 0.0,
     };
+    if aa.num_components() != ba.num_components() {
+        return 0.0;
+    }
     let n = aa.num_tuples().min(ba.num_tuples());
     if n == 0 {
         return 0.0;
     }
 
-    let mut buf_a = [0.0f64];
-    let mut buf_b = [0.0f64];
+    let num_components = aa.num_components();
+    let mut buf_a = vec![0.0f64; num_components];
+    let mut buf_b = vec![0.0f64; num_components];
     let mut sum = 0.0;
     for i in 0..n {
         aa.tuple_as_f64(i, &mut buf_a);
         ba.tuple_as_f64(i, &mut buf_b);
-        sum += (buf_a[0] - buf_b[0]).abs();
+        for c in 0..num_components {
+            sum += (buf_a[c] - buf_b[c]).abs();
+        }
     }
     sum
 }

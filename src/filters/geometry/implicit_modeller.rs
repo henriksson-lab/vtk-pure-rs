@@ -33,11 +33,17 @@ pub fn implicit_modeller(input: &PolyData, dimensions: [usize; 3]) -> ImageData 
     image.set_spacing(spacing);
     image.set_origin(origin);
 
-    // Collect triangles
+    // Collect input cells. vtkImplicitModeller accepts arbitrary dataset cells;
+    // this PolyData translation handles vertices, lines, and polygon triangles.
     let tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = input
         .polys
         .iter()
-        .filter(|cell| cell.len() >= 3)
+        .filter(|cell| {
+            cell.len() >= 3
+                && cell
+                    .iter()
+                    .all(|&id| id >= 0 && (id as usize) < input.points.len())
+        })
         .flat_map(|cell| {
             let p0 = input.points.get(cell[0] as usize);
             (1..cell.len() - 1).map(move |i| {
@@ -49,6 +55,35 @@ pub fn implicit_modeller(input: &PolyData, dimensions: [usize; 3]) -> ImageData 
             })
         })
         .collect();
+    let lines: Vec<([f64; 3], [f64; 3])> = input
+        .lines
+        .iter()
+        .filter(|cell| {
+            cell.len() >= 2
+                && cell
+                    .iter()
+                    .all(|&id| id >= 0 && (id as usize) < input.points.len())
+        })
+        .flat_map(|cell| {
+            cell.windows(2).map(|edge| {
+                (
+                    input.points.get(edge[0] as usize),
+                    input.points.get(edge[1] as usize),
+                )
+            })
+        })
+        .collect();
+    let verts: Vec<[f64; 3]> = input
+        .verts
+        .iter()
+        .filter(|cell| {
+            !cell.is_empty()
+                && cell
+                    .iter()
+                    .all(|&id| id >= 0 && (id as usize) < input.points.len())
+        })
+        .flat_map(|cell| cell.iter().map(|&id| input.points.get(id as usize)))
+        .collect();
 
     let n = image.num_points();
     let mut distances = Vec::with_capacity(n);
@@ -57,6 +92,18 @@ pub fn implicit_modeller(input: &PolyData, dimensions: [usize; 3]) -> ImageData 
         let mut min_d2 = f64::MAX;
         for &(a, b, c) in &tris {
             let d2 = point_triangle_dist2(p, a, b, c);
+            if d2 < min_d2 {
+                min_d2 = d2;
+            }
+        }
+        for &(a, b) in &lines {
+            let d2 = point_segment_dist2(p, a, b);
+            if d2 < min_d2 {
+                min_d2 = d2;
+            }
+        }
+        for &v in &verts {
+            let d2 = dist2(p, v);
             if d2 < min_d2 {
                 min_d2 = d2;
             }
@@ -126,6 +173,17 @@ fn point_triangle_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f
     )
 }
 
+fn point_segment_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3]) -> f64 {
+    let ab = sub(b, a);
+    let ap = sub(p, a);
+    let denom = dot(ab, ab);
+    if denom <= 0.0 {
+        return dist2(p, a);
+    }
+    let t = (dot(ap, ab) / denom).clamp(0.0, 1.0);
+    dist2(p, [a[0] + t * ab[0], a[1] + t * ab[1], a[2] + t * ab[2]])
+}
+
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
@@ -156,6 +214,22 @@ mod tests {
         for i in 0..s.num_tuples() {
             s.tuple_as_f64(i, &mut buf);
             assert!(buf[0] >= 0.0);
+        }
+    }
+
+    #[test]
+    fn distance_field_from_line_cells_is_finite() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, 1]);
+
+        let image = implicit_modeller(&pd, [3, 3, 3]);
+        let s = image.point_data().scalars().unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..s.num_tuples() {
+            s.tuple_as_f64(i, &mut buf);
+            assert!(buf[0].is_finite());
         }
     }
 }

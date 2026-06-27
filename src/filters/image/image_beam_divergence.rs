@@ -11,8 +11,8 @@ pub fn image_beam_divergence(input: &ImageData, scalars: &str) -> ImageData {
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             (1.22 * 5900.0 / (buf[0].abs().max(0.001) * buf[0].abs().max(0.01)))
+                .clamp(-1.0, 1.0)
                 .asin()
-                .min(1.57)
         })
         .collect();
     let dims = input.dimensions();
@@ -35,5 +35,21 @@ mod tests {
         );
         let r = image_beam_divergence(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn clamps_asin_argument_before_evaluating() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 1.0,
+        );
+        let r = image_beam_divergence(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+        arr.tuple_as_f64(0, &mut tuple);
+        assert!((tuple[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
     }
 }

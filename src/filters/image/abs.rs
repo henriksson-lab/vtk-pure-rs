@@ -5,20 +5,14 @@ pub fn image_abs(input: &ImageData, scalars: &str) -> ImageData {
     image_unary_op(input, scalars, |v| v.abs())
 }
 
-/// Compute square root of an ImageData scalar field (clamped to ≥ 0).
+/// Compute square root of an ImageData scalar field.
 pub fn image_sqrt(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| v.max(0.0).sqrt())
+    image_unary_op(input, scalars, |v| v.sqrt())
 }
 
-/// Compute log (natural) of an ImageData scalar field (clamped to > 0).
+/// Compute log (natural) of an ImageData scalar field.
 pub fn image_log(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| {
-        if v > 0.0 {
-            v.ln()
-        } else {
-            f64::NEG_INFINITY
-        }
-    })
+    image_unary_op(input, scalars, |v| v.ln())
 }
 
 /// Compute exponential of an ImageData scalar field.

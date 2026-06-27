@@ -33,5 +33,7 @@ mod tests {
         );
         let r = image_degradation_rate_fc(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+        assert!((values[0] - 1e-6).abs() < 1e-15);
     }
 }

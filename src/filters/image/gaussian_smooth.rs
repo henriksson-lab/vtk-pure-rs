@@ -1,5 +1,25 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+fn compute_kernel(min: isize, max: isize, sigma: f64) -> Vec<f64> {
+    if sigma == 0.0 {
+        return (min..=max)
+            .map(|offset| if offset == 0 { 1.0 } else { 0.0 })
+            .collect();
+    }
+
+    let mut kernel = Vec::with_capacity((max - min + 1) as usize);
+    let mut sum = 0.0;
+    for x in min..=max {
+        let w = (-(x * x) as f64 / (2.0 * sigma * sigma)).exp();
+        kernel.push(w);
+        sum += w;
+    }
+    for w in &mut kernel {
+        *w /= sum;
+    }
+    kernel
+}
+
 /// Apply Gaussian smoothing to an ImageData scalar field.
 ///
 /// Performs a 3D Gaussian blur with the given `sigma` (in voxel units)
@@ -31,21 +51,8 @@ pub fn image_gaussian_smooth(
         values[offset..offset + num_components].copy_from_slice(&buf);
     }
 
-    // Build 1D Gaussian kernel
-    let sigma = sigma.max(0.1);
-    let r = radius.max(1);
-    let kernel_size = 2 * r + 1;
-    let mut kernel = vec![0.0f64; kernel_size];
-    let mut sum = 0.0;
-    for i in 0..kernel_size {
-        let x = (i as f64) - r as f64;
-        let w = (-x * x / (2.0 * sigma * sigma)).exp();
-        kernel[i] = w;
-        sum += w;
-    }
-    for w in &mut kernel {
-        *w /= sum;
-    }
+    let sigma = sigma.max(0.0);
+    let r = radius;
 
     // Separable: X pass
     let mut tmp = vec![0.0f64; n * num_components];
@@ -53,12 +60,16 @@ pub fn image_gaussian_smooth(
         for j in 0..ny {
             for i in 0..nx {
                 let dst_idx = k * ny * nx + j * nx + i;
+                let left_clip = r.saturating_sub(i);
+                let right_clip = (i + r).saturating_sub(nx - 1);
+                let min = -(r as isize) + left_clip as isize;
+                let max = r as isize - right_clip as isize;
+                let kernel = compute_kernel(min, max, sigma);
                 for c in 0..num_components {
                     let mut acc = 0.0;
-                    for ki in 0..kernel_size {
-                        let ii = (i as i64 + ki as i64 - r as i64).clamp(0, nx as i64 - 1) as usize;
-                        acc +=
-                            values[(k * ny * nx + j * nx + ii) * num_components + c] * kernel[ki];
+                    for (offset, weight) in (min..=max).zip(kernel.iter()) {
+                        let ii = (i as isize + offset) as usize;
+                        acc += values[(k * ny * nx + j * nx + ii) * num_components + c] * weight;
                     }
                     tmp[dst_idx * num_components + c] = acc;
                 }
@@ -72,11 +83,16 @@ pub fn image_gaussian_smooth(
         for j in 0..ny {
             for i in 0..nx {
                 let dst_idx = k * ny * nx + j * nx + i;
+                let left_clip = r.saturating_sub(j);
+                let right_clip = (j + r).saturating_sub(ny - 1);
+                let min = -(r as isize) + left_clip as isize;
+                let max = r as isize - right_clip as isize;
+                let kernel = compute_kernel(min, max, sigma);
                 for c in 0..num_components {
                     let mut acc = 0.0;
-                    for ki in 0..kernel_size {
-                        let jj = (j as i64 + ki as i64 - r as i64).clamp(0, ny as i64 - 1) as usize;
-                        acc += tmp[(k * ny * nx + jj * nx + i) * num_components + c] * kernel[ki];
+                    for (offset, weight) in (min..=max).zip(kernel.iter()) {
+                        let jj = (j as isize + offset) as usize;
+                        acc += tmp[(k * ny * nx + jj * nx + i) * num_components + c] * weight;
                     }
                     tmp2[dst_idx * num_components + c] = acc;
                 }
@@ -90,11 +106,16 @@ pub fn image_gaussian_smooth(
         for j in 0..ny {
             for i in 0..nx {
                 let dst_idx = k * ny * nx + j * nx + i;
+                let left_clip = r.saturating_sub(k);
+                let right_clip = (k + r).saturating_sub(nz - 1);
+                let min = -(r as isize) + left_clip as isize;
+                let max = r as isize - right_clip as isize;
+                let kernel = compute_kernel(min, max, sigma);
                 for c in 0..num_components {
                     let mut acc = 0.0;
-                    for ki in 0..kernel_size {
-                        let kk = (k as i64 + ki as i64 - r as i64).clamp(0, nz as i64 - 1) as usize;
-                        acc += tmp2[(kk * ny * nx + j * nx + i) * num_components + c] * kernel[ki];
+                    for (offset, weight) in (min..=max).zip(kernel.iter()) {
+                        let kk = (k as isize + offset) as usize;
+                        acc += tmp2[(kk * ny * nx + j * nx + i) * num_components + c] * weight;
                     }
                     result[dst_idx * num_components + c] = acc;
                 }
@@ -192,5 +213,23 @@ mod tests {
         arr.tuple_as_f64(1, &mut buf);
         assert!(buf[0] > 1.0 && buf[0] < 5.0);
         assert!(buf[1] > 10.0 && buf[1] < 50.0);
+    }
+
+    #[test]
+    fn zero_sigma_is_identity() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 5.0, 9.0],
+                1,
+            )));
+        let result = image_gaussian_smooth(&img, "val", 0.0, 1);
+        let arr = result.point_data().get_array("val").unwrap();
+        let mut buf = [0.0f64];
+        for (idx, expected) in [1.0, 5.0, 9.0].into_iter().enumerate() {
+            arr.tuple_as_f64(idx, &mut buf);
+            assert_eq!(buf[0], expected);
+        }
     }
 }

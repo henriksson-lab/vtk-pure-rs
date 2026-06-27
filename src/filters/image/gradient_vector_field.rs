@@ -30,21 +30,17 @@ pub fn gradient_vector_field(input: &ImageData, scalars: &str) -> ImageData {
         let rem = idx - iz * slice;
         let iy = rem / nx;
         let ix = rem % nx;
-        let gx = if ix > 0 && ix + 1 < nx {
-            (vals[idx + 1] - vals[idx - 1]) / (2.0 * sp[0])
-        } else if ix + 1 < nx {
-            (vals[idx + 1] - vals[idx]) / sp[0]
-        } else if ix > 0 {
-            (vals[idx] - vals[idx - 1]) / sp[0]
+        let x_min = if ix == 0 { idx } else { idx - 1 };
+        let x_max = if ix + 1 == nx { idx } else { idx + 1 };
+        let y_min = if iy == 0 { idx } else { idx - nx };
+        let y_max = if iy + 1 == ny { idx } else { idx + nx };
+        let gx = if sp[0].abs() > 1e-15 {
+            (vals[x_max] - vals[x_min]) * 0.5 / sp[0]
         } else {
             0.0
         };
-        let gy = if iy > 0 && iy + 1 < ny {
-            (vals[idx + nx] - vals[idx - nx]) / (2.0 * sp[1])
-        } else if iy + 1 < ny {
-            (vals[idx + nx] - vals[idx]) / sp[1]
-        } else if iy > 0 {
-            (vals[idx] - vals[idx - nx]) / sp[1]
+        let gy = if sp[1].abs() > 1e-15 {
+            (vals[y_max] - vals[y_min]) * 0.5 / sp[1]
         } else {
             0.0
         };
@@ -111,13 +107,17 @@ pub fn divergence_2d(input: &ImageData, array_name: &str) -> ImageData {
             let rem = idx - iz * slice;
             let iy = rem / nx;
             let ix = rem % nx;
-            let dfdx = if ix > 0 && ix + 1 < nx {
-                (vecs[idx + 1][0] - vecs[idx - 1][0]) / (2.0 * sp[0])
+            let x_min = if ix == 0 { idx } else { idx - 1 };
+            let x_max = if ix + 1 == nx { idx } else { idx + 1 };
+            let y_min = if iy == 0 { idx } else { idx - nx };
+            let y_max = if iy + 1 == ny { idx } else { idx + nx };
+            let dfdx = if sp[0].abs() > 1e-15 {
+                (vecs[x_max][0] - vecs[x_min][0]) * 0.5 / sp[0]
             } else {
                 0.0
             };
-            let dgdy = if iy > 0 && iy + 1 < ny {
-                (vecs[idx + nx][1] - vecs[idx - nx][1]) / (2.0 * sp[1])
+            let dgdy = if sp[1].abs() > 1e-15 {
+                (vecs[y_max][1] - vecs[y_min][1]) * 0.5 / sp[1]
             } else {
                 0.0
             };

@@ -3,7 +3,7 @@
 //! Provides utilities for processing data in pieces (chunks) without
 //! loading the entire dataset into memory at once.
 
-use crate::data::{AnyDataArray, DataArray, ImageData, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, ImageData, Points, PolyData};
 
 /// A piece (chunk) specification for streaming.
 #[derive(Debug, Clone)]
@@ -69,30 +69,18 @@ pub fn extract_piece(image: &ImageData, piece: &PieceExtent) -> ImageData {
         .with_spacing(spacing)
         .with_origin(new_origin);
 
+    let start = piece.start;
+    let end = piece.end;
+
     // Extract point data
     let pd = image.point_data();
     for ai in 0..pd.num_arrays() {
         if let Some(arr) = pd.get_array_by_index(ai) {
-            let nc = arr.num_components();
-            let name = arr.name().to_string();
-            let mut data = Vec::new();
-            let mut buf = vec![0.0f64; nc];
-
-            for iz in piece.start[2]..piece.end[2] {
-                for iy in piece.start[1]..piece.end[1] {
-                    for ix in piece.start[0]..piece.end[0] {
-                        let old_idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
-                        if old_idx < arr.num_tuples() {
-                            arr.tuple_as_f64(old_idx, &mut buf);
-                            data.extend_from_slice(&buf);
-                        }
-                    }
-                }
+            if let Some(subset) = extract_array_piece(arr, dims, start, end) {
+                let name = subset.name().to_string();
+                result.point_data_mut().add_array(subset);
+                copy_active_attribute_for_array(pd, result.point_data_mut(), &name);
             }
-
-            result
-                .point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
         }
     }
 
@@ -121,9 +109,140 @@ pub fn split_points_into_pieces(mesh: &PolyData, n_pieces: usize) -> Vec<PolyDat
         }
         let mut piece = PolyData::new();
         piece.points = pts;
+        copy_point_data_range(mesh.point_data(), piece.point_data_mut(), start, end);
         pieces.push(piece);
     }
     pieces
+}
+
+fn copy_point_data_range(
+    source: &DataSetAttributes,
+    target: &mut DataSetAttributes,
+    start: usize,
+    end: usize,
+) {
+    for array in source.iter() {
+        if end > array.num_tuples() {
+            continue;
+        }
+        if let Some(subset) = slice_array(array, start, end) {
+            let name = subset.name().to_string();
+            target.add_array(subset);
+            copy_active_attribute_for_array(source, target, &name);
+        }
+    }
+}
+
+fn copy_active_attribute_for_array(
+    source: &DataSetAttributes,
+    target: &mut DataSetAttributes,
+    name: &str,
+) {
+    if source.scalars().map(|a| a.name()) == Some(name) {
+        target.set_active_scalars(name);
+    }
+    if source.vectors().map(|a| a.name()) == Some(name) {
+        target.set_active_vectors(name);
+    }
+    if source.normals().map(|a| a.name()) == Some(name) {
+        target.set_active_normals(name);
+    }
+    if source.tcoords().map(|a| a.name()) == Some(name) {
+        target.set_active_tcoords(name);
+    }
+    if source.tensors().map(|a| a.name()) == Some(name) {
+        target.set_active_tensors(name);
+    }
+    if source.global_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_global_ids(name);
+    }
+    if source.pedigree_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_pedigree_ids(name);
+    }
+    if source.edge_flags().map(|a| a.name()) == Some(name) {
+        target.set_active_edge_flags(name);
+    }
+    if source.tangents().map(|a| a.name()) == Some(name) {
+        target.set_active_tangents(name);
+    }
+    if source.rational_weights().map(|a| a.name()) == Some(name) {
+        target.set_active_rational_weights(name);
+    }
+    if source.higher_order_degrees().map(|a| a.name()) == Some(name) {
+        target.set_active_higher_order_degrees(name);
+    }
+    if source.process_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_process_ids(name);
+    }
+}
+
+fn slice_array(array: &AnyDataArray, start: usize, end: usize) -> Option<AnyDataArray> {
+    macro_rules! slice_variant {
+        ($variant:ident, $a:expr) => {{
+            let nc = $a.num_components();
+            let from = start.checked_mul(nc)?;
+            let to = end.checked_mul(nc)?;
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                $a.name(),
+                $a.as_slice().get(from..to)?.to_vec(),
+                nc,
+            )))
+        }};
+    }
+    match array {
+        AnyDataArray::F32(a) => slice_variant!(F32, a),
+        AnyDataArray::F64(a) => slice_variant!(F64, a),
+        AnyDataArray::I8(a) => slice_variant!(I8, a),
+        AnyDataArray::I16(a) => slice_variant!(I16, a),
+        AnyDataArray::I32(a) => slice_variant!(I32, a),
+        AnyDataArray::I64(a) => slice_variant!(I64, a),
+        AnyDataArray::U8(a) => slice_variant!(U8, a),
+        AnyDataArray::U16(a) => slice_variant!(U16, a),
+        AnyDataArray::U32(a) => slice_variant!(U32, a),
+        AnyDataArray::U64(a) => slice_variant!(U64, a),
+    }
+}
+
+fn extract_array_piece(
+    array: &AnyDataArray,
+    dims: [usize; 3],
+    start: [usize; 3],
+    end: [usize; 3],
+) -> Option<AnyDataArray> {
+    macro_rules! extract_variant {
+        ($variant:ident, $a:expr) => {{
+            let nc = $a.num_components();
+            let nt = (end[0] - start[0]) * (end[1] - start[1]) * (end[2] - start[2]);
+            let mut data = Vec::with_capacity(nt * nc);
+            for iz in start[2]..end[2] {
+                for iy in start[1]..end[1] {
+                    for ix in start[0]..end[0] {
+                        let old_idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
+                        let from = old_idx.checked_mul(nc)?;
+                        let to = from.checked_add(nc)?;
+                        data.extend_from_slice($a.as_slice().get(from..to)?);
+                    }
+                }
+            }
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                $a.name(),
+                data,
+                nc,
+            )))
+        }};
+    }
+    match array {
+        AnyDataArray::F32(a) => extract_variant!(F32, a),
+        AnyDataArray::F64(a) => extract_variant!(F64, a),
+        AnyDataArray::I8(a) => extract_variant!(I8, a),
+        AnyDataArray::I16(a) => extract_variant!(I16, a),
+        AnyDataArray::I32(a) => extract_variant!(I32, a),
+        AnyDataArray::I64(a) => extract_variant!(I64, a),
+        AnyDataArray::U8(a) => extract_variant!(U8, a),
+        AnyDataArray::U16(a) => extract_variant!(U16, a),
+        AnyDataArray::U32(a) => extract_variant!(U32, a),
+        AnyDataArray::U64(a) => extract_variant!(U64, a),
+    }
 }
 
 /// Process an ImageData in streaming fashion, applying a function to each piece.
@@ -179,6 +298,56 @@ mod tests {
     }
 
     #[test]
+    fn extract_piece_preserves_array_type_and_active_vectors() {
+        let mut img = ImageData::with_dimensions(3, 2, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::U8(DataArray::from_vec(
+                "id",
+                vec![0, 1, 2, 3, 4, 5],
+                1,
+            )));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F32(DataArray::from_vec(
+                "v",
+                vec![
+                    0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 3.0, 0.0, 0.0, 4.0, 0.0, 0.0, 5.0,
+                    0.0, 0.0,
+                ],
+                3,
+            )));
+        img.point_data_mut().set_active_scalars("id");
+        img.point_data_mut().set_active_vectors("v");
+
+        let sub = extract_piece(
+            &img,
+            &PieceExtent {
+                start: [1, 0, 0],
+                end: [3, 2, 1],
+            },
+        );
+
+        assert!(matches!(
+            sub.point_data().scalars().unwrap(),
+            AnyDataArray::U8(_)
+        ));
+        assert!(matches!(
+            sub.point_data().vectors().unwrap(),
+            AnyDataArray::F32(_)
+        ));
+        let mut values = [0.0f64; 1];
+        sub.point_data()
+            .scalars()
+            .unwrap()
+            .tuple_as_f64(0, &mut values);
+        assert_eq!(values[0], 1.0);
+        sub.point_data()
+            .scalars()
+            .unwrap()
+            .tuple_as_f64(3, &mut values);
+        assert_eq!(values[0], 5.0);
+    }
+
+    #[test]
     fn split_points() {
         let mesh = PolyData::from_points(vec![
             [0.0, 0.0, 0.0],
@@ -191,6 +360,34 @@ mod tests {
         assert_eq!(pieces.len(), 2);
         assert_eq!(pieces[0].points.len(), 3);
         assert_eq!(pieces[1].points.len(), 2);
+    }
+
+    #[test]
+    fn split_points_preserves_point_data_ranges() {
+        let mut mesh = PolyData::from_points((0..5).map(|i| [i as f64, 0.0, 0.0]).collect());
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![0.0, 1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
+        mesh.point_data_mut().set_active_scalars("s");
+
+        let pieces = split_points_into_pieces(&mesh, 2);
+        let mut value = [0.0f64; 1];
+
+        pieces[1]
+            .point_data()
+            .scalars()
+            .unwrap()
+            .tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 3.0);
+        pieces[1]
+            .point_data()
+            .scalars()
+            .unwrap()
+            .tuple_as_f64(1, &mut value);
+        assert_eq!(value[0], 4.0);
     }
 
     #[test]
