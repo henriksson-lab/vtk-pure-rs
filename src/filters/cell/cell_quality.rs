@@ -37,9 +37,7 @@ pub enum QualityMetric {
 ///
 /// Adds a "CellQuality" scalar array to cell data.
 pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
-    let offsets = input.polys.offsets();
-    let conn = input.polys.connectivity();
-    let nc = input.polys.num_cells();
+    let nc = input.total_cells();
     let flat_pts = input.points.as_flat_slice();
     let mut values = Vec::with_capacity(nc);
 
@@ -47,138 +45,149 @@ pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
     // Combined with flat pts[] access, this is 1.4x faster than VTK C++ (0.69x ratio).
     let mut pts: Vec<[f64; 3]> = Vec::with_capacity(8);
 
-    for ci in 0..nc {
-        let start = offsets[ci] as usize;
-        let end = offsets[ci + 1] as usize;
-        let n = end - start;
-        if n < 3 {
-            values.push(0.0);
-            continue;
-        }
+    for cells in [&input.verts, &input.lines, &input.polys, &input.strips] {
+        let offsets = cells.offsets();
+        let conn = cells.connectivity();
+        for ci in 0..cells.num_cells() {
+            let start = offsets[ci] as usize;
+            let end = offsets[ci + 1] as usize;
+            let n = end - start;
+            if n < 3 {
+                values.push(-1.0);
+                continue;
+            }
 
-        pts.clear();
-        for idx in start..end {
-            let b = conn[idx] as usize * 3;
-            pts.push([flat_pts[b], flat_pts[b + 1], flat_pts[b + 2]]);
-        }
+            pts.clear();
+            for idx in start..end {
+                let b = conn[idx] as usize * 3;
+                pts.push([flat_pts[b], flat_pts[b + 1], flat_pts[b + 2]]);
+            }
 
-        let val = match metric {
-            QualityMetric::AspectRatio => {
-                if n == 3 {
-                    triangle_aspect_ratio(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::MinAngle => {
-                let angles = interior_angles(&pts);
-                angles.iter().cloned().fold(f64::MAX, f64::min).to_degrees()
-            }
-            QualityMetric::MaxAngle => {
-                let angles = interior_angles(&pts);
-                angles.iter().cloned().fold(0.0f64, f64::max).to_degrees()
-            }
-            QualityMetric::Area => polygon_area(&pts),
-            QualityMetric::Condition => {
-                if n == 3 {
-                    triangle_condition(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::ScaledJacobian => {
-                if n == 3 {
-                    triangle_scaled_jacobian(&pts)
-                } else if n == 4 {
-                    quad_scaled_jacobian(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::Shape => {
-                if n == 3 {
-                    triangle_shape(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::EdgeRatio => {
-                let edges = edge_lengths(&pts);
-                let min_e = edges.iter().cloned().fold(f64::MAX, f64::min);
-                let max_e = edges.iter().cloned().fold(0.0f64, f64::max);
-                if min_e > 1e-20 {
-                    max_e / min_e
-                } else {
-                    f64::MAX
-                }
-            }
-            QualityMetric::Skew => {
-                if n >= 3 {
-                    let angles = interior_angles(&pts);
-                    let half_pi = std::f64::consts::FRAC_PI_2;
-                    angles
-                        .iter()
-                        .map(|a| (a - half_pi).abs() / half_pi)
-                        .fold(0.0f64, f64::max)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::Distortion => {
-                if n == 3 {
-                    let area = polygon_area(&pts);
-                    let edges = edge_lengths(&pts);
-                    let ideal = edges.iter().sum::<f64>() / 3.0;
-                    let ideal_area = (3.0f64).sqrt() / 4.0 * ideal * ideal;
-                    if ideal_area > 1e-20 {
-                        area / ideal_area
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::RadiusRatio => {
-                if n == 3 {
-                    triangle_radius_ratio(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::AspectFrobenius => {
-                if n == 3 {
-                    triangle_aspect_frobenius(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::Warpage => {
-                if n == 4 {
-                    quad_warpage(&pts)
-                } else {
-                    0.0
-                }
-            }
-            QualityMetric::Taper => {
-                if n == 4 {
-                    quad_taper(&pts)
-                } else {
-                    0.0
-                }
-            }
-        };
-        values.push(val);
+            values.push(cell_quality_value(&pts, metric));
+        }
     }
 
     let mut pd = input.clone();
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Quality",
+            values.clone(),
+            1,
+        )));
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "CellQuality",
             values,
             1,
         )));
+    pd.cell_data_mut().set_active_scalars("CellQuality");
     pd
+}
+
+fn cell_quality_value(pts: &[[f64; 3]], metric: QualityMetric) -> f64 {
+    let n = pts.len();
+    match metric {
+        QualityMetric::AspectRatio => {
+            if n == 3 {
+                triangle_aspect_ratio(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::MinAngle => {
+            let angles = interior_angles(pts);
+            angles.iter().cloned().fold(f64::MAX, f64::min).to_degrees()
+        }
+        QualityMetric::MaxAngle => {
+            let angles = interior_angles(pts);
+            angles.iter().cloned().fold(0.0f64, f64::max).to_degrees()
+        }
+        QualityMetric::Area => polygon_area(pts),
+        QualityMetric::Condition => {
+            if n == 3 {
+                triangle_condition(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::ScaledJacobian => {
+            if n == 3 {
+                triangle_scaled_jacobian(pts)
+            } else if n == 4 {
+                quad_scaled_jacobian(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::Shape => {
+            if n == 3 {
+                triangle_shape(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::EdgeRatio => {
+            let edges = edge_lengths(pts);
+            let min_e = edges.iter().cloned().fold(f64::MAX, f64::min);
+            let max_e = edges.iter().cloned().fold(0.0f64, f64::max);
+            if min_e > 1e-20 {
+                max_e / min_e
+            } else {
+                f64::MAX
+            }
+        }
+        QualityMetric::Skew => {
+            let angles = interior_angles(pts);
+            let half_pi = std::f64::consts::FRAC_PI_2;
+            angles
+                .iter()
+                .map(|a| (a - half_pi).abs() / half_pi)
+                .fold(0.0f64, f64::max)
+        }
+        QualityMetric::Distortion => {
+            if n == 3 {
+                let area = polygon_area(pts);
+                let edges = edge_lengths(pts);
+                let ideal = edges.iter().sum::<f64>() / 3.0;
+                let ideal_area = (3.0f64).sqrt() / 4.0 * ideal * ideal;
+                if ideal_area > 1e-20 {
+                    area / ideal_area
+                } else {
+                    0.0
+                }
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::RadiusRatio => {
+            if n == 3 {
+                triangle_radius_ratio(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::AspectFrobenius => {
+            if n == 3 {
+                triangle_aspect_frobenius(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::Warpage => {
+            if n == 4 {
+                quad_warpage(pts)
+            } else {
+                -1.0
+            }
+        }
+        QualityMetric::Taper => {
+            if n == 4 {
+                quad_taper(pts)
+            } else {
+                -1.0
+            }
+        }
+    }
 }
 
 fn edge_lengths(pts: &[[f64; 3]]) -> Vec<f64> {

@@ -17,6 +17,17 @@ pub fn translate_to_match(source: &PolyData, target: &PolyData, iterations: usiz
 
     let mut pts: Vec<[f64; 3]> = (0..n_src).map(|i| source.points.get(i)).collect();
 
+    let source_centroid = centroid(&pts);
+    let target_centroid = centroid(&tgt_pts);
+    let initial_dx = target_centroid[0] - source_centroid[0];
+    let initial_dy = target_centroid[1] - source_centroid[1];
+    let initial_dz = target_centroid[2] - source_centroid[2];
+    for p in &mut pts {
+        p[0] += initial_dx;
+        p[1] += initial_dy;
+        p[2] += initial_dz;
+    }
+
     for _ in 0..iterations {
         // Find average displacement to closest target points
         let mut dx = 0.0;
@@ -64,8 +75,31 @@ pub fn translate_to_match(source: &PolyData, target: &PolyData, iterations: usiz
     pd
 }
 
+fn centroid(points: &[[f64; 3]]) -> [f64; 3] {
+    let mut c = [0.0; 3];
+    for p in points {
+        c[0] += p[0];
+        c[1] += p[1];
+        c[2] += p[2];
+    }
+    let n = points.len() as f64;
+    [c[0] / n, c[1] / n, c[2] / n]
+}
+
 /// Compute the Hausdorff distance after alignment.
 pub fn registration_error(source: &PolyData, target: &PolyData) -> f64 {
+    let n_src = source.points.len();
+    let n_tgt = target.points.len();
+    if n_src == 0 || n_tgt == 0 {
+        return 0.0;
+    }
+
+    let source_to_target = directed_hausdorff(source, target);
+    let target_to_source = directed_hausdorff(target, source);
+    source_to_target.max(target_to_source)
+}
+
+fn directed_hausdorff(source: &PolyData, target: &PolyData) -> f64 {
     let n_src = source.points.len();
     let n_tgt = target.points.len();
     if n_src == 0 || n_tgt == 0 {
@@ -124,6 +158,18 @@ mod tests {
 
         let err = registration_error(&a, &b);
         assert!((err - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn error_metric_is_symmetric_hausdorff() {
+        let mut a = PolyData::new();
+        a.points.push([0.0, 0.0, 0.0]);
+        a.points.push([10.0, 0.0, 0.0]);
+        let mut b = PolyData::new();
+        b.points.push([0.0, 0.0, 0.0]);
+
+        let err = registration_error(&a, &b);
+        assert!((err - 10.0).abs() < 1e-10);
     }
 
     #[test]

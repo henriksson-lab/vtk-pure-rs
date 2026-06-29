@@ -1,4 +1,4 @@
-//! Mach cone angle
+//! Mach number
 use crate::data::{AnyDataArray, DataArray, ImageData};
 pub fn image_mach_number(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
@@ -10,11 +10,7 @@ pub fn image_mach_number(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            if buf[0].abs() > 1.0 {
-                (1.0 / buf[0].abs()).asin()
-            } else {
-                std::f64::consts::FRAC_PI_2
-            }
+            buf[0].abs()
         })
         .collect();
     let dims = input.dimensions();
@@ -37,5 +33,23 @@ mod tests {
         );
         let r = image_mach_number(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn maps_scalar_to_mach_magnitude() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-2.0, 0.5, 3.0], 1),
+        ));
+
+        let r = image_mach_number(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut tuple = [0.0];
+
+        arr.tuple_as_f64(0, &mut tuple);
+        assert_eq!(tuple[0], 2.0);
+        arr.tuple_as_f64(1, &mut tuple);
+        assert_eq!(tuple[0], 0.5);
+        arr.tuple_as_f64(2, &mut tuple);
+        assert_eq!(tuple[0], 3.0);
     }
 }

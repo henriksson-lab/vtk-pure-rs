@@ -10,7 +10,13 @@ pub fn top_hat(input: &ImageData, scalars: &str, radius: usize) -> ImageData {
     if original.is_empty() {
         return input.clone();
     }
+    if radius == 0 {
+        return write_scalars(input, scalars, vec![0.0; original.len()]);
+    }
     let dims = input.dimensions();
+    if dims[0] * dims[1] * dims[2] != original.len() {
+        return input.clone();
+    }
     let opened = dilate(&erode(&original, dims, radius), dims, radius);
 
     let result: Vec<f64> = original
@@ -31,7 +37,13 @@ pub fn bottom_hat(input: &ImageData, scalars: &str, radius: usize) -> ImageData 
     if original.is_empty() {
         return input.clone();
     }
+    if radius == 0 {
+        return write_scalars(input, scalars, vec![0.0; original.len()]);
+    }
     let dims = input.dimensions();
+    if dims[0] * dims[1] * dims[2] != original.len() {
+        return input.clone();
+    }
     let closed = erode(&dilate(&original, dims, radius), dims, radius);
 
     let result: Vec<f64> = closed
@@ -90,7 +102,7 @@ fn morphological_op(values: &[f64], dims: [usize; 3], radius: usize, is_dilate: 
     let ny: usize = dims[1];
     let nz: usize = dims[2];
     let n: usize = nx * ny * nz;
-    let r: i64 = radius.max(1) as i64;
+    let r: i64 = radius as i64;
     let mut result: Vec<f64> = vec![0.0; n];
 
     for k in 0..nz {

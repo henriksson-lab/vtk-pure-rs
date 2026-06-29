@@ -217,22 +217,25 @@ impl<R: BufRead> Parser<R> {
     }
 
     fn parse_cells_ascii(&mut self, num_cells: usize) -> Result<CellArray, VtkError> {
+        let mut raw = Vec::new();
         let mut cells = CellArray::new();
         for _ in 0..num_cells {
-            let line = self.read_nonempty_line()?;
-            let tokens: Vec<&str> = line.split_whitespace().collect();
-            if tokens.is_empty() {
-                return Err(VtkError::Parse("empty cell line".into()));
+            while raw.is_empty() {
+                raw.extend(self.read_i64_line()?);
             }
-            let npts: usize = tokens[0]
-                .parse()
-                .map_err(|_| VtkError::Parse(format!("invalid npts: {}", tokens[0])))?;
+
+            let npts_token = raw.remove(0);
+            if npts_token < 0 {
+                return Err(VtkError::Parse(format!("invalid npts: {}", npts_token)));
+            }
+            let npts = npts_token as usize;
+            while raw.len() < npts {
+                raw.extend(self.read_i64_line()?);
+            }
+
             let mut ids = Vec::with_capacity(npts);
-            for t in &tokens[1..=npts] {
-                let id: i64 = t
-                    .parse()
-                    .map_err(|_| VtkError::Parse(format!("invalid cell id: {}", t)))?;
-                ids.push(id);
+            for _ in 0..npts {
+                ids.push(raw.remove(0));
             }
             cells.push_cell(&ids);
         }
@@ -486,6 +489,17 @@ impl<R: BufRead> Parser<R> {
         Ok(values)
     }
 
+    fn read_i64_line(&mut self) -> Result<Vec<i64>, VtkError> {
+        let line = self.read_nonempty_line()?;
+        line.split_whitespace()
+            .map(|token| {
+                token
+                    .parse()
+                    .map_err(|_| VtkError::Parse(format!("invalid cell integer: {}", token)))
+            })
+            .collect()
+    }
+
     fn read_line(&mut self) -> Result<String, VtkError> {
         let mut line = String::new();
         let bytes = self.reader.read_line(&mut line)?;
@@ -625,5 +639,27 @@ mod tests {
         assert!((p0[0] - 1.5).abs() < 1e-10);
         assert!((p0[1] - 2.5).abs() < 1e-10);
         assert!((p0[2] - 3.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn reads_ascii_cells_split_across_lines() {
+        let vtk = b"# vtk DataFile Version 4.2
+split cells
+ASCII
+DATASET POLYDATA
+POINTS 4 double
+0 0 0 1 0 0 1 1 0 0 1 0
+POLYGONS 2 8
+3 0
+1 2
+3 0 2 3
+";
+
+        let reader_buf = std::io::BufReader::new(&vtk[..]);
+        let pd = LegacyReader::read_poly_data_from(reader_buf).unwrap();
+
+        assert_eq!(pd.polys.num_cells(), 2);
+        assert_eq!(pd.polys.cell(0), &[0, 1, 2]);
+        assert_eq!(pd.polys.cell(1), &[0, 2, 3]);
     }
 }

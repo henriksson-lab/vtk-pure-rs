@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashSet};
 
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Simplify a triangle mesh using quadric error metric edge collapse.
 ///
@@ -21,6 +21,10 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
 
     // Copy points
     let mut points: Vec<[f64; 3]> = (0..n_points).map(|i| input.points.get(i)).collect();
+
+    if input.polys.iter().any(|cell| cell.len() != 3) {
+        return input.clone();
+    }
 
     // Build triangle list
     let mut triangles: Vec<[usize; 3]> = Vec::with_capacity(n_cells);
@@ -151,6 +155,7 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
 
     // Build output: compact points and triangles
     let mut point_map = vec![usize::MAX; points.len()];
+    let mut old_point_ids = Vec::new();
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
@@ -161,6 +166,7 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
         for &v in tri {
             if point_map[v] == usize::MAX {
                 point_map[v] = out_points.len();
+                old_point_ids.push(v);
                 out_points.push(points[v]);
             }
         }
@@ -174,6 +180,11 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
     let mut output = PolyData::new();
     output.points = out_points;
     output.polys = out_polys;
+    for array in input.point_data().iter() {
+        if let Some(subset) = subset_array(array, &old_point_ids) {
+            output.point_data_mut().add_array(subset);
+        }
+    }
     output
 }
 
@@ -266,6 +277,42 @@ fn midpoint(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     ]
 }
 
+fn subset_array(array: &AnyDataArray, tuple_ids: &[usize]) -> Option<AnyDataArray> {
+    macro_rules! subset_variant {
+        ($variant:ident) => {{
+            let AnyDataArray::$variant(a) = array else {
+                unreachable!();
+            };
+            let nc = a.num_components();
+            let mut data = Vec::with_capacity(tuple_ids.len() * nc);
+            for &tuple_id in tuple_ids {
+                if tuple_id >= a.num_tuples() {
+                    return None;
+                }
+                data.extend_from_slice(a.tuple(tuple_id));
+            }
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                a.name(),
+                data,
+                nc,
+            )))
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(_) => subset_variant!(F32),
+        AnyDataArray::F64(_) => subset_variant!(F64),
+        AnyDataArray::I8(_) => subset_variant!(I8),
+        AnyDataArray::I16(_) => subset_variant!(I16),
+        AnyDataArray::I32(_) => subset_variant!(I32),
+        AnyDataArray::I64(_) => subset_variant!(I64),
+        AnyDataArray::U8(_) => subset_variant!(U8),
+        AnyDataArray::U16(_) => subset_variant!(U16),
+        AnyDataArray::U32(_) => subset_variant!(U32),
+        AnyDataArray::U64(_) => subset_variant!(U64),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,5 +342,41 @@ mod tests {
         let result = decimate(&pd, 0.0);
         assert_eq!(result.polys.num_cells(), 1);
         assert!(result.point_data().get_array("s").is_some());
+    }
+
+    #[test]
+    fn decimate_non_triangles_passes_input_through() {
+        let mut pd = PolyData::new();
+        pd.points = Points::from_vec(vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+        pd.add_scalars("s", vec![1.0, 2.0, 3.0, 4.0]);
+
+        let result = decimate(&pd, 0.5);
+
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.polys.cell(0), &[0, 1, 2, 3]);
+        assert!(result.point_data().get_array("s").is_some());
+    }
+
+    #[test]
+    fn decimate_maps_surviving_point_data() {
+        let sphere = sources::sphere::sphere(&sources::sphere::SphereParams {
+            theta_resolution: 8,
+            phi_resolution: 8,
+            ..Default::default()
+        });
+        let mut tri = crate::filters::geometry::triangulate::triangulate(&sphere);
+        let values: Vec<f64> = (0..tri.points.len()).map(|i| i as f64).collect();
+        tri.add_scalars("ids", values);
+
+        let decimated = decimate(&tri, 0.5);
+        let ids = decimated.point_data().get_array("ids").unwrap();
+
+        assert_eq!(ids.num_tuples(), decimated.points.len());
     }
 }

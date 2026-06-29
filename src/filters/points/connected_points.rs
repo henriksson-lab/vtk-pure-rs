@@ -1,71 +1,62 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, PolyData};
 use std::collections::VecDeque;
 
-/// Connected components for point clouds using epsilon-distance.
+/// Connected components for point clouds using a VTK-style radius neighborhood.
 ///
-/// Two points are connected if their Euclidean distance is less than `epsilon`.
-/// BFS flood-fill assigns each point a "ComponentId".
+/// Two points are connected if their Euclidean distance is within `radius`.
+/// A wave traversal assigns each point a "RegionLabels" value, matching
+/// vtkConnectedPointsFilter's all-regions labeling mode.
 ///
-/// Returns a PolyData with vertex cells and a "ComponentId" point data array.
-pub fn connected_points(input: &PolyData, epsilon: f64) -> PolyData {
+/// Returns a copy of the input with a "RegionLabels" point data array.
+pub fn connected_points(input: &PolyData, radius: f64) -> PolyData {
     let n = input.points.len();
     if n == 0 {
         return PolyData::new();
     }
 
-    let eps2 = epsilon * epsilon;
+    let radius2 = radius * radius;
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
-    let mut component_ids = vec![-1i32; n];
-    let mut current_component = 0i32;
+    let mut region_labels = vec![-1i64; n];
+    let mut current_region_number = 0i64;
 
     for start in 0..n {
-        if component_ids[start] >= 0 {
+        if region_labels[start] >= 0 {
             continue;
         }
 
         let mut queue = VecDeque::new();
         queue.push_back(start);
-        component_ids[start] = current_component;
+        region_labels[start] = current_region_number;
 
         while let Some(idx) = queue.pop_front() {
             let p = pts[idx];
             for j in 0..n {
-                if component_ids[j] >= 0 {
+                if region_labels[j] >= 0 {
                     continue;
                 }
                 let q = pts[j];
                 let dx = p[0] - q[0];
                 let dy = p[1] - q[1];
                 let dz = p[2] - q[2];
-                if dx * dx + dy * dy + dz * dz < eps2 {
-                    component_ids[j] = current_component;
+                if dx * dx + dy * dy + dz * dz <= radius2 {
+                    region_labels[j] = current_region_number;
                     queue.push_back(j);
                 }
             }
         }
 
-        current_component += 1;
+        current_region_number += 1;
     }
 
-    let mut out_points = Points::<f64>::new();
-    let mut out_verts = CellArray::new();
-    for i in 0..n {
-        out_points.push(pts[i]);
-        out_verts.push_cell(&[i as i64]);
-    }
-
-    let comp_f64: Vec<f64> = component_ids.iter().map(|&c| c as f64).collect();
-
-    let mut pd = PolyData::new();
-    pd.points = out_points;
-    pd.verts = out_verts;
+    let mut pd = input.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "ComponentId",
-            comp_f64,
+        .add_array(AnyDataArray::I64(DataArray::from_vec(
+            "RegionLabels",
+            region_labels,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("RegionLabels");
     pd
 }
 
@@ -85,7 +76,7 @@ mod tests {
         pd.points.push([100.5, 0.0, 0.0]);
 
         let result = connected_points(&pd, 0.6);
-        let arr = result.point_data().get_array("ComponentId").unwrap();
+        let arr = result.point_data().get_array("RegionLabels").unwrap();
         let mut buf = [0.0f64];
 
         arr.tuple_as_f64(0, &mut buf);
@@ -107,7 +98,7 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
 
         let result = connected_points(&pd, 0.6);
-        let arr = result.point_data().get_array("ComponentId").unwrap();
+        let arr = result.point_data().get_array("RegionLabels").unwrap();
         let mut buf = [0.0f64];
 
         arr.tuple_as_f64(0, &mut buf);

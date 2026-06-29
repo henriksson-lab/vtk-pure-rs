@@ -5,6 +5,7 @@
 //! normal direction or within a maximum displacement.
 
 use crate::data::{Points, PolyData};
+use std::collections::{HashMap, HashSet};
 
 /// Smooth with boundary vertices fixed (cannot move).
 pub fn smooth_constrained_boundary(mesh: &PolyData, iterations: usize, factor: f64) -> PolyData {
@@ -52,21 +53,39 @@ pub fn smooth_constrained_displacement(
     factor: f64,
     max_displacement: f64,
 ) -> PolyData {
+    smooth_constrained_distance(mesh, iterations, factor, max_displacement, 0.0)
+}
+
+/// VTK-style constrained smoothing with a spherical constraint distance.
+///
+/// This maps the core of `vtkConstrainedSmoothingFilter`: each point moves
+/// toward the average of its edge-connected stencil by `relaxation_factor`,
+/// the displacement is clamped to a sphere around the original point, and
+/// iterations stop when `convergence` is reached or `iterations` is exhausted.
+pub fn smooth_constrained_distance(
+    mesh: &PolyData,
+    iterations: usize,
+    relaxation_factor: f64,
+    constraint_distance: f64,
+    convergence: f64,
+) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || iterations == 0 {
         return mesh.clone();
     }
 
     let original: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
     let adj = build_adjacency(mesh, n);
-    let max_d2 = max_displacement * max_displacement;
+    let constraint2 = constraint_distance.max(0.0) * constraint_distance.max(0.0);
 
     let mut positions = original.clone();
 
     for _ in 0..iterations {
         let mut new_pos = positions.clone();
+        let mut max_distance2 = 0.0;
         for i in 0..n {
-            if adj[i].is_empty() {
+            if adj[i].is_empty() || constraint2 == 0.0 {
+                new_pos[i] = original[i];
                 continue;
             }
             let mut avg = [0.0; 3];
@@ -77,22 +96,26 @@ pub fn smooth_constrained_displacement(
             }
             let k = adj[i].len() as f64;
             for c in 0..3 {
-                new_pos[i][c] = positions[i][c] * (1.0 - factor) + (avg[c] / k) * factor;
+                new_pos[i][c] =
+                    positions[i][c] + relaxation_factor * (avg[c] / k - positions[i][c]);
             }
 
-            // Clamp displacement from original
             let dx = new_pos[i][0] - original[i][0];
             let dy = new_pos[i][1] - original[i][1];
             let dz = new_pos[i][2] - original[i][2];
             let d2 = dx * dx + dy * dy + dz * dz;
-            if d2 > max_d2 {
-                let scale = max_displacement / d2.sqrt();
+            if d2 > constraint2 {
+                let scale = (constraint2 / d2).sqrt();
                 for c in 0..3 {
                     new_pos[i][c] = original[i][c] + (new_pos[i][c] - original[i][c]) * scale;
                 }
             }
+            max_distance2 = f64::max(max_distance2, distance2(new_pos[i], positions[i]));
         }
         positions = new_pos;
+        if max_distance2.sqrt() <= convergence {
+            break;
+        }
     }
 
     let mut result = mesh.clone();
@@ -147,29 +170,30 @@ pub fn smooth_constrained_normal(mesh: &PolyData, iterations: usize, factor: f64
 }
 
 fn build_adjacency(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    let mut adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            adj[a].insert(b);
-            adj[b].insert(a);
-        }
+        add_closed_cell_edges(cell, n, &mut adj);
+    }
+    for cell in mesh.lines.iter() {
+        add_open_cell_edges(cell, n, &mut adj);
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 fn find_boundary_vertices(mesh: &PolyData) -> Vec<bool> {
     let n = mesh.points.len();
-    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
-        std::collections::HashMap::new();
+    let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[i], n),
+                valid_point_id(cell[(i + 1) % cell.len()], n),
+            ) {
+                *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            }
         }
     }
     let mut boundary = vec![false; n];
@@ -189,18 +213,26 @@ fn compute_vertex_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let (Some(a_id), Some(b_id), Some(c_id)) = (
+            valid_point_id(cell[0], n),
+            valid_point_id(cell[1], n),
+            valid_point_id(cell[2], n),
+        ) else {
+            continue;
+        };
+        let a = mesh.points.get(a_id);
+        let b = mesh.points.get(b_id);
+        let c = mesh.points.get(c_id);
         let fn_ = [
             (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
             (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
             (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
         ];
         for &pid in cell {
-            let idx = pid as usize;
-            for c in 0..3 {
-                normals[idx][c] += fn_[c];
+            if let Some(idx) = valid_point_id(pid, n) {
+                for c in 0..3 {
+                    normals[idx][c] += fn_[c];
+                }
             }
         }
     }
@@ -213,6 +245,46 @@ fn compute_vertex_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     normals
+}
+
+fn add_closed_cell_edges(cell: &[i64], n: usize, adj: &mut [HashSet<usize>]) {
+    if cell.len() < 2 {
+        return;
+    }
+    for i in 0..cell.len() {
+        add_edge(cell[i], cell[(i + 1) % cell.len()], n, adj);
+    }
+}
+
+fn add_open_cell_edges(cell: &[i64], n: usize, adj: &mut [HashSet<usize>]) {
+    for edge in cell.windows(2) {
+        add_edge(edge[0], edge[1], n, adj);
+    }
+}
+
+fn add_edge(a: i64, b: i64, n: usize, adj: &mut [HashSet<usize>]) {
+    let (Some(a), Some(b)) = (valid_point_id(a, n), valid_point_id(b, n)) else {
+        return;
+    };
+    if a != b {
+        adj[a].insert(b);
+        adj[b].insert(a);
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
+fn distance2(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let dx = a[0] - b[0];
+    let dy = a[1] - b[1];
+    let dz = a[2] - b[2];
+    dx * dx + dy * dy + dz * dz
 }
 
 #[cfg(test)]

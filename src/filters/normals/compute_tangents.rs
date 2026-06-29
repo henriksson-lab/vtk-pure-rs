@@ -2,84 +2,86 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute tangent vectors for a triangle mesh.
 ///
-/// Uses Lengyel's method: for each triangle, computes the tangent
-/// from texture coordinate gradients. If no texture coordinates exist,
-/// computes tangent from the first edge direction. Adds a "Tangents"
-/// 3-component point data array.
+/// Mirrors VTK's `vtkPolyDataTangents` triangle path: active texture
+/// coordinates are required, polygonal cells must already be triangles, and
+/// the output receives an active 3-component point-data "Tangents" array.
 pub fn compute_tangents(input: &PolyData) -> PolyData {
-    let n = input.points.len();
-    if n == 0 {
+    let num_pts = input.points.len();
+    if num_pts == 0 {
+        return input.clone();
+    }
+    if input.lines.num_cells() > 0 || input.strips.num_cells() > 0 {
+        return input.clone();
+    }
+    if input.polys.iter().any(|cell| cell.len() != 3) {
         return input.clone();
     }
 
-    let mut tangents = vec![[0.0f64; 3]; n];
+    let Some(tcoords) = input.point_data().tcoords() else {
+        return input.clone();
+    };
 
-    let has_tcoords = input.point_data().get_array("TCoords").is_some();
+    let mut tangents = vec![[0.0f64; 3]; num_pts];
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
+        let v1 = input.points.get(cell[0] as usize);
+        let v2 = input.points.get(cell[1] as usize);
+        let v3 = input.points.get(cell[2] as usize);
 
-        let v0 = input.points.get(cell[0] as usize);
-        let v1 = input.points.get(cell[1] as usize);
-        let v2 = input.points.get(cell[2] as usize);
+        let ax = v3[0] - v2[0];
+        let ay = v3[1] - v2[1];
+        let az = v3[2] - v2[2];
+        let bx = v1[0] - v2[0];
+        let by = v1[1] - v2[1];
+        let bz = v1[2] - v2[2];
 
-        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let mut uv1 = [0.0f64; 2];
+        tcoords.tuple_as_f64(cell[0] as usize, &mut uv1);
+        let mut uv2 = [0.0f64; 2];
+        tcoords.tuple_as_f64(cell[1] as usize, &mut uv2);
+        let mut uv3 = [0.0f64; 2];
+        tcoords.tuple_as_f64(cell[2] as usize, &mut uv3);
 
-        let t = if has_tcoords {
-            let tc = input.point_data().get_array("TCoords").unwrap();
-            let mut uv0 = [0.0f64; 2];
-            tc.tuple_as_f64(cell[0] as usize, &mut uv0);
-            let mut uv1 = [0.0f64; 2];
-            tc.tuple_as_f64(cell[1] as usize, &mut uv1);
-            let mut uv2 = [0.0f64; 2];
-            tc.tuple_as_f64(cell[2] as usize, &mut uv2);
+        let duv1_x = uv3[0] - uv2[0];
+        let duv1_y = uv3[1] - uv2[1];
+        let duv2_x = uv1[0] - uv2[0];
+        let duv2_y = uv1[1] - uv2[1];
 
-            let du1 = uv1[0] - uv0[0];
-            let dv1 = uv1[1] - uv0[1];
-            let du2 = uv2[0] - uv0[0];
-            let dv2 = uv2[1] - uv0[1];
-            let det = du1 * dv2 - du2 * dv1;
+        let f = 1.0 / (duv1_x * duv2_y - duv2_x * duv1_y);
+        let tangent = [
+            f * (duv2_y * ax - duv1_y * bx),
+            f * (duv2_y * ay - duv1_y * by),
+            f * (duv2_y * az - duv1_y * bz),
+        ];
 
-            if det.abs() > 1e-15 {
-                let inv = 1.0 / det;
-                [
-                    inv * (dv2 * e1[0] - dv1 * e2[0]),
-                    inv * (dv2 * e1[1] - dv1 * e2[1]),
-                    inv * (dv2 * e1[2] - dv1 * e2[2]),
-                ]
-            } else {
-                e1
-            }
-        } else {
-            e1
-        };
-
-        for &id in cell.iter() {
+        for &id in cell {
             let idx = id as usize;
-            tangents[idx][0] += t[0];
-            tangents[idx][1] += t[1];
-            tangents[idx][2] += t[2];
+            tangents[idx][0] += tangent[0];
+            tangents[idx][1] += tangent[1];
+            tangents[idx][2] += tangent[2];
         }
     }
 
-    // Normalize
-    for t in &mut tangents {
-        let len = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
-        if len > 1e-15 {
-            t[0] /= len;
-            t[1] /= len;
-            t[2] /= len;
+    for tangent in &mut tangents {
+        let len =
+            (tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2]).sqrt();
+        if len != 0.0 {
+            tangent[0] /= len;
+            tangent[1] /= len;
+            tangent[2] /= len;
         }
     }
 
-    let flat: Vec<f64> = tangents.iter().flat_map(|t| t.iter().copied()).collect();
-    let mut pd = input.clone();
-    pd.point_data_mut()
+    let flat: Vec<f64> = tangents
+        .iter()
+        .flat_map(|tangent| tangent.iter().copied())
+        .collect();
+    let mut output = input.clone();
+    output
+        .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("Tangents", flat, 3)));
-    pd
+    output.point_data_mut().set_active_tangents("Tangents");
+    output
 }
 
 #[cfg(test)]
@@ -88,31 +90,21 @@ mod tests {
 
     #[test]
     fn basic_tangents() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.0, 1.0, 0.0]);
-        pd.polys.push_cell(&[0, 1, 2]);
+        let pd = triangle_with_tcoords();
 
         let result = compute_tangents(&pd);
-        assert!(result.point_data().get_array("Tangents").is_some());
-        let arr = result.point_data().get_array("Tangents").unwrap();
+        let arr = result.point_data().tangents().unwrap();
         assert_eq!(arr.num_components(), 3);
     }
 
     #[test]
     fn tangent_direction() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.0, 1.0, 0.0]);
-        pd.polys.push_cell(&[0, 1, 2]);
+        let pd = triangle_with_tcoords();
 
         let result = compute_tangents(&pd);
-        let arr = result.point_data().get_array("Tangents").unwrap();
+        let arr = result.point_data().tangents().unwrap();
         let mut buf = [0.0f64; 3];
         arr.tuple_as_f64(0, &mut buf);
-        // Tangent should be along edge 0->1 = +X
         assert!(buf[0] > 0.5);
     }
 
@@ -121,5 +113,33 @@ mod tests {
         let pd = PolyData::new();
         let result = compute_tangents(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn no_tcoords_passes_through() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let result = compute_tangents(&pd);
+        assert!(result.point_data().tangents().is_none());
+    }
+
+    fn triangle_with_tcoords() -> PolyData {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "TCoords",
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                2,
+            )));
+        pd.point_data_mut().set_active_tcoords("TCoords");
+        pd
     }
 }

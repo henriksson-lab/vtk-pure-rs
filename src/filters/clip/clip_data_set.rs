@@ -5,7 +5,7 @@ use crate::types::CellType;
 
 /// Clip an UnstructuredGrid by a plane defined by a point and normal.
 ///
-/// Keeps cells in the half-space where `dot(p - origin, normal) >= 0`.
+/// Keeps cells in the half-space where `dot(p - origin, normal) > 0`.
 /// Linear line and surface cells that cross the plane are split.
 pub fn clip_data_set(
     input: &UnstructuredGrid,
@@ -35,7 +35,7 @@ pub fn clip_data_set(
         let ct = input.cell_type(ci);
 
         // Keep intact cells directly, like vtkClipDataSet does before invoking cell clipping.
-        let all_inside = pts.iter().all(|&id| dists[id as usize] >= 0.0);
+        let all_inside = pts.iter().all(|&id| dists[id as usize] > 0.0);
         if all_inside {
             let remapped =
                 remap_existing_points(pts, &mut point_map, &input.points, &mut out_points);
@@ -43,7 +43,7 @@ pub fn clip_data_set(
             continue;
         }
 
-        let any_inside = pts.iter().any(|&id| dists[id as usize] >= 0.0);
+        let any_inside = pts.iter().any(|&id| dists[id as usize] > 0.0);
         if !any_inside {
             continue;
         }
@@ -155,12 +155,12 @@ fn clip_linear_cell(
         let di = dists[ids[i] as usize];
         let dj = dists[ids[j] as usize];
 
-        if di >= 0.0 {
+        if di > 0.0 {
             let mapped = remap_existing_points(&[ids[i]], point_map, &input.points, out_points);
             result.push(mapped[0]);
         }
 
-        if (di >= 0.0) != (dj >= 0.0) {
+        if (di > 0.0) != (dj > 0.0) {
             result.push(get_or_insert_intersection(
                 ids[i],
                 ids[j],
@@ -189,8 +189,8 @@ fn clip_line_cell(
 
     let d0 = dists[ids[0] as usize];
     let d1 = dists[ids[1] as usize];
-    let in0 = d0 >= 0.0;
-    let in1 = d1 >= 0.0;
+    let in0 = d0 > 0.0;
+    let in1 = d1 > 0.0;
     if in0 && in1 {
         return remap_existing_points(ids, point_map, &input.points, out_points);
     }

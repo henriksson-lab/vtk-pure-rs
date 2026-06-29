@@ -9,6 +9,9 @@ pub fn tile_image(image: &ImageData, array_name: &str, nx: usize, ny: usize) -> 
         _ => return image.clone(),
     };
     let dims = image.dimensions();
+    if dims.contains(&0) || nx == 0 || ny == 0 {
+        return image.clone();
+    }
     let sp = image.spacing();
     let new_dims = [dims[0] * nx, dims[1] * ny, dims[2]];
     let mut buf = [0.0f64];
@@ -50,6 +53,9 @@ pub fn mirror_tile(image: &ImageData, array_name: &str) -> ImageData {
         _ => return image.clone(),
     };
     let dims = image.dimensions();
+    if dims.contains(&0) {
+        return image.clone();
+    }
     let sp = image.spacing();
     let new_dims = [dims[0] * 2, dims[1] * 2, dims[2]];
     let mut buf = [0.0f64];
@@ -104,6 +110,9 @@ pub fn stitch_x(a: &ImageData, b: &ImageData, array_name: &str) -> ImageData {
     };
     let ad = a.dimensions();
     let bd = b.dimensions();
+    if ad.contains(&0) || bd.contains(&0) {
+        return a.clone();
+    }
     if ad[1] != bd[1] || ad[2] != bd[2] {
         return a.clone();
     }

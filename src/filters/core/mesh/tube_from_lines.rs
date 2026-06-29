@@ -16,6 +16,9 @@ pub fn tube_from_lines(mesh: &PolyData, radius: f64, sides: usize) -> PolyData {
             .iter()
             .map(|&id| mesh.points.get(id as usize))
             .collect();
+        if has_coincident_segment(&line_pts) {
+            continue;
+        }
         let seg_count = line_pts.len() - 1;
         let ring_start = pts.len();
 
@@ -65,6 +68,10 @@ pub fn tube_from_lines(mesh: &PolyData, radius: f64, sides: usize) -> PolyData {
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn has_coincident_segment(points: &[[f64; 3]]) -> bool {
+    points.windows(2).any(|pair| pair[0] == pair[1])
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
@@ -119,5 +126,18 @@ mod tests {
         assert_eq!(result.points.len(), 6);
         assert_eq!(result.strips.num_cells(), 3);
         assert!(result.strips.iter().all(|strip| strip.len() == 4));
+    }
+
+    #[test]
+    fn skips_line_with_consecutive_duplicate_points() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.lines.push_cell(&[0, 1, 2]);
+
+        let result = tube_from_lines(&mesh, 0.1, 8);
+        assert_eq!(result.points.len(), 0);
+        assert_eq!(result.strips.num_cells(), 0);
     }
 }

@@ -1,21 +1,20 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, Points, PolyData};
 use std::collections::VecDeque;
 
-/// DBSCAN-like Euclidean clustering for point clouds.
+/// VTK-style Euclidean clustering for point clouds.
 ///
-/// For each unvisited point, finds all points within `epsilon` distance.
-/// If the neighbor count is >= `min_points`, a cluster is formed and grown
-/// by expanding each neighbor's neighborhood.
+/// Clusters are connected components under a local radius neighborhood, matching
+/// vtkEuclideanClusterExtraction's wave propagation. The `min_points` argument
+/// is retained for API compatibility and is not part of VTK's cluster test.
 ///
-/// Returns a PolyData with vertex cells and a "ClusterId" point data array.
-/// Points not assigned to any cluster get ClusterId = -1.
-pub fn euclidean_cluster(input: &PolyData, epsilon: f64, min_points: usize) -> PolyData {
+/// Returns a PolyData with points and a "ClusterId" point data array.
+pub fn euclidean_cluster(input: &PolyData, radius: f64, _min_points: usize) -> PolyData {
     let n = input.points.len();
     if n == 0 {
         return PolyData::new();
     }
 
-    let eps2 = epsilon * epsilon;
+    let radius2 = radius * radius;
     let mut cluster_ids = vec![-1i32; n];
     let mut visited = vec![false; n];
     let mut current_cluster = 0i32;
@@ -27,32 +26,18 @@ pub fn euclidean_cluster(input: &PolyData, epsilon: f64, min_points: usize) -> P
         if visited[i] {
             continue;
         }
-        visited[i] = true;
-
-        let neighbors = range_query(&pts, i, eps2);
-        if neighbors.len() < min_points {
-            continue; // Noise point
-        }
-
-        // Start a new cluster
-        cluster_ids[i] = current_cluster;
         let mut queue = VecDeque::new();
-        for &nb in &neighbors {
-            queue.push_back(nb);
-        }
+        visited[i] = true;
+        queue.push_back(i);
 
         while let Some(qi) = queue.pop_front() {
-            if !visited[qi] {
-                visited[qi] = true;
-                let nb2 = range_query(&pts, qi, eps2);
-                if nb2.len() >= min_points {
-                    for &nb in &nb2 {
-                        queue.push_back(nb);
-                    }
+            cluster_ids[qi] = current_cluster;
+
+            for nb in range_query(&pts, qi, radius2) {
+                if !visited[nb] {
+                    visited[nb] = true;
+                    queue.push_back(nb);
                 }
-            }
-            if cluster_ids[qi] < 0 {
-                cluster_ids[qi] = current_cluster;
             }
         }
 
@@ -61,23 +46,24 @@ pub fn euclidean_cluster(input: &PolyData, epsilon: f64, min_points: usize) -> P
 
     // Build output
     let mut out_points = Points::<f64>::new();
-    let mut out_verts = CellArray::new();
     for i in 0..n {
         out_points.push(pts[i]);
-        out_verts.push_cell(&[i as i64]);
     }
 
     let cluster_f64: Vec<f64> = cluster_ids.iter().map(|&c| c as f64).collect();
 
     let mut pd = PolyData::new();
     pd.points = out_points;
-    pd.verts = out_verts;
+    for array in input.point_data().iter().cloned() {
+        pd.point_data_mut().add_array(array);
+    }
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "ClusterId",
             cluster_f64,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("ClusterId");
     pd
 }
 
@@ -126,7 +112,7 @@ mod tests {
     }
 
     #[test]
-    fn noise_points() {
+    fn isolated_points_are_singleton_clusters() {
         let mut pd = PolyData::new();
         // Isolated points far apart
         pd.points.push([0.0, 0.0, 0.0]);
@@ -137,10 +123,9 @@ mod tests {
         let arr = result.point_data().get_array("ClusterId").unwrap();
         let mut buf = [0.0f64];
 
-        // All should be noise (-1)
         for i in 0..3 {
             arr.tuple_as_f64(i, &mut buf);
-            assert_eq!(buf[0], -1.0);
+            assert_eq!(buf[0], i as f64);
         }
     }
 

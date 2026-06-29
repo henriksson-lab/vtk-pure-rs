@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::data::{CellArray, Points, PolyData};
 use crate::types::ImplicitFunction;
 
@@ -17,30 +19,30 @@ pub fn clip_with_implicit(input: &PolyData, func: &dyn ImplicitFunction) -> Poly
 
     let mut points = input.points.clone();
     let mut polys = CellArray::new();
+    let mut edge_locator = HashMap::new();
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
             continue;
         }
 
-        for ti in 1..cell.len() - 1 {
-            let ids = [cell[0], cell[ti], cell[ti + 1]];
-            let scalars = [
-                values[ids[0] as usize],
-                values[ids[1] as usize],
-                values[ids[2] as usize],
-            ];
-            let all_inside = scalars.iter().all(|&s| s > 0.0);
-            let all_outside = scalars.iter().all(|&s| s <= 0.0);
+        let scalars: Vec<f64> = cell.iter().map(|&id| values[id as usize]).collect();
+        let all_inside = scalars.iter().all(|&s| s > 0.0);
+        let all_outside = scalars.iter().all(|&s| s <= 0.0);
 
-            if all_inside {
-                polys.push_cell(&ids);
-            } else if !all_outside {
-                let clipped = clip_triangle(&ids, &scalars, &input.points, &mut points);
-                if clipped.len() >= 3 {
-                    for i in 1..clipped.len() - 1 {
-                        polys.push_cell(&[clipped[0], clipped[i], clipped[i + 1]]);
-                    }
+        if all_inside {
+            polys.push_cell(cell);
+        } else if !all_outside {
+            let clipped = clip_polygon(
+                cell,
+                &scalars,
+                &input.points,
+                &mut points,
+                &mut edge_locator,
+            );
+            if clipped.len() >= 3 {
+                for i in 1..clipped.len() - 1 {
+                    polys.push_cell(&[clipped[0], clipped[i], clipped[i + 1]]);
                 }
             }
         }
@@ -49,16 +51,17 @@ pub fn clip_with_implicit(input: &PolyData, func: &dyn ImplicitFunction) -> Poly
     compact_poly_data(points, polys)
 }
 
-fn clip_triangle(
-    ids: &[i64; 3],
-    scalars: &[f64; 3],
+fn clip_polygon(
+    ids: &[i64],
+    scalars: &[f64],
     input_points: &Points<f64>,
     points: &mut Points<f64>,
+    edge_locator: &mut HashMap<(i64, i64), i64>,
 ) -> Vec<i64> {
     let mut result = Vec::new();
 
-    for i in 0..3 {
-        let j = (i + 1) % 3;
+    for i in 0..ids.len() {
+        let j = (i + 1) % ids.len();
         let si = scalars[i];
         let sj = scalars[j];
 
@@ -69,16 +72,27 @@ fn clip_triangle(
         if (si > 0.0) != (sj > 0.0) {
             let ds = sj - si;
             if ds.abs() > 1e-15 {
-                let t = (-si / ds).clamp(0.0, 1.0);
-                let pi = input_points.get(ids[i] as usize);
-                let pj = input_points.get(ids[j] as usize);
-                let p = [
-                    pi[0] + t * (pj[0] - pi[0]),
-                    pi[1] + t * (pj[1] - pi[1]),
-                    pi[2] + t * (pj[2] - pi[2]),
-                ];
-                let id = points.len() as i64;
-                points.push(p);
+                let edge_key = if ids[i] < ids[j] {
+                    (ids[i], ids[j])
+                } else {
+                    (ids[j], ids[i])
+                };
+                let id = if let Some(&id) = edge_locator.get(&edge_key) {
+                    id
+                } else {
+                    let t = (-si / ds).clamp(0.0, 1.0);
+                    let pi = input_points.get(ids[i] as usize);
+                    let pj = input_points.get(ids[j] as usize);
+                    let p = [
+                        pi[0] + t * (pj[0] - pi[0]),
+                        pi[1] + t * (pj[1] - pi[1]),
+                        pi[2] + t * (pj[2] - pi[2]),
+                    ];
+                    let id = points.len() as i64;
+                    points.push(p);
+                    edge_locator.insert(edge_key, id);
+                    id
+                };
                 result.push(id);
             }
         }

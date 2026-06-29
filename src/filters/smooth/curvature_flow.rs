@@ -1,4 +1,5 @@
 use crate::data::{Points, PolyData};
+use std::collections::HashSet;
 
 /// Mean curvature flow smoothing.
 ///
@@ -11,19 +12,7 @@ pub fn curvature_flow(input: &PolyData, dt: f64, iterations: usize) -> PolyData 
         return input.clone();
     }
 
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
+    let neighbors = build_adjacency(input, n);
 
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
@@ -60,6 +49,53 @@ pub fn curvature_flow(input: &PolyData, dt: f64, iterations: usize) -> PolyData 
     let mut pd = input.clone();
     pd.points = points;
     pd
+}
+
+fn build_adjacency(input: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    for cell in input.polys.iter() {
+        add_closed_cell_edges(cell, n, &mut neighbors);
+    }
+    for cell in input.lines.iter() {
+        add_open_cell_edges(cell, n, &mut neighbors);
+    }
+    neighbors
+        .into_iter()
+        .map(|s| s.into_iter().collect())
+        .collect()
+}
+
+fn add_closed_cell_edges(cell: &[i64], n: usize, neighbors: &mut [HashSet<usize>]) {
+    if cell.len() < 2 {
+        return;
+    }
+    for i in 0..cell.len() {
+        add_edge(cell[i], cell[(i + 1) % cell.len()], n, neighbors);
+    }
+}
+
+fn add_open_cell_edges(cell: &[i64], n: usize, neighbors: &mut [HashSet<usize>]) {
+    for edge in cell.windows(2) {
+        add_edge(edge[0], edge[1], n, neighbors);
+    }
+}
+
+fn add_edge(a: i64, b: i64, n: usize, neighbors: &mut [HashSet<usize>]) {
+    let (Some(a), Some(b)) = (valid_point_id(a, n), valid_point_id(b, n)) else {
+        return;
+    };
+    if a != b {
+        neighbors[a].insert(b);
+        neighbors[b].insert(a);
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

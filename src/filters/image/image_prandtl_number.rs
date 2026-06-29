@@ -13,11 +13,11 @@ pub fn image_prandtl_number(input: &ImageData, scalars: &str) -> ImageData {
             1e-3 * 1000.0 / 0.6
         })
         .collect();
-    let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
-        .with_spacing(input.spacing())
-        .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+    let mut output = input.clone();
+    output
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output
 }
 #[cfg(test)]
 mod tests {

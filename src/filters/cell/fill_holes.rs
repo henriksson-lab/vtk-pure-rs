@@ -21,6 +21,7 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
     // Sorted-edge approach: collect all directed edges, sort, find boundary edges.
     // Boundary = edges appearing exactly once when canonicalized (a < b).
     // ~3x faster than HashMap for large meshes.
+    let np = input.points.len();
     let total_edges = conn.len(); // each connectivity entry contributes one edge
     let mut edges: Vec<(u64, i64, i64)> = Vec::with_capacity(total_edges); // (canonical_key, a, b)
 
@@ -34,6 +35,9 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
         for i in 0..n {
             let a = conn[start + i];
             let b = conn[start + if i + 1 < n { i + 1 } else { 0 }];
+            if a < 0 || b < 0 || a as usize >= np || b as usize >= np || a == b {
+                continue;
+            }
             let key = if a < b {
                 (a as u64) << 32 | b as u64
             } else {
@@ -44,9 +48,8 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
     }
     edges.sort_unstable_by_key(|e| e.0);
 
-    // Find boundary edges (canonical key appears exactly once)
-    let np = input.points.len();
-    let mut boundary_out: Vec<Vec<i64>> = vec![Vec::new(); np];
+    // Find boundary edges (canonical key appears exactly once).
+    let mut boundary_edges: Vec<(usize, usize)> = Vec::new();
     let mut has_boundary = false;
     let ne = edges.len();
     let mut i = 0;
@@ -60,10 +63,8 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
         }
         if count == 1 {
             let (_, a, b) = edges[start_i];
-            if a >= 0 && b >= 0 {
-                boundary_out[a as usize].push(b);
-                has_boundary = true;
-            }
+            boundary_edges.push((a as usize, b as usize));
+            has_boundary = true;
         }
     }
 
@@ -71,31 +72,48 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
         return input.clone();
     }
 
-    // Trace loops
-    let mut visited = vec![false; np];
+    // VTK stores free edges as line cells, builds links, and walks from one
+    // line to the single neighboring line at the current endpoint. Use
+    // undirected edge adjacency here so reversed boundary-edge orientation
+    // does not falsely invalidate a valid loop.
+    let mut edge_ids_by_vertex: Vec<Vec<usize>> = vec![Vec::new(); np];
+    for (edge_id, &(a, b)) in boundary_edges.iter().enumerate() {
+        edge_ids_by_vertex[a].push(edge_id);
+        edge_ids_by_vertex[b].push(edge_id);
+    }
+
+    let mut visited = vec![false; boundary_edges.len()];
     let mut loops: Vec<Vec<i64>> = Vec::new();
 
-    for start_v in 0..np {
-        if boundary_out[start_v].is_empty() || visited[start_v] {
+    for (start_edge, &(start_v, next_v)) in boundary_edges.iter().enumerate() {
+        if visited[start_edge] {
             continue;
         }
-        let mut loop_pts = Vec::new();
-        let mut current = start_v;
+        let mut loop_pts = vec![start_v as i64];
+        let mut current = next_v;
+        let mut current_edge = start_edge;
         let mut valid = true;
         loop {
-            if visited[current] {
+            visited[current_edge] = true;
+            if current == start_v {
                 break;
             }
-            visited[current] = true;
             loop_pts.push(current as i64);
-            if boundary_out[current].len() != 1 {
+
+            let unvisited: Vec<usize> = edge_ids_by_vertex[current]
+                .iter()
+                .copied()
+                .filter(|&edge_id| !visited[edge_id])
+                .collect();
+            if unvisited.len() != 1 {
                 valid = false;
                 break;
             }
-            let nxt = boundary_out[current][0];
-            current = nxt as usize;
+            current_edge = unvisited[0];
+            let (a, b) = boundary_edges[current_edge];
+            current = if a == current { b } else { a };
         }
-        if valid && loop_pts.len() >= 3 && current == start_v {
+        if valid && loop_pts.len() >= 3 {
             loops.push(loop_pts);
         }
     }
@@ -116,27 +134,33 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
 }
 
 fn loop_bounding_sphere_radius(input: &PolyData, loop_pts: &[i64]) -> f64 {
-    let mut center = [0.0; 3];
-    for &pid in loop_pts {
-        let p = input.points.get(pid as usize);
-        center[0] += p[0];
-        center[1] += p[1];
-        center[2] += p[2];
+    if loop_pts.is_empty() {
+        return 0.0;
     }
-    let inv_n = 1.0 / loop_pts.len() as f64;
-    center[0] *= inv_n;
-    center[1] *= inv_n;
-    center[2] *= inv_n;
 
-    let mut radius2: f64 = 0.0;
-    for &pid in loop_pts {
+    // vtkFillHolesFilter calls vtkSphere::ComputeBoundingSphere with hints
+    // initialized to [0, 0], so the sphere starts at the first loop point and
+    // grows in a single pass to include subsequent points.
+    let first = input.points.get(loop_pts[0] as usize);
+    let mut sphere = [first[0], first[1], first[2], 0.0f64];
+    let mut radius2 = 0.0f64;
+    for &pid in &loop_pts[1..] {
         let p = input.points.get(pid as usize);
-        let dx = p[0] - center[0];
-        let dy = p[1] - center[1];
-        let dz = p[2] - center[2];
-        radius2 = radius2.max(dx * dx + dy * dy + dz * dz);
+        let dx = p[0] - sphere[0];
+        let dy = p[1] - sphere[1];
+        let dz = p[2] - sphere[2];
+        let dist2 = dx * dx + dy * dy + dz * dz;
+        if dist2 > radius2 {
+            let dist = dist2.sqrt();
+            sphere[3] = (sphere[3] + dist) / 2.0;
+            radius2 = sphere[3] * sphere[3];
+            let delta = dist - sphere[3];
+            sphere[0] = (sphere[3] * sphere[0] + delta * p[0]) / dist;
+            sphere[1] = (sphere[3] * sphere[1] + delta * p[1]) / dist;
+            sphere[2] = (sphere[3] * sphere[2] + delta * p[2]) / dist;
+        }
     }
-    radius2.sqrt()
+    sphere[3]
 }
 
 fn polys_with_decomposed_strips(input: &PolyData) -> CellArray {

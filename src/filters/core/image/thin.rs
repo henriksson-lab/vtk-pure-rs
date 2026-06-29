@@ -12,15 +12,23 @@ pub fn image_thin(input: &ImageData, scalars: &str, threshold: f64) -> ImageData
     };
 
     let dims = input.dimensions();
-    let nx = dims[0] as usize;
-    let ny = dims[1] as usize;
-    let n = nx * ny;
+    let nx = dims[0];
+    let ny = dims[1];
+    let nz = dims[2];
+    let n = nx * ny * nz;
+    if n == 0 || arr.num_tuples() < n {
+        return input.clone();
+    }
     if nx < 3 || ny < 3 {
         let mut buf = [0.0f64];
         let skeleton: Vec<f64> = (0..n)
             .map(|i| {
                 arr.tuple_as_f64(i, &mut buf);
-                if buf[0] >= threshold { 1.0 } else { 0.0 }
+                if buf[0] >= threshold {
+                    1.0
+                } else {
+                    0.0
+                }
             })
             .collect();
         let mut out = input.clone();
@@ -32,83 +40,150 @@ pub fn image_thin(input: &ImageData, scalars: &str, threshold: f64) -> ImageData
     }
 
     let mut buf = [0.0f64];
-    let mut img: Vec<bool> = (0..n)
+    let mut img: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] >= threshold
+            if buf[0] >= threshold {
+                2.0
+            } else {
+                0.0
+            }
         })
         .collect();
 
-    // Zhang-Suen thinning (simplified)
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for pass in 0..2 {
-            let mut to_remove = vec![false; n];
-            for j in 1..ny - 1 {
-                for i in 1..nx - 1 {
-                    if !img[j * nx + i] {
-                        continue;
-                    }
-                    // 8-neighbors
-                    let p2 = img[(j - 1) * nx + i] as u8;
-                    let p3 = img[(j - 1) * nx + i + 1] as u8;
-                    let p4 = img[j * nx + i + 1] as u8;
-                    let p5 = img[(j + 1) * nx + i + 1] as u8;
-                    let p6 = img[(j + 1) * nx + i] as u8;
-                    let p7 = img[(j + 1) * nx + i - 1] as u8;
-                    let p8 = img[j * nx + i - 1] as u8;
-                    let p9 = img[(j - 1) * nx + i - 1] as u8;
+    while vtk_skeleton_2d_pass(&mut img, nx, ny, nz, 0) {}
 
-                    let b = p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9;
-                    if b < 2 || b > 6 {
-                        continue;
-                    }
-
-                    // Count 0->1 transitions
-                    let seq = [p2, p3, p4, p5, p6, p7, p8, p9, p2];
-                    let a: u8 = (0..8)
-                        .map(|k| if seq[k] == 0 && seq[k + 1] == 1 { 1 } else { 0 })
-                        .sum();
-                    if a != 1 {
-                        continue;
-                    }
-
-                    if pass == 0 {
-                        if p2 * p4 * p6 != 0 {
-                            continue;
-                        }
-                        if p4 * p6 * p8 != 0 {
-                            continue;
-                        }
-                    } else {
-                        if p2 * p4 * p8 != 0 {
-                            continue;
-                        }
-                        if p2 * p6 * p8 != 0 {
-                            continue;
-                        }
-                    }
-                    to_remove[j * nx + i] = true;
-                }
-            }
-
-            for k in 0..n {
-                if to_remove[k] {
-                    img[k] = false;
-                    changed = true;
-                }
-            }
-        }
-    }
-
-    let skeleton: Vec<f64> = img.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect();
+    let skeleton: Vec<f64> = img
+        .iter()
+        .map(|&v| if v > 1.0 { 1.0 } else { 0.0 })
+        .collect();
     let mut out = input.clone();
     out.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Skeleton", skeleton, 1,
         )));
     out
+}
+
+fn vtk_skeleton_2d_pass(grid: &mut [f64], nx: usize, ny: usize, nz: usize, prune: i32) -> bool {
+    let mut changed = false;
+
+    for z in 0..nz {
+        let slice = z * nx * ny;
+        for y in 0..ny {
+            for x in 0..nx {
+                let idx = slice + y * nx + x;
+                if grid[idx] == 0.0 {
+                    continue;
+                }
+
+                let n = [
+                    neighbor(grid, nx, ny, slice, x, y, -1, 0),
+                    neighbor(grid, nx, ny, slice, x, y, -1, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 0, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 1, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 1, 0),
+                    neighbor(grid, nx, ny, slice, x, y, 1, 1),
+                    neighbor(grid, nx, ny, slice, x, y, 0, 1),
+                    neighbor(grid, nx, ny, slice, x, y, -1, 1),
+                ];
+
+                if vtk_skeleton_erodes(n, prune) {
+                    grid[idx] = 1.0;
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    for value in grid {
+        if *value <= 1.0 {
+            *value = 0.0;
+        }
+    }
+
+    changed
+}
+
+fn neighbor(
+    grid: &[f64],
+    nx: usize,
+    ny: usize,
+    slice: usize,
+    x: usize,
+    y: usize,
+    dx: isize,
+    dy: isize,
+) -> f64 {
+    let Some(xx) = x.checked_add_signed(dx) else {
+        return 0.0;
+    };
+    let Some(yy) = y.checked_add_signed(dy) else {
+        return 0.0;
+    };
+    if xx >= nx || yy >= ny {
+        0.0
+    } else {
+        grid[slice + yy * nx + xx]
+    }
+}
+
+fn vtk_skeleton_erodes(n: [f64; 8], prune: i32) -> bool {
+    let mut erode_case = 0;
+    for idx in (0..8).rev() {
+        if n[idx] > 0.0 {
+            erode_case += 1;
+        }
+        if idx != 0 {
+            erode_case *= 2;
+        }
+    }
+
+    if erode_case == 54 || erode_case == 216 {
+        return true;
+    }
+    if erode_case == 99 || erode_case == 141 {
+        return false;
+    }
+
+    let count_faces =
+        (n[0] > 0.0) as i32 + (n[2] > 0.0) as i32 + (n[4] > 0.0) as i32 + (n[6] > 0.0) as i32;
+    let count_corners =
+        (n[1] > 0.0) as i32 + (n[3] > 0.0) as i32 + (n[5] > 0.0) as i32 + (n[7] > 0.0) as i32;
+
+    if count_faces == 2 && count_corners == 0 && n[2] > 0.0 && n[4] > 0.0 {
+        return true;
+    }
+    if prune > 1 && count_faces + count_corners <= 1 {
+        return true;
+    }
+
+    (n[0] == 0.0 || n[2] == 0.0 || n[4] == 0.0 || n[6] == 0.0)
+        && (prune > 1
+            || count_faces != 1
+            || count_corners != 2
+            || ((n[1] == 0.0 || n[2] == 0.0 || n[3] == 0.0)
+                && (n[3] == 0.0 || n[4] == 0.0 || n[5] == 0.0)
+                && (n[5] == 0.0 || n[6] == 0.0 || n[7] == 0.0)
+                && (n[7] == 0.0 || n[0] == 0.0 || n[1] == 0.0)))
+        && (prune != 0
+            || count_faces != 2
+            || count_corners != 2
+            || ((n[1] == 0.0 || n[2] == 0.0 || n[3] == 0.0 || n[4] != 0.0)
+                && (n[0] == 0.0 || n[1] == 0.0 || n[2] == 0.0 || n[3] != 0.0)
+                && (n[7] == 0.0 || n[0] == 0.0 || n[1] == 0.0 || n[2] != 0.0)
+                && (n[6] == 0.0 || n[7] == 0.0 || n[0] == 0.0 || n[1] != 0.0)
+                && (n[5] == 0.0 || n[6] == 0.0 || n[7] == 0.0 || n[0] != 0.0)
+                && (n[4] == 0.0 || n[5] == 0.0 || n[6] == 0.0 || n[7] != 0.0)
+                && (n[3] == 0.0 || n[4] == 0.0 || n[5] == 0.0 || n[6] != 0.0)
+                && (n[2] == 0.0 || n[3] == 0.0 || n[4] == 0.0 || n[5] != 0.0)))
+        && (n[1] == 0.0 || n[0] > 1.0 || n[2] > 1.0)
+        && (n[3] == 0.0 || n[2] > 1.0 || n[4] > 1.0)
+        && (n[5] == 0.0 || n[4] > 1.0 || n[6] > 1.0)
+        && (n[7] == 0.0 || n[6] > 1.0 || n[0] > 1.0)
+        && (n[0] == 0.0 || n[4] == 0.0 || n[2] > 1.0 || n[6] > 1.0)
+        && (n[2] == 0.0 || n[6] == 0.0 || n[0] > 1.0 || n[4] > 1.0)
+        && (prune > 1 || count_faces > 2 || (count_faces == 2 && count_corners > 1))
 }
 
 #[cfg(test)]

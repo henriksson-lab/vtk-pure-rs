@@ -1,13 +1,13 @@
 use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 use std::cmp::Ordering;
 
-/// Sort faces by depth (distance from a viewpoint).
+/// Sort faces by depth along a specified vector.
 ///
-/// Reorders cells so that faces farther from the viewpoint come first.
-/// Useful for transparency rendering (painter's algorithm).
-pub fn depth_sort(input: &PolyData, viewpoint: [f64; 3]) -> PolyData {
+/// Reorders cells so that faces farther along the vector come first,
+/// matching vtkDepthSortPolyData's specified-vector back-to-front mode.
+pub fn depth_sort(input: &PolyData, vector: [f64; 3]) -> PolyData {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
-    let mut indexed = indexed_depths(input, &cells, viewpoint);
+    let mut indexed = indexed_depths(input, &cells, vector);
 
     // Sort far to near (for back-to-front rendering).
     indexed.sort_by(|a, b| compare_depth_desc(a.0, b.0).then_with(|| a.1.cmp(&b.1)));
@@ -16,49 +16,32 @@ pub fn depth_sort(input: &PolyData, viewpoint: [f64; 3]) -> PolyData {
 }
 
 /// Sort faces front-to-back (for occlusion culling).
-pub fn depth_sort_front_to_back(input: &PolyData, viewpoint: [f64; 3]) -> PolyData {
+pub fn depth_sort_front_to_back(input: &PolyData, vector: [f64; 3]) -> PolyData {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
-    let mut indexed = indexed_depths(input, &cells, viewpoint);
+    let mut indexed = indexed_depths(input, &cells, vector);
 
     indexed.sort_by(|a, b| compare_depth_asc(a.0, b.0).then_with(|| a.1.cmp(&b.1)));
 
     rebuild_sorted_poly_data(input, &cells, &indexed, false)
 }
 
-fn indexed_depths(input: &PolyData, cells: &[Vec<i64>], viewpoint: [f64; 3]) -> Vec<(f64, usize)> {
+fn indexed_depths(input: &PolyData, cells: &[Vec<i64>], vector: [f64; 3]) -> Vec<(f64, usize)> {
     cells
         .iter()
         .enumerate()
-        .map(|(fi, cell)| (cell_depth(input, cell, viewpoint), fi))
+        .map(|(fi, cell)| (cell_depth(input, cell, vector), fi))
         .collect()
 }
 
-fn cell_depth(input: &PolyData, cell: &[i64], viewpoint: [f64; 3]) -> f64 {
-    let mut centroid = [0.0; 3];
-    let mut count = 0usize;
-    for &point_id in cell {
-        let Some(idx) = valid_point_id(point_id, input.points.len()) else {
-            continue;
-        };
-        let point = input.points.get(idx);
-        centroid[0] += point[0];
-        centroid[1] += point[1];
-        centroid[2] += point[2];
-        count += 1;
-    }
-
-    if count == 0 {
+fn cell_depth(input: &PolyData, cell: &[i64], vector: [f64; 3]) -> f64 {
+    let Some(&point_id) = cell.first() else {
         return 0.0;
-    }
-
-    let inv_count = 1.0 / count as f64;
-    centroid[0] *= inv_count;
-    centroid[1] *= inv_count;
-    centroid[2] *= inv_count;
-
-    (centroid[0] - viewpoint[0]).powi(2)
-        + (centroid[1] - viewpoint[1]).powi(2)
-        + (centroid[2] - viewpoint[2]).powi(2)
+    };
+    let Some(idx) = valid_point_id(point_id, input.points.len()) else {
+        return 0.0;
+    };
+    let point = input.points.get(idx);
+    point[0] * vector[0] + point[1] * vector[1] + point[2] * vector[2]
 }
 
 fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
@@ -83,7 +66,7 @@ fn rebuild_sorted_poly_data(
     let mut depth_values = Vec::with_capacity(indexed.len());
     for &(depth, cell_id) in indexed {
         out_polys.push_cell(&cells[cell_id]);
-        depth_values.push(depth.sqrt());
+        depth_values.push(depth);
     }
 
     let mut pd = input.clone();
@@ -146,14 +129,14 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.5, 1.0, 0.0]); // near
-        pd.points.push([10.0, 0.0, 0.0]);
-        pd.points.push([11.0, 0.0, 0.0]);
-        pd.points.push([10.5, 1.0, 0.0]); // far
+        pd.points.push([0.5, 1.0, 0.0]); // near along +z
+        pd.points.push([0.0, 0.0, 10.0]);
+        pd.points.push([1.0, 0.0, 10.0]);
+        pd.points.push([0.5, 1.0, 10.0]); // far along +z
         pd.polys.push_cell(&[0, 1, 2]);
         pd.polys.push_cell(&[3, 4, 5]);
 
-        let result = depth_sort(&pd, [0.0, 0.0, 0.0]);
+        let result = depth_sort(&pd, [0.0, 0.0, 1.0]);
         // Far face should come first
         let arr = result.cell_data().get_array("Depth").unwrap();
         let mut buf = [0.0f64];
@@ -170,13 +153,13 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
-        pd.points.push([10.0, 0.0, 0.0]);
-        pd.points.push([11.0, 0.0, 0.0]);
-        pd.points.push([10.5, 1.0, 0.0]);
+        pd.points.push([0.0, 0.0, 10.0]);
+        pd.points.push([1.0, 0.0, 10.0]);
+        pd.points.push([0.5, 1.0, 10.0]);
         pd.polys.push_cell(&[3, 4, 5]);
         pd.polys.push_cell(&[0, 1, 2]); // far first, near second
 
-        let result = depth_sort_front_to_back(&pd, [0.0, 0.0, 0.0]);
+        let result = depth_sort_front_to_back(&pd, [0.0, 0.0, 1.0]);
         assert_eq!(result.polys.num_cells(), 2);
     }
 
@@ -204,20 +187,37 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
         pd.points.push([0.5, 1.0, 0.0]);
-        pd.points.push([10.0, 0.0, 0.0]);
-        pd.points.push([11.0, 0.0, 0.0]);
-        pd.points.push([10.5, 1.0, 0.0]);
+        pd.points.push([0.0, 0.0, 10.0]);
+        pd.points.push([1.0, 0.0, 10.0]);
+        pd.points.push([0.5, 1.0, 10.0]);
         pd.polys.push_cell(&[0, 1, 2]);
         pd.polys.push_cell(&[3, 4, 5]);
         pd.cell_data_mut()
             .add_array(AnyDataArray::I32(DataArray::from_vec("id", vec![7, 9], 1)));
 
-        let result = depth_sort(&pd, [0.0, 0.0, 0.0]);
+        let result = depth_sort(&pd, [0.0, 0.0, 1.0]);
         let ids = result.cell_data().get_array("id").unwrap();
         let mut buf = [0.0f64];
         ids.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 9.0);
         ids.tuple_as_f64(1, &mut buf);
         assert_eq!(buf[0], 7.0);
+    }
+
+    #[test]
+    fn uses_first_point_depth_like_vtk_default() {
+        let mut pd = PolyData::new();
+        pd.points.push([10.0, 0.0, 0.0]);
+        pd.points.push([10.0, 0.0, 0.0]);
+        pd.points.push([10.0, 0.0, 0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([100.0, 0.0, 0.0]);
+        pd.points.push([100.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[3, 4, 5]);
+
+        let result = depth_sort(&pd, [1.0, 0.0, 0.0]);
+        let first = result.polys.cell(0);
+        assert_eq!(first, &[0, 1, 2]);
     }
 }

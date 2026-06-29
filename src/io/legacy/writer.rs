@@ -162,9 +162,18 @@ impl LegacyWriter {
         w: &mut W,
         attrs: &DataSetAttributes,
     ) -> Result<(), VtkError> {
+        let vectors_name = attrs.vectors().map(|a| a.name().to_string());
+        let normals_name = attrs.normals().map(|a| a.name().to_string());
+
         for i in 0..attrs.num_arrays() {
             if let Some(arr) = attrs.get_array_by_index(i) {
-                self.write_data_array_as_scalars(w, arr)?;
+                if normals_name.as_deref() == Some(arr.name()) && arr.num_components() == 3 {
+                    self.write_data_array_as_vectors(w, "NORMALS", arr)?;
+                } else if vectors_name.as_deref() == Some(arr.name()) && arr.num_components() == 3 {
+                    self.write_data_array_as_vectors(w, "VECTORS", arr)?;
+                } else {
+                    self.write_data_array_as_scalars(w, arr)?;
+                }
             }
         }
         Ok(())
@@ -190,6 +199,32 @@ impl LegacyWriter {
         match self.file_type {
             FileType::Ascii => {
                 self.write_any_array_ascii(w, arr, nt, nc)?;
+            }
+            FileType::Binary => {
+                self.write_any_array_binary(w, arr)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_data_array_as_vectors<W: Write>(
+        &self,
+        w: &mut W,
+        keyword: &str,
+        arr: &AnyDataArray,
+    ) -> Result<(), VtkError> {
+        writeln!(
+            w,
+            "{} {} {}",
+            keyword,
+            arr.name(),
+            arr.scalar_type().vtk_name()
+        )?;
+
+        match self.file_type {
+            FileType::Ascii => {
+                self.write_any_array_ascii(w, arr, arr.num_tuples(), arr.num_components())?;
             }
             FileType::Binary => {
                 self.write_any_array_binary(w, arr)?;
@@ -271,7 +306,7 @@ impl LegacyWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::PolyData;
+    use crate::data::{DataArray, PolyData};
 
     #[test]
     fn write_triangle_ascii() {
@@ -290,5 +325,28 @@ mod tests {
         assert!(output.contains("POINTS 3 double"));
         assert!(output.contains("POLYGONS 1 4"));
         assert!(output.contains("3 0 1 2"));
+    }
+
+    #[test]
+    fn write_active_vectors_as_vectors() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let vectors = DataArray::from_vec(
+            "velocity",
+            vec![1.0f64, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            3,
+        );
+        pd.point_data_mut().add_array(vectors.into());
+        pd.point_data_mut().set_active_vectors("velocity");
+
+        let writer = LegacyWriter::ascii();
+        let mut buf = Vec::new();
+        writer.write_poly_data_to(&mut buf, &pd).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("VECTORS velocity double"));
+        assert!(!output.contains("SCALARS velocity"));
     }
 }

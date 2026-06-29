@@ -18,7 +18,10 @@ pub fn merge_coplanar_faces(input: &PolyData, angle_tolerance_deg: f64) -> PolyD
     let cell_count: usize = cells.len();
 
     // Compute face normals (Newell's method).
-    let normals: Vec<[f64; 3]> = cells.iter().map(|c| polygon_normal(&input.points, c)).collect();
+    let normals: Vec<[f64; 3]> = cells
+        .iter()
+        .map(|c| polygon_normal(&input.points, c))
+        .collect();
 
     // Build edge -> face index mapping (only for triangles).
     // Key: sorted (min, max) point id pair.

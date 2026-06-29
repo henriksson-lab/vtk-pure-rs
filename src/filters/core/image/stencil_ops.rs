@@ -53,8 +53,8 @@ pub fn apply_stencil_3d(
                                 if ki < kernel.len() {
                                     sum += kernel[ki] * vals[ni];
                                 }
+                                ki += 1;
                             }
-                            ki += 1;
                         }
                     }
                 }
@@ -119,7 +119,13 @@ pub fn median_filter_3d(image: &ImageData, array_name: &str, radius: usize) -> I
                     }
                 }
                 neighbors.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-                output[idx] = neighbors[neighbors.len() / 2];
+                let mid = neighbors.len() / 2;
+                output[idx] = if neighbors.len() % 2 == 0 {
+                    let low_mid = neighbors[mid - 1];
+                    low_mid + (neighbors[mid] - low_mid) * 0.5
+                } else {
+                    neighbors[mid]
+                };
             }
         }
     }
@@ -194,6 +200,24 @@ mod tests {
     }
 
     #[test]
+    fn convolution_boundary_advances_kernel_like_vtk() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![10.0, 20.0],
+                1,
+            )));
+
+        let kernel: Vec<f64> = (0..27).map(|i| i as f64).collect();
+        let result = apply_stencil_3d(&img, "val", &kernel, 1);
+        let arr = result.point_data().get_array("val").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 20.0);
+    }
+
+    #[test]
     fn median_3d() {
         let img = ImageData::from_function(
             [8, 8, 8],
@@ -204,6 +228,23 @@ mod tests {
         );
         let result = median_filter_3d(&img, "val", 1);
         assert!(result.point_data().get_array("val").is_some());
+    }
+
+    #[test]
+    fn median_boundary_even_count_averages_middle_values() {
+        let mut img = ImageData::with_dimensions(2, 2, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 10.0, 20.0, 30.0],
+                1,
+            )));
+
+        let result = median_filter_3d(&img, "val", 1);
+        let arr = result.point_data().get_array("val").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 15.0);
     }
 
     #[test]

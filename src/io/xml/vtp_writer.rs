@@ -130,13 +130,13 @@ fn write_data_arrays<W: Write>(
 
     let mut attrs_str = String::new();
     if let Some(ref name) = scalars_name {
-        attrs_str.push_str(&format!(" Scalars=\"{}\"", name));
+        attrs_str.push_str(&format!(" Scalars=\"{}\"", xml_escape_attr(name)));
     }
     if let Some(ref name) = normals_name {
-        attrs_str.push_str(&format!(" Normals=\"{}\"", name));
+        attrs_str.push_str(&format!(" Normals=\"{}\"", xml_escape_attr(name)));
     }
     if let Some(ref name) = vectors_name {
-        attrs_str.push_str(&format!(" Vectors=\"{}\"", name));
+        attrs_str.push_str(&format!(" Vectors=\"{}\"", xml_escape_attr(name)));
     }
 
     writeln!(w, "      <{}{}>", section, attrs_str)?;
@@ -169,7 +169,7 @@ fn write_any_data_array<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), V
         w,
         "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"ascii\">",
         type_name,
-        arr.name(),
+        xml_escape_attr(arr.name()),
         arr.num_components()
     )?;
 
@@ -187,6 +187,14 @@ fn write_any_data_array<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), V
 
     writeln!(w, "        </DataArray>")?;
     Ok(())
+}
+
+fn xml_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -229,5 +237,23 @@ mod tests {
 
         assert!(output.contains("<PointData Scalars=\"temperature\">"));
         assert!(output.contains("Name=\"temperature\""));
+    }
+
+    #[test]
+    fn escapes_attribute_names() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let scalars = DataArray::from_vec("a&b", vec![1.0f64, 2.0, 3.0], 1);
+        pd.point_data_mut().add_array(scalars.into());
+        pd.point_data_mut().set_active_scalars("a&b");
+
+        let mut buf = Vec::new();
+        VtpWriter::write_to(&mut buf, &pd).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("Scalars=\"a&amp;b\""));
+        assert!(output.contains("Name=\"a&amp;b\""));
     }
 }

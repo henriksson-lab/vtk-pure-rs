@@ -10,6 +10,9 @@ pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, amount: f64
     };
     let dims = input.dimensions();
     let n = arr.num_tuples();
+    if dims.contains(&0) || n != dims[0] * dims[1] * dims[2] {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {

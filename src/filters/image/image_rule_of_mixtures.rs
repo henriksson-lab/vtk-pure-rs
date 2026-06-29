@@ -10,7 +10,8 @@ pub fn image_rule_of_mixtures(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 70e9 + (1.0 - buf[0].clamp(0.0, 1.0)) * 3.5e9
+            let vf = buf[0].clamp(0.0, 1.0);
+            vf * 70e9 + (1.0 - vf) * 3.5e9
         })
         .collect();
     let dims = input.dimensions();

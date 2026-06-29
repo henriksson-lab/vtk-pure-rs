@@ -71,22 +71,24 @@ impl VtpReader {
         }
 
         // Extract PointData
-        if let Some(pd_section) = extract_section(&content, "PointData") {
-            parse_attribute_arrays(
+        if let Some((tag, pd_section)) = extract_section_with_tag(&content, "PointData") {
+            parse_attribute_arrays_with_hints(
                 &pd_section,
                 pd.point_data_mut(),
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                Some(&tag),
             )?;
         }
 
         // Extract CellData
-        if let Some(cd_section) = extract_section(&content, "CellData") {
-            parse_attribute_arrays(
+        if let Some((tag, cd_section)) = extract_section_with_tag(&content, "CellData") {
+            parse_attribute_arrays_with_hints(
                 &cd_section,
                 pd.cell_data_mut(),
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                Some(&tag),
             )?;
         }
 
@@ -96,16 +98,25 @@ impl VtpReader {
 
 /// Extract content between <tag> and </tag>.
 pub(crate) fn extract_section(content: &str, tag: &str) -> Option<String> {
+    extract_section_with_tag(content, tag).map(|(_, section)| section)
+}
+
+/// Extract an opening tag and content between <tag> and </tag>.
+pub(crate) fn extract_section_with_tag(content: &str, tag: &str) -> Option<(String, String)> {
     let open_pattern = format!("<{}", tag);
     let close_pattern = format!("</{}>", tag);
 
     let start = content.find(&open_pattern)?;
     let after_open = &content[start..];
     let tag_end = after_open.find('>')?;
+    let open_tag = after_open[..tag_end + 1].to_string();
     let content_start = start + tag_end + 1;
 
     let end = content[content_start..].find(&close_pattern)?;
-    Some(content[content_start..content_start + end].to_string())
+    Some((
+        open_tag,
+        content[content_start..content_start + end].to_string(),
+    ))
 }
 
 /// Extract attribute from a tag string.
@@ -114,7 +125,16 @@ pub(crate) fn extract_attr(tag: &str, attr_name: &str) -> Option<String> {
     let start = tag.find(&pattern)?;
     let value_start = start + pattern.len();
     let end = tag[value_start..].find('"')?;
-    Some(tag[value_start..value_start + end].to_string())
+    Some(xml_unescape_attr(&tag[value_start..value_start + end]))
+}
+
+fn xml_unescape_attr(value: &str) -> String {
+    value
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
 
 /// Extract raw appended data (encoding="raw") - bytes after the '_' marker.
@@ -232,13 +252,20 @@ pub(crate) fn data_array_to_points(arr: &AnyDataArray) -> Result<Points<f64>, Vt
 pub(crate) fn parse_points_ascii(data: &str) -> Result<Points<f64>, VtkError> {
     let values: Vec<f64> = data
         .split_whitespace()
-        .filter_map(|s| s.parse().ok())
-        .collect();
+        .map(|s| {
+            s.parse()
+                .map_err(|_| VtkError::Parse(format!("invalid point coordinate: {}", s)))
+        })
+        .collect::<Result<_, _>>()?;
+    if values.len() % 3 != 0 {
+        return Err(VtkError::Parse(format!(
+            "POINTS data has {} values, expected a multiple of 3",
+            values.len()
+        )));
+    }
     let mut pts = Points::new();
     for chunk in values.chunks(3) {
-        if chunk.len() == 3 {
-            pts.push([chunk[0], chunk[1], chunk[2]]);
-        }
+        pts.push([chunk[0], chunk[1], chunk[2]]);
     }
     Ok(pts)
 }
@@ -271,8 +298,11 @@ fn parse_cell_section(
         let values: Vec<i64> = match detect_format(tag) {
             DataFormat::Ascii => content
                 .split_whitespace()
-                .filter_map(|s| s.parse().ok())
-                .collect(),
+                .map(|s| {
+                    s.parse()
+                        .map_err(|_| VtkError::Parse(format!("invalid cell integer: {}", s)))
+                })
+                .collect::<Result<_, _>>()?,
             DataFormat::Binary => {
                 let arr = binary::parse_binary_data_array(content, &name, &type_str, 1)?;
                 any_data_array_to_i64(&arr)
@@ -346,7 +376,18 @@ pub(crate) fn parse_attribute_arrays(
     appended_raw: Option<&[u8]>,
     appended_b64: Option<&str>,
 ) -> Result<(), VtkError> {
+    parse_attribute_arrays_with_hints(section, attrs, appended_raw, appended_b64, None)
+}
+
+pub(crate) fn parse_attribute_arrays_with_hints(
+    section: &str,
+    attrs: &mut crate::data::DataSetAttributes,
+    appended_raw: Option<&[u8]>,
+    appended_b64: Option<&str>,
+    section_tag: Option<&str>,
+) -> Result<(), VtkError> {
     let mut search_pos = 0;
+    let has_scalars_hint = section_tag.and_then(|tag| extract_attr(tag, "Scalars"));
     while let Some(da_start) = section[search_pos..].find("<DataArray") {
         let abs_start = search_pos + da_start;
         let tag_end = section[abs_start..]
@@ -367,7 +408,7 @@ pub(crate) fn parse_attribute_arrays(
             .unwrap_or(1);
 
         let arr = match detect_format(tag) {
-            DataFormat::Ascii => parse_ascii_data_array(content, &name, &type_str, nc),
+            DataFormat::Ascii => parse_ascii_data_array(content, &name, &type_str, nc)?,
             DataFormat::Binary => binary::parse_binary_data_array(content, &name, &type_str, nc)?,
             DataFormat::Appended(offset) => {
                 parse_from_appended(appended_raw, appended_b64, offset, &name, &type_str, nc)?
@@ -376,11 +417,23 @@ pub(crate) fn parse_attribute_arrays(
 
         let arr_name = arr.name().to_string();
         attrs.add_array(arr);
-        if attrs.scalars().is_none() {
+        if has_scalars_hint.is_none() && attrs.scalars().is_none() {
             attrs.set_active_scalars(&arr_name);
         }
 
         search_pos = content_start + content_end + "</DataArray>".len();
+    }
+
+    if let Some(tag) = section_tag {
+        if let Some(name) = extract_attr(tag, "Scalars") {
+            attrs.set_active_scalars(&name);
+        }
+        if let Some(name) = extract_attr(tag, "Vectors") {
+            attrs.set_active_vectors(&name);
+        }
+        if let Some(name) = extract_attr(tag, "Normals") {
+            attrs.set_active_normals(&name);
+        }
     }
     Ok(())
 }
@@ -390,16 +443,28 @@ pub(crate) fn parse_ascii_data_array(
     name: &str,
     type_str: &str,
     nc: usize,
-) -> AnyDataArray {
+) -> Result<AnyDataArray, VtkError> {
     let values: Vec<f64> = content
         .split_whitespace()
-        .filter_map(|s| s.parse().ok())
-        .collect();
+        .map(|s| {
+            s.parse()
+                .map_err(|_| VtkError::Parse(format!("invalid DataArray value: {}", s)))
+        })
+        .collect::<Result<_, _>>()?;
 
-    match type_str {
+    let arr = match type_str {
         "Float32" => {
             let data: Vec<f32> = values.iter().map(|&v| v as f32).collect();
             AnyDataArray::F32(DataArray::from_vec(name, data, nc))
+        }
+        "Float64" => AnyDataArray::F64(DataArray::from_vec(name, values, nc)),
+        "Int8" => {
+            let data: Vec<i8> = values.iter().map(|&v| v as i8).collect();
+            AnyDataArray::I8(DataArray::from_vec(name, data, nc))
+        }
+        "Int16" => {
+            let data: Vec<i16> = values.iter().map(|&v| v as i16).collect();
+            AnyDataArray::I16(DataArray::from_vec(name, data, nc))
         }
         "Int32" => {
             let data: Vec<i32> = values.iter().map(|&v| v as i32).collect();
@@ -413,8 +478,26 @@ pub(crate) fn parse_ascii_data_array(
             let data: Vec<u8> = values.iter().map(|&v| v as u8).collect();
             AnyDataArray::U8(DataArray::from_vec(name, data, nc))
         }
-        _ => AnyDataArray::F64(DataArray::from_vec(name, values, nc)),
-    }
+        "UInt16" => {
+            let data: Vec<u16> = values.iter().map(|&v| v as u16).collect();
+            AnyDataArray::U16(DataArray::from_vec(name, data, nc))
+        }
+        "UInt32" => {
+            let data: Vec<u32> = values.iter().map(|&v| v as u32).collect();
+            AnyDataArray::U32(DataArray::from_vec(name, data, nc))
+        }
+        "UInt64" => {
+            let data: Vec<u64> = values.iter().map(|&v| v as u64).collect();
+            AnyDataArray::U64(DataArray::from_vec(name, data, nc))
+        }
+        other => {
+            return Err(VtkError::Parse(format!(
+                "unsupported DataArray type: {}",
+                other
+            )))
+        }
+    };
+    Ok(arr)
 }
 
 #[cfg(test)]
@@ -460,6 +543,54 @@ mod tests {
         let s = result.point_data().scalars().unwrap();
         assert_eq!(s.name(), "temperature");
         assert_eq!(s.num_tuples(), 3);
+    }
+
+    #[test]
+    fn reads_active_attribute_hints() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPoints="1" NumberOfVerts="0" NumberOfLines="0" NumberOfPolys="0" NumberOfStrips="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">0 0 0</DataArray>
+      </Points>
+      <PointData Scalars="selected" Vectors="velocity">
+        <DataArray type="Float64" Name="other" NumberOfComponents="1" format="ascii">1</DataArray>
+        <DataArray type="Float64" Name="selected" NumberOfComponents="1" format="ascii">2</DataArray>
+        <DataArray type="Float64" Name="velocity" NumberOfComponents="3" format="ascii">1 0 0</DataArray>
+      </PointData>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let result = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap();
+
+        assert_eq!(result.point_data().scalars().unwrap().name(), "selected");
+        assert_eq!(result.point_data().vectors().unwrap().name(), "velocity");
+    }
+
+    #[test]
+    fn reads_ascii_integer_array_type() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPoints="1" NumberOfVerts="0" NumberOfLines="0" NumberOfPolys="0" NumberOfStrips="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">0 0 0</DataArray>
+      </Points>
+      <PointData Scalars="ids">
+        <DataArray type="UInt16" Name="ids" NumberOfComponents="1" format="ascii">7</DataArray>
+      </PointData>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let result = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap();
+
+        assert!(matches!(
+            result.point_data().scalars().unwrap(),
+            AnyDataArray::U16(_)
+        ));
     }
 
     #[test]

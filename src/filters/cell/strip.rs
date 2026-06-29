@@ -181,23 +181,34 @@ fn strip_lines(lines: &CellArray, maximum_length: usize) -> CellArray {
         }
 
         visited[cell_id] = true;
-        let mut line = Vec::from(segments[cell_id]);
-        extend_line(
-            &segments,
-            &point_cells,
-            &mut visited,
-            &mut line,
-            false,
-            maximum_length,
-        );
-        extend_line(
-            &segments,
-            &point_cells,
-            &mut visited,
-            &mut line,
-            true,
-            maximum_length,
-        );
+        let segment = segments[cell_id];
+        let mut line = Vec::from(segment);
+        let mut neighbor = None;
+
+        for i in 0..2 {
+            line[0] = segment[i];
+            line[1] = segment[(i + 1) % 2];
+            if let Some(candidates) = point_cells.get(&line[1]) {
+                neighbor = candidates
+                    .iter()
+                    .copied()
+                    .find(|&ci| ci != cell_id && !visited[ci]);
+            }
+            if neighbor.is_some() {
+                break;
+            }
+        }
+
+        if let Some(next_id) = neighbor {
+            extend_line(
+                &segments,
+                &point_cells,
+                &mut visited,
+                &mut line,
+                next_id,
+                maximum_length,
+            );
+        }
         out.push_cell(&line);
     }
 
@@ -209,36 +220,35 @@ fn extend_line(
     point_cells: &HashMap<i64, Vec<usize>>,
     visited: &mut [bool],
     line: &mut Vec<i64>,
-    at_front: bool,
+    mut next_id: usize,
     maximum_length: usize,
 ) {
     loop {
-        if line.len() >= maximum_length + 1 {
-            break;
-        }
-        let endpoint = if at_front {
-            line[0]
-        } else {
-            line[line.len() - 1]
-        };
-        let Some(candidates) = point_cells.get(&endpoint) else {
-            break;
-        };
-        let Some(&next_id) = candidates.iter().find(|&&ci| !visited[ci]) else {
-            break;
-        };
         visited[next_id] = true;
         let segment = segments[next_id];
+        let endpoint = line[line.len() - 1];
         let other = if segment[0] == endpoint {
             segment[1]
         } else {
             segment[0]
         };
-        if at_front {
-            line.insert(0, other);
-        } else {
-            line.push(other);
+        line.push(other);
+
+        let Some(candidates) = point_cells.get(&other) else {
+            break;
+        };
+        let Some(candidate) = candidates
+            .iter()
+            .copied()
+            .find(|&ci| ci != next_id && !visited[ci])
+        else {
+            break;
+        };
+
+        if line.len() >= maximum_length + 1 {
+            break;
         }
+        next_id = candidate;
     }
 }
 

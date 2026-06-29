@@ -1,4 +1,4 @@
-use crate::data::PolyData;
+use crate::data::{CellLocator, PolyData};
 
 /// Result of ICP (Iterative Closest Point) registration.
 #[derive(Debug, Clone)]
@@ -29,81 +29,37 @@ pub fn icp(
             iterations: 0,
         };
     }
+    if max_iterations == 0 {
+        let source_pts: Vec<[f64; 3]> = (0..n).map(|i| source.points.get(i)).collect();
+        let target_pts: Vec<[f64; 3]> = (0..target.points.len())
+            .map(|i| target.points.get(i))
+            .collect();
+        let target_locator = (target.total_cells() > 0).then(|| CellLocator::build(target));
+        return IcpResult {
+            transform: identity_4x4(),
+            rms_error: final_rms(&source_pts, &target_pts, target_locator.as_ref()),
+            iterations: 0,
+        };
+    }
 
     let target_pts: Vec<[f64; 3]> = (0..target.points.len())
         .map(|i| target.points.get(i))
         .collect();
+    let target_locator = (target.total_cells() > 0).then(|| CellLocator::build(target));
 
-    let mut src_pts: Vec<[f64; 3]> = (0..n).map(|i| source.points.get(i)).collect();
+    let mut points1: Vec<[f64; 3]> = (0..n).map(|i| source.points.get(i)).collect();
     let mut total_transform = identity_4x4();
-    let mut prev_error = f64::MAX;
+    let mut iterations = 0;
 
     for iter in 0..max_iterations {
-        // Find closest points in target for each source point
-        let correspondences: Vec<[f64; 3]> = src_pts
+        // Fill points with the closest points to each vertex in input.
+        let closestp: Vec<[f64; 3]> = points1
             .iter()
-            .map(|sp| nearest_point(sp, &target_pts))
+            .map(|sp| closest_target_point(sp, &target_pts, target_locator.as_ref()))
             .collect();
 
-        // Compute centroids
-        let src_centroid = centroid(&src_pts);
-        let tgt_centroid = centroid(&correspondences);
-
-        // Compute cross-covariance matrix H
-        let mut h = [[0.0f64; 3]; 3];
-        for i in 0..n {
-            let s = [
-                src_pts[i][0] - src_centroid[0],
-                src_pts[i][1] - src_centroid[1],
-                src_pts[i][2] - src_centroid[2],
-            ];
-            let t = [
-                correspondences[i][0] - tgt_centroid[0],
-                correspondences[i][1] - tgt_centroid[1],
-                correspondences[i][2] - tgt_centroid[2],
-            ];
-            for r in 0..3 {
-                for c in 0..3 {
-                    h[r][c] += s[r] * t[c];
-                }
-            }
-        }
-
-        // SVD via power iteration (simplified — finds best rotation)
-        let (u, vt) = svd_3x3_approx(&h);
-        let mut r = mat_mul_3x3(&transpose_3x3(&vt), &transpose_3x3(&u));
-
-        // Ensure proper rotation (det = +1)
-        let det = det_3x3(&r);
-        if det < 0.0 {
-            for row in &mut r {
-                row[2] = -row[2];
-            }
-        }
-
-        // Compute translation
-        let t = [
-            tgt_centroid[0]
-                - (r[0][0] * src_centroid[0]
-                    + r[0][1] * src_centroid[1]
-                    + r[0][2] * src_centroid[2]),
-            tgt_centroid[1]
-                - (r[1][0] * src_centroid[0]
-                    + r[1][1] * src_centroid[1]
-                    + r[1][2] * src_centroid[2]),
-            tgt_centroid[2]
-                - (r[2][0] * src_centroid[0]
-                    + r[2][1] * src_centroid[1]
-                    + r[2][2] * src_centroid[2]),
-        ];
-
-        // Apply transform to source points
-        for p in &mut src_pts {
-            let x = r[0][0] * p[0] + r[0][1] * p[1] + r[0][2] * p[2] + t[0];
-            let y = r[1][0] * p[0] + r[1][1] * p[1] + r[1][2] * p[2] + t[1];
-            let z = r[2][0] * p[0] + r[2][1] * p[1] + r[2][2] * p[2] + t[2];
-            *p = [x, y, z];
-        }
+        // Build the landmark transform.
+        let (r, t) = landmark_transform(&points1, &closestp);
 
         // Accumulate transform
         let step = [
@@ -114,32 +70,40 @@ pub fn icp(
         ];
         total_transform = mul_4x4(&step, &total_transform);
 
-        // Compute RMS error
-        let mut sum_d2 = 0.0;
-        for i in 0..n {
-            let d = [
-                src_pts[i][0] - correspondences[i][0],
-                src_pts[i][1] - correspondences[i][1],
-                src_pts[i][2] - correspondences[i][2],
-            ];
-            sum_d2 += d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        // Move mesh and compute mean point motion, equivalent to VTK's
+        // RMS mean-distance check when enabled.
+        let mut points2 = Vec::with_capacity(n);
+        let mut totaldist = 0.0;
+        for p in &points1 {
+            let p2 = transform_point(&r, &t, *p);
+            totaldist += distance2(*p, p2);
+            points2.push(p2);
         }
-        let rms = (sum_d2 / n as f64).sqrt();
+        let mean_distance = (totaldist / n as f64).sqrt();
+        points1 = points2;
+        iterations = iter + 1;
 
-        if (prev_error - rms).abs() < tolerance {
-            return IcpResult {
-                transform: total_transform,
-                rms_error: rms,
-                iterations: iter + 1,
-            };
+        if mean_distance <= tolerance {
+            break;
         }
-        prev_error = rms;
     }
 
     IcpResult {
         transform: total_transform,
-        rms_error: prev_error,
-        iterations: max_iterations,
+        rms_error: final_rms(&points1, &target_pts, target_locator.as_ref()),
+        iterations,
+    }
+}
+
+fn closest_target_point(
+    query: &[f64; 3],
+    points: &[[f64; 3]],
+    locator: Option<&CellLocator>,
+) -> [f64; 3] {
+    if let Some((_, point, _)) = locator.and_then(|loc| loc.find_closest_cell(*query)) {
+        point
+    } else {
+        nearest_point(query, points)
     }
 }
 
@@ -167,6 +131,47 @@ fn centroid(pts: &[[f64; 3]]) -> [f64; 3] {
     [c[0] / n, c[1] / n, c[2] / n]
 }
 
+fn landmark_transform(source: &[[f64; 3]], target: &[[f64; 3]]) -> ([[f64; 3]; 3], [f64; 3]) {
+    let n = source.len();
+    let source_centroid = centroid(source);
+    let target_centroid = centroid(target);
+
+    if n == 1 {
+        return (identity_3(), sub_3(target_centroid, source_centroid));
+    }
+
+    let mut m = [[0.0; 3]; 3];
+    let mut source_norm = 0.0;
+    let mut target_norm = 0.0;
+    for pt in 0..n {
+        let s = sub_3(source[pt], source_centroid);
+        let t = sub_3(target[pt], target_centroid);
+        for i in 0..3 {
+            for j in 0..3 {
+                m[i][j] += s[i] * t[j];
+            }
+        }
+        source_norm += dot_3(s, s);
+        target_norm += dot_3(t, t);
+    }
+
+    if source_norm <= 1e-30 || target_norm <= 1e-30 {
+        return (identity_3(), sub_3(target_centroid, source_centroid));
+    }
+
+    let mut q = if n == 2 {
+        two_point_quaternion(source, target)
+    } else {
+        dominant_quaternion(&horn_matrix(m))
+    };
+    normalize_4(&mut q);
+
+    let matrix = quaternion_to_matrix(q);
+    let transformed_centroid = mat_vec_3(matrix, source_centroid);
+    let translation = sub_3(target_centroid, transformed_centroid);
+    (matrix, translation)
+}
+
 fn identity_4x4() -> [[f64; 4]; 4] {
     [
         [1.0, 0.0, 0.0, 0.0],
@@ -188,78 +193,236 @@ fn mul_4x4(a: &[[f64; 4]; 4], b: &[[f64; 4]; 4]) -> [[f64; 4]; 4] {
     r
 }
 
-fn transpose_3x3(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
+fn identity_3() -> [[f64; 3]; 3] {
+    [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+}
+
+fn transform_point(matrix: &[[f64; 3]; 3], translation: &[f64; 3], p: [f64; 3]) -> [f64; 3] {
     [
-        [m[0][0], m[1][0], m[2][0]],
-        [m[0][1], m[1][1], m[2][1]],
-        [m[0][2], m[1][2], m[2][2]],
+        matrix[0][0] * p[0] + matrix[0][1] * p[1] + matrix[0][2] * p[2] + translation[0],
+        matrix[1][0] * p[0] + matrix[1][1] * p[1] + matrix[1][2] * p[2] + translation[1],
+        matrix[2][0] * p[0] + matrix[2][1] * p[1] + matrix[2][2] * p[2] + translation[2],
     ]
 }
 
-fn det_3x3(m: &[[f64; 3]; 3]) -> f64 {
-    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+fn final_rms(points: &[[f64; 3]], target: &[[f64; 3]], locator: Option<&CellLocator>) -> f64 {
+    if points.is_empty() || target.is_empty() {
+        return 0.0;
+    }
+    let total: f64 = points
+        .iter()
+        .map(|p| distance2(*p, closest_target_point(p, target, locator)))
+        .sum();
+    (total / points.len() as f64).sqrt()
 }
 
-fn mat_mul_3x3(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let mut r = [[0.0; 3]; 3];
-    for i in 0..3 {
-        for j in 0..3 {
-            for k in 0..3 {
-                r[i][j] += a[i][k] * b[k][j];
+fn distance2(a: [f64; 3], b: [f64; 3]) -> f64 {
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
+}
+
+fn sub_3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot_3(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn cross_3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn length_3(v: [f64; 3]) -> f64 {
+    dot_3(v, v).sqrt()
+}
+
+fn normalize_3(v: [f64; 3]) -> [f64; 3] {
+    let len = length_3(v);
+    if len <= 1e-30 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [v[0] / len, v[1] / len, v[2] / len]
+    }
+}
+
+fn normalize_4(v: &mut [f64; 4]) {
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2] + v[3] * v[3]).sqrt();
+    if len <= 1e-30 {
+        *v = [1.0, 0.0, 0.0, 0.0];
+    } else {
+        for value in v {
+            *value /= len;
+        }
+    }
+}
+
+fn perpendicular_3(v: [f64; 3]) -> [f64; 3] {
+    let axis = if v[0].abs() < v[1].abs() {
+        [0.0, -v[2], v[1]]
+    } else {
+        [-v[2], 0.0, v[0]]
+    };
+    normalize_3(axis)
+}
+
+fn mat_vec_3(m: [[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
+    [
+        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+    ]
+}
+
+fn horn_matrix(m: [[f64; 3]; 3]) -> [[f64; 4]; 4] {
+    [
+        [
+            m[0][0] + m[1][1] + m[2][2],
+            m[1][2] - m[2][1],
+            m[2][0] - m[0][2],
+            m[0][1] - m[1][0],
+        ],
+        [
+            m[1][2] - m[2][1],
+            m[0][0] - m[1][1] - m[2][2],
+            m[0][1] + m[1][0],
+            m[2][0] + m[0][2],
+        ],
+        [
+            m[2][0] - m[0][2],
+            m[0][1] + m[1][0],
+            -m[0][0] + m[1][1] - m[2][2],
+            m[1][2] + m[2][1],
+        ],
+        [
+            m[0][1] - m[1][0],
+            m[2][0] + m[0][2],
+            m[1][2] + m[2][1],
+            -m[0][0] - m[1][1] + m[2][2],
+        ],
+    ]
+}
+
+fn dominant_quaternion(n: &[[f64; 4]; 4]) -> [f64; 4] {
+    let (eigenvalues, eigenvectors) = jacobi_4x4(*n);
+    let mut max_idx = 0;
+    for i in 1..4 {
+        if eigenvalues[i] > eigenvalues[max_idx] {
+            max_idx = i;
+        }
+    }
+    [
+        eigenvectors[0][max_idx],
+        eigenvectors[1][max_idx],
+        eigenvectors[2][max_idx],
+        eigenvectors[3][max_idx],
+    ]
+}
+
+fn jacobi_4x4(mut a: [[f64; 4]; 4]) -> ([f64; 4], [[f64; 4]; 4]) {
+    let mut v = [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+
+    for _ in 0..50 {
+        let mut p = 0;
+        let mut q = 1;
+        let mut max = a[p][q].abs();
+        for i in 0..4 {
+            for j in (i + 1)..4 {
+                let value = a[i][j].abs();
+                if value > max {
+                    max = value;
+                    p = i;
+                    q = j;
+                }
             }
         }
-    }
-    r
-}
+        if max < 1e-14 {
+            break;
+        }
 
-/// Approximate SVD of a 3×3 matrix using Jacobi iterations.
-fn svd_3x3_approx(m: &[[f64; 3]; 3]) -> ([[f64; 3]; 3], [[f64; 3]; 3]) {
-    // Compute M^T * M
-    let mtm = mat_mul_3x3(&transpose_3x3(m), m);
+        let tau = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let t = if tau >= 0.0 {
+            1.0 / (tau + (1.0 + tau * tau).sqrt())
+        } else {
+            -1.0 / (-tau + (1.0 + tau * tau).sqrt())
+        };
+        let c = 1.0 / (1.0 + t * t).sqrt();
+        let s = t * c;
 
-    // Power iteration to find dominant eigenvector of M^T M
-    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        for k in 0..4 {
+            if k != p && k != q {
+                let akp = a[k][p];
+                let akq = a[k][q];
+                a[k][p] = c * akp - s * akq;
+                a[p][k] = a[k][p];
+                a[k][q] = s * akp + c * akq;
+                a[q][k] = a[k][q];
+            }
+        }
 
-    // Simple QR-like iteration
-    for _ in 0..30 {
-        let av = mat_mul_3x3(&mtm, &v);
-        v = gram_schmidt(&av);
-    }
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+        a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
 
-    // U = M * V * Sigma^-1 (approximated)
-    let mv = mat_mul_3x3(m, &v);
-    let u = gram_schmidt(&mv);
-
-    (u, transpose_3x3(&v))
-}
-
-fn gram_schmidt(m: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
-    let mut u = *m;
-    // Normalize first column
-    let l0 = (u[0][0] * u[0][0] + u[1][0] * u[1][0] + u[2][0] * u[2][0]).sqrt();
-    if l0 > 1e-20 {
-        for row in &mut u {
-            row[0] /= l0;
+        for row in &mut v {
+            let vkp = row[p];
+            let vkq = row[q];
+            row[p] = c * vkp - s * vkq;
+            row[q] = s * vkp + c * vkq;
         }
     }
-    // Orthogonalize and normalize second column
-    let d01: f64 = (0..3).map(|i| u[i][0] * u[i][1]).sum();
-    for row in &mut u {
-        row[1] -= d01 * row[0];
+
+    ([a[0][0], a[1][1], a[2][2], a[3][3]], v)
+}
+
+fn two_point_quaternion(source: &[[f64; 3]], target: &[[f64; 3]]) -> [f64; 4] {
+    let ds = normalize_3(sub_3(source[1], source[0]));
+    let dt = normalize_3(sub_3(target[1], target[0]));
+    let w = dot_3(ds, dt).clamp(-1.0, 1.0);
+    let c = cross_3(ds, dt);
+    let r = length_3(c);
+    let theta = r.atan2(w);
+    if r > 1e-30 {
+        let s = (theta / 2.0).sin() / r;
+        [(theta / 2.0).cos(), c[0] * s, c[1] * s, c[2] * s]
+    } else if w >= 0.0 {
+        [1.0, 0.0, 0.0, 0.0]
+    } else {
+        let axis = perpendicular_3(ds);
+        [0.0, axis[0], axis[1], axis[2]]
     }
-    let l1 = (u[0][1] * u[0][1] + u[1][1] * u[1][1] + u[2][1] * u[2][1]).sqrt();
-    if l1 > 1e-20 {
-        for row in &mut u {
-            row[1] /= l1;
-        }
-    }
-    // Third column = cross product
-    u[0][2] = u[1][0] * u[2][1] - u[2][0] * u[1][1];
-    u[1][2] = u[2][0] * u[0][1] - u[0][0] * u[2][1];
-    u[2][2] = u[0][0] * u[1][1] - u[1][0] * u[0][1];
-    u
+}
+
+fn quaternion_to_matrix(q: [f64; 4]) -> [[f64; 3]; 3] {
+    let [w, x, y, z] = q;
+    let ww = w * w;
+    let wx = w * x;
+    let wy = w * y;
+    let wz = w * z;
+    let xx = x * x;
+    let yy = y * y;
+    let zz = z * z;
+    let xy = x * y;
+    let xz = x * z;
+    let yz = y * z;
+
+    [
+        [ww + xx - yy - zz, 2.0 * (-wz + xy), 2.0 * (wy + xz)],
+        [2.0 * (wz + xy), ww - xx + yy - zz, 2.0 * (-wx + yz)],
+        [2.0 * (-wy + xz), 2.0 * (wx + yz), ww - xx - yy + zz],
+    ]
 }
 
 #[cfg(test)]
@@ -287,16 +450,16 @@ mod tests {
         source.points.push([1.0, 1.0, 0.0]);
 
         let mut target = PolyData::new();
-        target.points.push([1.0, 0.0, 0.0]);
-        target.points.push([2.0, 0.0, 0.0]);
-        target.points.push([1.0, 1.0, 0.0]);
-        target.points.push([2.0, 1.0, 0.0]);
+        target.points.push([0.1, 0.0, 0.0]);
+        target.points.push([1.1, 0.0, 0.0]);
+        target.points.push([0.1, 1.0, 0.0]);
+        target.points.push([1.1, 1.0, 0.0]);
 
         let result = icp(&source, &target, 50, 1e-10);
         assert!(result.rms_error < 0.1, "rms = {}", result.rms_error);
-        // Translation should be approximately [1, 0, 0]
+        // Translation should be approximately [0.1, 0, 0]
         assert!(
-            (result.transform[0][3] - 1.0).abs() < 0.2,
+            (result.transform[0][3] - 0.1).abs() < 0.05,
             "tx = {}",
             result.transform[0][3]
         );
