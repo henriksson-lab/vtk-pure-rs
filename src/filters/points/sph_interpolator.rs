@@ -28,7 +28,7 @@ pub fn sph_interpolate(
 ) -> PolyData {
     let n_src = source.points.len();
     let n_tgt = target.points.len();
-    if n_src == 0 || n_tgt == 0 {
+    if n_src == 0 || n_tgt == 0 || smoothing_length <= 0.0 {
         return target.clone();
     }
 
@@ -38,7 +38,7 @@ pub fn sph_interpolate(
     };
 
     let h = smoothing_length;
-    let support = 2.0 * h;
+    let support = support_radius(kernel, h);
     let support2 = support * support;
 
     let src_pts: Vec<[f64; 3]> = (0..n_src).map(|i| source.points.get(i)).collect();
@@ -87,12 +87,13 @@ pub fn sph_interpolate(
 /// Compute SPH density estimate at each particle.
 pub fn sph_density(mesh: &PolyData, smoothing_length: f64, kernel: SphKernel) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || smoothing_length <= 0.0 {
         return mesh.clone();
     }
 
     let h = smoothing_length;
-    let support2 = (2.0 * h) * (2.0 * h);
+    let support = support_radius(kernel, h);
+    let support2 = support * support;
     let pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
 
     let mut density = Vec::with_capacity(n);
@@ -119,6 +120,13 @@ pub fn sph_density(mesh: &PolyData, smoothing_length: f64, kernel: SphKernel) ->
             1,
         )));
     result
+}
+
+fn support_radius(kernel: SphKernel, h: f64) -> f64 {
+    match kernel {
+        SphKernel::CubicSpline | SphKernel::WendlandC2 => 2.0 * h,
+        SphKernel::QuinticSpline => 3.0 * h,
+    }
 }
 
 fn eval_kernel(kernel: SphKernel, r: f64, h: f64) -> f64 {

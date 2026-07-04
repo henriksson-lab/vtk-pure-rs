@@ -8,9 +8,15 @@ pub fn swap_diagonals_where_improves(mesh: &PolyData) -> PolyData {
     for (ci, c) in cells.iter().enumerate() {
         let n = c.len();
         for i in 0..n {
-            let a = c[i] as usize;
-            let b = c[(i + 1) % n] as usize;
-            ef.entry((a.min(b), a.max(b))).or_default().push(ci);
+            let a = c[i];
+            let b = c[(i + 1) % n];
+            if a >= 0 && b >= 0 {
+                let a = a as usize;
+                let b = b as usize;
+                if a < mesh.points.len() && b < mesh.points.len() {
+                    ef.entry((a.min(b), a.max(b))).or_default().push(ci);
+                }
+            }
         }
     }
     let mut new_cells = cells.clone();
@@ -31,10 +37,13 @@ pub fn swap_diagonals_where_improves(mesh: &PolyData) -> PolyData {
             .find(|&&v| v as usize != ea && v as usize != eb)
             .map(|&v| v as usize);
         if let (Some(va), Some(vb)) = (va, vb) {
+            if va >= mesh.points.len() || vb >= mesh.points.len() {
+                continue;
+            }
             // Check if swap improves min angle
             let old_min = min_angle_pair(&cells[faces[0]], &cells[faces[1]], mesh);
-            let new_t1 = vec![va as i64, ea as i64, vb as i64];
-            let new_t2 = vec![va as i64, vb as i64, eb as i64];
+            let (new_t1, new_t2) =
+                oriented_swapped_pair(va, vb, ea, eb, &cells[faces[0]], &cells[faces[1]], mesh);
             let new_min = min_angle_pair(&new_t1, &new_t2, mesh);
             if new_min > old_min {
                 new_cells[faces[0]] = new_t1;
@@ -52,10 +61,49 @@ pub fn swap_diagonals_where_improves(mesh: &PolyData) -> PolyData {
     r.polys = polys;
     r
 }
+
+fn oriented_swapped_pair(
+    va: usize,
+    vb: usize,
+    ea: usize,
+    eb: usize,
+    old_t1: &[i64],
+    old_t2: &[i64],
+    mesh: &PolyData,
+) -> (Vec<i64>, Vec<i64>) {
+    let mut new_t1 = vec![va as i64, vb as i64, ea as i64];
+    let mut new_t2 = vec![vb as i64, va as i64, eb as i64];
+    let old_n1 = triangle_normal(old_t1, mesh);
+    let old_n2 = triangle_normal(old_t2, mesh);
+    let old_n = [
+        old_n1[0] + old_n2[0],
+        old_n1[1] + old_n2[1],
+        old_n1[2] + old_n2[2],
+    ];
+    let new_n1 = triangle_normal(&new_t1, mesh);
+    let new_n2 = triangle_normal(&new_t2, mesh);
+    let new_n = [
+        new_n1[0] + new_n2[0],
+        new_n1[1] + new_n2[1],
+        new_n1[2] + new_n2[2],
+    ];
+    if dot(old_n, new_n) < 0.0 {
+        new_t1.swap(1, 2);
+        new_t2.swap(1, 2);
+    }
+    (new_t1, new_t2)
+}
+
 fn min_angle_pair(a: &[i64], b: &[i64], mesh: &PolyData) -> f64 {
     let mut mn = 180.0f64;
     for cell in [a, b] {
         if cell.len() != 3 {
+            continue;
+        }
+        if cell
+            .iter()
+            .any(|&v| v < 0 || v as usize >= mesh.points.len())
+        {
             continue;
         }
         let p = [
@@ -84,6 +132,35 @@ fn min_angle_pair(a: &[i64], b: &[i64], mesh: &PolyData) -> f64 {
     }
     mn
 }
+
+fn triangle_normal(cell: &[i64], mesh: &PolyData) -> [f64; 3] {
+    if cell.len() != 3 {
+        return [0.0, 0.0, 0.0];
+    }
+    if cell
+        .iter()
+        .any(|&v| v < 0 || v as usize >= mesh.points.len())
+    {
+        return [0.0, 0.0, 0.0];
+    }
+    let p = [
+        mesh.points.get(cell[0] as usize),
+        mesh.points.get(cell[1] as usize),
+        mesh.points.get(cell[2] as usize),
+    ];
+    let u = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+    let v = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
+    [
+        u[1] * v[2] - u[2] * v[1],
+        u[2] * v[0] - u[0] * v[2],
+        u[0] * v[1] - u[1] * v[0],
+    ]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,16 +2,36 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn area_weighted_normals(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
+    if n == 0 {
+        return mesh.clone();
+    }
+    if mesh.verts.iter().next().is_some()
+        || mesh.lines.iter().next().is_some()
+        || mesh.strips.iter().next().is_some()
+    {
+        return mesh.clone();
+    }
+    if mesh.polys.iter().next().is_none() {
+        return mesh.clone();
+    }
+    if mesh.polys.iter().any(|cell| cell.len() != 3) {
+        return mesh.clone();
+    }
+    if mesh
+        .polys
+        .iter()
+        .any(|cell| cell.iter().any(|&id| id < 0 || (id as usize) >= n))
+    {
+        return mesh.clone();
+    }
+
     let mut nm = vec![[0.0f64; 3]; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let p0 = mesh.points.get(cell[0] as usize);
+        let p1 = mesh.points.get(cell[1] as usize);
+        let p2 = mesh.points.get(cell[2] as usize);
+        let e1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
+        let e2 = [p0[0] - p1[0], p0[1] - p1[1], p0[2] - p1[2]];
         let fn_ = [
             e1[1] * e2[2] - e1[2] * e2[1],
             e1[2] * e2[0] - e1[0] * e2[2],
@@ -19,11 +39,9 @@ pub fn area_weighted_normals(mesh: &PolyData) -> PolyData {
         ];
         for &v in cell {
             let vi = v as usize;
-            if vi < n {
-                nm[vi][0] += fn_[0];
-                nm[vi][1] += fn_[1];
-                nm[vi][2] += fn_[2];
-            }
+            nm[vi][0] += fn_[0];
+            nm[vi][1] += fn_[1];
+            nm[vi][2] += fn_[2];
         }
     }
     for v in &mut nm {

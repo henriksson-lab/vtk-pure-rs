@@ -27,6 +27,7 @@ pub enum CellType {
     QuadraticEdge = 21,
     QuadraticTriangle = 22,
     QuadraticQuad = 23,
+    QuadraticPolygon = 36,
     QuadraticTetra = 24,
     QuadraticHexahedron = 25,
     QuadraticWedge = 26,
@@ -40,10 +41,24 @@ pub enum CellType {
     BiQuadraticQuadraticWedge = 32,
     BiQuadraticQuadraticHexahedron = 33,
     BiQuadraticTriangle = 34,
+    TriQuadraticPyramid = 37,
+
+    // Cubic cells
+    CubicLine = 35,
 
     // Special
     ConvexPointSet = 41,
     Polyhedron = 42,
+
+    // Generic higher-order cells
+    HigherOrderCurve = 60,
+    HigherOrderTriangle = 61,
+    HigherOrderQuadrilateral = 62,
+    HigherOrderPolygon = 63,
+    HigherOrderTetrahedron = 64,
+    HigherOrderWedge = 65,
+    HigherOrderPyramid = 66,
+    HigherOrderHexahedron = 67,
 
     // Higher-order / Lagrange cells
     LagrangeCurve = 68,
@@ -79,6 +94,7 @@ impl CellType {
             CellType::PentagonalPrism => Some(10),
             CellType::HexagonalPrism => Some(12),
             CellType::QuadraticEdge => Some(3),
+            CellType::CubicLine => Some(4),
             CellType::QuadraticTriangle => Some(6),
             CellType::QuadraticQuad => Some(8),
             CellType::QuadraticTetra => Some(10),
@@ -92,6 +108,7 @@ impl CellType {
             CellType::BiQuadraticQuadraticWedge => Some(18),
             CellType::BiQuadraticQuadraticHexahedron => Some(24),
             CellType::BiQuadraticTriangle => Some(7),
+            CellType::TriQuadraticPyramid => Some(19),
             // Lagrange and Bezier are variable-order
             _ => None,
         }
@@ -102,7 +119,9 @@ impl CellType {
         match self {
             CellType::Empty => 0,
             CellType::Vertex | CellType::PolyVertex => 0,
-            CellType::Line | CellType::PolyLine | CellType::QuadraticEdge => 1,
+            CellType::Line | CellType::PolyLine | CellType::QuadraticEdge | CellType::CubicLine => {
+                1
+            }
             CellType::Triangle
             | CellType::TriangleStrip
             | CellType::Polygon
@@ -110,14 +129,18 @@ impl CellType {
             | CellType::Quad
             | CellType::QuadraticTriangle
             | CellType::QuadraticQuad
+            | CellType::QuadraticPolygon
             | CellType::BiQuadraticQuad
             | CellType::QuadraticLinearQuad
             | CellType::BiQuadraticTriangle
+            | CellType::HigherOrderTriangle
+            | CellType::HigherOrderQuadrilateral
+            | CellType::HigherOrderPolygon
             | CellType::LagrangeTriangle
             | CellType::LagrangeQuadrilateral
             | CellType::BezierTriangle
             | CellType::BezierQuadrilateral => 2,
-            CellType::LagrangeCurve | CellType::BezierCurve => 1,
+            CellType::HigherOrderCurve | CellType::LagrangeCurve | CellType::BezierCurve => 1,
             _ => 3,
         }
     }
@@ -156,8 +179,19 @@ impl CellType {
             32 => Some(CellType::BiQuadraticQuadraticWedge),
             33 => Some(CellType::BiQuadraticQuadraticHexahedron),
             34 => Some(CellType::BiQuadraticTriangle),
+            35 => Some(CellType::CubicLine),
+            36 => Some(CellType::QuadraticPolygon),
+            37 => Some(CellType::TriQuadraticPyramid),
             41 => Some(CellType::ConvexPointSet),
             42 => Some(CellType::Polyhedron),
+            60 => Some(CellType::HigherOrderCurve),
+            61 => Some(CellType::HigherOrderTriangle),
+            62 => Some(CellType::HigherOrderQuadrilateral),
+            63 => Some(CellType::HigherOrderPolygon),
+            64 => Some(CellType::HigherOrderTetrahedron),
+            65 => Some(CellType::HigherOrderWedge),
+            66 => Some(CellType::HigherOrderPyramid),
+            67 => Some(CellType::HigherOrderHexahedron),
             68 => Some(CellType::LagrangeCurve),
             69 => Some(CellType::LagrangeTriangle),
             70 => Some(CellType::LagrangeQuadrilateral),
@@ -183,8 +217,31 @@ impl CellType {
 
     /// Whether this is a quadratic cell.
     pub fn is_quadratic(&self) -> bool {
+        matches!(
+            self,
+            CellType::QuadraticEdge
+                | CellType::QuadraticTriangle
+                | CellType::QuadraticQuad
+                | CellType::QuadraticPolygon
+                | CellType::QuadraticTetra
+                | CellType::QuadraticHexahedron
+                | CellType::QuadraticWedge
+                | CellType::QuadraticPyramid
+                | CellType::BiQuadraticQuad
+                | CellType::TriQuadraticHexahedron
+                | CellType::TriQuadraticPyramid
+                | CellType::QuadraticLinearQuad
+                | CellType::QuadraticLinearWedge
+                | CellType::BiQuadraticQuadraticWedge
+                | CellType::BiQuadraticQuadraticHexahedron
+                | CellType::BiQuadraticTriangle
+        )
+    }
+
+    /// Whether this is a generic higher-order cell.
+    pub fn is_higher_order(&self) -> bool {
         let v = *self as u8;
-        (21..=34).contains(&v)
+        (60..=67).contains(&v)
     }
 
     /// Whether this is a Lagrange higher-order cell.
@@ -223,6 +280,7 @@ impl std::fmt::Display for CellType {
             CellType::QuadraticEdge => "QuadraticEdge",
             CellType::QuadraticTriangle => "QuadraticTriangle",
             CellType::QuadraticQuad => "QuadraticQuad",
+            CellType::QuadraticPolygon => "QuadraticPolygon",
             CellType::QuadraticTetra => "QuadraticTetra",
             CellType::QuadraticHexahedron => "QuadraticHexahedron",
             CellType::QuadraticWedge => "QuadraticWedge",
@@ -234,8 +292,18 @@ impl std::fmt::Display for CellType {
             CellType::BiQuadraticQuadraticWedge => "BiQuadraticQuadraticWedge",
             CellType::BiQuadraticQuadraticHexahedron => "BiQuadraticQuadraticHexahedron",
             CellType::BiQuadraticTriangle => "BiQuadraticTriangle",
+            CellType::TriQuadraticPyramid => "TriQuadraticPyramid",
+            CellType::CubicLine => "CubicLine",
             CellType::ConvexPointSet => "ConvexPointSet",
             CellType::Polyhedron => "Polyhedron",
+            CellType::HigherOrderCurve => "HigherOrderCurve",
+            CellType::HigherOrderTriangle => "HigherOrderTriangle",
+            CellType::HigherOrderQuadrilateral => "HigherOrderQuadrilateral",
+            CellType::HigherOrderPolygon => "HigherOrderPolygon",
+            CellType::HigherOrderTetrahedron => "HigherOrderTetrahedron",
+            CellType::HigherOrderWedge => "HigherOrderWedge",
+            CellType::HigherOrderPyramid => "HigherOrderPyramid",
+            CellType::HigherOrderHexahedron => "HigherOrderHexahedron",
             CellType::LagrangeCurve => "LagrangeCurve",
             CellType::LagrangeTriangle => "LagrangeTriangle",
             CellType::LagrangeQuadrilateral => "LagrangeQuadrilateral",
@@ -272,7 +340,10 @@ mod tests {
             CellType::Wedge,
             CellType::Pyramid,
             CellType::QuadraticEdge,
+            CellType::QuadraticPolygon,
+            CellType::CubicLine,
             CellType::QuadraticTriangle,
+            CellType::HigherOrderCurve,
             CellType::LagrangeCurve,
             CellType::BezierTriangle,
         ];
@@ -307,6 +378,8 @@ mod tests {
         assert_eq!(CellType::QuadraticQuad.num_points(), Some(8));
         assert_eq!(CellType::QuadraticTetra.num_points(), Some(10));
         assert_eq!(CellType::QuadraticHexahedron.num_points(), Some(20));
+        assert_eq!(CellType::CubicLine.num_points(), Some(4));
+        assert_eq!(CellType::TriQuadraticPyramid.num_points(), Some(19));
     }
 
     #[test]
@@ -326,7 +399,9 @@ mod tests {
         assert_eq!(CellType::Tetra.dimension(), 3);
         assert_eq!(CellType::Hexahedron.dimension(), 3);
         assert_eq!(CellType::LagrangeCurve.dimension(), 1);
+        assert_eq!(CellType::HigherOrderCurve.dimension(), 1);
         assert_eq!(CellType::LagrangeTriangle.dimension(), 2);
+        assert_eq!(CellType::QuadraticPolygon.dimension(), 2);
         assert_eq!(CellType::BezierQuadrilateral.dimension(), 2);
     }
 
@@ -335,6 +410,9 @@ mod tests {
         assert!(CellType::Triangle.is_linear());
         assert!(!CellType::QuadraticTriangle.is_linear());
         assert!(CellType::QuadraticTriangle.is_quadratic());
+        assert!(CellType::QuadraticPolygon.is_quadratic());
+        assert!(!CellType::CubicLine.is_quadratic());
+        assert!(CellType::HigherOrderHexahedron.is_higher_order());
         assert!(CellType::LagrangeCurve.is_lagrange());
         assert!(!CellType::LagrangeCurve.is_bezier());
         assert!(CellType::BezierTriangle.is_bezier());

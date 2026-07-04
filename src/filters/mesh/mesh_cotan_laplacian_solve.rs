@@ -27,7 +27,9 @@ pub fn cotan_poisson_solve(
         if c.len() != 3 {
             continue;
         }
-        let ids = [c[0] as usize, c[1] as usize, c[2] as usize];
+        let Some(ids) = triangle_point_ids(c, n) else {
+            continue;
+        };
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),
@@ -43,11 +45,7 @@ pub fn cotan_poisson_solve(
                 + (eij[2] * eik[0] - eij[0] * eik[2]).powi(2)
                 + (eij[0] * eik[1] - eij[1] * eik[0]).powi(2))
             .sqrt();
-            let cot = if cl > 1e-15 {
-                (dot / cl).abs() * 0.5
-            } else {
-                0.0
-            };
+            let cot = if cl > 1e-15 { dot / cl * 0.5 } else { 0.0 };
             nb_weights[ids[j]].push((ids[k], cot));
             nb_weights[ids[k]].push((ids[j], cot));
         }
@@ -62,6 +60,9 @@ pub fn cotan_poisson_solve(
         let prev = u.clone();
         for i in 0..n {
             if fixed.contains_key(&i) || nb_weights[i].is_empty() {
+                continue;
+            }
+            if i >= rhs.len() {
                 continue;
             }
             let mut wsum = 0.0;
@@ -80,6 +81,22 @@ pub fn cotan_poisson_solve(
         .add_array(AnyDataArray::F64(DataArray::from_vec("Solution", u, 1)));
     r.point_data_mut().set_active_scalars("Solution");
     r
+}
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 #[cfg(test)]
 mod tests {

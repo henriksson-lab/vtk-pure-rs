@@ -4,7 +4,7 @@
 //! coplanar faces and near-degenerate configurations better than the
 //! basic boolean module.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Classify each vertex of mesh A as inside/outside mesh B using
 /// generalized winding number.
@@ -45,18 +45,28 @@ pub fn boolean_intersection(a: &PolyData, b: &PolyData) -> PolyData {
     result_a
 }
 
-/// Boolean difference: A minus B. Keep faces from A outside B.
+/// Boolean difference: A minus B.
 pub fn boolean_difference(a: &PolyData, b: &PolyData) -> PolyData {
     let inside_b = classify_vertices(a, b);
-    extract_cells_by_vertex_flag(a, &inside_b, false)
+    let inside_a = classify_vertices(b, a);
+
+    let mut result = extract_cells_by_vertex_flag(a, &inside_b, false);
+    let mut inner_boundary = extract_cells_by_vertex_flag(b, &inside_a, true);
+    reverse_polys(&mut inner_boundary);
+    append_mesh(&mut result, &inner_boundary);
+    result
 }
 
 fn extract_cells_by_vertex_flag(mesh: &PolyData, flags: &[bool], keep_flagged: bool) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let npts = mesh.points.len();
 
     for cell in mesh.polys.iter() {
+        if cell.len() < 3 || cell.iter().any(|&pid| pid < 0 || pid as usize >= npts) {
+            continue;
+        }
         let majority = cell
             .iter()
             .filter(|&&pid| {
@@ -104,15 +114,31 @@ type Triangle = [[f64; 3]; 3];
 
 fn collect_triangles(mesh: &PolyData) -> Vec<Triangle> {
     let mut tris = Vec::new();
+    let npts = mesh.points.len();
     for cell in mesh.polys.iter() {
-        if cell.len() >= 3 {
-            let a = mesh.points.get(cell[0] as usize);
-            let b = mesh.points.get(cell[1] as usize);
-            let c = mesh.points.get(cell[2] as usize);
+        if cell.len() < 3 {
+            continue;
+        }
+        if cell.iter().any(|&id| id < 0 || id as usize >= npts) {
+            continue;
+        }
+        let a = mesh.points.get(cell[0] as usize);
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
             tris.push([a, b, c]);
         }
     }
     tris
+}
+
+fn reverse_polys(mesh: &mut PolyData) {
+    let mut reversed = CellArray::new();
+    for cell in mesh.polys.iter() {
+        let ids: Vec<i64> = cell.iter().rev().copied().collect();
+        reversed.push_cell(&ids);
+    }
+    mesh.polys = reversed;
 }
 
 fn generalized_winding_number(point: [f64; 3], triangles: &[Triangle]) -> f64 {

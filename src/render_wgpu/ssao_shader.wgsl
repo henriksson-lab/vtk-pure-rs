@@ -5,6 +5,7 @@ struct SsaoUniforms {
     bias: f32,
     intensity: f32,
     num_samples: f32,
+    blur: f32,
     texel_size: vec2<f32>,
     near: f32,
     far: f32,
@@ -37,7 +38,7 @@ fn vs_fullscreen(@builtin(vertex_index) idx: u32) -> VertexOutput {
 
 // Reconstruct view-space position from depth and UV
 fn view_pos_from_depth(uv: vec2<f32>, depth: f32) -> vec3<f32> {
-    let ndc = vec4<f32>(uv * 2.0 - 1.0, depth, 1.0);
+    let ndc = vec4<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
     let view = uniforms.inv_projection * ndc;
     return view.xyz / view.w;
 }
@@ -52,7 +53,7 @@ fn hash(p: vec2<f32>) -> f32 {
 @fragment
 fn fs_ssao(in: VertexOutput) -> @location(0) f32 {
     let depth = textureSample(depth_tex, depth_sampler, in.uv);
-    if depth >= 1.0 {
+    if depth <= 0.0 || depth >= 1.0 {
         return 1.0; // background, no occlusion
     }
 
@@ -63,29 +64,22 @@ fn fs_ssao(in: VertexOutput) -> @location(0) f32 {
         textureSample(depth_tex, depth_sampler, in.uv + vec2<f32>(uniforms.texel_size.x, 0.0)));
     let py = view_pos_from_depth(in.uv + vec2<f32>(0.0, uniforms.texel_size.y),
         textureSample(depth_tex, depth_sampler, in.uv + vec2<f32>(0.0, uniforms.texel_size.y)));
-    let normal = normalize(cross(px - view_pos, py - view_pos));
+    let normal = normalize(cross(py - view_pos, px - view_pos));
 
     // Random rotation per pixel
     let noise_angle = hash(in.uv * 1000.0) * 6.2831853;
     let cs = cos(noise_angle);
     let sn = sin(noise_angle);
+    let random_vec = vec3<f32>(cs, sn, 0.0);
+    let tangent = normalize(random_vec - normal * dot(random_vec, normal));
+    let bitangent = cross(normal, tangent);
 
     var occlusion = 0.0;
-    let ns = u32(uniforms.num_samples);
+    let ns = clamp(u32(uniforms.num_samples), 1u, 32u);
 
-    for (var i = 0u; i < ns && i < 32u; i = i + 1u) {
+    for (var i = 0u; i < ns; i = i + 1u) {
         var s = uniforms.samples[i].xyz;
-        // Random rotation around normal
-        let rotated = vec3<f32>(
-            s.x * cs - s.y * sn,
-            s.x * sn + s.y * cs,
-            s.z,
-        );
-        // Align sample to surface normal (hemisphere)
-        var sample_vec = rotated;
-        if dot(sample_vec, normal) < 0.0 {
-            sample_vec = -sample_vec;
-        }
+        let sample_vec = tangent * s.x + bitangent * s.y + normal * s.z;
 
         let sample_pos = view_pos + sample_vec * uniforms.radius;
 
@@ -111,33 +105,20 @@ fn fs_ssao(in: VertexOutput) -> @location(0) f32 {
     return clamp(occlusion, 0.0, 1.0);
 }
 
-// Bilateral blur (4x4, depth-aware)
-@fragment
-fn fs_blur(in: VertexOutput) -> @location(0) f32 {
-    let center_depth = textureSample(depth_tex, depth_sampler, in.uv);
-    var result = 0.0;
-    var total_weight = 0.0;
-
-    for (var y = -2; y <= 2; y = y + 1) {
-        for (var x = -2; x <= 2; x = x + 1) {
-            let offset = vec2<f32>(f32(x), f32(y)) * uniforms.texel_size;
-            let sample_uv = in.uv + offset;
-            let ao = textureSample(ao_tex, depth_sampler, sample_uv).r;
-            let d = textureSample(depth_tex, depth_sampler, sample_uv);
-            // Depth-aware weight: reject samples at different depths
-            let depth_diff = abs(d - center_depth);
-            let weight = exp(-depth_diff * 1000.0);
-            result += ao * weight;
-            total_weight += weight;
-        }
-    }
-
-    return result / max(total_weight, 0.001);
-}
-
 // Multiply AO onto color (blend state handles multiplication)
 @fragment
 fn fs_composite(in: VertexOutput) -> @location(0) vec4<f32> {
-    let ao = textureSample(ao_tex, depth_sampler, in.uv).r;
+    var ao = textureSample(ao_tex, depth_sampler, in.uv).r;
+    if uniforms.blur > 0.5 {
+        ao = 0.195346 * textureSample(ao_tex, depth_sampler, in.uv).r
+            + 0.077847 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(-1.0, -1.0) * uniforms.texel_size).r
+            + 0.077847 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(-1.0, 1.0) * uniforms.texel_size).r
+            + 0.077847 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(1.0, -1.0) * uniforms.texel_size).r
+            + 0.077847 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(1.0, 1.0) * uniforms.texel_size).r
+            + 0.123317 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(-1.0, 0.0) * uniforms.texel_size).r
+            + 0.123317 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(1.0, 0.0) * uniforms.texel_size).r
+            + 0.123317 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(0.0, -1.0) * uniforms.texel_size).r
+            + 0.123317 * textureSample(ao_tex, depth_sampler, in.uv + vec2<f32>(0.0, 1.0) * uniforms.texel_size).r;
+    }
     return vec4<f32>(ao, ao, ao, 1.0);
 }

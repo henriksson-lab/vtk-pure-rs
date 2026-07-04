@@ -43,32 +43,56 @@ pub fn geodesic_iso_contours(
             if cell.len() < 3 {
                 continue;
             }
-            let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
-            let sv = [values[ids[0]], values[ids[1]], values[ids[2]]];
-
-            let mut crossings = Vec::new();
-            for k in 0..3 {
-                let a = ids[k];
-                let b = ids[(k + 1) % 3];
-                let sa = sv[k];
-                let sb = sv[(k + 1) % 3];
-                if sa >= 0.0 && sb >= 0.0 && (sa - iso) * (sb - iso) < 0.0 {
-                    let t = (iso - sa) / (sb - sa);
-                    let pa = input.points.get(a);
-                    let pb = input.points.get(b);
-                    crossings.push([
-                        pa[0] + t * (pb[0] - pa[0]),
-                        pa[1] + t * (pb[1] - pa[1]),
-                        pa[2] + t * (pb[2] - pa[2]),
-                    ]);
-                }
+            let first = cell[0] as usize;
+            if first >= n {
+                continue;
             }
 
-            if crossings.len() == 2 {
-                let i0 = out_pts.len() as i64;
-                out_pts.push(crossings[0]);
-                out_pts.push(crossings[1]);
-                out_lines.push_cell(&[i0, i0 + 1]);
+            for tri_i in 1..cell.len() - 1 {
+                let ids = [first, cell[tri_i] as usize, cell[tri_i + 1] as usize];
+                if ids.iter().any(|&id| id >= n) {
+                    continue;
+                }
+                let sv = [values[ids[0]], values[ids[1]], values[ids[2]]];
+
+                let mut crossings: Vec<[f64; 3]> = Vec::new();
+                for k in 0..3 {
+                    let a = ids[k];
+                    let b = ids[(k + 1) % 3];
+                    let sa = sv[k];
+                    let sb = sv[(k + 1) % 3];
+                    if sa < 0.0 || sb < 0.0 || sa >= f64::MAX || sb >= f64::MAX {
+                        continue;
+                    }
+
+                    let pa = input.points.get(a);
+                    let pb = input.points.get(b);
+                    if (sa - iso).abs() < 1e-12 && (sb - iso).abs() < 1e-12 {
+                        push_unique_point(&mut crossings, pa);
+                        push_unique_point(&mut crossings, pb);
+                    } else if (sa - iso).abs() < 1e-12 {
+                        push_unique_point(&mut crossings, pa);
+                    } else if (sb - iso).abs() < 1e-12 {
+                        push_unique_point(&mut crossings, pb);
+                    } else if (sa - iso) * (sb - iso) < 0.0 {
+                        let t = (iso - sa) / (sb - sa);
+                        push_unique_point(
+                            &mut crossings,
+                            [
+                                pa[0] + t * (pb[0] - pa[0]),
+                                pa[1] + t * (pb[1] - pa[1]),
+                                pa[2] + t * (pb[2] - pa[2]),
+                            ],
+                        );
+                    }
+                }
+
+                if crossings.len() >= 2 {
+                    let i0 = out_pts.len() as i64;
+                    out_pts.push(crossings[0]);
+                    out_pts.push(crossings[1]);
+                    out_lines.push_cell(&[i0, i0 + 1]);
+                }
             }
         }
     }
@@ -77,6 +101,14 @@ pub fn geodesic_iso_contours(
     pd.points = out_pts;
     pd.lines = out_lines;
     pd
+}
+
+fn push_unique_point(points: &mut Vec<[f64; 3]>, p: [f64; 3]) {
+    if !points.iter().any(|&q| {
+        (p[0] - q[0]).abs() < 1e-12 && (p[1] - q[1]).abs() < 1e-12 && (p[2] - q[2]).abs() < 1e-12
+    }) {
+        points.push(p);
+    }
 }
 
 #[cfg(test)]

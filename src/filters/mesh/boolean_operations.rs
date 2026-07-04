@@ -4,7 +4,7 @@
 //! Uses a simplified approach based on inside/outside classification
 //! via ray casting + mesh concatenation.
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{CellArray, PolyData};
 
 /// Boolean operation type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,8 +45,12 @@ pub fn boolean_operation(a: &PolyData, b: &PolyData, op: BooleanOp) -> PolyData 
     // Extract kept cells from A
     let mut result = extract_kept_cells(a, &keep_a);
 
-    // Extract kept cells from B and append
-    let b_kept = extract_kept_cells(b, &keep_b);
+    // Extract kept cells from B and append. VTK reverses the second input's
+    // intersection cells for difference when ReorientDifferenceCells is on.
+    let mut b_kept = extract_kept_cells(b, &keep_b);
+    if op == BooleanOp::Difference {
+        reverse_cells(&mut b_kept);
+    }
     append_poly_data(&mut result, &b_kept);
 
     result
@@ -55,18 +59,29 @@ pub fn boolean_operation(a: &PolyData, b: &PolyData, op: BooleanOp) -> PolyData 
 fn cell_centroids(pd: &PolyData) -> Vec<[f64; 3]> {
     let nc = pd.polys.num_cells();
     let mut centroids = Vec::with_capacity(nc);
+    let npts = pd.points.len();
     for ci in 0..nc {
         let cell = pd.polys.cell(ci);
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
+        let mut count = 0usize;
         for &vid in cell {
-            let p = pd.points.get(vid as usize);
+            let vi = vid as usize;
+            if vi >= npts {
+                continue;
+            }
+            let p = pd.points.get(vi);
             cx += p[0];
             cy += p[1];
             cz += p[2];
+            count += 1;
         }
-        let n = cell.len() as f64;
+        if count == 0 {
+            centroids.push([0.0, 0.0, 0.0]);
+            continue;
+        }
+        let n = count as f64;
         centroids.push([cx / n, cy / n, cz / n]);
     }
     centroids
@@ -74,12 +89,16 @@ fn cell_centroids(pd: &PolyData) -> Vec<[f64; 3]> {
 
 /// Simple ray-casting point-in-mesh test (cast along +X axis).
 fn point_in_mesh(point: &[f64; 3], mesh: &PolyData) -> bool {
-    let mut crossings = 0;
+    let mut crossings = Vec::new();
     let nc = mesh.polys.num_cells();
+    let npts = mesh.points.len();
 
     for ci in 0..nc {
         let cell = mesh.polys.cell(ci);
         if cell.len() < 3 {
+            continue;
+        }
+        if cell.iter().any(|&id| id < 0 || id as usize >= npts) {
             continue;
         }
 
@@ -88,17 +107,24 @@ fn point_in_mesh(point: &[f64; 3], mesh: &PolyData) -> bool {
         for i in 1..cell.len() - 1 {
             let p1 = mesh.points.get(cell[i] as usize);
             let p2 = mesh.points.get(cell[i + 1] as usize);
-            if ray_intersects_triangle(point, p0, p1, p2) {
-                crossings += 1;
+            if let Some(t) = ray_intersects_triangle(point, p0, p1, p2) {
+                crossings.push(t);
             }
         }
     }
 
-    crossings % 2 == 1
+    crossings.sort_by(|a, b| a.total_cmp(b));
+    crossings.dedup_by(|a, b| (*a - *b).abs() <= 1.0e-9);
+    crossings.len() % 2 == 1
 }
 
 /// Möller–Trumbore ray-triangle intersection (ray along +X from point).
-fn ray_intersects_triangle(origin: &[f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> bool {
+fn ray_intersects_triangle(
+    origin: &[f64; 3],
+    v0: [f64; 3],
+    v1: [f64; 3],
+    v2: [f64; 3],
+) -> Option<f64> {
     let dir = [1.0, 0.0, 0.0]; // +X ray
     let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
     let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
@@ -106,24 +132,24 @@ fn ray_intersects_triangle(origin: &[f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f
     let h = cross(dir, e2);
     let a = dot(e1, h);
     if a.abs() < 1e-15 {
-        return false;
+        return None;
     }
 
     let f = 1.0 / a;
     let s = [origin[0] - v0[0], origin[1] - v0[1], origin[2] - v0[2]];
     let u = f * dot(s, h);
     if u < 0.0 || u > 1.0 {
-        return false;
+        return None;
     }
 
     let q = cross(s, e1);
     let v = f * dot(dir, q);
     if v < 0.0 || u + v > 1.0 {
-        return false;
+        return None;
     }
 
     let t = f * dot(e2, q);
-    t > 1e-15
+    (t > 1e-15).then_some(t)
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -142,12 +168,16 @@ fn extract_kept_cells(pd: &PolyData, keep: &[bool]) -> PolyData {
     let mut point_map = vec![i64::MAX; pd.points.len()];
     let mut new_points = crate::data::Points::<f64>::new();
     let mut new_polys = crate::data::CellArray::new();
+    let npts = pd.points.len();
 
     for ci in 0..pd.polys.num_cells() {
         if ci >= keep.len() || !keep[ci] {
             continue;
         }
         let cell = pd.polys.cell(ci);
+        if cell.iter().any(|&v| v < 0 || v as usize >= npts) {
+            continue;
+        }
         for &vid in cell {
             let vi = vid as usize;
             if point_map[vi] == i64::MAX {
@@ -175,6 +205,15 @@ fn append_poly_data(target: &mut PolyData, source: &PolyData) {
         let remapped: Vec<i64> = cell.iter().map(|&v| v + offset).collect();
         target.polys.push_cell(&remapped);
     }
+}
+
+fn reverse_cells(pd: &mut PolyData) {
+    let mut reversed = CellArray::new();
+    for cell in pd.polys.iter() {
+        let ids: Vec<i64> = cell.iter().rev().copied().collect();
+        reversed.push_cell(&ids);
+    }
+    pd.polys = reversed;
 }
 
 #[cfg(test)]
@@ -229,5 +268,11 @@ mod tests {
         let cube = unit_cube();
         // Point far outside should definitely be outside
         assert!(!point_in_mesh(&[5.0, 5.0, 5.0], &cube));
+    }
+
+    #[test]
+    fn point_inside_mesh_on_triangulated_face_seam() {
+        let cube = unit_cube();
+        assert!(point_in_mesh(&[0.5, 0.5, 0.5], &cube));
     }
 }

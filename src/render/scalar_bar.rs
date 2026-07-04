@@ -47,7 +47,7 @@ impl ScalarBar {
             orientation: ScalarBarOrientation::Vertical,
             position: [0.85, 0.1],
             size: [0.08, 0.8],
-            num_bands: 256,
+            num_bands: 64,
             text_color: [1.0, 1.0, 1.0],
             background_color: [0.0, 0.0, 0.0, 0.5],
         }
@@ -57,8 +57,8 @@ impl ScalarBar {
     ///
     /// Returns a list of `(x, y, w, h, [r, g, b, a])` in NDC [0,1] space.
     pub fn color_band_quads(&self) -> Vec<([f32; 2], [f32; 2], [f32; 4])> {
-        let mut quads = Vec::with_capacity(self.num_bands);
-        let n = self.num_bands;
+        let n = self.num_bands.max(2);
+        let mut quads = Vec::with_capacity(n);
 
         for i in 0..n {
             let t = i as f64 / n as f64;
@@ -91,12 +91,16 @@ impl ScalarBar {
     pub fn label_info(&self) -> Vec<([f32; 2], String)> {
         let mut labels = Vec::with_capacity(self.num_labels);
         let n = self.num_labels;
-        if n < 2 {
+        if n == 0 {
             return labels;
         }
 
         for i in 0..n {
-            let t = i as f32 / (n - 1) as f32;
+            let t = if n > 1 {
+                i as f32 / (n - 1) as f32
+            } else {
+                0.5
+            };
             let value = self.range[0] + (self.range[1] - self.range[0]) * t as f64;
 
             let pos = match self.orientation {
@@ -134,7 +138,7 @@ impl ScalarBar {
         height: f32,
         num_bands: usize,
     ) -> (Vec<[f32; 2]>, Vec<[f32; 4]>, Vec<u32>) {
-        let num_bands = num_bands.max(1);
+        let num_bands = num_bands.max(2);
         let num_verts = (num_bands + 1) * 2; // 2 vertices per horizontal row
         let mut positions = Vec::with_capacity(num_verts);
         let mut colors = Vec::with_capacity(num_verts);
@@ -214,9 +218,9 @@ mod tests {
     fn color_band_quads() {
         let sb = ScalarBar::new("T", ColorMap::jet(), [0.0, 1.0]);
         let quads = sb.color_band_quads();
-        assert_eq!(quads.len(), 256);
+        assert_eq!(quads.len(), 64);
         // First quad should be at bottom
-        assert!(quads[0].0[1] < quads[255].0[1]);
+        assert!(quads[0].0[1] < quads[63].0[1]);
     }
 
     #[test]
@@ -273,5 +277,23 @@ mod tests {
         assert_eq!(quads.len(), 10);
         // Horizontal: x increases across quads
         assert!(quads[0].0[0] < quads[9].0[0]);
+    }
+
+    #[test]
+    fn color_bands_clamp_to_vtk_minimum() {
+        let mut sb = ScalarBar::new("T", ColorMap::jet(), [0.0, 1.0]);
+        sb.num_bands = 0;
+        let quads = sb.color_band_quads();
+        assert_eq!(quads.len(), 2);
+    }
+
+    #[test]
+    fn single_label_uses_midpoint() {
+        let mut sb = ScalarBar::new("T", ColorMap::jet(), [0.0, 100.0]);
+        sb.num_labels = 1;
+        let labels = sb.label_info();
+        assert_eq!(labels.len(), 1);
+        assert_eq!(labels[0].1, "50.0");
+        assert!((labels[0].0[1] - (sb.position[1] + sb.size[1] * 0.5)).abs() < 1e-6);
     }
 }

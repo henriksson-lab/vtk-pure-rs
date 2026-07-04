@@ -1,31 +1,112 @@
 //! Window/level contrast adjustment for scalar ImageData (common in medical imaging).
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::types::ScalarType;
 
 /// Apply window/level contrast to a scalar array.
 ///
-/// Values in [center-width/2, center+width/2] are mapped to [0, 1].
-/// Values outside are clamped.
+/// Values are mapped with VTK's no-lookup-table window/level formula
+/// to unsigned char values in [0, 255].
 pub fn window_level(image: &ImageData, array_name: &str, center: f64, width: f64) -> ImageData {
     let arr = match image.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return image.clone(),
     };
-    let lo = center - width / 2.0;
-    let hi = center + width / 2.0;
-    let range = (hi - lo).max(1e-15);
+    let dims = image.dimensions();
+    let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() < n {
+        return image.clone();
+    }
+    let (lower, upper, lower_val, upper_val) =
+        window_level_clamps(arr.scalar_type(), center, width);
+    let shift = width / 2.0 - center;
+    let scale = if width == 0.0 { 0.0 } else { 255.0 / width };
     let mut buf = [0.0f64];
-    let data: Vec<f64> = (0..arr.num_tuples())
+    let data: Vec<u8> = (0..arr.num_tuples())
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            ((buf[0] - lo) / range).clamp(0.0, 1.0)
+            let value = buf[0];
+            if value <= lower {
+                lower_val
+            } else if value >= upper {
+                upper_val
+            } else {
+                ((value + shift) * scale).clamp(0.0, 255.0) as u8
+            }
         })
         .collect();
     let mut result = image.clone();
     result
         .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, data, 1)));
+        .add_array(AnyDataArray::U8(DataArray::from_vec(array_name, data, 1)));
     result
+}
+
+fn scalar_type_range(scalar_type: ScalarType) -> [f64; 2] {
+    match scalar_type {
+        ScalarType::F32 => [f32::MIN as f64, f32::MAX as f64],
+        ScalarType::F64 => [f64::MIN, f64::MAX],
+        ScalarType::I8 => [i8::MIN as f64, i8::MAX as f64],
+        ScalarType::I16 => [i16::MIN as f64, i16::MAX as f64],
+        ScalarType::I32 => [i32::MIN as f64, i32::MAX as f64],
+        ScalarType::I64 => [i64::MIN as f64, i64::MAX as f64],
+        ScalarType::U8 => [u8::MIN as f64, u8::MAX as f64],
+        ScalarType::U16 => [u16::MIN as f64, u16::MAX as f64],
+        ScalarType::U32 => [u32::MIN as f64, u32::MAX as f64],
+        ScalarType::U64 => [u64::MIN as f64, u64::MAX as f64],
+    }
+}
+
+fn clamp_u8(value: f64) -> u8 {
+    if value > 255.0 {
+        255
+    } else if value < 0.0 {
+        0
+    } else {
+        value as u8
+    }
+}
+
+fn window_level_clamps(scalar_type: ScalarType, center: f64, width: f64) -> (f64, f64, u8, u8) {
+    let f_lower = center - width.abs() / 2.0;
+    let f_upper = f_lower + width.abs();
+    let range = scalar_type_range(scalar_type);
+
+    let (lower, adjusted_lower) = if f_lower <= range[1] {
+        if f_lower >= range[0] {
+            (f_lower, f_lower)
+        } else {
+            (range[0], range[0])
+        }
+    } else {
+        (range[1], range[1])
+    };
+
+    let (upper, adjusted_upper) = if f_upper >= range[0] {
+        if f_upper <= range[1] {
+            (f_upper, f_upper)
+        } else {
+            (range[1], range[1])
+        }
+    } else {
+        (range[0], range[0])
+    };
+
+    let (f_lower_val, f_upper_val) = if width > 0.0 {
+        (
+            255.0 * (adjusted_lower - f_lower) / width,
+            255.0 * (adjusted_upper - f_lower) / width,
+        )
+    } else if width < 0.0 {
+        (
+            255.0 + 255.0 * (adjusted_lower - f_lower) / width,
+            255.0 + 255.0 * (adjusted_upper - f_lower) / width,
+        )
+    } else {
+        (0.0, 255.0)
+    };
+
+    (lower, upper, clamp_u8(f_lower_val), clamp_u8(f_upper_val))
 }
 
 /// Auto window/level: use percentile-based window.
@@ -40,6 +121,9 @@ pub fn auto_window_level(
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut values: Vec<f64> = (0..n)
         .map(|i| {
@@ -64,6 +148,11 @@ pub fn gamma_correction(image: &ImageData, array_name: &str, gamma: f64) -> Imag
         Some(a) if a.num_components() == 1 => a,
         _ => return image.clone(),
     };
+    let dims = image.dimensions();
+    let n = dims[0] * dims[1] * dims[2];
+    if n == 0 || arr.num_tuples() < n {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
     let mut max_v = f64::MIN;
@@ -93,6 +182,11 @@ pub fn sigmoid_contrast(image: &ImageData, array_name: &str, alpha: f64, beta: f
         Some(a) if a.num_components() == 1 => a,
         _ => return image.clone(),
     };
+    let dims = image.dimensions();
+    let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() < n {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let data: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -136,6 +230,22 @@ mod tests {
         );
         let result = auto_window_level(&img, "v", 0.05, 0.95);
         assert!(result.point_data().get_array("v").is_some());
+    }
+    #[test]
+    fn clamps_to_scalar_type_range() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::U8(DataArray::from_vec(
+                "v",
+                vec![0u8, 127, 255],
+                1,
+            )));
+
+        let result = window_level(&img, "v", 300.0, 200.0);
+        let arr = result.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 70.0);
     }
     #[test]
     fn gamma() {

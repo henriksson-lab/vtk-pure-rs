@@ -11,22 +11,31 @@ pub fn quality_edge_collapse(
     target_faces: usize,
     max_aspect_ratio: f64,
 ) -> PolyData {
+    if mesh.polys.num_cells() <= target_faces {
+        return mesh.clone();
+    }
+
     let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
     let mut tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
         .filter_map(|c| {
             if c.len() == 3 {
-                Some([c[0] as usize, c[1] as usize, c[2] as usize])
+                Some([
+                    usize::try_from(c[0]).ok()?,
+                    usize::try_from(c[1]).ok()?,
+                    usize::try_from(c[2]).ok()?,
+                ])
             } else {
                 None
             }
         })
+        .filter(|t| t.iter().all(|&id| id < pts.len()))
         .collect();
     let mut alive = vec![true; pts.len()];
 
     // Collect edges sorted by length
-    let mut edges = collect_edges(&tris);
+    let mut edges = collect_edges(&pts, &tris);
     edges.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
 
     while tris.len() > target_faces {
@@ -91,7 +100,7 @@ pub fn quality_edge_collapse(
         if !collapsed {
             break;
         }
-        edges = collect_edges(&tris);
+        edges = collect_edges(&pts, &tris);
         edges.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
     }
 
@@ -116,43 +125,61 @@ pub fn quality_edge_collapse(
     result
 }
 
-fn collect_edges(tris: &[[usize; 3]]) -> Vec<(usize, usize, f64)> {
-    // We can't compute real lengths without positions here, use placeholder
+fn collect_edges(pts: &[[f64; 3]], tris: &[[usize; 3]]) -> Vec<(usize, usize, f64)> {
     let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
     let mut edges = Vec::new();
     for t in tris {
         for i in 0..3 {
             let (a, b) = (t[i].min(t[(i + 1) % 3]), t[i].max(t[(i + 1) % 3]));
             if seen.insert((a, b)) {
-                edges.push((a, b, 0.0));
-            } // length filled later
+                let len2 = (pts[a][0] - pts[b][0]).powi(2)
+                    + (pts[a][1] - pts[b][1]).powi(2)
+                    + (pts[a][2] - pts[b][2]).powi(2);
+                edges.push((a, b, len2));
+            }
         }
     }
     edges
 }
 
 fn aspect_ratio(pts: &[[f64; 3]], t: [usize; 3]) -> f64 {
-    let lens = [
-        ((pts[t[0]][0] - pts[t[1]][0]).powi(2)
-            + (pts[t[0]][1] - pts[t[1]][1]).powi(2)
-            + (pts[t[0]][2] - pts[t[1]][2]).powi(2))
-        .sqrt(),
-        ((pts[t[1]][0] - pts[t[2]][0]).powi(2)
-            + (pts[t[1]][1] - pts[t[2]][1]).powi(2)
-            + (pts[t[1]][2] - pts[t[2]][2]).powi(2))
-        .sqrt(),
-        ((pts[t[2]][0] - pts[t[0]][0]).powi(2)
-            + (pts[t[2]][1] - pts[t[0]][1]).powi(2)
-            + (pts[t[2]][2] - pts[t[0]][2]).powi(2))
-        .sqrt(),
-    ];
-    let max_l = lens.iter().cloned().fold(0.0f64, f64::max);
-    let min_l = lens.iter().cloned().fold(f64::MAX, f64::min);
-    if min_l > 1e-15 {
-        max_l / min_l
-    } else {
-        f64::MAX
+    const VERDICT_DBL_MAX: f64 = 1.0e30;
+    const VERDICT_DBL_MIN: f64 = 2.2204460492503131e-15;
+    const ASPECT_RATIO_NORMAL_COEFF: f64 = 1.7320508075688772 / 6.0;
+
+    let a = pts[t[0]];
+    let b = pts[t[1]];
+    let c = pts[t[2]];
+    let ab = distance(a, b);
+    let bc = distance(b, c);
+    let ca = distance(c, a);
+    let hm = ab.max(bc).max(ca);
+    let denominator = cross_len(sub(b, a), sub(c, b));
+
+    if denominator < VERDICT_DBL_MIN {
+        return VERDICT_DBL_MAX;
     }
+
+    (ASPECT_RATIO_NORMAL_COEFF * hm * (ab + bc + ca) / denominator)
+        .clamp(-VERDICT_DBL_MAX, VERDICT_DBL_MAX)
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let d = sub(a, b);
+    (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
+}
+
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn cross_len(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let cross = [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+    (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt()
 }
 
 #[cfg(test)]
@@ -178,5 +205,20 @@ mod tests {
         let result = quality_edge_collapse(&mesh, 20, 5.0);
         assert!(result.polys.num_cells() <= mesh.polys.num_cells());
         assert!(result.polys.num_cells() > 0);
+    }
+
+    #[test]
+    fn no_op_target_preserves_input() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 1.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2, 3]);
+
+        let result = quality_edge_collapse(&mesh, 1, 5.0);
+        assert_eq!(result.points.len(), mesh.points.len());
+        assert_eq!(result.polys.num_cells(), mesh.polys.num_cells());
+        assert_eq!(result.polys.cell(0), mesh.polys.cell(0));
     }
 }

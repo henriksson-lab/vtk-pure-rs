@@ -10,15 +10,17 @@ pub fn image_whipping_instability(input: &ImageData, scalars: &str) -> ImageData
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].abs().max(1e-6)
-                * (buf[0].abs().max(0.01) / (8.85e-12 * buf[0].powi(2))).powf(0.33)
+            let radius = buf[0].abs().max(1e-6);
+            radius * (buf[0].abs().max(0.01) / (8.85e-12 * radius.powi(2))).powf(0.33)
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

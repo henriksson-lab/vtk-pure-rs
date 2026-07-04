@@ -16,9 +16,18 @@ pub fn extract_ridge_valley_lines(
             if c.len() < 3 {
                 return [0.0; 3];
             }
-            let v0 = input.points.get(c[0] as usize);
-            let v1 = input.points.get(c[1] as usize);
-            let v2 = input.points.get(c[2] as usize);
+            let Some(v0_id) = valid_point_id(c[0], input.points.len()) else {
+                return [0.0; 3];
+            };
+            let Some(v1_id) = valid_point_id(c[1], input.points.len()) else {
+                return [0.0; 3];
+            };
+            let Some(v2_id) = valid_point_id(c[2], input.points.len()) else {
+                return [0.0; 3];
+            };
+            let v0 = input.points.get(v0_id);
+            let v1 = input.points.get(v1_id);
+            let v2 = input.points.get(v2_id);
             let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
             let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
             let n = [
@@ -40,6 +49,12 @@ pub fn extract_ridge_valley_lines(
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
+            if a == b
+                || valid_point_id(a, input.points.len()).is_none()
+                || valid_point_id(b, input.points.len()).is_none()
+            {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
@@ -60,15 +75,21 @@ pub fn extract_ridge_valley_lines(
         let na = normals[faces[0]];
         let nb = normals[faces[1]];
         let dot = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
-        if dot >= cos_thresh {
+        if dot > cos_thresh {
             continue;
         } // not sharp enough
 
         // Determine ridge vs valley: is the dihedral convex or concave?
         let opp = cells[faces[1]].iter().find(|&&v| v != a && v != b);
         let is_ridge = if let Some(&opp_v) = opp {
-            let p = input.points.get(opp_v as usize);
-            let v0 = input.points.get(a as usize);
+            let Some(opp_id) = valid_point_id(opp_v, input.points.len()) else {
+                continue;
+            };
+            let Some(a_id) = valid_point_id(a, input.points.len()) else {
+                continue;
+            };
+            let p = input.points.get(opp_id);
+            let v0 = input.points.get(a_id);
             let d = [p[0] - v0[0], p[1] - v0[1], p[2] - v0[2]];
             d[0] * na[0] + d[1] * na[1] + d[2] * na[2] < 0.0
         } else {
@@ -78,24 +99,32 @@ pub fn extract_ridge_valley_lines(
         if is_ridge {
             let ma = *r_map.entry(a).or_insert_with(|| {
                 let i = ridge_pts.len() as i64;
-                ridge_pts.push(input.points.get(a as usize));
+                let point_id =
+                    valid_point_id(a, input.points.len()).expect("edge map contains validated ids");
+                ridge_pts.push(input.points.get(point_id));
                 i
             });
             let mb = *r_map.entry(b).or_insert_with(|| {
                 let i = ridge_pts.len() as i64;
-                ridge_pts.push(input.points.get(b as usize));
+                let point_id =
+                    valid_point_id(b, input.points.len()).expect("edge map contains validated ids");
+                ridge_pts.push(input.points.get(point_id));
                 i
             });
             ridge_lines.push_cell(&[ma, mb]);
         } else {
             let ma = *v_map.entry(a).or_insert_with(|| {
                 let i = valley_pts.len() as i64;
-                valley_pts.push(input.points.get(a as usize));
+                let point_id =
+                    valid_point_id(a, input.points.len()).expect("edge map contains validated ids");
+                valley_pts.push(input.points.get(point_id));
                 i
             });
             let mb = *v_map.entry(b).or_insert_with(|| {
                 let i = valley_pts.len() as i64;
-                valley_pts.push(input.points.get(b as usize));
+                let point_id =
+                    valid_point_id(b, input.points.len()).expect("edge map contains validated ids");
+                valley_pts.push(input.points.get(point_id));
                 i
             });
             valley_lines.push_cell(&[ma, mb]);
@@ -109,6 +138,12 @@ pub fn extract_ridge_valley_lines(
     valleys.points = valley_pts;
     valleys.lines = valley_lines;
     (ridges, valleys)
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

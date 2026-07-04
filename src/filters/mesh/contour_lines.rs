@@ -1,11 +1,12 @@
 //! Extract contour lines of scalar fields on mesh surfaces.
 
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extract contour lines at multiple isovalues.
 pub fn multi_contour_on_mesh(mesh: &PolyData, array_name: &str, isovalues: &[f64]) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= mesh.points.len() => a,
         _ => return PolyData::new(),
     };
     let mut buf = [0.0f64];
@@ -25,29 +26,59 @@ pub fn multi_contour_on_mesh(mesh: &PolyData, array_name: &str, isovalues: &[f64
             if cell.len() < 3 {
                 continue;
             }
+            let Some(cell_ids) = valid_point_ids(cell, mesh.points.len()) else {
+                continue;
+            };
             let nc = cell.len();
             let mut crossings = Vec::new();
+            let mut exact_vertex_points = HashMap::new();
             for i in 0..nc {
-                let a = cell[i] as usize;
-                let b = cell[(i + 1) % nc] as usize;
-                if (vals[a] - iso) * (vals[b] - iso) < 0.0 {
+                let a = cell_ids[i];
+                let b = cell_ids[(i + 1) % nc];
+                let da = vals[a] - iso;
+                let db = vals[b] - iso;
+
+                if da == 0.0 {
+                    let idx = *exact_vertex_points.entry(a).or_insert_with(|| {
+                        let idx = all_pts.len() as i64;
+                        all_pts.push(mesh.points.get(a));
+                        idx
+                    });
+                    if !crossings.contains(&idx) {
+                        crossings.push(idx);
+                    }
+                }
+                if db == 0.0 {
+                    let idx = *exact_vertex_points.entry(b).or_insert_with(|| {
+                        let idx = all_pts.len() as i64;
+                        all_pts.push(mesh.points.get(b));
+                        idx
+                    });
+                    if !crossings.contains(&idx) {
+                        crossings.push(idx);
+                    }
+                }
+
+                if da * db < 0.0 {
                     let t = (iso - vals[a]) / (vals[b] - vals[a]);
                     let pa = mesh.points.get(a);
                     let pb = mesh.points.get(b);
-                    crossings.push([
+                    let idx = all_pts.len() as i64;
+                    all_pts.push([
                         pa[0] + t * (pb[0] - pa[0]),
                         pa[1] + t * (pb[1] - pa[1]),
                         pa[2] + t * (pb[2] - pa[2]),
                     ]);
+                    crossings.push(idx);
                 }
             }
             if crossings.len() >= 2 {
-                let i0 = all_pts.len() as i64;
-                all_pts.push(crossings[0]);
-                let i1 = all_pts.len() as i64;
-                all_pts.push(crossings[1]);
-                all_lines.push_cell(&[i0, i1]);
-                iso_data.push(iso);
+                for pair in crossings.chunks(2) {
+                    if pair.len() == 2 {
+                        all_lines.push_cell(&[pair[0], pair[1]]);
+                        iso_data.push(iso);
+                    }
+                }
             }
         }
     }
@@ -65,6 +96,9 @@ pub fn multi_contour_on_mesh(mesh: &PolyData, array_name: &str, isovalues: &[f64
 
 /// Extract contour lines at regular intervals.
 pub fn contour_lines_regular(mesh: &PolyData, array_name: &str, n_contours: usize) -> PolyData {
+    if n_contours == 0 {
+        return PolyData::new();
+    }
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return PolyData::new(),
@@ -81,9 +115,13 @@ pub fn contour_lines_regular(mesh: &PolyData, array_name: &str, n_contours: usiz
         return PolyData::new();
     }
 
-    let isovalues: Vec<f64> = (1..=n_contours)
-        .map(|i| min_v + (max_v - min_v) * i as f64 / (n_contours + 1) as f64)
-        .collect();
+    let isovalues: Vec<f64> = if n_contours == 1 {
+        vec![min_v]
+    } else {
+        (0..n_contours)
+            .map(|i| min_v + (max_v - min_v) * i as f64 / (n_contours - 1) as f64)
+            .collect()
+    };
     multi_contour_on_mesh(mesh, array_name, &isovalues)
 }
 
@@ -93,7 +131,7 @@ pub fn contour_lengths(contours: &PolyData) -> Vec<(f64, f64)> {
         Some(a) => a,
         None => return Vec::new(),
     };
-    let mut lengths: std::collections::BTreeMap<i64, f64> = std::collections::BTreeMap::new();
+    let mut lengths: Vec<(u64, f64, f64)> = Vec::new();
     let mut buf = [0.0f64];
     let mut ci = 0;
     for cell in contours.lines.iter() {
@@ -104,14 +142,25 @@ pub fn contour_lengths(contours: &PolyData) -> Vec<(f64, f64)> {
                 ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
             if ci < iso_arr.num_tuples() {
                 iso_arr.tuple_as_f64(ci, &mut buf);
-                *lengths.entry((buf[0] * 1000.0) as i64).or_insert(0.0) += len;
+                let bits = buf[0].to_bits();
+                if let Some((_, _, total)) = lengths.iter_mut().find(|(key, _, _)| *key == bits) {
+                    *total += len;
+                } else {
+                    lengths.push((bits, buf[0], len));
+                }
             }
         }
         ci += 1;
     }
     lengths
         .into_iter()
-        .map(|(k, v)| (k as f64 / 1000.0, v))
+        .map(|(_, isovalue, length)| (isovalue, length))
+        .collect()
+}
+
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
         .collect()
 }
 
@@ -170,5 +219,67 @@ mod tests {
             )));
         let result = contour_lines_regular(&mesh, "f", 4);
         assert!(result.lines.num_cells() > 0);
+    }
+
+    #[test]
+    fn contour_through_exact_vertex() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "f",
+                vec![0.0, 1.0, 0.5],
+                1,
+            )));
+
+        let result = multi_contour_on_mesh(&mesh, "f", &[0.5]);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.points.len(), 2);
+    }
+
+    #[test]
+    fn invalid_cell_is_skipped() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "f",
+                vec![0.0, 1.0],
+                1,
+            )));
+
+        let result = multi_contour_on_mesh(&mesh, "f", &[0.5]);
+        assert_eq!(result.lines.num_cells(), 0);
+    }
+
+    #[test]
+    fn contour_lengths_preserve_close_isovalues() {
+        let mut contours = PolyData::new();
+        contours.points.push([0.0, 0.0, 0.0]);
+        contours.points.push([1.0, 0.0, 0.0]);
+        contours.points.push([0.0, 1.0, 0.0]);
+        contours.points.push([0.0, 2.0, 0.0]);
+        contours.lines.push_cell(&[0, 1]);
+        contours.lines.push_cell(&[2, 3]);
+        contours
+            .cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Isovalue",
+                vec![0.0001, 0.0002],
+                1,
+            )));
+
+        let lengths = contour_lengths(&contours);
+        assert_eq!(lengths.len(), 2);
+        assert!(lengths
+            .iter()
+            .any(|&(iso, len)| iso == 0.0001 && len == 1.0));
+        assert!(lengths
+            .iter()
+            .any(|&(iso, len)| iso == 0.0002 && len == 1.0));
     }
 }

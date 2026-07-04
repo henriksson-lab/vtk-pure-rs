@@ -75,47 +75,24 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
     let nt = arr.num_tuples();
     let nc = arr.num_components();
     let total = nt * nc;
+    macro_rules! write_numeric {
+        ($array:expr, $width:expr) => {{
+            let mut buf = Vec::with_capacity(total * $width);
+            for i in 0..nt {
+                let t = $array.tuple(i);
+                for &v in t {
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
+            }
+            buf
+        }};
+    }
     match arr {
-        AnyDataArray::F32(a) => {
-            let mut buf = Vec::with_capacity(total * 4);
-            for i in 0..nt {
-                let t = a.tuple(i);
-                for &v in t {
-                    buf.extend_from_slice(&v.to_le_bytes());
-                }
-            }
-            buf
-        }
-        AnyDataArray::F64(a) => {
-            let mut buf = Vec::with_capacity(total * 8);
-            for i in 0..nt {
-                let t = a.tuple(i);
-                for &v in t {
-                    buf.extend_from_slice(&v.to_le_bytes());
-                }
-            }
-            buf
-        }
-        AnyDataArray::I32(a) => {
-            let mut buf = Vec::with_capacity(total * 4);
-            for i in 0..nt {
-                let t = a.tuple(i);
-                for &v in t {
-                    buf.extend_from_slice(&v.to_le_bytes());
-                }
-            }
-            buf
-        }
-        AnyDataArray::I64(a) => {
-            let mut buf = Vec::with_capacity(total * 8);
-            for i in 0..nt {
-                let t = a.tuple(i);
-                for &v in t {
-                    buf.extend_from_slice(&v.to_le_bytes());
-                }
-            }
-            buf
-        }
+        AnyDataArray::F32(a) => write_numeric!(a, 4),
+        AnyDataArray::F64(a) => write_numeric!(a, 8),
+        AnyDataArray::I16(a) => write_numeric!(a, 2),
+        AnyDataArray::I32(a) => write_numeric!(a, 4),
+        AnyDataArray::I64(a) => write_numeric!(a, 8),
         AnyDataArray::U8(a) => {
             let mut buf = Vec::with_capacity(total);
             for i in 0..nt {
@@ -124,18 +101,17 @@ pub fn data_array_to_bytes(arr: &AnyDataArray) -> Vec<u8> {
             }
             buf
         }
-        _ => {
-            // Fallback: convert to f64
-            let mut buf = Vec::with_capacity(total * 8);
-            let mut tmp = vec![0.0f64; nc];
+        AnyDataArray::I8(a) => {
+            let mut buf = Vec::with_capacity(total);
             for i in 0..nt {
-                arr.tuple_as_f64(i, &mut tmp);
-                for &v in &tmp {
-                    buf.extend_from_slice(&v.to_le_bytes());
-                }
+                let t = a.tuple(i);
+                buf.extend(t.iter().map(|&v| v as u8));
             }
             buf
         }
+        AnyDataArray::U16(a) => write_numeric!(a, 2),
+        AnyDataArray::U32(a) => write_numeric!(a, 4),
+        AnyDataArray::U64(a) => write_numeric!(a, 8),
     }
 }
 
@@ -150,41 +126,19 @@ pub fn parse_binary_data_array(
     type_str: &str,
     num_components: usize,
 ) -> Result<AnyDataArray, VtkError> {
+    parse_binary_data_array_with_header_type(encoded, name, type_str, num_components, None)
+}
+
+pub(crate) fn parse_binary_data_array_with_header_type(
+    encoded: &str,
+    name: &str,
+    type_str: &str,
+    num_components: usize,
+    header_type: Option<&str>,
+) -> Result<AnyDataArray, VtkError> {
     let bytes = base64_decode(encoded)?;
-    if bytes.len() < 4 {
-        return Err(VtkError::Parse("binary data too short for header".into()));
-    }
-
-    // Read 4-byte header (number of data bytes)
-    let data_bytes = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
-    let data_start = 4;
-    let data_end = data_start + data_bytes;
-
-    if data_end > bytes.len() {
-        // Try 8-byte header
-        if bytes.len() >= 8 {
-            let data_bytes_64 = u64::from_le_bytes([
-                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-            ]) as usize;
-            let data_start_64 = 8;
-            let data_end_64 = data_start_64 + data_bytes_64;
-            if data_end_64 <= bytes.len() {
-                return bytes_to_data_array(
-                    &bytes[data_start_64..data_end_64],
-                    name,
-                    type_str,
-                    num_components,
-                );
-            }
-        }
-        return Err(VtkError::Parse(format!(
-            "binary data header says {} bytes but only {} available",
-            data_bytes,
-            bytes.len() - data_start
-        )));
-    }
-
-    bytes_to_data_array(&bytes[data_start..data_end], name, type_str, num_components)
+    let data = inline_payload_with_header_type(&bytes, header_type)?;
+    bytes_to_data_array(data, name, type_str, num_components)
 }
 
 /// Parse binary data from an appended data section.
@@ -198,31 +152,24 @@ pub fn parse_appended_data_array(
     type_str: &str,
     num_components: usize,
 ) -> Result<AnyDataArray, VtkError> {
-    if offset + 4 > appended_data.len() {
+    if offset > appended_data.len() {
         return Err(VtkError::Parse("appended data offset out of range".into()));
     }
 
-    let header = u32::from_le_bytes([
-        appended_data[offset],
-        appended_data[offset + 1],
-        appended_data[offset + 2],
-        appended_data[offset + 3],
-    ]) as usize;
+    let data = appended_payload(appended_data, offset)?;
+    bytes_to_data_array(data, name, type_str, num_components)
+}
 
-    let data_start = offset + 4;
-    let data_end = data_start + header;
-    if data_end > appended_data.len() {
-        return Err(VtkError::Parse(
-            "appended data extends beyond buffer".into(),
-        ));
-    }
-
-    bytes_to_data_array(
-        &appended_data[data_start..data_end],
-        name,
-        type_str,
-        num_components,
-    )
+pub(crate) fn parse_appended_data_array_with_header_type(
+    appended_data: &[u8],
+    offset: usize,
+    name: &str,
+    type_str: &str,
+    num_components: usize,
+    header_type: Option<&str>,
+) -> Result<AnyDataArray, VtkError> {
+    let data = appended_payload_with_header_type(appended_data, offset, header_type)?;
+    bytes_to_data_array(data, name, type_str, num_components)
 }
 
 /// Parse base64-encoded appended data.
@@ -235,6 +182,120 @@ pub fn parse_appended_base64_data_array(
 ) -> Result<AnyDataArray, VtkError> {
     let bytes = base64_decode(appended_encoded)?;
     parse_appended_data_array(&bytes, offset, name, type_str, num_components)
+}
+
+pub(crate) fn parse_appended_base64_data_array_with_header_type(
+    appended_encoded: &str,
+    offset: usize,
+    name: &str,
+    type_str: &str,
+    num_components: usize,
+    header_type: Option<&str>,
+) -> Result<AnyDataArray, VtkError> {
+    let bytes = base64_decode(appended_encoded)?;
+    parse_appended_data_array_with_header_type(
+        &bytes,
+        offset,
+        name,
+        type_str,
+        num_components,
+        header_type,
+    )
+}
+
+fn appended_payload(appended_data: &[u8], offset: usize) -> Result<&[u8], VtkError> {
+    appended_payload_with_header_type(appended_data, offset, None)
+}
+
+fn inline_payload_with_header_type<'a>(
+    bytes: &'a [u8],
+    header_type: Option<&str>,
+) -> Result<&'a [u8], VtkError> {
+    match header_type {
+        Some("UInt32") | None => payload_with_u32_header(bytes, 0, "binary data"),
+        Some("UInt64") => payload_with_u64_header(bytes, 0, "binary data"),
+        Some(other) => Err(VtkError::Parse(format!("unsupported header_type: {other}"))),
+    }
+}
+
+fn appended_payload_with_header_type<'a>(
+    appended_data: &'a [u8],
+    offset: usize,
+    header_type: Option<&str>,
+) -> Result<&'a [u8], VtkError> {
+    match header_type {
+        Some("UInt32") | None => payload_with_u32_header(appended_data, offset, "appended data"),
+        Some("UInt64") => payload_with_u64_header(appended_data, offset, "appended data"),
+        Some(other) => Err(VtkError::Parse(format!("unsupported header_type: {other}"))),
+    }
+}
+
+fn payload_with_u32_header<'a>(
+    bytes: &'a [u8],
+    offset: usize,
+    label: &str,
+) -> Result<&'a [u8], VtkError> {
+    if offset + 4 > bytes.len() {
+        return Err(VtkError::Parse(format!("{label} offset out of range")));
+    }
+
+    let u32_len = read_u32_len(bytes, offset)?;
+    let u32_start = offset + 4;
+    let u32_end = u32_start.saturating_add(u32_len);
+    if u32_end <= bytes.len() {
+        return Ok(&bytes[u32_start..u32_end]);
+    }
+
+    Err(VtkError::Parse(format!(
+        "{label} header says {u32_len} bytes but only {} available",
+        bytes.len().saturating_sub(u32_start)
+    )))
+}
+
+fn payload_with_u64_header<'a>(
+    bytes: &'a [u8],
+    offset: usize,
+    label: &str,
+) -> Result<&'a [u8], VtkError> {
+    if offset + 8 > bytes.len() {
+        return Err(VtkError::Parse(format!("{label} offset out of range")));
+    }
+
+    let u64_len = read_u64_len(bytes, offset)?;
+    let u64_start = offset + 8;
+    let u64_end = u64_start.saturating_add(u64_len);
+    if u64_end <= bytes.len() {
+        return Ok(&bytes[u64_start..u64_end]);
+    }
+
+    Err(VtkError::Parse(format!(
+        "{label} header says {u64_len} bytes but only {} available",
+        bytes.len().saturating_sub(u64_start)
+    )))
+}
+
+fn read_u32_len(bytes: &[u8], offset: usize) -> Result<usize, VtkError> {
+    let len = u32::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ]);
+    usize::try_from(len).map_err(|_| VtkError::Parse("binary header length too large".into()))
+}
+
+fn read_u64_len(bytes: &[u8], offset: usize) -> Result<usize, VtkError> {
+    let len = u64::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+        bytes[offset + 4],
+        bytes[offset + 5],
+        bytes[offset + 6],
+        bytes[offset + 7],
+    ]);
+    usize::try_from(len).map_err(|_| VtkError::Parse("binary header length too large".into()))
 }
 
 fn bytes_to_data_array(
@@ -375,6 +436,54 @@ mod tests {
         assert!((buf[0] - 1.0).abs() < 1e-6);
         result.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_parse_binary_uint64_header() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&16u64.to_le_bytes());
+        raw.extend_from_slice(&1.5f64.to_le_bytes());
+        raw.extend_from_slice(&2.5f64.to_le_bytes());
+
+        let encoded = base64_encode(&raw);
+        let result = parse_binary_data_array_with_header_type(
+            &encoded,
+            "test",
+            "Float64",
+            1,
+            Some("UInt64"),
+        )
+        .unwrap();
+        assert_eq!(result.num_tuples(), 2);
+        let mut buf = [0.0f64];
+        result.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 1.5).abs() < 1e-12);
+        result.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 2.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_parse_appended_uint64_header_single_array() {
+        let mut raw = Vec::new();
+        raw.extend_from_slice(&16u64.to_le_bytes());
+        raw.extend_from_slice(&1.5f64.to_le_bytes());
+        raw.extend_from_slice(&2.5f64.to_le_bytes());
+
+        let result = parse_appended_data_array_with_header_type(
+            &raw,
+            0,
+            "test",
+            "Float64",
+            1,
+            Some("UInt64"),
+        )
+        .unwrap();
+        assert_eq!(result.num_tuples(), 2);
+        let mut buf = [0.0f64];
+        result.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 1.5).abs() < 1e-12);
+        result.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 2.5).abs() < 1e-12);
     }
 
     fn base64_encode_for_test(data: &[u8]) -> String {

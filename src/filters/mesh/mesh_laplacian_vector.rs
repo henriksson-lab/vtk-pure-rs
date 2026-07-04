@@ -7,18 +7,28 @@ pub fn laplacian_vector(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+        for i in 0..cell.len() {
+            add_neighbor_pair(&mut nb, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut nb, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut nb, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut nb, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut nb, n, tri[2], tri[0]);
         }
     }
     let mut data = Vec::with_capacity(n * 3);
@@ -68,6 +78,23 @@ pub fn laplacian_magnitude(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("LaplacianMag");
     result
+}
+
+fn add_neighbor_pair(nb: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
 }
 
 #[cfg(test)]

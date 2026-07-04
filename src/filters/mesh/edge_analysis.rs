@@ -42,7 +42,7 @@ impl std::fmt::Display for EdgeAnalysis {
 
 /// Compute comprehensive edge analysis.
 pub fn analyze_edges(mesh: &PolyData, sharp_angle_degrees: f64) -> EdgeAnalysis {
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells = surface_faces(mesh);
     let face_normals: Vec<[f64; 3]> = all_cells
         .iter()
         .map(|cell| face_normal(mesh, cell))
@@ -53,8 +53,8 @@ pub fn analyze_edges(mesh: &PolyData, sharp_angle_degrees: f64) -> EdgeAnalysis 
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
             edge_map.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -101,16 +101,32 @@ pub fn analyze_edges(mesh: &PolyData, sharp_angle_degrees: f64) -> EdgeAnalysis 
         internal_edges: internal,
         non_manifold_edges: non_manifold,
         sharp_edges: sharp,
-        min_length: lengths.iter().cloned().fold(f64::MAX, f64::min),
-        max_length: lengths.iter().cloned().fold(0.0f64, f64::max),
+        min_length: if lengths.is_empty() {
+            0.0
+        } else {
+            lengths.iter().cloned().fold(f64::MAX, f64::min)
+        },
+        max_length: if lengths.is_empty() {
+            0.0
+        } else {
+            lengths.iter().cloned().fold(0.0f64, f64::max)
+        },
         mean_length: if total > 0 {
             total_len / total as f64
         } else {
             0.0
         },
         total_length: total_len,
-        min_dihedral: dihedrals.iter().cloned().fold(f64::MAX, f64::min),
-        max_dihedral: dihedrals.iter().cloned().fold(0.0f64, f64::max),
+        min_dihedral: if dihedrals.is_empty() {
+            0.0
+        } else {
+            dihedrals.iter().cloned().fold(f64::MAX, f64::min)
+        },
+        max_dihedral: if dihedrals.is_empty() {
+            0.0
+        } else {
+            dihedrals.iter().cloned().fold(0.0f64, f64::max)
+        },
         mean_dihedral: if !dihedrals.is_empty() {
             total_dih / dihedrals.len() as f64
         } else {
@@ -121,7 +137,7 @@ pub fn analyze_edges(mesh: &PolyData, sharp_angle_degrees: f64) -> EdgeAnalysis 
 
 /// Extract sharp edges as a line PolyData.
 pub fn extract_sharp_edges_with_angle(mesh: &PolyData, sharp_angle_degrees: f64) -> PolyData {
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells = surface_faces(mesh);
     let normals: Vec<[f64; 3]> = all_cells
         .iter()
         .map(|cell| face_normal(mesh, cell))
@@ -133,8 +149,8 @@ pub fn extract_sharp_edges_with_angle(mesh: &PolyData, sharp_angle_degrees: f64)
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -182,26 +198,57 @@ pub fn extract_sharp_edges_with_angle(mesh: &PolyData, sharp_angle_degrees: f64)
     result
 }
 
-fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
+fn surface_faces(mesh: &PolyData) -> Vec<Vec<usize>> {
+    let n_points = mesh.points.len();
+    let mut faces: Vec<Vec<usize>> = mesh
+        .polys
+        .iter()
+        .filter_map(|c| valid_point_ids(c, n_points))
+        .filter(|c| c.len() >= 2)
+        .collect();
+
+    for strip in mesh.strips.iter() {
+        let Some(ids) = valid_point_ids(strip, n_points) else {
+            continue;
+        };
+        for i in 0..ids.len().saturating_sub(2) {
+            if i % 2 == 0 {
+                faces.push(vec![ids[i], ids[i + 1], ids[i + 2]]);
+            } else {
+                faces.push(vec![ids[i + 1], ids[i], ids[i + 2]]);
+            }
+        }
+    }
+
+    faces
+}
+
+fn face_normal(mesh: &PolyData, cell: &[usize]) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-    ];
-    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    let mut nx = 0.0;
+    let mut ny = 0.0;
+    let mut nz = 0.0;
+    for i in 0..cell.len() {
+        let p = mesh.points.get(cell[i]);
+        let q = mesh.points.get(cell[(i + 1) % cell.len()]);
+        nx += (p[1] - q[1]) * (p[2] + q[2]);
+        ny += (p[2] - q[2]) * (p[0] + q[0]);
+        nz += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let len = (nx * nx + ny * ny + nz * nz).sqrt();
     if len > 1e-15 {
-        [n[0] / len, n[1] / len, n[2] / len]
+        [nx / len, ny / len, nz / len]
     } else {
         [0.0, 0.0, 1.0]
     }
+}
+
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
 }
 
 #[cfg(test)]

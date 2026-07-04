@@ -55,11 +55,11 @@ pub fn inscribed_sphere(input: &PolyData) -> (f64, [f64; 3]) {
 
         for plane in &planes {
             let (nx, ny, nz, _) = *plane;
-            // Try moving opposite to the normal (toward the face)
+            // Move along the inward normal to increase distance from that face.
             let trial = [
-                center[0] - nx * step_size,
-                center[1] - ny * step_size,
-                center[2] - nz * step_size,
+                center[0] + nx * step_size,
+                center[1] + ny * step_size,
+                center[2] + nz * step_size,
             ];
             let (d, _) = min_signed_distance(&planes, &trial);
             if d > best_dist {
@@ -120,6 +120,9 @@ fn collect_face_planes(input: &PolyData) -> Vec<(f64, f64, f64, f64)> {
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if cell.iter().take(3).any(|&id| id < 0 || id as usize >= n) {
             continue;
         }
         let a = input.points.get(cell[0] as usize);
@@ -229,5 +232,18 @@ mod tests {
             radius,
             expected
         );
+    }
+
+    #[test]
+    fn invalid_face_is_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([-0.5, -0.5, -0.5]);
+        pd.points.push([0.5, -0.5, -0.5]);
+        pd.points.push([0.5, 0.5, -0.5]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let (radius, center) = inscribed_sphere(&pd);
+        assert_eq!(radius, 0.0);
+        assert_eq!(center, [1.0 / 6.0, -1.0 / 6.0, -0.5]);
     }
 }

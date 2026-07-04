@@ -20,8 +20,9 @@ pub fn image_tile(input: &ImageData, scalars: &str, nx_tiles: usize, ny_tiles: u
     let out_nx = sx * ntx;
     let out_ny = sy * nty;
 
-    let mut buf = [0.0f64];
-    let mut values = Vec::with_capacity(out_nx * out_ny * sz);
+    let nc = arr.num_components();
+    let mut buf = vec![0.0f64; nc];
+    let mut values = Vec::with_capacity(out_nx * out_ny * sz * nc);
 
     for k in 0..sz {
         for j in 0..out_ny {
@@ -29,7 +30,7 @@ pub fn image_tile(input: &ImageData, scalars: &str, nx_tiles: usize, ny_tiles: u
                 let si = i % sx;
                 let sj = j % sy;
                 arr.tuple_as_f64(k * sy * sx + sj * sx + si, &mut buf);
-                values.push(buf[0]);
+                values.extend_from_slice(&buf);
             }
         }
     }
@@ -38,7 +39,7 @@ pub fn image_tile(input: &ImageData, scalars: &str, nx_tiles: usize, ny_tiles: u
     img.set_origin(origin);
     img.set_spacing(spacing);
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, nc)));
     img
 }
 
@@ -80,5 +81,25 @@ mod tests {
         let img = ImageData::with_dimensions(2, 2, 1);
         let r = image_tile(&img, "nope", 2, 2);
         assert_eq!(r.dimensions(), [2, 2, 1]);
+    }
+
+    #[test]
+    fn tile_preserves_components() {
+        let mut img = ImageData::with_dimensions(1, 2, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                2,
+            )));
+
+        let result = image_tile(&img, "v", 2, 1);
+        let arr = result.point_data().get_array("v").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64; 2];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [1.0, 2.0]);
+        arr.tuple_as_f64(3, &mut buf);
+        assert_eq!(buf, [3.0, 4.0]);
     }
 }

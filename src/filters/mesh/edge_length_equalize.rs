@@ -1,4 +1,5 @@
-use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use crate::data::{Points, PolyData};
+use std::collections::HashSet;
 
 /// Equalize edge lengths by moving vertices toward their neighbors.
 ///
@@ -12,17 +13,9 @@ pub fn equalize_edge_lengths(input: &PolyData, target: f64, iterations: usize) -
     }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
+    for (a, b) in unique_edges(input) {
+        neighbors[a].push(b);
+        neighbors[b].push(a);
     }
 
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
@@ -78,26 +71,16 @@ pub fn edge_length_stats(input: &PolyData) -> (f64, f64, f64, f64) {
     let mut sum = 0.0;
     let mut sum2 = 0.0;
     let mut count = 0usize;
-    let mut seen = std::collections::HashSet::new();
-
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            if seen.insert(key) {
-                let pa = input.points.get(a as usize);
-                let pb = input.points.get(b as usize);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                min_l = min_l.min(d);
-                max_l = max_l.max(d);
-                sum += d;
-                sum2 += d * d;
-                count += 1;
-            }
-        }
+    for (a, b) in unique_edges(input) {
+        let pa = input.points.get(a);
+        let pb = input.points.get(b);
+        let d =
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+        min_l = min_l.min(d);
+        max_l = max_l.max(d);
+        sum += d;
+        sum2 += d * d;
+        count += 1;
     }
     if count == 0 {
         return (0.0, 0.0, 0.0, 0.0);
@@ -105,6 +88,60 @@ pub fn edge_length_stats(input: &PolyData) -> (f64, f64, f64, f64) {
     let mean = sum / count as f64;
     let var = (sum2 / count as f64 - mean * mean).max(0.0);
     (min_l, max_l, mean, var.sqrt())
+}
+
+fn unique_edges(input: &PolyData) -> Vec<(usize, usize)> {
+    let mut seen: HashSet<(usize, usize)> = HashSet::new();
+    let mut edges = Vec::new();
+
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut seen, &mut edges, input.points.len(), edge[0], edge[1]);
+        }
+    }
+
+    for cell in input.polys.iter() {
+        for i in 0..cell.len() {
+            insert_edge(
+                &mut seen,
+                &mut edges,
+                input.points.len(),
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut seen, &mut edges, input.points.len(), tri[0], tri[1]);
+            insert_edge(&mut seen, &mut edges, input.points.len(), tri[1], tri[2]);
+            insert_edge(&mut seen, &mut edges, input.points.len(), tri[2], tri[0]);
+        }
+    }
+
+    edges
+}
+
+fn insert_edge(
+    seen: &mut HashSet<(usize, usize)>,
+    edges: &mut Vec<(usize, usize)>,
+    num_points: usize,
+    a: i64,
+    b: i64,
+) {
+    if a == b || a < 0 || b < 0 {
+        return;
+    }
+    let a = a as usize;
+    let b = b as usize;
+    if a >= num_points || b >= num_points {
+        return;
+    }
+    let edge = if a < b { (a, b) } else { (b, a) };
+    if seen.insert(edge) {
+        edges.push(edge);
+    }
 }
 
 #[cfg(test)]

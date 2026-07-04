@@ -1,8 +1,8 @@
-//! Cage-based mesh deformation using mean value coordinates.
+//! Cage-based mesh deformation using inverse-distance cage weights.
 
 use crate::data::{Points, PolyData};
 
-/// Deform a mesh using a cage (control mesh) with mean value coordinates.
+/// Deform a mesh using a cage (control mesh) with inverse-distance weights.
 ///
 /// `cage_original` and `cage_deformed` define the cage before and after deformation.
 /// Each interior vertex is displaced by the weighted average of cage vertex displacements.

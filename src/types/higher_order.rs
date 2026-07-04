@@ -7,13 +7,16 @@
 ///
 /// Returns `order + 1` basis values that sum to 1.
 pub fn lagrange_1d(order: usize, t: f64) -> Vec<f64> {
+    if order == 0 {
+        return vec![1.0];
+    }
     let n = order + 1;
-    let nodes: Vec<f64> = (0..n).map(|i| i as f64 / order as f64).collect();
+    let v = order as f64 * t;
     let mut basis = vec![1.0; n];
     for i in 0..n {
         for j in 0..n {
             if i != j {
-                basis[i] *= (t - nodes[j]) / (nodes[i] - nodes[j]);
+                basis[i] *= (v - j as f64) / (i as f64 - j as f64);
             }
         }
     }
@@ -25,7 +28,7 @@ pub fn lagrange_1d(order: usize, t: f64) -> Vec<f64> {
 /// `control_points` has `order + 1` points.
 pub fn eval_lagrange_curve(control_points: &[[f64; 3]], t: f64) -> [f64; 3] {
     let order = control_points.len() - 1;
-    let basis = lagrange_1d(order, t);
+    let basis = lagrange_curve_weights(order, t);
     let mut result = [0.0; 3];
     for (i, b) in basis.iter().enumerate() {
         result[0] += b * control_points[i][0];
@@ -72,12 +75,56 @@ pub fn bernstein_basis(n: usize, t: f64) -> Vec<f64> {
 ///
 /// Returns basis values for an `(order+1) x (order+1)` grid of nodes.
 pub fn lagrange_2d_quad(order: usize, u: f64, v: f64) -> Vec<f64> {
-    let bu = lagrange_1d(order, u);
-    let bv = lagrange_1d(order, v);
-    let n = order + 1;
-    let mut basis = Vec::with_capacity(n * n);
-    for j in 0..n {
-        for i in 0..n {
+    lagrange_2d_quad_order([order, order], u, v)
+}
+
+/// Evaluate VTK-ordered 1D tensor Lagrange shape functions for a curve.
+pub fn lagrange_curve_weights(order: usize, t: f64) -> Vec<f64> {
+    let bu = lagrange_1d(order, t);
+    if order <= 1 {
+        return bu;
+    }
+    let mut weights = Vec::with_capacity(order + 1);
+    weights.push(bu[0]);
+    weights.push(bu[order]);
+    weights.extend_from_slice(&bu[1..order]);
+    weights
+}
+
+/// Evaluate VTK-ordered tensor-product Lagrange basis on a quad.
+pub fn lagrange_2d_quad_order(order: [usize; 2], u: f64, v: f64) -> Vec<f64> {
+    if order == [0, 0] {
+        return vec![1.0];
+    }
+    let bu = lagrange_1d(order[0], u);
+    let bv = lagrange_1d(order[1], v);
+    let mut basis = Vec::with_capacity((order[0] + 1) * (order[1] + 1));
+
+    basis.push(bu[0] * bv[0]);
+    basis.push(bu[order[0]] * bv[0]);
+    basis.push(bu[order[0]] * bv[order[1]]);
+    basis.push(bu[0] * bv[order[1]]);
+
+    let edge_count = 2 * (order[0].saturating_sub(1) + order[1].saturating_sub(1));
+    basis.resize(4 + edge_count, 0.0);
+    let mut sn = 4;
+    let mut sn1 = sn + order[0].saturating_sub(1) + order[1].saturating_sub(1);
+
+    for i in 1..order[0] {
+        basis[sn] = bu[i] * bv[0];
+        basis[sn1] = bu[i] * bv[order[1]];
+        sn += 1;
+        sn1 += 1;
+    }
+    for j in 1..order[1] {
+        basis[sn] = bu[order[0]] * bv[j];
+        basis[sn1] = bu[0] * bv[j];
+        sn += 1;
+        sn1 += 1;
+    }
+
+    for j in 1..order[1] {
+        for i in 1..order[0] {
             basis.push(bu[i] * bv[j]);
         }
     }
@@ -170,7 +217,7 @@ mod tests {
 
     #[test]
     fn lagrange_curve_endpoints() {
-        let pts = [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [2.0, 0.0, 0.0]];
+        let pts = [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 1.0, 0.0]];
         let start = eval_lagrange_curve(&pts, 0.0);
         let end = eval_lagrange_curve(&pts, 1.0);
         assert!((start[0]).abs() < 1e-12);
@@ -182,6 +229,23 @@ mod tests {
         let basis = lagrange_2d_quad(1, 0.0, 0.0);
         assert!((basis[0] - 1.0).abs() < 1e-12); // bottom-left
         assert!(basis[1].abs() < 1e-12);
+    }
+
+    #[test]
+    fn lagrange_curve_uses_vtk_point_order() {
+        let weights = lagrange_curve_weights(2, 1.0);
+        assert!(weights[0].abs() < 1e-12);
+        assert!((weights[1] - 1.0).abs() < 1e-12);
+        assert!(weights[2].abs() < 1e-12);
+    }
+
+    #[test]
+    fn lagrange_quad_uses_vtk_point_order() {
+        let weights = lagrange_2d_quad(2, 1.0, 1.0);
+        assert!(weights[0].abs() < 1e-12);
+        assert!(weights[1].abs() < 1e-12);
+        assert!((weights[2] - 1.0).abs() < 1e-12);
+        assert!(weights[3].abs() < 1e-12);
     }
 
     #[test]

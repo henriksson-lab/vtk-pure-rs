@@ -1,14 +1,14 @@
 //! Read geospatial vector data (Shapefile, GeoPackage, KML) as PolyData.
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 use crate::types::VtkError;
 use std::path::Path;
 
-use crate::types::{GeomType, SpatialRef, VectorLayerInfo};
+use crate::types::{SpatialRef, VectorLayerInfo};
 
 /// Read the first vector layer from a file as PolyData.
 ///
-/// Points become vertex cells, lines become line cells, polygons become polygon cells.
+/// Points become vertex cells, lines become line cells, and polygon rings become line cells.
 pub fn read_vector(path: &Path) -> Result<(PolyData, VectorLayerInfo), VtkError> {
     let dataset = gdal::Dataset::open(path).map_err(|e| {
         VtkError::Io(std::io::Error::new(
@@ -17,8 +17,15 @@ pub fn read_vector(path: &Path) -> Result<(PolyData, VectorLayerInfo), VtkError>
         ))
     })?;
 
+    read_layer(&dataset, 0)
+}
+
+fn read_layer(
+    dataset: &gdal::Dataset,
+    layer_index: usize,
+) -> Result<(PolyData, VectorLayerInfo), VtkError> {
     let layer = dataset
-        .layer(0)
+        .layer(layer_index)
         .map_err(|e| VtkError::Parse(format!("layer: {e}")))?;
 
     let spatial_ref = layer
@@ -36,20 +43,35 @@ pub fn read_vector(path: &Path) -> Result<(PolyData, VectorLayerInfo), VtkError>
         .map(|f| f.name().to_string())
         .collect();
 
-    let mut points = crate::data::Points::<f64>::new();
-    let mut polys = crate::data::CellArray::new();
-    let mut lines = crate::data::CellArray::new();
-    let mut verts = crate::data::CellArray::new();
+    let mut points = Points::<f64>::new();
+    let polys = CellArray::new();
+    let mut lines = CellArray::new();
+    let mut verts = CellArray::new();
     let mut num_features = 0;
 
-    // Collect field values
     let num_fields = field_names.len();
     let mut field_values: Vec<Vec<f64>> = vec![Vec::new(); num_fields];
+    let mut geom_type_priority = 0;
+    let mut geom_type_str = "Unknown";
 
     for feature in layer.features() {
         num_features += 1;
 
-        // Read field values as f64 where possible
+        let Some(geom) = feature.geometry() else {
+            continue;
+        };
+
+        let (priority, name) = geometry_type_name(geom.geometry_type());
+        if priority > geom_type_priority {
+            geom_type_priority = priority;
+            geom_type_str = name;
+        }
+
+        let n_cells = insert_geometry_recursive(geom, &mut points, &mut lines, &mut verts);
+        if n_cells == 0 {
+            continue;
+        }
+
         for (fi, fname) in field_names.iter().enumerate() {
             let val = feature
                 .field(fname)
@@ -62,62 +84,11 @@ pub fn read_vector(path: &Path) -> Result<(PolyData, VectorLayerInfo), VtkError>
                     _ => None,
                 })
                 .unwrap_or(0.0);
-            field_values[fi].push(val);
-        }
-
-        let Some(geom) = feature.geometry() else {
-            continue;
-        };
-
-        match geom.geometry_type() {
-            gdal::vector::OGRwkbGeometryType::wkbPoint
-            | gdal::vector::OGRwkbGeometryType::wkbPoint25D => {
-                let (x, y, z) = geom.get_point(0);
-                let idx = points.len() as i64;
-                points.push([x, y, z]);
-                verts.push_cell(&[idx]);
+            for _ in 0..n_cells {
+                field_values[fi].push(val);
             }
-            gdal::vector::OGRwkbGeometryType::wkbLineString
-            | gdal::vector::OGRwkbGeometryType::wkbLineString25D => {
-                let n = geom.point_count();
-                let base = points.len() as i64;
-                let mut cell = Vec::with_capacity(n);
-                for i in 0..n {
-                    let (x, y, z) = geom.get_point(i as i32);
-                    points.push([x, y, z]);
-                    cell.push(base + i as i64);
-                }
-                lines.push_cell(&cell);
-            }
-            gdal::vector::OGRwkbGeometryType::wkbPolygon
-            | gdal::vector::OGRwkbGeometryType::wkbPolygon25D => {
-                // Read outer ring
-                if let Some(ring) = geom.geometry_ref(0) {
-                    let n = ring.point_count();
-                    let base = points.len() as i64;
-                    let mut cell = Vec::with_capacity(n.saturating_sub(1));
-                    for i in 0..n.saturating_sub(1) {
-                        // skip closing vertex
-                        let (x, y, z) = ring.get_point(i as i32);
-                        points.push([x, y, z]);
-                        cell.push(base + i as i64);
-                    }
-                    if !cell.is_empty() {
-                        polys.push_cell(&cell);
-                    }
-                }
-            }
-            _ => {}
         }
     }
-
-    let geom_type_str = if polys.num_cells() > 0 {
-        "Polygon"
-    } else if lines.num_cells() > 0 {
-        "LineString"
-    } else {
-        "Point"
-    };
 
     let info = VectorLayerInfo {
         name: layer.name().to_string(),
@@ -133,7 +104,6 @@ pub fn read_vector(path: &Path) -> Result<(PolyData, VectorLayerInfo), VtkError>
     pd.lines = lines;
     pd.verts = verts;
 
-    // Add numeric fields as cell data
     for (fi, fname) in field_names.iter().enumerate() {
         if !field_values[fi].is_empty() {
             pd.cell_data_mut()
@@ -146,6 +116,83 @@ pub fn read_vector(path: &Path) -> Result<(PolyData, VectorLayerInfo), VtkError>
     }
 
     Ok((pd, info))
+}
+
+fn geometry_type_name(geom_type: gdal::vector::OGRwkbGeometryType) -> (u8, &'static str) {
+    use gdal::vector::OGRwkbGeometryType::*;
+
+    match geom_type {
+        wkbPoint | wkbPoint25D | wkbMultiPoint | wkbMultiPoint25D => (1, "Point"),
+        wkbLinearRing
+        | wkbLineString
+        | wkbLineString25D
+        | wkbMultiLineString
+        | wkbMultiLineString25D => (2, "LineString"),
+        wkbPolygon | wkbPolygon25D | wkbMultiPolygon | wkbMultiPolygon25D => (3, "Polygon"),
+        wkbGeometryCollection | wkbGeometryCollection25D => (4, "GeometryCollection"),
+        _ => (0, "Unknown"),
+    }
+}
+
+fn insert_geometry_recursive(
+    geom: &gdal::vector::Geometry,
+    points: &mut Points<f64>,
+    lines: &mut CellArray,
+    verts: &mut CellArray,
+) -> usize {
+    use gdal::vector::OGRwkbGeometryType::*;
+
+    match geom.geometry_type() {
+        wkbPoint | wkbPoint25D => {
+            let (x, y, z) = geom.get_point(0);
+            let idx = points.len() as i64;
+            points.push([x, y, z]);
+            verts.push_cell(&[idx]);
+            1
+        }
+        wkbLineString | wkbLineString25D | wkbLinearRing => {
+            let n = geom.point_count();
+            let base = points.len() as i64;
+            let mut cell = Vec::with_capacity(n);
+            for i in 0..n {
+                let (x, y, z) = geom.get_point(i as i32);
+                points.push([x, y, z]);
+                cell.push(base + i as i64);
+            }
+            if cell.is_empty() {
+                0
+            } else {
+                lines.push_cell(&cell);
+                1
+            }
+        }
+        wkbPolygon | wkbPolygon25D => {
+            let mut n_cells = 0;
+            for i in 0..geom.geometry_count() {
+                if let Some(ring) = geom.geometry_ref(i) {
+                    n_cells += insert_geometry_recursive(&ring, points, lines, verts);
+                }
+            }
+            n_cells
+        }
+        wkbMultiPoint
+        | wkbMultiPoint25D
+        | wkbMultiLineString
+        | wkbMultiLineString25D
+        | wkbMultiPolygon
+        | wkbMultiPolygon25D
+        | wkbGeometryCollection
+        | wkbGeometryCollection25D => {
+            let mut n_cells = 0;
+            for i in 0..geom.geometry_count() {
+                if let Some(child) = geom.geometry_ref(i) {
+                    n_cells += insert_geometry_recursive(&child, points, lines, verts);
+                }
+            }
+            n_cells
+        }
+        _ => 0,
+    }
 }
 
 /// Read all layers from a vector dataset.
@@ -161,10 +208,8 @@ pub fn read_all_layers(path: &Path) -> Result<Vec<(PolyData, VectorLayerInfo)>, 
     let num_layers = dataset.layer_count();
 
     for i in 0..num_layers {
-        // Re-open to get each layer (GDAL layer iteration quirk)
-        if let Ok(result) = read_vector(path) {
+        if let Ok(result) = read_layer(&dataset, i) {
             results.push(result);
-            break; // simplified: just first layer for now
         }
     }
 

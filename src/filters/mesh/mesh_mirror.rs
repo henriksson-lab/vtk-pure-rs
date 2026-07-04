@@ -1,6 +1,6 @@
 //! Mirror mesh across planes.
 
-use crate::data::{CellArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, PolyData};
 
 /// Mirror mesh across the YZ plane (flip X).
 pub fn mirror_x(mesh: &PolyData) -> PolyData {
@@ -37,14 +37,10 @@ pub fn mirror_plane(mesh: &PolyData, point: [f64; 3], normal: [f64; 3]) -> PolyD
             ],
         );
     }
-    // Reverse winding to maintain outward normals
-    let mut new_polys = CellArray::new();
-    for cell in result.polys.iter() {
-        let mut reversed: Vec<i64> = cell.to_vec();
-        reversed.reverse();
-        new_polys.push_cell(&reversed);
-    }
-    result.polys = new_polys;
+    // Reverse surface-cell winding to maintain outward normals.
+    result.polys = reversed_cells(&result.polys);
+    result.strips = reflected_strips(&result.strips);
+    reflect_active_attributes(&mut result, Mirror::Plane(n));
     result
 }
 
@@ -55,14 +51,172 @@ fn mirror_axis(mesh: &PolyData, axis: usize) -> PolyData {
         p[axis] = -p[axis];
         result.points.set(i, p);
     }
-    let mut new_polys = CellArray::new();
-    for cell in result.polys.iter() {
+    result.polys = reversed_cells(&result.polys);
+    result.strips = reflected_strips(&result.strips);
+    reflect_active_attributes(&mut result, Mirror::Axis(axis));
+    result
+}
+
+fn reversed_cells(cells: &CellArray) -> CellArray {
+    let mut reversed_cells = CellArray::new();
+    for cell in cells.iter() {
         let mut reversed: Vec<i64> = cell.to_vec();
         reversed.reverse();
-        new_polys.push_cell(&reversed);
+        reversed_cells.push_cell(&reversed);
     }
-    result.polys = new_polys;
-    result
+    reversed_cells
+}
+
+fn reflected_strips(strips: &CellArray) -> CellArray {
+    let mut reflected = CellArray::new();
+    for strip in strips.iter() {
+        if strip.len() >= 4 && strip.len() % 2 == 0 {
+            let mut cell = Vec::with_capacity(strip.len() + 1);
+            cell.extend_from_slice(&[strip[0], strip[2], strip[1], strip[2]]);
+            cell.extend_from_slice(&strip[3..]);
+            reflected.push_cell(&cell);
+        } else {
+            let mut reversed: Vec<i64> = strip.to_vec();
+            reversed.reverse();
+            reflected.push_cell(&reversed);
+        }
+    }
+    reflected
+}
+
+#[derive(Clone, Copy)]
+enum Mirror {
+    Axis(usize),
+    Plane([f64; 3]),
+}
+
+fn reflect_active_attributes(mesh: &mut PolyData, mirror: Mirror) {
+    reflect_active_attributes_for(mesh.point_data_mut(), mirror);
+    reflect_active_attributes_for(mesh.cell_data_mut(), mirror);
+}
+
+fn reflect_active_attributes_for(attrs: &mut DataSetAttributes, mirror: Mirror) {
+    let mut names = Vec::new();
+    if let Some(array) = attrs.vectors() {
+        names.push(array.name().to_string());
+    }
+    if let Some(array) = attrs.normals() {
+        names.push(array.name().to_string());
+    }
+    if matches!(mirror, Mirror::Axis(_)) {
+        if let Some(array) = attrs.tensors() {
+            names.push(array.name().to_string());
+        }
+    }
+    names.sort();
+    names.dedup();
+
+    for name in names {
+        if let Some(array) = attrs.field_data_mut().get_array_mut(&name) {
+            reflect_array(array, mirror);
+        }
+    }
+}
+
+fn reflect_array(array: &mut AnyDataArray, mirror: Mirror) {
+    macro_rules! reflect {
+        ($array:expr) => {
+            reflect_data_array($array, mirror)
+        };
+    }
+
+    match array {
+        AnyDataArray::F32(array) => reflect!(array),
+        AnyDataArray::F64(array) => reflect!(array),
+        AnyDataArray::I8(array) => reflect!(array),
+        AnyDataArray::I16(array) => reflect!(array),
+        AnyDataArray::I32(array) => reflect!(array),
+        AnyDataArray::I64(array) => reflect!(array),
+        AnyDataArray::U8(_)
+        | AnyDataArray::U16(_)
+        | AnyDataArray::U32(_)
+        | AnyDataArray::U64(_) => {}
+    }
+}
+
+fn reflect_data_array<T>(array: &mut DataArray<T>, mirror: Mirror)
+where
+    T: crate::types::Scalar,
+{
+    match (mirror, array.num_components()) {
+        (Mirror::Axis(axis), 3) => {
+            for tuple in 0..array.num_tuples() {
+                let t = array.tuple_mut(tuple);
+                t[axis] = T::from_f64(-t[axis].to_f64());
+            }
+        }
+        (Mirror::Axis(axis), 6) => {
+            let signs = symmetric_tensor_signs(axis);
+            for tuple in 0..array.num_tuples() {
+                let t = array.tuple_mut(tuple);
+                for i in 0..6 {
+                    if signs[i] < 0 {
+                        t[i] = T::from_f64(-t[i].to_f64());
+                    }
+                }
+            }
+        }
+        (Mirror::Axis(axis), 9) => {
+            let signs = tensor_signs(axis);
+            for tuple in 0..array.num_tuples() {
+                let t = array.tuple_mut(tuple);
+                for i in 0..9 {
+                    if signs[i] < 0 {
+                        t[i] = T::from_f64(-t[i].to_f64());
+                    }
+                }
+            }
+        }
+        (Mirror::Plane(normal), 3) => {
+            for tuple in 0..array.num_tuples() {
+                let t = array.tuple_mut(tuple);
+                let v = [t[0].to_f64(), t[1].to_f64(), t[2].to_f64()];
+                let d = v[0] * normal[0] + v[1] * normal[1] + v[2] * normal[2];
+                t[0] = T::from_f64(v[0] - 2.0 * d * normal[0]);
+                t[1] = T::from_f64(v[1] - 2.0 * d * normal[1]);
+                t[2] = T::from_f64(v[2] - 2.0 * d * normal[2]);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn symmetric_tensor_signs(axis: usize) -> [i8; 6] {
+    let m = mirror_dir(axis);
+    [
+        m[0] * m[0],
+        m[1] * m[1],
+        m[2] * m[2],
+        m[0] * m[1],
+        m[1] * m[2],
+        m[0] * m[2],
+    ]
+}
+
+fn tensor_signs(axis: usize) -> [i8; 9] {
+    let m = mirror_dir(axis);
+    [
+        m[0] * m[0],
+        m[0] * m[1],
+        m[0] * m[2],
+        m[1] * m[0],
+        m[1] * m[1],
+        m[1] * m[2],
+        m[2] * m[0],
+        m[2] * m[1],
+        m[2] * m[2],
+    ]
+}
+
+fn mirror_dir(axis: usize) -> [i8; 3] {
+    let mut m = [1, 1, 1];
+    m[axis] = -1;
+    m
 }
 
 #[cfg(test)]

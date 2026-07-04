@@ -11,9 +11,12 @@ pub fn barycentric_coords(mesh: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_cell(cell, n) {
+            continue;
+        }
         let tri = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
         for &v in &tri {
-            if v < n && vert_tri[v].is_none() {
+            if vert_tri[v].is_none() {
                 vert_tri[v] = Some(tri);
             }
         }
@@ -60,6 +63,10 @@ pub fn barycentric_coords(mesh: &PolyData) -> PolyData {
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("BaryW", w_data, 1)));
     result
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 
 #[cfg(test)]

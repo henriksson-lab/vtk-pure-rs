@@ -15,14 +15,18 @@ impl ColorTransferFunction {
 
     /// Add a control point at the given scalar value with the given color.
     pub fn add_point(&mut self, value: f64, r: f32, g: f32, b: f32) {
+        self.points.retain(|point| point.0 != value);
         self.points.push((value, r, g, b));
         self.points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     }
 
     /// Map a scalar value to an RGB color.
     pub fn map_value(&self, value: f64) -> [f32; 3] {
+        if value.is_nan() {
+            return [0.5, 0.0, 0.0];
+        }
         if self.points.is_empty() {
-            return [1.0, 1.0, 1.0];
+            return [0.0, 0.0, 0.0];
         }
         if self.points.len() == 1 {
             let p = &self.points[0];
@@ -136,5 +140,17 @@ mod tests {
         assert!(c0[0] > 0.9); // red
         let c1 = ctf.map_value(1.0);
         assert!(c1[2] > 0.9); // blue
+    }
+
+    #[test]
+    fn empty_duplicate_and_nan_match_vtk_defaults() {
+        let mut ctf = ColorTransferFunction::new();
+        assert_eq!(ctf.map_value(0.0), [0.0, 0.0, 0.0]);
+        assert_eq!(ctf.map_value(f64::NAN), [0.5, 0.0, 0.0]);
+
+        ctf.add_point(1.0, 1.0, 0.0, 0.0);
+        ctf.add_point(1.0, 0.0, 1.0, 0.0);
+        assert_eq!(ctf.num_points(), 1);
+        assert_eq!(ctf.map_value(1.0), [0.0, 1.0, 0.0]);
     }
 }

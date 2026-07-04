@@ -16,6 +16,9 @@ pub fn angle_defect(input: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
+        if !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
         let pts: Vec<[f64; 3]> = cell
             .iter()
             .map(|&id| input.points.get(id as usize))
@@ -54,6 +57,7 @@ pub fn angle_defect(input: &PolyData) -> PolyData {
             defect,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("AngleDefect");
     pd
 }
 

@@ -2,32 +2,39 @@
 use crate::data::{CellArray, Points, PolyData};
 pub fn dual_mesh(mesh: &PolyData) -> PolyData {
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let nc = cells.len();
     let nv = mesh.points.len();
     // Face centroids become vertices
     let mut pts = Points::<f64>::new();
     for cell in &cells {
-        if cell.is_empty() {
+        let valid_ids: Vec<usize> = cell
+            .iter()
+            .filter_map(|&v| usize::try_from(v).ok().filter(|&v| v < nv))
+            .collect();
+        if valid_ids.is_empty() {
             pts.push([0.0, 0.0, 0.0]);
             continue;
         }
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
-        for &v in cell {
-            let p = mesh.points.get(v as usize);
+        for &v in &valid_ids {
+            let p = mesh.points.get(v);
             cx += p[0];
             cy += p[1];
             cz += p[2];
         }
-        let n = cell.len() as f64;
+        let n = valid_ids.len() as f64;
         pts.push([cx / n, cy / n, cz / n]);
     }
     // For each vertex, find surrounding faces in order -> dual face
     let mut vf: Vec<Vec<usize>> = vec![Vec::new(); nv];
     for (ci, cell) in cells.iter().enumerate() {
         for &v in cell {
-            vf[v as usize].push(ci);
+            if let Ok(v) = usize::try_from(v) {
+                if v < nv {
+                    vf[v].push(ci);
+                }
+            }
         }
     }
     let mut polys = CellArray::new();

@@ -13,6 +13,9 @@ pub fn orient_normals(mesh: &PolyData) -> PolyData {
     for (fi, tri) in tris.iter().enumerate() {
         let nc = tri.len();
         for i in 0..nc {
+            if tri[i] < 0 || tri[(i + 1) % nc] < 0 {
+                continue;
+            }
             let a = tri[i];
             let b = tri[(i + 1) % nc];
             let e = if a < b { (a, b) } else { (b, a) };
@@ -22,28 +25,33 @@ pub fn orient_normals(mesh: &PolyData) -> PolyData {
     let mut oriented = tris.clone();
     let mut visited = vec![false; nt];
     let mut queue = std::collections::VecDeque::new();
-    visited[0] = true;
-    queue.push_back(0);
-    while let Some(fi) = queue.pop_front() {
-        let nc = oriented[fi].len();
-        for i in 0..nc {
-            let a = oriented[fi][i];
-            let b = oriented[fi][(i + 1) % nc];
-            let e = if a < b { (a, b) } else { (b, a) };
-            if let Some(neighbors) = edge_faces.get(&e) {
-                for &fj in neighbors {
-                    if visited[fj] {
-                        continue;
+    for seed in 0..nt {
+        if visited[seed] {
+            continue;
+        }
+        visited[seed] = true;
+        queue.push_back(seed);
+        while let Some(fi) = queue.pop_front() {
+            let nc = oriented[fi].len();
+            for i in 0..nc {
+                let a = oriented[fi][i];
+                let b = oriented[fi][(i + 1) % nc];
+                let e = if a < b { (a, b) } else { (b, a) };
+                if let Some(neighbors) = edge_faces.get(&e) {
+                    for &fj in neighbors {
+                        if fj == fi || visited[fj] {
+                            continue;
+                        }
+                        visited[fj] = true;
+                        // Check if fj has edge (b,a) or (a,b) - should be opposite direction
+                        let ncj = oriented[fj].len();
+                        let has_same_dir = (0..ncj)
+                            .any(|k| oriented[fj][k] == a && oriented[fj][(k + 1) % ncj] == b);
+                        if has_same_dir {
+                            oriented[fj].reverse(); // flip
+                        }
+                        queue.push_back(fj);
                     }
-                    visited[fj] = true;
-                    // Check if fj has edge (b,a) or (a,b) - should be opposite direction
-                    let ncj = oriented[fj].len();
-                    let has_same_dir =
-                        (0..ncj).any(|k| oriented[fj][k] == a && oriented[fj][(k + 1) % ncj] == b);
-                    if has_same_dir {
-                        oriented[fj].reverse(); // flip
-                    }
-                    queue.push_back(fj);
                 }
             }
         }
@@ -52,8 +60,7 @@ pub fn orient_normals(mesh: &PolyData) -> PolyData {
     for tri in &oriented {
         polys.push_cell(tri);
     }
-    let mut result = PolyData::new();
-    result.points = mesh.points.clone();
+    let mut result = mesh.clone();
     result.polys = polys;
     result
 }
@@ -70,9 +77,10 @@ mod tests {
                 [0.5, 1.0, 0.0],
                 [1.5, 1.0, 0.0],
             ],
-            vec![[0, 1, 2], [2, 1, 3]], // second face has inconsistent winding
+            vec![[0, 1, 2], [1, 2, 3]], // shared edge has the same direction
         );
         let r = orient_normals(&mesh);
-        assert_eq!(r.polys.num_cells(), 2);
+        let cells: Vec<Vec<i64>> = r.polys.iter().map(|c| c.to_vec()).collect();
+        assert_eq!(cells, vec![vec![0, 1, 2], vec![3, 2, 1]]);
     }
 }

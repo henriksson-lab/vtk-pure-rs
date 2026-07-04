@@ -10,15 +10,20 @@ pub fn mesh_saliency(mesh: &PolyData, scales: &[f64]) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
+            if a >= n || b >= n {
+                continue;
+            }
+            if !adj[a].contains(&b) {
+                adj[a].push(b);
+            }
+            if !adj[b].contains(&a) {
+                adj[b].push(a);
             }
         }
     }

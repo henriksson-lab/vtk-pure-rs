@@ -1,6 +1,10 @@
 use crate::data::ImageData;
 use std::collections::HashMap;
 
+fn image_point_count(dims: [usize; 3]) -> Option<usize> {
+    dims[0].checked_mul(dims[1])?.checked_mul(dims[2])
+}
+
 /// Properties of a labeled region in an ImageData.
 #[derive(Debug, Clone, Default)]
 pub struct RegionProps {
@@ -27,6 +31,13 @@ pub fn region_properties(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
+    let n = match image_point_count(dims) {
+        Some(n) => n,
+        None => return vec![],
+    };
+    if la.num_tuples() < n || matches!(va, Some(a) if a.num_tuples() < n) {
+        return vec![];
+    }
     let sp = input.spacing();
     let origin = input.origin();
 
@@ -58,9 +69,9 @@ pub fn region_properties(
                     continue;
                 }
 
-                let x = origin[0] + i as f64 * sp[0];
-                let y = origin[1] + j as f64 * sp[1];
-                let z = origin[2] + k as f64 * sp[2];
+                let x = origin[0] + (input.extent()[0] as f64 + i as f64) * sp[0];
+                let y = origin[1] + (input.extent()[2] as f64 + j as f64) * sp[1];
+                let z = origin[2] + (input.extent()[4] as f64 + k as f64) * sp[2];
                 let v = if let Some(a) = &va {
                     a.tuple_as_f64(k * ny * nx + j * nx + i, &mut bv);
                     bv[0]
@@ -175,5 +186,23 @@ mod tests {
     fn missing_array() {
         let img = ImageData::with_dimensions(3, 1, 1);
         assert!(region_properties(&img, "nope", None).is_empty());
+    }
+
+    #[test]
+    fn centroid_honors_extent() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.set_extent([10, 11, 20, 20, 30, 30]);
+        img.set_spacing([2.0, 3.0, 4.0]);
+        img.set_origin([1.0, 2.0, 3.0]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "l",
+                vec![1.0, 1.0],
+                1,
+            )));
+
+        let props = region_properties(&img, "l", None);
+        assert_eq!(props.len(), 1);
+        assert_eq!(props[0].centroid, [22.0, 62.0, 123.0]);
     }
 }

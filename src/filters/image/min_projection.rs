@@ -17,18 +17,21 @@ pub fn min_projection_z(input: &ImageData, scalars: &str) -> ImageData {
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
 
-    let out_len: usize = nx * ny;
+    let nc = arr.num_components();
+    let out_len: usize = nx * ny * nc;
     let mut values: Vec<f64> = vec![f64::INFINITY; out_len];
-    let mut buf = [0.0f64];
+    let mut buf = vec![0.0f64; nc];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
                 let src_idx: usize = k * ny * nx + j * nx + i;
-                let dst_idx: usize = j * nx + i;
+                let dst_idx: usize = (j * nx + i) * nc;
                 arr.tuple_as_f64(src_idx, &mut buf);
-                if buf[0] < values[dst_idx] {
-                    values[dst_idx] = buf[0];
+                for c in 0..nc {
+                    if buf[c] < values[dst_idx + c] {
+                        values[dst_idx + c] = buf[c];
+                    }
                 }
             }
         }
@@ -36,11 +39,12 @@ pub fn min_projection_z(input: &ImageData, scalars: &str) -> ImageData {
 
     let mut out = ImageData::with_dimensions(nx, ny, 1);
     let spacing = input.spacing();
-    out.set_spacing([spacing[0], spacing[1], 1.0]);
-    let origin = input.origin();
+    out.set_spacing(spacing);
+    let mut origin = input.origin();
+    origin[2] += 0.5 * spacing[2] * (nz.saturating_sub(1) as f64);
     out.set_origin(origin);
     out.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, nc)));
     out
 }
 

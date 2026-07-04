@@ -10,16 +10,16 @@ pub fn image_rate_distortion(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.5 * (buf[0].abs().max(0.001) / buf[0].abs().max(0.01))
-                .log2()
-                .max(0.0)
+            0.5 * (1.0 / buf[0].abs().max(0.001)).log2().max(0.0)
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

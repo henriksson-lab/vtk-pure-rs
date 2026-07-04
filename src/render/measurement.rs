@@ -31,6 +31,12 @@ pub fn measure(pd: &PolyData) -> MeshMeasurements {
         if cell.len() < 3 {
             continue;
         }
+        if !cell
+            .iter()
+            .all(|&id| id >= 0 && (id as usize) < pd.points.len())
+        {
+            continue;
+        }
 
         // Triangle fan area
         let p0 = pd.points.get(cell[0] as usize);
@@ -97,13 +103,14 @@ pub fn angle_at_vertex(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     let ba = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     let bc = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
     let dot = ba[0] * bc[0] + ba[1] * bc[1] + ba[2] * bc[2];
-    let mag_ba = (ba[0] * ba[0] + ba[1] * ba[1] + ba[2] * ba[2]).sqrt();
-    let mag_bc = (bc[0] * bc[0] + bc[1] * bc[1] + bc[2] * bc[2]).sqrt();
-    if mag_ba < 1e-15 || mag_bc < 1e-15 {
+    let cx = ba[1] * bc[2] - ba[2] * bc[1];
+    let cy = ba[2] * bc[0] - ba[0] * bc[2];
+    let cz = ba[0] * bc[1] - ba[1] * bc[0];
+    let cross_norm = (cx * cx + cy * cy + cz * cz).sqrt();
+    if cross_norm < 1e-15 && dot.abs() < 1e-15 {
         return 0.0;
     }
-    let cos_angle = (dot / (mag_ba * mag_bc)).clamp(-1.0, 1.0);
-    cos_angle.acos().to_degrees()
+    cross_norm.atan2(dot).to_degrees()
 }
 
 /// Compute area of a triangle given three vertices.
@@ -164,6 +171,21 @@ mod tests {
         assert_eq!(m.num_edges, 3);
         assert!(m.min_edge_length > 0.0);
         assert!(m.max_edge_length >= m.min_edge_length);
+    }
+
+    #[test]
+    fn measure_skips_invalid_polygon_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, -1, 2]);
+
+        let m = measure(&pd);
+        assert!((m.surface_area - 0.5).abs() < 1e-10);
+        assert_eq!(m.num_edges, 3);
     }
 
     #[test]

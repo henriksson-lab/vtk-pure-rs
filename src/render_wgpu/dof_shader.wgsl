@@ -1,19 +1,16 @@
 // Depth-of-field post-processing shader.
 //
-// Three passes:
-// 1. CoC computation: sample depth buffer, compute circle of confusion
-// 2. Blur: variable-radius blur based on CoC
-// 3. Composite: blend blurred result with original
+// Translation of VTK's vtkDepthOfFieldPassFS.glsl. The shader computes a
+// signed circle of confusion directly from the depth-buffer value, then gathers
+// nearby samples with the same stochastic 9x9 kernel used by VTK.
 
 struct DofUniforms {
+    world_to_tcoord: vec2<f32>,
+    pixel_to_tcoord: vec2<f32>,
+    near_c: f32,
+    far_c: f32,
+    focal_disk: f32,
     focal_distance: f32,
-    aperture: f32,
-    max_blur: f32,
-    texel_size_x: f32,
-    texel_size_y: f32,
-    near: f32,
-    far: f32,
-    horizontal: f32,
 };
 
 @group(0) @binding(0) var<uniform> u: DofUniforms;
@@ -37,58 +34,67 @@ fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOutput {
     return out;
 }
 
-fn linearize_depth(d: f32) -> f32 {
-    let z_ndc = d * 2.0 - 1.0;
-    return (2.0 * u.near * u.far) / (u.far + u.near - z_ndc * (u.far - u.near));
+fn rand2(co: vec2<f32>) -> vec2<f32> {
+    let a = 12.9898;
+    let b = 78.233;
+    let c = 43758.5453;
+    let dt = dot(co.xy, vec2<f32>(a, b));
+    let sn = dt - floor(dt / 3.14) * 3.14;
+    let dt2 = dot(co.xy, vec2<f32>(b, a));
+    let sn2 = dt2 - floor(dt2 / 3.14) * 3.14;
+    return vec2<f32>(fract(sin(sn) * c), fract(sin(sn2) * c));
 }
 
-// Pass 1: compute CoC and store in alpha channel
+fn vtk_depth_of_field(tcoord_vc: vec2<f32>) -> vec4<f32> {
+    var fcolor = textureSample(color_tex, tex_sampler, tcoord_vc);
+    var fsum = 1.0;
+
+    var fdist = u.focal_distance;
+    // Use automatic focalDistance when focalDistance == 0, matching VTK.
+    if fdist == 0.0 {
+        let center_depth = textureSample(depth_tex, tex_sampler, vec2<f32>(0.5, 0.5)).r;
+        fdist = -u.far_c * u.near_c / (center_depth * (u.far_c - u.near_c) - u.far_c);
+    }
+
+    let coc_scale = u.focal_disk * fdist * (u.far_c - u.near_c) / (u.far_c * u.near_c);
+    let coc_bias = u.focal_disk * (u.near_c - fdist) / u.near_c;
+
+    let cdepth = textureSample(depth_tex, tex_sampler, tcoord_vc).r;
+    let coc = coc_scale * cdepth + coc_bias;
+
+    for (var i = 0; i < 9; i = i + 1) {
+        for (var j = 0; j < 9; j = j + 1) {
+            let new_offset = u.pixel_to_tcoord * (vec2<f32>(f32(i - 4), f32(j - 4)) * 2.0 + rand2(tcoord_vc));
+            let new_tc = tcoord_vc + new_offset;
+            let tdepth = textureSample(depth_tex, tex_sampler, new_tc).r;
+            let t_coc = coc_scale * tdepth + coc_bias;
+            // Is the sample in range?
+            let close = abs(t_coc) - length(new_offset / u.world_to_tcoord);
+            if close > 0.0 {
+                // Is the sample to be blended in front? Or, if behind, not too far behind.
+                if t_coc < 0.0 || (coc > 0.0 && t_coc < (coc * 2.0)) {
+                    let weight = close / abs(t_coc);
+                    fcolor = fcolor + weight * textureSample(color_tex, tex_sampler, new_tc);
+                    fsum = fsum + weight;
+                }
+            }
+        }
+    }
+
+    return fcolor / fsum;
+}
+
 @fragment
 fn fs_coc(in: VertexOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(color_tex, tex_sampler, in.uv);
-    let depth_raw = textureSample(depth_tex, tex_sampler, in.uv).r;
-    let depth = linearize_depth(depth_raw);
-    let coc = clamp(u.aperture * abs(depth - u.focal_distance) / max(depth, 0.001), 0.0, u.max_blur);
-    return vec4<f32>(color.rgb, coc);
+    return vtk_depth_of_field(in.uv);
 }
 
-// Pass 2: separable Gaussian blur weighted by CoC
 @fragment
 fn fs_blur(in: VertexOutput) -> @location(0) vec4<f32> {
-    let center = textureSample(color_tex, tex_sampler, in.uv);
-    let coc = center.a;
-    let radius = coc;
-
-    if (radius < 0.5) {
-        return center;
-    }
-
-    var dir: vec2<f32>;
-    if (u.horizontal > 0.5) {
-        dir = vec2<f32>(u.texel_size_x, 0.0);
-    } else {
-        dir = vec2<f32>(0.0, u.texel_size_y);
-    }
-
-    var result = center.rgb;
-    var weight_sum = 1.0;
-    let steps = i32(min(radius, 10.0));
-
-    for (var i = 1; i <= steps; i = i + 1) {
-        let offset = dir * f32(i);
-        let s1 = textureSample(color_tex, tex_sampler, in.uv + offset);
-        let s2 = textureSample(color_tex, tex_sampler, in.uv - offset);
-        let w = 1.0 - f32(i) / (f32(steps) + 1.0);
-        result = result + s1.rgb * w + s2.rgb * w;
-        weight_sum = weight_sum + 2.0 * w;
-    }
-
-    return vec4<f32>(result / weight_sum, coc);
+    return vtk_depth_of_field(in.uv);
 }
 
-// Pass 3: composite (just output the blurred result)
 @fragment
 fn fs_composite(in: VertexOutput) -> @location(0) vec4<f32> {
-    let color = textureSample(color_tex, tex_sampler, in.uv);
-    return vec4<f32>(color.rgb, 1.0);
+    return textureSample(color_tex, tex_sampler, in.uv);
 }

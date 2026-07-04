@@ -24,6 +24,16 @@ pub fn image_thin(input: &ImageData, scalars: &str, threshold: f64) -> ImageData
         })
         .collect();
 
+    if nx < 3 || ny < 3 {
+        let skeleton: Vec<f64> = img.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect();
+        let mut out = input.clone();
+        out.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Skeleton", skeleton, 1,
+            )));
+        return out;
+    }
+
     // Zhang-Suen thinning (simplified)
     let mut changed = true;
     while changed {

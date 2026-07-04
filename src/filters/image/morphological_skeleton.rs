@@ -2,16 +2,14 @@ use crate::data::{AnyDataArray, DataArray, DataSetAttributes, ImageData};
 
 /// Morphological skeletonization of a binary image.
 ///
-/// Uses iterative erosion and subtraction: at each iteration, the image is
-/// eroded, then opened (erode + dilate), and the difference between the
-/// eroded image and the opening is added to the skeleton. Iteration continues
-/// until the eroded image is empty.
-///
-/// The result has a "Skeleton" scalar array in point data with values 0.0 or 1.0.
+/// Follows the erosion rules from `vtkImageSkeleton2D` independently on each
+/// XY slice. The result has a "Skeleton" scalar array in point data with
+/// values 0.0 or 1.0.
 pub fn morphological_skeleton(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -20,50 +18,18 @@ pub fn morphological_skeleton(input: &ImageData, scalars: &str) -> ImageData {
     let nz: usize = dims[2] as usize;
     let n: usize = nx * ny * nz;
 
-    // Read input as binary
-    let mut current: Vec<f64> = vec![0.0; n];
+    let mut grid: Vec<f64> = vec![0.0; n];
     let mut buf: [f64; 1] = [0.0];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        current[i] = if buf[0] > 0.5 { 1.0 } else { 0.0 };
+        grid[i] = if buf[0] > 0.5 { 2.0 } else { 0.0 };
     }
 
-    let mut skeleton: Vec<f64> = vec![0.0; n];
-
-    // Iterate until current image is empty
-    loop {
-        let eroded: Vec<f64> = erode_3d(&current, nx, ny, nz);
-
-        // Check if eroded is empty
-        let mut any_nonzero: bool = false;
-        for &v in &eroded {
-            if v > 0.5 {
-                any_nonzero = true;
-                break;
-            }
-        }
-        if !any_nonzero {
-            // Add remaining current to skeleton
-            for i in 0..n {
-                if current[i] > 0.5 {
-                    skeleton[i] = 1.0;
-                }
-            }
-            break;
-        }
-
-        // Opening = dilate(erode(current))
-        let opened: Vec<f64> = dilate_3d(&eroded, nx, ny, nz);
-
-        // Skeleton += eroded - opened (the residue)
-        for i in 0..n {
-            if eroded[i] > 0.5 && opened[i] < 0.5 {
-                skeleton[i] = 1.0;
-            }
-        }
-
-        current = eroded;
-    }
+    while skeleton_2d_vtk_pass(&mut grid, nx, ny, nz) {}
+    let skeleton: Vec<f64> = grid
+        .iter()
+        .map(|&v| if v > 1.0 { 1.0 } else { 0.0 })
+        .collect();
 
     // Build output
     let mut output: ImageData = input.clone();
@@ -81,103 +47,128 @@ pub fn morphological_skeleton(input: &ImageData, scalars: &str) -> ImageData {
     output
 }
 
-/// 3D binary erosion with a 3x3x3 structuring element (cross/full).
-fn erode_3d(data: &[f64], nx: usize, ny: usize, nz: usize) -> Vec<f64> {
-    let n: usize = nx * ny * nz;
-    let mut result: Vec<f64> = vec![0.0; n];
+fn skeleton_2d_vtk_pass(grid: &mut [f64], nx: usize, ny: usize, nz: usize) -> bool {
+    let mut changed = false;
+    if nx == 0 || ny == 0 || nz == 0 {
+        return false;
+    }
 
-    for k in 0..nz {
-        for j in 0..ny {
-            for i in 0..nx {
-                let mut all_set: bool = true;
-                for dk in -1i64..=1 {
-                    let kk: i64 = k as i64 + dk;
-                    if kk < 0 || kk >= nz as i64 {
-                        all_set = false;
-                        break;
-                    }
-                    for dj in -1i64..=1 {
-                        let jj: i64 = j as i64 + dj;
-                        if jj < 0 || jj >= ny as i64 {
-                            all_set = false;
-                            break;
-                        }
-                        for di in -1i64..=1 {
-                            let ii: i64 = i as i64 + di;
-                            if ii < 0 || ii >= nx as i64 {
-                                all_set = false;
-                                break;
-                            }
-                            let idx: usize = kk as usize * ny * nx + jj as usize * nx + ii as usize;
-                            if data[idx] < 0.5 {
-                                all_set = false;
-                                break;
-                            }
-                        }
-                        if !all_set {
-                            break;
-                        }
-                    }
-                    if !all_set {
-                        break;
-                    }
+    for z in 0..nz {
+        let slice = z * nx * ny;
+        for y in 0..ny {
+            for x in 0..nx {
+                let idx = slice + y * nx + x;
+                if grid[idx] == 0.0 {
+                    continue;
                 }
-                if all_set {
-                    result[k * ny * nx + j * nx + i] = 1.0;
+
+                let n = [
+                    neighbor(grid, nx, ny, slice, x, y, -1, 0),
+                    neighbor(grid, nx, ny, slice, x, y, -1, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 0, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 1, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 1, 0),
+                    neighbor(grid, nx, ny, slice, x, y, 1, 1),
+                    neighbor(grid, nx, ny, slice, x, y, 0, 1),
+                    neighbor(grid, nx, ny, slice, x, y, -1, 1),
+                ];
+
+                if vtk_skeleton_erodes(n, 0) {
+                    grid[idx] = 1.0;
+                    changed = true;
                 }
             }
         }
     }
 
-    result
+    for v in grid {
+        if *v <= 1.0 {
+            *v = 0.0;
+        }
+    }
+
+    changed
 }
 
-/// 3D binary dilation with a 3x3x3 structuring element.
-fn dilate_3d(data: &[f64], nx: usize, ny: usize, nz: usize) -> Vec<f64> {
-    let n: usize = nx * ny * nz;
-    let mut result: Vec<f64> = vec![0.0; n];
+fn neighbor(
+    grid: &[f64],
+    nx: usize,
+    ny: usize,
+    slice: usize,
+    x: usize,
+    y: usize,
+    dx: isize,
+    dy: isize,
+) -> f64 {
+    let Some(xx) = x.checked_add_signed(dx) else {
+        return 0.0;
+    };
+    let Some(yy) = y.checked_add_signed(dy) else {
+        return 0.0;
+    };
+    if xx >= nx || yy >= ny {
+        0.0
+    } else {
+        grid[slice + yy * nx + xx]
+    }
+}
 
-    for k in 0..nz {
-        for j in 0..ny {
-            for i in 0..nx {
-                let mut any_set: bool = false;
-                for dk in -1i64..=1 {
-                    let kk: i64 = k as i64 + dk;
-                    if kk < 0 || kk >= nz as i64 {
-                        continue;
-                    }
-                    for dj in -1i64..=1 {
-                        let jj: i64 = j as i64 + dj;
-                        if jj < 0 || jj >= ny as i64 {
-                            continue;
-                        }
-                        for di in -1i64..=1 {
-                            let ii: i64 = i as i64 + di;
-                            if ii < 0 || ii >= nx as i64 {
-                                continue;
-                            }
-                            let idx: usize = kk as usize * ny * nx + jj as usize * nx + ii as usize;
-                            if data[idx] > 0.5 {
-                                any_set = true;
-                                break;
-                            }
-                        }
-                        if any_set {
-                            break;
-                        }
-                    }
-                    if any_set {
-                        break;
-                    }
-                }
-                if any_set {
-                    result[k * ny * nx + j * nx + i] = 1.0;
-                }
-            }
+fn vtk_skeleton_erodes(n: [f64; 8], prune: i32) -> bool {
+    let mut erode_case = 0;
+    for idx in (0..8).rev() {
+        if n[idx] > 0.0 {
+            erode_case += 1;
+        }
+        if idx != 0 {
+            erode_case *= 2;
         }
     }
 
-    result
+    if erode_case == 54 || erode_case == 216 {
+        return true;
+    }
+    if erode_case == 99 || erode_case == 141 {
+        return false;
+    }
+
+    let count_faces =
+        (n[0] > 0.0) as i32 + (n[2] > 0.0) as i32 + (n[4] > 0.0) as i32 + (n[6] > 0.0) as i32;
+    let count_corners =
+        (n[1] > 0.0) as i32 + (n[3] > 0.0) as i32 + (n[5] > 0.0) as i32 + (n[7] > 0.0) as i32;
+
+    if count_faces == 2 && count_corners == 0 && n[2] > 0.0 && n[4] > 0.0 {
+        return true;
+    }
+    if prune > 1 && count_faces + count_corners <= 1 {
+        return true;
+    }
+
+    (n[0] == 0.0 || n[2] == 0.0 || n[4] == 0.0 || n[6] == 0.0)
+        && (prune > 1
+            || count_faces != 1
+            || count_corners != 2
+            || ((n[1] == 0.0 || n[2] == 0.0 || n[3] == 0.0)
+                && (n[3] == 0.0 || n[4] == 0.0 || n[5] == 0.0)
+                && (n[5] == 0.0 || n[6] == 0.0 || n[7] == 0.0)
+                && (n[7] == 0.0 || n[0] == 0.0 || n[1] == 0.0)))
+        && (prune != 0
+            || count_faces != 2
+            || count_corners != 2
+            || ((n[1] == 0.0 || n[2] == 0.0 || n[3] == 0.0 || n[4] != 0.0)
+                && (n[0] == 0.0 || n[1] == 0.0 || n[2] == 0.0 || n[3] != 0.0)
+                && (n[7] == 0.0 || n[0] == 0.0 || n[1] == 0.0 || n[2] != 0.0)
+                && (n[6] == 0.0 || n[7] == 0.0 || n[0] == 0.0 || n[1] != 0.0)
+                && (n[5] == 0.0 || n[6] == 0.0 || n[7] == 0.0 || n[0] != 0.0)
+                && (n[4] == 0.0 || n[5] == 0.0 || n[6] == 0.0 || n[7] != 0.0)
+                && (n[3] == 0.0 || n[4] == 0.0 || n[5] == 0.0 || n[6] != 0.0)
+                && (n[2] == 0.0 || n[3] == 0.0 || n[4] == 0.0 || n[5] != 0.0)))
+        && (n[1] == 0.0 || n[0] > 1.0 || n[2] > 1.0)
+        && (n[3] == 0.0 || n[2] > 1.0 || n[4] > 1.0)
+        && (n[5] == 0.0 || n[4] > 1.0 || n[6] > 1.0)
+        && (n[7] == 0.0 || n[6] > 1.0 || n[0] > 1.0)
+        && (n[0] == 0.0 || n[4] == 0.0 || n[2] > 1.0 || n[6] > 1.0)
+        && (n[2] == 0.0 || n[6] == 0.0 || n[0] > 1.0 || n[4] > 1.0)
+        && (prune > 1 || count_faces > 2 || (count_faces == 2 && count_corners > 1))
 }
 
 #[cfg(test)]
@@ -235,6 +226,15 @@ mod tests {
         let mut buf: [f64; 1] = [0.0];
         skel.tuple_as_f64(2 * 5 + 2, &mut buf);
         assert!(buf[0] > 0.5, "center should be in skeleton");
+
+        let mut count = 0;
+        for i in 0..25 {
+            skel.tuple_as_f64(i, &mut buf);
+            if buf[0] > 0.5 {
+                count += 1;
+            }
+        }
+        assert!(count < 25, "skeleton should thin the filled block");
     }
 
     #[test]

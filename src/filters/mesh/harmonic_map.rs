@@ -1,5 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Compute harmonic coordinates on a mesh with boundary conditions.
 ///
@@ -19,9 +19,19 @@ pub fn harmonic_solve(
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
+        let cn = cell.len();
+        if cn < 2 {
+            continue;
+        }
+        for i in 0..cn {
+            if cell[i] < 0 || cell[(i + 1) % cn] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let b = cell[(i + 1) % cn] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -109,5 +119,19 @@ mod tests {
         let pd = PolyData::new();
         let result = harmonic_solve(&pd, &[], "f", 10);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn ignores_empty_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[]);
+
+        let result = harmonic_solve(&pd, &[(0, 1.0)], "f", 1);
+        let arr = result.point_data().get_array("f").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

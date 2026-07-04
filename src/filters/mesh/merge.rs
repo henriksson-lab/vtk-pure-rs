@@ -1,43 +1,11 @@
-use crate::data::{CellArray, PolyData};
+use crate::data::PolyData;
 
 /// Merge two PolyData meshes into one by concatenating points and cells.
 ///
 /// Cell point indices from the second mesh are adjusted by the number of points
 /// in the first mesh. All cell types (verts, lines, polys, strips) are merged.
 pub fn merge_poly_data(a: &PolyData, b: &PolyData) -> PolyData {
-    let mut output = PolyData::new();
-
-    // Copy all points from A
-    for i in 0..a.points.len() {
-        output.points.push(a.points.get(i));
-    }
-    // Copy all points from B
-    for i in 0..b.points.len() {
-        output.points.push(b.points.get(i));
-    }
-
-    let offset: i64 = a.points.len() as i64;
-
-    // Copy cells from A directly
-    copy_cells(&a.verts, &mut output.verts, 0);
-    copy_cells(&a.lines, &mut output.lines, 0);
-    copy_cells(&a.polys, &mut output.polys, 0);
-    copy_cells(&a.strips, &mut output.strips, 0);
-
-    // Copy cells from B with offset
-    copy_cells(&b.verts, &mut output.verts, offset);
-    copy_cells(&b.lines, &mut output.lines, offset);
-    copy_cells(&b.polys, &mut output.polys, offset);
-    copy_cells(&b.strips, &mut output.strips, offset);
-
-    output
-}
-
-fn copy_cells(src: &CellArray, dst: &mut CellArray, offset: i64) {
-    for cell in src.iter() {
-        let remapped: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
-        dst.push_cell(&remapped);
-    }
+    super::merge_ops::append_meshes(&[a, b])
 }
 
 #[cfg(test)]

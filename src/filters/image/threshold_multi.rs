@@ -47,6 +47,9 @@ pub fn image_multi_otsu(input: &ImageData, scalars: &str, n_classes: usize) -> I
     };
 
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let mut values: Vec<f64> = (0..n)
         .map(|i| {
@@ -54,7 +57,7 @@ pub fn image_multi_otsu(input: &ImageData, scalars: &str, n_classes: usize) -> I
             buf[0]
         })
         .collect();
-    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     // Simple: split into n_classes equal-count bins
     let mut thresholds = Vec::new();

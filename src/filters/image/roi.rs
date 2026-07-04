@@ -19,44 +19,39 @@ pub fn image_sphere_roi(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
-    let origin = input.origin();
-    let spacing = input.spacing();
+    let n = nx * ny * nz;
+    if arr.num_tuples() < n {
+        return input.clone();
+    }
+    let num_comp = arr.num_components();
     let r2 = radius * radius;
 
-    let mut buf = [0.0f64];
-    let mut values = Vec::with_capacity(nx * ny * nz);
+    let mut buf = vec![0.0f64; num_comp];
+    let mut values = Vec::with_capacity(nx * ny * nz * num_comp);
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let x = origin[0] + i as f64 * spacing[0] - center[0];
-                let y = origin[1] + j as f64 * spacing[1] - center[1];
-                let z = origin[2] + k as f64 * spacing[2] - center[2];
+                let p = input.point_from_ijk(i, j, k);
+                let x = p[0] - center[0];
+                let y = p[1] - center[1];
+                let z = p[2] - center[2];
                 arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
-                values.push(if x * x + y * y + z * z <= r2 {
-                    buf[0]
+                if x * x + y * y + z * z <= r2 {
+                    values.extend_from_slice(&buf);
                 } else {
-                    outside_value
-                });
+                    values.extend(std::iter::repeat(outside_value).take(num_comp));
+                }
             }
         }
     }
 
     let mut img = input.clone();
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            new_attrs.add_array(a.clone());
-        }
-    }
-    *img.point_data_mut() = new_attrs;
+    img.point_data_mut()
+        .field_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, values, num_comp,
+        )));
     img
 }
 
@@ -76,18 +71,19 @@ pub fn image_box_roi(
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
-    let origin = input.origin();
-    let spacing = input.spacing();
+    let n = nx * ny * nz;
+    if arr.num_tuples() < n {
+        return input.clone();
+    }
+    let num_comp = arr.num_components();
 
-    let mut buf = [0.0f64];
-    let mut values = Vec::with_capacity(nx * ny * nz);
+    let mut buf = vec![0.0f64; num_comp];
+    let mut values = Vec::with_capacity(nx * ny * nz * num_comp);
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let x = origin[0] + i as f64 * spacing[0];
-                let y = origin[1] + j as f64 * spacing[1];
-                let z = origin[2] + k as f64 * spacing[2];
+                let [x, y, z] = input.point_from_ijk(i, j, k);
                 arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
                 let inside = x >= bounds[0]
                     && x <= bounds[1]
@@ -95,26 +91,21 @@ pub fn image_box_roi(
                     && y <= bounds[3]
                     && z >= bounds[4]
                     && z <= bounds[5];
-                values.push(if inside { buf[0] } else { outside_value });
+                if inside {
+                    values.extend_from_slice(&buf);
+                } else {
+                    values.extend(std::iter::repeat(outside_value).take(num_comp));
+                }
             }
         }
     }
 
     let mut img = input.clone();
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            new_attrs.add_array(a.clone());
-        }
-    }
-    *img.point_data_mut() = new_attrs;
+    img.point_data_mut()
+        .field_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, values, num_comp,
+        )));
     img
 }
 

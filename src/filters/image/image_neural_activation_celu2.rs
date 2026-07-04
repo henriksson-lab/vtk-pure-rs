@@ -1,4 +1,4 @@
-//! CELU activation alpha=1
+//! CELU activation alpha=2
 use crate::data::{AnyDataArray, DataArray, ImageData};
 pub fn image_neural_activation_celu2(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
@@ -13,7 +13,7 @@ pub fn image_neural_activation_celu2(input: &ImageData, scalars: &str) -> ImageD
             if buf[0] >= 0.0 {
                 buf[0]
             } else {
-                buf[0].exp() - 1.0
+                2.0 * ((buf[0] / 2.0).exp() - 1.0)
             }
         })
         .collect();

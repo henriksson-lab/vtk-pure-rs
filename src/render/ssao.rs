@@ -7,10 +7,12 @@ pub struct SsaoConfig {
     pub radius: f32,
     /// AO intensity multiplier. Default: 1.0
     pub intensity: f32,
-    /// Bias to prevent self-occlusion artifacts. Default: 0.025
+    /// Bias to prevent self-occlusion artifacts. Default: 0.01
     pub bias: f32,
-    /// Number of samples per pixel (max 32). Default: 16
+    /// Number of samples per pixel (clamped to 1..=32). Default: 32
     pub num_samples: u32,
+    /// Whether to blur the ambient occlusion result. Default: false
+    pub blur: bool,
 }
 
 impl Default for SsaoConfig {
@@ -19,8 +21,9 @@ impl Default for SsaoConfig {
             enabled: false,
             radius: 0.5,
             intensity: 1.0,
-            bias: 0.025,
-            num_samples: 16,
+            bias: 0.01,
+            num_samples: 32,
+            blur: false,
         }
     }
 }
@@ -45,7 +48,12 @@ impl SsaoConfig {
     }
 
     pub fn with_samples(mut self, num_samples: u32) -> Self {
-        self.num_samples = num_samples.min(32);
+        self.num_samples = num_samples.clamp(1, 32);
+        self
+    }
+
+    pub fn with_blur(mut self, blur: bool) -> Self {
+        self.blur = blur;
         self
     }
 }
@@ -69,5 +77,12 @@ mod tests {
         assert!(c.enabled);
         assert_eq!(c.radius, 1.0);
         assert_eq!(c.num_samples, 32);
+        assert!(!c.blur);
+    }
+
+    #[test]
+    fn sample_count_is_clamped_to_valid_kernel_range() {
+        assert_eq!(SsaoConfig::new().with_samples(0).num_samples, 1);
+        assert_eq!(SsaoConfig::new().with_samples(1000).num_samples, 32);
     }
 }

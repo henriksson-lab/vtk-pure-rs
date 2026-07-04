@@ -42,7 +42,12 @@ pub fn median_smooth(input: &PolyData, array_name: &str, iterations: usize) -> P
                 ring.push(values[j]);
             }
             ring.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            new_values[i] = ring[ring.len() / 2];
+            let mid = ring.len() / 2;
+            new_values[i] = if ring.len() % 2 == 0 {
+                ring[mid - 1] + (ring[mid] - ring[mid - 1]) / 2.0
+            } else {
+                ring[mid]
+            };
         }
         values = new_values;
     }
@@ -118,5 +123,28 @@ mod tests {
         let pd = PolyData::new();
         let result = median_smooth(&pd, "nope", 1);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn even_neighborhood_averages_middle_values() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([0.0, 0.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 2.0, 4.0, 6.0],
+                1,
+            )));
+
+        let result = median_smooth(&pd, "val", 1);
+        let arr = result.point_data().get_array("val").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 3.0);
     }
 }

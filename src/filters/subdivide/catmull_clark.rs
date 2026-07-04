@@ -94,6 +94,33 @@ pub fn catmull_clark(input: &PolyData) -> PolyData {
             continue;
         }
 
+        let boundary_neighbors: Vec<usize> = pt_edges[i]
+            .iter()
+            .filter_map(|&(a, b)| {
+                if edge_faces[&(a, b)].len() == 1 {
+                    Some(if a as usize == i {
+                        b as usize
+                    } else {
+                        a as usize
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if boundary_neighbors.len() >= 2 {
+            let p = input.points.get(i);
+            let p0 = input.points.get(boundary_neighbors[0]);
+            let p1 = input.points.get(boundary_neighbors[1]);
+            out_pts[i] = [
+                (6.0 * p[0] + p0[0] + p1[0]) / 8.0,
+                (6.0 * p[1] + p0[1] + p1[1]) / 8.0,
+                (6.0 * p[2] + p0[2] + p1[2]) / 8.0,
+            ];
+            continue;
+        }
+
         let mut f_avg = [0.0; 3];
         for &fi in &pt_faces[i] {
             f_avg[0] += face_points[fi][0];

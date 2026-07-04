@@ -157,6 +157,14 @@ impl VolumePass {
         camera_pos: [f32; 3],
     ) {
         let [nx, ny, nz] = volume.dimensions;
+        if nx == 0
+            || ny == 0
+            || nz == 0
+            || volume.num_steps == 0
+            || volume.scalars.len() < nx * ny * nz
+        {
+            return;
+        }
 
         // Create 3D texture
         let volume_texture = device.create_texture(&wgpu::TextureDescriptor {

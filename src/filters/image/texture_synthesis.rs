@@ -33,8 +33,8 @@ pub fn synthesize_texture(
     while y < out_h {
         let mut x = 0;
         while x < out_w {
-            let ox = (rng.next() * (sx.saturating_sub(ps)) as f64) as usize;
-            let oy = (rng.next() * (sy.saturating_sub(ps)) as f64) as usize;
+            let ox = (rng.next() * (sx.saturating_sub(ps) + 1) as f64) as usize;
+            let oy = (rng.next() * (sy.saturating_sub(ps) + 1) as f64) as usize;
             for py in 0..ps {
                 for px in 0..ps {
                     let dx = x + px;
@@ -82,7 +82,7 @@ impl SimpleRng {
             .0
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((self.0 >> 33) as f64) / (u32::MAX as f64)
+        ((self.0 >> 11) as f64) * (1.0 / ((1u64 << 53) as f64))
     }
 }
 

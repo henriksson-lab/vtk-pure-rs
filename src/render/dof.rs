@@ -68,6 +68,27 @@ impl DofConfig {
         let coc = self.aperture * (depth - self.focal_distance).abs() / depth;
         coc.min(self.max_blur)
     }
+
+    /// Compute the VTK depth-of-field shader circle of confusion from depth-buffer z.
+    ///
+    /// This mirrors `vtkDepthOfFieldPassFS.glsl`:
+    /// `CoC = focalDisk * focalDistance * (far - near) / (far * near) * z
+    ///      + focalDisk * (near - focalDistance) / near`.
+    /// Like the shader, this preserves sign and does not clamp to `max_blur`.
+    pub fn circle_of_confusion_depth_buffer(&self, z: f32, near_clip: f32, far_clip: f32) -> f32 {
+        if !near_clip.is_finite()
+            || !far_clip.is_finite()
+            || near_clip <= 0.0
+            || far_clip <= near_clip
+        {
+            return 0.0;
+        }
+
+        let coc_scale =
+            self.aperture * self.focal_distance * (far_clip - near_clip) / (far_clip * near_clip);
+        let coc_bias = self.aperture * (near_clip - self.focal_distance) / near_clip;
+        coc_scale * z + coc_bias
+    }
 }
 
 #[cfg(test)]
@@ -90,5 +111,36 @@ mod tests {
             "CoC at focal distance should be zero, got {}",
             coc
         );
+    }
+
+    #[test]
+    fn vtk_depth_buffer_coc_at_focal_depth_is_zero() {
+        let c = DofConfig::new()
+            .with_focal_distance(5.0)
+            .with_aperture(0.1)
+            .with_max_blur(10.0);
+        let near = 1.0;
+        let far = 10.0;
+        let z = far * (near - c.focal_distance) / (c.focal_distance * (near - far));
+        assert!(c.circle_of_confusion_depth_buffer(z, near, far).abs() < 1e-5);
+    }
+
+    #[test]
+    fn vtk_depth_buffer_coc_preserves_sign() {
+        let c = DofConfig::new()
+            .with_focal_distance(5.0)
+            .with_aperture(0.1)
+            .with_max_blur(10.0);
+        assert!(c.circle_of_confusion_depth_buffer(0.0, 1.0, 10.0) < 0.0);
+        assert!(c.circle_of_confusion_depth_buffer(1.0, 1.0, 10.0) > 0.0);
+    }
+
+    #[test]
+    fn vtk_depth_buffer_coc_is_not_clamped_by_max_blur() {
+        let c = DofConfig::new()
+            .with_focal_distance(100.0)
+            .with_aperture(1.0)
+            .with_max_blur(0.5);
+        assert!(c.circle_of_confusion_depth_buffer(1.0, 1.0, 10.0).abs() > c.max_blur);
     }
 }

@@ -1,10 +1,10 @@
-/// A 3D orientation cube widget that shows face labels (+X, -X, etc.)
+/// A 3D orientation cube widget that shows face labels (X+, X-, etc.)
 /// for the three visible faces based on the current view direction.
 ///
 /// Similar to the orientation cube found in many CAD applications.
 #[derive(Debug, Clone)]
 pub struct AxesCube {
-    /// Labels for each face: [+X, -X, +Y, -Y, +Z, -Z].
+    /// Labels for each face: [X+, X-, Y+, Y-, Z+, Z-].
     pub labels: [String; 6],
     /// Colors for each face: [+X, -X, +Y, -Y, +Z, -Z] as RGBA.
     pub colors: [[f32; 4]; 6],
@@ -23,12 +23,12 @@ impl AxesCube {
     pub fn new() -> Self {
         Self {
             labels: [
-                "+X".to_string(),
-                "-X".to_string(),
-                "+Y".to_string(),
-                "-Y".to_string(),
-                "+Z".to_string(),
-                "-Z".to_string(),
+                "X+".to_string(),
+                "X-".to_string(),
+                "Y+".to_string(),
+                "Y-".to_string(),
+                "Z+".to_string(),
+                "Z-".to_string(),
             ],
             colors: [
                 [0.8, 0.2, 0.2, 1.0], // +X red
@@ -51,8 +51,8 @@ impl AxesCube {
     /// Compute the visible faces based on the view matrix and return their
     /// 2D screen positions, colors, and labels.
     ///
-    /// The view matrix is a 4x4 column-major matrix (row-of-columns layout
-    /// `[[f64;4];4]` where `view_matrix[row][col]`).
+    /// The view matrix is a 4x4 column-major matrix as returned by
+    /// `glam::DMat4::to_cols_array_2d()`, indexed as `view_matrix[col][row]`.
     ///
     /// Returns up to 3 face entries: `(screen_position, rgba_color, label)`.
     /// The faces are those whose normals point toward the camera.
@@ -86,8 +86,8 @@ impl AxesCube {
                 let cy = 0.5 * normal[1];
                 let cz = 0.5 * normal[2];
 
-                let sx = view_matrix[0][0] * cx + view_matrix[0][1] * cy + view_matrix[0][2] * cz;
-                let sy = view_matrix[1][0] * cx + view_matrix[1][1] * cy + view_matrix[1][2] * cz;
+                let sx = view_matrix[0][0] * cx + view_matrix[1][0] * cy + view_matrix[2][0] * cz;
+                let sy = view_matrix[0][1] * cx + view_matrix[1][1] * cy + view_matrix[2][1] * cz;
 
                 let screen_x = (sx * half) as f32;
                 let screen_y = (sy * half) as f32;
@@ -111,8 +111,8 @@ mod tests {
     #[test]
     fn default_axes_cube() {
         let cube = AxesCube::new();
-        assert_eq!(cube.labels[0], "+X");
-        assert_eq!(cube.labels[5], "-Z");
+        assert_eq!(cube.labels[0], "X+");
+        assert_eq!(cube.labels[5], "Z-");
         assert_eq!(cube.size, 80.0);
 
         let cube2 = AxesCube::default();
@@ -127,8 +127,8 @@ mod tests {
         let cube = AxesCube::new();
 
         // Identity-like view matrix: camera looking along -Z,
-        // so +Z face (normal [0,0,1]) should NOT be visible (dot with forward [0,0,-1] < 0),
-        // and -Z face (normal [0,0,-1]) SHOULD be visible.
+        // so Z+ face (normal [0,0,1]) should NOT be visible (dot with forward [0,0,-1] < 0),
+        // and Z- face (normal [0,0,-1]) SHOULD be visible.
         // For a standard OpenGL-like view looking down -Z:
         // Row 0: [1, 0, 0, 0]  (right)
         // Row 1: [0, 1, 0, 0]  (up)
@@ -143,11 +143,11 @@ mod tests {
 
         let faces = cube.face_quads(&view);
         // With forward = [0,0,1], faces with normals that have positive dot:
-        // +Z: dot = 1.0 (visible)
+        // Z+: dot = 1.0 (visible)
         // Others with zero or negative dots are not visible.
-        // Only +Z should be visible.
+        // Only Z+ should be visible.
         assert_eq!(faces.len(), 1);
-        assert_eq!(faces[0].2, "+Z");
+        assert_eq!(faces[0].2, "Z+");
 
         // Camera looking along +X direction (forward = [1,0,0])
         let view2: [[f64; 4]; 4] = [
@@ -159,6 +159,32 @@ mod tests {
 
         let faces2 = cube.face_quads(&view2);
         assert_eq!(faces2.len(), 1);
-        assert_eq!(faces2[0].2, "+X");
+        assert_eq!(faces2[0].2, "X+");
+    }
+
+    #[test]
+    fn face_projection_uses_column_major_matrix() {
+        let cube = AxesCube::new().with_size(80.0);
+        let view: [[f64; 4]; 4] = [
+            [0.0, 1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
+
+        let faces = cube.face_quads(&view);
+        let z_plus = faces.iter().find(|face| face.2 == "Z+").unwrap();
+        assert!((z_plus.0[0]).abs() < 1e-6);
+        assert!((z_plus.0[1]).abs() < 1e-6);
+
+        let x_plus_pos = cube.face_quads(&[
+            [0.0, 1.0, 0.0, 0.0],
+            [-1.0, 0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+        let x_plus = x_plus_pos.iter().find(|face| face.2 == "X+").unwrap();
+        assert!((x_plus.0[0]).abs() < 1e-6);
+        assert!((x_plus.0[1] - 20.0).abs() < 1e-6);
     }
 }

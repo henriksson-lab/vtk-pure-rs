@@ -5,8 +5,11 @@ use crate::data::{CellArray, PolyData};
 /// Ensures every point has a vertex cell, useful for rendering point clouds
 /// that were loaded without explicit vertex cells.
 pub fn point_to_vertex(input: &PolyData) -> PolyData {
-    let mut pd = input.clone();
-    let n = pd.points.len();
+    let mut pd = PolyData::new();
+    pd.points = input.points.clone();
+    *pd.point_data_mut() = input.point_data().clone();
+
+    let n = input.points.len();
     let mut verts = CellArray::new();
     for i in 0..n {
         verts.push_cell(&[i as i64]);
@@ -17,8 +20,11 @@ pub fn point_to_vertex(input: &PolyData) -> PolyData {
 
 /// Convert all points to a single poly-vertex cell.
 pub fn point_to_poly_vertex(input: &PolyData) -> PolyData {
-    let mut pd = input.clone();
-    let n = pd.points.len();
+    let mut pd = PolyData::new();
+    pd.points = input.points.clone();
+    *pd.point_data_mut() = input.point_data().clone();
+
+    let n = input.points.len();
     if n > 0 {
         let ids: Vec<i64> = (0..n as i64).collect();
         let mut verts = CellArray::new();
@@ -55,14 +61,14 @@ mod tests {
     }
 
     #[test]
-    fn preserves_existing_data() {
+    fn removes_existing_topology() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.polys.push_cell(&[0]);
 
         let result = point_to_vertex(&pd);
-        assert_eq!(result.polys.num_cells(), 1); // preserved
-        assert_eq!(result.verts.num_cells(), 1); // added
+        assert_eq!(result.polys.num_cells(), 0);
+        assert_eq!(result.verts.num_cells(), 1);
     }
 
     #[test]

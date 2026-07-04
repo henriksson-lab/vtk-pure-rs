@@ -10,18 +10,21 @@ pub fn image_wet_bulb_temperature(input: &ImageData, scalars: &str) -> ImageData
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * (0.151977 * (buf[0] * 2.0 + 8.313659).sqrt().max(0.001)).atan()
-                + (buf[0] + buf[0] * 0.5).atan()
-                - (buf[0] * 2.0 - 1.21).atan()
-                + 0.00391838 * (buf[0] * 1.5).powf(1.5).abs() * (0.023101 * buf[0] * 2.0).atan()
+            let t = buf[0];
+            let rh = buf[0] * 2.0;
+            t * (0.151977 * (rh + 8.313659).sqrt()).atan() + (t + rh).atan()
+                - (rh - 1.676331).atan()
+                + 0.00391838 * rh.powf(1.5) * (0.023101 * rh).atan()
                 - 4.686035
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

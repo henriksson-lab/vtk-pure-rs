@@ -62,43 +62,80 @@ pub fn moment_of_inertia(mesh: &PolyData) -> MomentOfInertia {
 }
 pub fn principal_axes(mesh: &PolyData) -> ([f64; 3], [f64; 3], [f64; 3]) {
     let moi = moment_of_inertia(mesh);
-    // Approximate principal axes via power iteration on inertia tensor
-    let m = [
+    let axes = jacobi_eigen_symmetric([
         [moi.ixx, moi.ixy, moi.ixz],
         [moi.ixy, moi.iyy, moi.iyz],
         [moi.ixz, moi.iyz, moi.izz],
-    ];
-    let mut v = [1.0, 0.0, 0.0];
+    ]);
+    (axes[0], axes[1], axes[2])
+}
+
+fn jacobi_eigen_symmetric(mut a: [[f64; 3]; 3]) -> [[f64; 3]; 3] {
+    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
     for _ in 0..50 {
-        let mv = [
-            m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-            m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
-        ];
-        let l = (mv[0] * mv[0] + mv[1] * mv[1] + mv[2] * mv[2])
-            .sqrt()
-            .max(1e-15);
-        v = [mv[0] / l, mv[1] / l, mv[2] / l];
+        let mut p = 0usize;
+        let mut q = 1usize;
+        let mut max = a[0][1].abs();
+        for &(r, c) in &[(0usize, 2usize), (1usize, 2usize)] {
+            if a[r][c].abs() > max {
+                max = a[r][c].abs();
+                p = r;
+                q = c;
+            }
+        }
+        if max < 1e-12 {
+            break;
+        }
+
+        let theta = 0.5 * (2.0 * a[p][q]).atan2(a[q][q] - a[p][p]);
+        let c = theta.cos();
+        let s = theta.sin();
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+
+        a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
+
+        for r in 0..3 {
+            if r == p || r == q {
+                continue;
+            }
+            let arp = a[r][p];
+            let arq = a[r][q];
+            a[r][p] = c * arp - s * arq;
+            a[p][r] = a[r][p];
+            a[r][q] = s * arp + c * arq;
+            a[q][r] = a[r][q];
+        }
+
+        for row in &mut v {
+            let vrp = row[p];
+            let vrq = row[q];
+            row[p] = c * vrp - s * vrq;
+            row[q] = s * vrp + c * vrq;
+        }
     }
-    let axis1 = v;
-    // Second axis: orthogonal
-    let mut v2 = if v[0].abs() < 0.9 {
-        [1.0, 0.0, 0.0]
-    } else {
-        [0.0, 1.0, 0.0]
-    };
-    let d = v2[0] * v[0] + v2[1] * v[1] + v2[2] * v[2];
-    v2 = [v2[0] - d * v[0], v2[1] - d * v[1], v2[2] - d * v[2]];
-    let l = (v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2])
-        .sqrt()
-        .max(1e-15);
-    v2 = [v2[0] / l, v2[1] / l, v2[2] / l];
-    let axis3 = [
-        axis1[1] * v2[2] - axis1[2] * v2[1],
-        axis1[2] * v2[0] - axis1[0] * v2[2],
-        axis1[0] * v2[1] - axis1[1] * v2[0],
+
+    let mut pairs = [
+        (a[0][0], normalize([v[0][0], v[1][0], v[2][0]])),
+        (a[1][1], normalize([v[0][1], v[1][1], v[2][1]])),
+        (a[2][2], normalize([v[0][2], v[1][2], v[2][2]])),
     ];
-    (axis1, v2, axis3)
+    pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    [pairs[0].1, pairs[1].1, pairs[2].1]
+}
+
+fn normalize(v: [f64; 3]) -> [f64; 3] {
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    if len > 1e-15 {
+        [v[0] / len, v[1] / len, v[2] / len]
+    } else {
+        v
+    }
 }
 pub fn oriented_bounding_box_size(mesh: &PolyData) -> [f64; 3] {
     let (a1, a2, a3) = principal_axes(mesh);

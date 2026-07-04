@@ -77,7 +77,7 @@ pub fn centroidal_voronoi_iterate(
     iterations: usize,
 ) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || initial_seeds.is_empty() {
         return mesh.clone();
     }
     let mut seeds = initial_seeds.to_vec();
@@ -152,17 +152,52 @@ impl Ord for OrdF64 {
 fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                adj[a].insert(b);
-                adj[b].insert(a);
+        add_polygon_edges(&mut adj, cell, n);
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            if let (Some(a), Some(b)) =
+                (valid_point_index(edge[0], n), valid_point_index(edge[1], n))
+            {
+                add_edge(&mut adj, a, b);
+            }
+        }
+    }
+    for cell in mesh.strips.iter() {
+        for tri in cell.windows(3) {
+            if let (Some(a), Some(b), Some(c)) = (
+                valid_point_index(tri[0], n),
+                valid_point_index(tri[1], n),
+                valid_point_index(tri[2], n),
+            ) {
+                add_edge(&mut adj, a, b);
+                add_edge(&mut adj, b, c);
+                add_edge(&mut adj, c, a);
             }
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn add_polygon_edges(adj: &mut [std::collections::HashSet<usize>], cell: &[i64], n: usize) {
+    let nc = cell.len();
+    for i in 0..nc {
+        if let (Some(a), Some(b)) = (
+            valid_point_index(cell[i], n),
+            valid_point_index(cell[(i + 1) % nc], n),
+        ) {
+            add_edge(adj, a, b);
+        }
+    }
+}
+
+fn add_edge(adj: &mut [std::collections::HashSet<usize>], a: usize, b: usize) {
+    adj[a].insert(b);
+    adj[b].insert(a);
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]

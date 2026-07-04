@@ -3,21 +3,22 @@ use crate::data::{CellArray, Points, PolyData};
 
 pub fn closest_point_projection(mesh: &PolyData, queries: &[[f64; 3]]) -> PolyData {
     let n = mesh.points.len();
-    let tris: Vec<[usize; 3]> = mesh
-        .polys
-        .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-        .collect();
+    let mut tris = Vec::<[usize; 3]>::new();
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3 || cell.iter().any(|&v| v < 0 || v as usize >= n) {
+            continue;
+        }
+        let a = cell[0] as usize;
+        for i in 1..cell.len() - 1 {
+            tris.push([a, cell[i] as usize, cell[i + 1] as usize]);
+        }
+    }
     let mut pts = Points::<f64>::new();
     let mut verts = CellArray::new();
     for q in queries {
         let mut best_dist = f64::INFINITY;
         let mut best_pt = *q;
         for &[a, b, c] in &tris {
-            if a >= n || b >= n || c >= n {
-                continue;
-            }
             let pa = mesh.points.get(a);
             let pb = mesh.points.get(b);
             let pc = mesh.points.get(c);

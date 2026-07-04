@@ -8,15 +8,22 @@ use std::collections::HashMap;
 pub fn label_face_groups(input: &PolyData) -> (PolyData, usize) {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
+    let num_points = input.points.len();
     if nc == 0 {
         return (input.clone(), 0);
     }
 
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, c) in cells.iter().enumerate() {
+        if c.len() < 2 {
+            continue;
+        }
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
+            if !valid_point_id(a, num_points) || !valid_point_id(b, num_points) {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
@@ -24,9 +31,11 @@ pub fn label_face_groups(input: &PolyData) -> (PolyData, usize) {
 
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); nc];
     for faces in edge_faces.values() {
-        if faces.len() == 2 {
-            adj[faces[0]].push(faces[1]);
-            adj[faces[1]].push(faces[0]);
+        for i in 0..faces.len() {
+            for j in i + 1..faces.len() {
+                adj[faces[i]].push(faces[j]);
+                adj[faces[j]].push(faces[i]);
+            }
         }
     }
 
@@ -65,6 +74,10 @@ pub fn label_face_groups(input: &PolyData) -> (PolyData, usize) {
     (pd, current)
 }
 
+fn valid_point_id(id: i64, num_points: usize) -> bool {
+    usize::try_from(id).is_ok_and(|idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,9 +114,38 @@ mod tests {
     }
 
     #[test]
+    fn non_manifold_shared_edge_is_one_group() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([0.0, -1.0, 0.0]);
+        pd.points.push([0.0, 0.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[1, 0, 3]);
+        pd.polys.push_cell(&[0, 1, 4]);
+
+        let (_, count) = label_face_groups(&pd);
+        assert_eq!(count, 1);
+    }
+
+    #[test]
     fn empty_input() {
         let pd = PolyData::new();
         let (_, count) = label_face_groups(&pd);
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn invalid_edges_do_not_connect_faces() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[-1, 99, 2]);
+
+        let (_, count) = label_face_groups(&pd);
+        assert_eq!(count, 2);
     }
 }

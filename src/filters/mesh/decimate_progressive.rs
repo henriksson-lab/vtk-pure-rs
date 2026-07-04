@@ -86,7 +86,6 @@ fn decimate_to_ratio(mesh: &PolyData, target_ratio: f64) -> PolyData {
                 }
             }
         }
-        let before = current_count;
         tris.retain(|t| t[0] != t[1] && t[1] != t[2] && t[0] != t[2]);
         current_count = tris.len();
     }

@@ -2,6 +2,7 @@
 
 A pure Rust reimplementation of [VTK 9.6](https://vtk.org/) (The Visualization Toolkit). Translated from the C++ VTK 9.6.0 source ([Kitware/VTK@`00f9418c`](https://github.com/Kitware/VTK/commit/00f9418ca61fa2d3cd75ae78c3978b18fdce12f2)). Not an FFI binding — a ground-up Rust implementation of VTK's core concepts.
 
+* 2027-07-04: Audit continuing, getting toward the end
 * 2026-06-24: A proper audit is taking place
 
 **A few features have not been included; contact if interested in these**

@@ -10,8 +10,11 @@ pub fn signed_distance_from_binary(input: &ImageData, scalars: &str) -> ImageDat
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
-    let n = nx * ny;
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
+    if nx == 0 || ny == 0 || nz == 0 {
+        return input.clone();
+    }
+    let n = nx * ny * nz;
     let mut buf = [0.0f64];
     let fg: Vec<bool> = (0..n)
         .map(|i| {
@@ -21,49 +24,63 @@ pub fn signed_distance_from_binary(input: &ImageData, scalars: &str) -> ImageDat
         .collect();
 
     // Two-pass distance transform approximation
-    let big = (nx + ny) as f64;
+    let big = (nx + ny + nz) as f64;
     let mut dist_inside = vec![big; n];
     let mut dist_outside = vec![big; n];
 
     // Initialize boundary pixels
-    for iy in 0..ny {
-        for ix in 0..nx {
-            let idx = ix + iy * nx;
-            let is_boundary = is_border(&fg, ix, iy, nx, ny);
-            if fg[idx] && is_boundary {
-                dist_inside[idx] = 0.0;
-            }
-            if !fg[idx] && is_boundary {
-                dist_outside[idx] = 0.0;
+    for iz in 0..nz {
+        for iy in 0..ny {
+            for ix in 0..nx {
+                let idx = flat_index(ix, iy, iz, nx, ny);
+                let is_boundary = is_border(&fg, ix, iy, iz, nx, ny, nz);
+                if fg[idx] && is_boundary {
+                    dist_inside[idx] = 0.0;
+                }
+                if !fg[idx] && is_boundary {
+                    dist_outside[idx] = 0.0;
+                }
             }
         }
     }
 
     // Forward pass
-    for iy in 0..ny {
-        for ix in 0..nx {
-            let idx = ix + iy * nx;
-            if ix > 0 {
-                propagate(&mut dist_inside, idx, idx - 1, 1.0);
-                propagate(&mut dist_outside, idx, idx - 1, 1.0);
-            }
-            if iy > 0 {
-                propagate(&mut dist_inside, idx, idx - nx, 1.0);
-                propagate(&mut dist_outside, idx, idx - nx, 1.0);
+    for iz in 0..nz {
+        for iy in 0..ny {
+            for ix in 0..nx {
+                let idx = flat_index(ix, iy, iz, nx, ny);
+                if ix > 0 {
+                    propagate(&mut dist_inside, idx, idx - 1, 1.0);
+                    propagate(&mut dist_outside, idx, idx - 1, 1.0);
+                }
+                if iy > 0 {
+                    propagate(&mut dist_inside, idx, idx - nx, 1.0);
+                    propagate(&mut dist_outside, idx, idx - nx, 1.0);
+                }
+                if iz > 0 {
+                    propagate(&mut dist_inside, idx, idx - nx * ny, 1.0);
+                    propagate(&mut dist_outside, idx, idx - nx * ny, 1.0);
+                }
             }
         }
     }
     // Backward pass
-    for iy in (0..ny).rev() {
-        for ix in (0..nx).rev() {
-            let idx = ix + iy * nx;
-            if ix + 1 < nx {
-                propagate(&mut dist_inside, idx, idx + 1, 1.0);
-                propagate(&mut dist_outside, idx, idx + 1, 1.0);
-            }
-            if iy + 1 < ny {
-                propagate(&mut dist_inside, idx, idx + nx, 1.0);
-                propagate(&mut dist_outside, idx, idx + nx, 1.0);
+    for iz in (0..nz).rev() {
+        for iy in (0..ny).rev() {
+            for ix in (0..nx).rev() {
+                let idx = flat_index(ix, iy, iz, nx, ny);
+                if ix + 1 < nx {
+                    propagate(&mut dist_inside, idx, idx + 1, 1.0);
+                    propagate(&mut dist_outside, idx, idx + 1, 1.0);
+                }
+                if iy + 1 < ny {
+                    propagate(&mut dist_inside, idx, idx + nx, 1.0);
+                    propagate(&mut dist_outside, idx, idx + nx, 1.0);
+                }
+                if iz + 1 < nz {
+                    propagate(&mut dist_inside, idx, idx + nx * ny, 1.0);
+                    propagate(&mut dist_outside, idx, idx + nx * ny, 1.0);
+                }
             }
         }
     }
@@ -88,18 +105,36 @@ pub fn signed_distance_from_binary(input: &ImageData, scalars: &str) -> ImageDat
         )))
 }
 
-fn is_border(fg: &[bool], ix: usize, iy: usize, nx: usize, ny: usize) -> bool {
-    let v = fg[ix + iy * nx];
-    if ix > 0 && fg[ix - 1 + iy * nx] != v {
+fn flat_index(ix: usize, iy: usize, iz: usize, nx: usize, ny: usize) -> usize {
+    iz * ny * nx + iy * nx + ix
+}
+
+fn is_border(
+    fg: &[bool],
+    ix: usize,
+    iy: usize,
+    iz: usize,
+    nx: usize,
+    ny: usize,
+    nz: usize,
+) -> bool {
+    let v = fg[flat_index(ix, iy, iz, nx, ny)];
+    if ix > 0 && fg[flat_index(ix - 1, iy, iz, nx, ny)] != v {
         return true;
     }
-    if ix + 1 < nx && fg[ix + 1 + iy * nx] != v {
+    if ix + 1 < nx && fg[flat_index(ix + 1, iy, iz, nx, ny)] != v {
         return true;
     }
-    if iy > 0 && fg[ix + (iy - 1) * nx] != v {
+    if iy > 0 && fg[flat_index(ix, iy - 1, iz, nx, ny)] != v {
         return true;
     }
-    if iy + 1 < ny && fg[ix + (iy + 1) * nx] != v {
+    if iy + 1 < ny && fg[flat_index(ix, iy + 1, iz, nx, ny)] != v {
+        return true;
+    }
+    if iz > 0 && fg[flat_index(ix, iy, iz - 1, nx, ny)] != v {
+        return true;
+    }
+    if iz + 1 < nz && fg[flat_index(ix, iy, iz + 1, nx, ny)] != v {
         return true;
     }
     false

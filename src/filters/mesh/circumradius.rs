@@ -1,15 +1,19 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
-/// Compute circumradius for each triangle.
+/// Compute circumradius for each polygon cell that is exactly a triangle.
 ///
 /// R = (a*b*c)/(4*area). Adds "Circumradius" cell data.
 /// Also computes the ratio R/r (circumradius/inradius) as a quality metric.
+/// Non-triangle polygon cells receive 0.0, matching the triangle-specific
+/// definition instead of deriving a value from the first three vertices only.
 pub fn circumradius(input: &PolyData) -> PolyData {
     let mut radii = Vec::new();
     let mut ratios = Vec::new();
 
+    append_zero_cell_metrics(input.verts.num_cells(), &mut radii, &mut ratios);
+    append_zero_cell_metrics(input.lines.num_cells(), &mut radii, &mut ratios);
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 || !cell_has_valid_points(cell, input.points.len()) {
             radii.push(0.0);
             ratios.push(0.0);
             continue;
@@ -22,7 +26,14 @@ pub fn circumradius(input: &PolyData) -> PolyData {
         let b = dist(v1, v2);
         let c = dist(v2, v0);
         let s = (a + b + c) * 0.5;
-        let area = (s * (s - a) * (s - b) * (s - c)).max(0.0).sqrt();
+        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let cross = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        let area = 0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
 
         let cr = if area > 1e-15 {
             a * b * c / (4.0 * area)
@@ -35,6 +46,7 @@ pub fn circumradius(input: &PolyData) -> PolyData {
         radii.push(cr);
         ratios.push(ratio);
     }
+    append_zero_cell_metrics(input.strips.num_cells(), &mut radii, &mut ratios);
 
     let mut pd = input.clone();
     pd.cell_data_mut()
@@ -50,6 +62,16 @@ pub fn circumradius(input: &PolyData) -> PolyData {
             1,
         )));
     pd
+}
+
+fn append_zero_cell_metrics(count: usize, radii: &mut Vec<f64>, ratios: &mut Vec<f64>) {
+    radii.extend(std::iter::repeat(0.0).take(count));
+    ratios.extend(std::iter::repeat(0.0).take(count));
+}
+
+fn cell_has_valid_points(cell: &[i64], num_points: usize) -> bool {
+    cell.iter()
+        .all(|&pid| pid >= 0 && (pid as usize) < num_points)
 }
 
 fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -98,5 +120,23 @@ mod tests {
         let pd = PolyData::new();
         let result = circumradius(&pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn non_triangle_polygon_gets_zero_triangle_metric() {
+        let pd = PolyData::from_polygons(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![vec![0, 1, 2, 3]],
+        );
+        let result = circumradius(&pd);
+        let arr = result.cell_data().get_array("Circumradius").unwrap();
+        let mut buf = [1.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

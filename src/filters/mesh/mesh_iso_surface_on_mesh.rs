@@ -20,30 +20,48 @@ pub fn extract_isoline_on_mesh(mesh: &PolyData, array_name: &str, isovalue: f64)
         }
         let nc = cell.len();
         let mut edge_pts: Vec<[f64; 3]> = Vec::new();
+        let npts = vals.len().min(mesh.points.len());
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a >= vals.len() || b >= vals.len() {
+            let Some(a) = valid_point_id(cell[i], npts) else {
                 continue;
-            }
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], npts) else {
+                continue;
+            };
             let va = vals[a];
             let vb = vals[b];
-            if (va - isovalue) * (vb - isovalue) < 0.0 {
+            let da = va - isovalue;
+            let db = vb - isovalue;
+            if da == 0.0 && db == 0.0 {
+                push_unique_point(&mut edge_pts, mesh.points.get(a));
+                push_unique_point(&mut edge_pts, mesh.points.get(b));
+            } else if da == 0.0 {
+                push_unique_point(&mut edge_pts, mesh.points.get(a));
+            } else if db == 0.0 {
+                push_unique_point(&mut edge_pts, mesh.points.get(b));
+            } else if da * db < 0.0 {
                 let t = (isovalue - va) / (vb - va);
                 let pa = mesh.points.get(a);
                 let pb = mesh.points.get(b);
-                edge_pts.push([
-                    pa[0] + t * (pb[0] - pa[0]),
-                    pa[1] + t * (pb[1] - pa[1]),
-                    pa[2] + t * (pb[2] - pa[2]),
-                ]);
+                push_unique_point(
+                    &mut edge_pts,
+                    [
+                        pa[0] + t * (pb[0] - pa[0]),
+                        pa[1] + t * (pb[1] - pa[1]),
+                        pa[2] + t * (pb[2] - pa[2]),
+                    ],
+                );
             }
         }
-        if edge_pts.len() == 2 {
-            let i0 = pts.len();
-            pts.push(edge_pts[0]);
-            pts.push(edge_pts[1]);
-            lines.push_cell(&[i0 as i64, (i0 + 1) as i64]);
+        if edge_pts.len() >= 2 {
+            for pair in edge_pts.chunks(2) {
+                if pair.len() == 2 {
+                    let i0 = pts.len();
+                    pts.push(pair[0]);
+                    pts.push(pair[1]);
+                    lines.push_cell(&[i0 as i64, (i0 + 1) as i64]);
+                }
+            }
         }
     }
     let mut r = PolyData::new();
@@ -69,6 +87,23 @@ pub fn extract_multiple_isolines(mesh: &PolyData, array_name: &str, values: &[f6
     r.points = all_pts;
     r.lines = all_lines;
     r
+}
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+fn push_unique_point(points: &mut Vec<[f64; 3]>, point: [f64; 3]) {
+    let duplicate = points.iter().any(|p| {
+        (p[0] - point[0]).abs() <= 1e-12
+            && (p[1] - point[1]).abs() <= 1e-12
+            && (p[2] - point[2]).abs() <= 1e-12
+    });
+    if !duplicate {
+        points.push(point);
+    }
 }
 #[cfg(test)]
 mod tests {

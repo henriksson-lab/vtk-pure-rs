@@ -1,5 +1,5 @@
 //! Cotangent-weighted Laplacian smoothing.
-use crate::data::{Points, PolyData};
+use crate::data::PolyData;
 
 pub fn cotan_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> PolyData {
     let n = mesh.points.len();
@@ -9,8 +9,7 @@ pub fn cotan_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> PolyData
     let tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| triangle_point_ids(c, n))
         .collect();
     let mut positions: Vec<[f64; 3]> = (0..n)
         .map(|i| {
@@ -25,35 +24,9 @@ pub fn cotan_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> PolyData
             if a >= n || b >= n || c >= n {
                 continue;
             }
-            let pa = positions[a];
-            let pb = positions[b];
-            let pc = positions[c];
-            for &(i, j, k) in &[(a, b, c), (b, c, a), (c, a, b)] {
-                let u = [
-                    positions[j][0] - positions[k][0],
-                    positions[j][1] - positions[k][1],
-                    positions[j][2] - positions[k][2],
-                ];
-                let v = [
-                    positions[i][0] - positions[k][0],
-                    positions[i][1] - positions[k][1],
-                    positions[i][2] - positions[k][2],
-                ];
-                let dot = u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
-                let cross_len = ((u[1] * v[2] - u[2] * v[1]).powi(2)
-                    + (u[2] * v[0] - u[0] * v[2]).powi(2)
-                    + (u[0] * v[1] - u[1] * v[0]).powi(2))
-                .sqrt();
-                let w = if cross_len > 1e-15 {
-                    (dot / cross_len).clamp(-100.0, 100.0)
-                } else {
-                    0.0
-                };
-                for d in 0..3 {
-                    lap[i][d] += w * (positions[j][d] - positions[i][d]);
-                }
-                weight_sum[i] += w.abs();
-            }
+            add_cot_weight(&positions, a, b, c, &mut lap, &mut weight_sum);
+            add_cot_weight(&positions, b, c, a, &mut lap, &mut weight_sum);
+            add_cot_weight(&positions, c, a, b, &mut lap, &mut weight_sum);
         }
         let mut new_pos = positions.clone();
         for i in 0..n {
@@ -65,14 +38,67 @@ pub fn cotan_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> PolyData
         }
         positions = new_pos;
     }
-    let mut pts = Points::<f64>::new();
-    for p in &positions {
-        pts.push(*p);
+    let mut result = mesh.clone();
+    for (i, p) in positions.iter().enumerate() {
+        result.points.set(i, *p);
     }
-    let mut result = PolyData::new();
-    result.points = pts;
-    result.polys = mesh.polys.clone();
     result
+}
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    if cell.len() != 3 {
+        return None;
+    }
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
+fn add_cot_weight(
+    positions: &[[f64; 3]],
+    i: usize,
+    j: usize,
+    opposite: usize,
+    lap: &mut [[f64; 3]],
+    weight_sum: &mut [f64],
+) {
+    let u = [
+        positions[i][0] - positions[opposite][0],
+        positions[i][1] - positions[opposite][1],
+        positions[i][2] - positions[opposite][2],
+    ];
+    let v = [
+        positions[j][0] - positions[opposite][0],
+        positions[j][1] - positions[opposite][1],
+        positions[j][2] - positions[opposite][2],
+    ];
+    let dot = u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    let cross_len = ((u[1] * v[2] - u[2] * v[1]).powi(2)
+        + (u[2] * v[0] - u[0] * v[2]).powi(2)
+        + (u[0] * v[1] - u[1] * v[0]).powi(2))
+    .sqrt();
+    let w = if cross_len > 1e-15 {
+        (dot / cross_len).clamp(-100.0, 100.0)
+    } else {
+        0.0
+    };
+    for d in 0..3 {
+        lap[i][d] += w * (positions[j][d] - positions[i][d]);
+        lap[j][d] += w * (positions[i][d] - positions[j][d]);
+    }
+    let abs_w = w.abs();
+    weight_sum[i] += abs_w;
+    weight_sum[j] += abs_w;
 }
 
 #[cfg(test)]

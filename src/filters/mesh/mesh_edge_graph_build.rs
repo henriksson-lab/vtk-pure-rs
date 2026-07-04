@@ -10,21 +10,41 @@ pub fn build_edge_graph(mesh: &PolyData) -> EdgeGraph {
     let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
     let mut edges = Vec::new();
     let mut weights = Vec::new();
+
+    for cell in mesh.lines.iter() {
+        for pair in cell.windows(2) {
+            insert_edge(
+                mesh,
+                n,
+                pair[0],
+                pair[1],
+                &mut seen,
+                &mut edges,
+                &mut weights,
+            );
+        }
+    }
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            let key = (a.min(b), a.max(b));
-            if seen.insert(key) {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                edges.push(key);
-                weights.push(d);
-            }
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_edge(
+                mesh,
+                n,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+                &mut seen,
+                &mut edges,
+                &mut weights,
+            );
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(mesh, n, tri[0], tri[1], &mut seen, &mut edges, &mut weights);
+            insert_edge(mesh, n, tri[1], tri[2], &mut seen, &mut edges, &mut weights);
+            insert_edge(mesh, n, tri[2], tri[0], &mut seen, &mut edges, &mut weights);
         }
     }
     EdgeGraph {
@@ -33,12 +53,42 @@ pub fn build_edge_graph(mesh: &PolyData) -> EdgeGraph {
         weights,
     }
 }
+fn insert_edge(
+    mesh: &PolyData,
+    n: usize,
+    a: i64,
+    b: i64,
+    seen: &mut std::collections::HashSet<(usize, usize)>,
+    edges: &mut Vec<(usize, usize)>,
+    weights: &mut Vec<f64>,
+) {
+    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
+        return;
+    };
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    let key = (a.min(b), a.max(b));
+    if seen.insert(key) {
+        let pa = mesh.points.get(a);
+        let pb = mesh.points.get(b);
+        let d =
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+        edges.push(key);
+        weights.push(d);
+    }
+}
 pub fn shortest_path_dijkstra(graph: &EdgeGraph, start: usize, end: usize) -> (Vec<usize>, f64) {
     let n = graph.vertices;
+    if start >= n || end >= n {
+        return (vec![], f64::INFINITY);
+    }
     let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     for (i, &(a, b)) in graph.edges.iter().enumerate() {
-        adj[a].push((b, graph.weights[i]));
-        adj[b].push((a, graph.weights[i]));
+        if a < n && b < n && i < graph.weights.len() {
+            adj[a].push((b, graph.weights[i]));
+            adj[b].push((a, graph.weights[i]));
+        }
     }
     let mut dist = vec![f64::INFINITY; n];
     let mut prev = vec![usize::MAX; n];

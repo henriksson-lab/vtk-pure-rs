@@ -1,5 +1,5 @@
 //! Point Feature Histogram (PFH) for local shape description.
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 pub fn point_feature_histogram(
     mesh: &PolyData,
     vertex: usize,
@@ -41,7 +41,7 @@ pub fn point_feature_histogram(
             let u = nm[i];
             let v = cross(u, normalize([d[0] / dl, d[1] / dl, d[2] / dl]));
             let w = cross(u, normalize(v));
-            let alpha = dot(v, nm[j]).acos();
+            let alpha = dot(v, nm[j]).clamp(-1.0, 1.0).acos();
             let phi = dot(u, [d[0] / dl, d[1] / dl, d[2] / dl]);
             let theta = dot(w, nm[j]).atan2(dot(u, nm[j]));
             let ai = ((alpha / std::f64::consts::PI * ab as f64).floor() as usize).min(ab - 1);
@@ -67,9 +67,19 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let (Ok(ai), Ok(bi), Ok(ci)) = (
+            usize::try_from(cell[0]),
+            usize::try_from(cell[1]),
+            usize::try_from(cell[2]),
+        ) else {
+            continue;
+        };
+        if ai >= n || bi >= n || ci >= n {
+            continue;
+        }
+        let a = mesh.points.get(ai);
+        let b = mesh.points.get(bi);
+        let c = mesh.points.get(ci);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let fn_ = [
@@ -78,8 +88,10 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
             e1[0] * e2[1] - e1[1] * e2[0],
         ];
         for &v in cell {
-            let vi = v as usize;
-            if vi < n {
+            if let Ok(vi) = usize::try_from(v) {
+                if vi >= n {
+                    continue;
+                }
                 nm[vi][0] += fn_[0];
                 nm[vi][1] += fn_[1];
                 nm[vi][2] += fn_[2];

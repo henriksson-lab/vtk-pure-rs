@@ -5,27 +5,39 @@ pub fn parallel_transport_angle(mesh: &PolyData) -> PolyData {
     if n == 0 {
         return mesh.clone();
     }
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .filter(|c| c.iter().all(|&v| valid_point_id(v, n).is_some()))
+        .map(|c| c.to_vec())
+        .collect();
     let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, c) in cells.iter().enumerate() {
         let nc = c.len();
         for i in 0..nc {
-            let a = c[i] as usize;
-            let b = c[(i + 1) % nc] as usize;
+            let a = valid_point_id(c[i], n).expect("cells were filtered to valid point ids");
+            let b =
+                valid_point_id(c[(i + 1) % nc], n).expect("cells were filtered to valid point ids");
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
     // Compute connection angle per edge (dihedral angle)
-    let fnorms: Vec<[f64; 3]> = cells
+    let _fnorms: Vec<[f64; 3]> = cells
         .iter()
         .map(|c| {
             if c.len() < 3 {
                 return [0.0, 0.0, 1.0];
             }
-            let a = mesh.points.get(c[0] as usize);
-            let b = mesh.points.get(c[1] as usize);
-            let cc = mesh.points.get(c[2] as usize);
+            let a = mesh
+                .points
+                .get(valid_point_id(c[0], n).expect("cells were filtered to valid point ids"));
+            let b = mesh
+                .points
+                .get(valid_point_id(c[1], n).expect("cells were filtered to valid point ids"));
+            let cc = mesh
+                .points
+                .get(valid_point_id(c[2], n).expect("cells were filtered to valid point ids"));
             let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             let e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
             let nm = [
@@ -49,9 +61,11 @@ pub fn parallel_transport_angle(mesh: &PolyData) -> PolyData {
         }
         let nc = c.len();
         for i in 0..nc {
-            let vi = c[i] as usize;
-            let prev = c[(i + nc - 1) % nc] as usize;
-            let next = c[(i + 1) % nc] as usize;
+            let vi = valid_point_id(c[i], n).expect("cells were filtered to valid point ids");
+            let prev = valid_point_id(c[(i + nc - 1) % nc], n)
+                .expect("cells were filtered to valid point ids");
+            let next =
+                valid_point_id(c[(i + 1) % nc], n).expect("cells were filtered to valid point ids");
             let p = mesh.points.get(vi);
             let a = mesh.points.get(prev);
             let b = mesh.points.get(next);
@@ -78,6 +92,11 @@ pub fn parallel_transport_angle(mesh: &PolyData) -> PolyData {
     r.point_data_mut().set_active_scalars("Holonomy");
     r
 }
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
+}
+
 pub fn total_holonomy(mesh: &PolyData) -> f64 {
     let r = parallel_transport_angle(mesh);
     let arr = r.point_data().get_array("Holonomy").unwrap();

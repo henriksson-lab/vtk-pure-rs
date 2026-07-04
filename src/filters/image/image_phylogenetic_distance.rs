@@ -10,14 +10,16 @@ pub fn image_phylogenetic_distance(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            -0.75 * (1.0 - 4.0 / 3.0 * buf[0].clamp(0.0, 0.74)).abs().ln()
+            -0.75 * (1.0 - 4.0 / 3.0 * buf[0].clamp(0.0, 0.74)).ln()
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

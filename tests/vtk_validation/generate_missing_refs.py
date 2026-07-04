@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Generate VTK C++ reference data for features missing validation tests."""
-import json, os, numpy as np
+import json
+import os
+
 import vtk
 
-OUT = "tests/vtk_validation/reference"
+OUT = os.path.join(os.path.dirname(__file__), "reference")
 os.makedirs(OUT, exist_ok=True)
 
 def sphere(res=32):
@@ -18,7 +20,7 @@ def tri_sphere(res=32):
     return t.GetOutput()
 
 def save(name, data):
-    with open(f"{OUT}/{name}.json", "w") as f:
+    with open(os.path.join(OUT, f"{name}.json"), "w") as f:
         json.dump(data, f, indent=2)
     print(f"  wrote {name}.json")
 

@@ -15,14 +15,17 @@ pub fn transport_displacement(
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if sarr.num_tuples() < n || tarr.num_tuples() < n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
-    let src: Vec<f64> = (0..sarr.num_tuples())
+    let src: Vec<f64> = (0..n)
         .map(|i| {
             sarr.tuple_as_f64(i, &mut buf);
             buf[0].max(0.0)
         })
         .collect();
-    let tgt: Vec<f64> = (0..tarr.num_tuples())
+    let tgt: Vec<f64> = (0..n)
         .map(|i| {
             tarr.tuple_as_f64(i, &mut buf);
             buf[0].max(0.0)
@@ -31,17 +34,31 @@ pub fn transport_displacement(
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+            add_neighbor_pair(&mut nb, n, cell[i], cell[(i + 1) % nc]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut nb, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut nb, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut nb, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut nb, n, tri[2], tri[0]);
         }
     }
     // Iterative transport: move mass from source toward target
@@ -64,8 +81,6 @@ pub fn transport_displacement(
             }
         }
     }
-    // Compute transport cost
-    let cost: f64 = (0..n).map(|i| (current[i] - src[i]).abs()).sum::<f64>();
     let mut r = mesh.clone();
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -74,6 +89,28 @@ pub fn transport_displacement(
             1,
         )));
     r
+}
+
+fn add_neighbor_pair(nb: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+}
+
+fn valid_point_id(point_id: i64, npoints: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&id| id < npoints)
 }
 #[cfg(test)]
 mod tests {

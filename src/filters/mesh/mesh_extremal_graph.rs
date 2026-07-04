@@ -6,8 +6,11 @@ pub fn extremal_graph(mesh: &PolyData, array_name: &str) -> PolyData {
         _ => return PolyData::new(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return PolyData::new();
+    }
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..arr.num_tuples())
+    let vals: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -17,15 +20,17 @@ pub fn extremal_graph(mesh: &PolyData, array_name: &str) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Some(a) = valid_point_index(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_index(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -71,6 +76,11 @@ pub fn extremal_graph(mesh: &PolyData, array_name: &str) -> PolyData {
     r.lines = lines;
     r
 }
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

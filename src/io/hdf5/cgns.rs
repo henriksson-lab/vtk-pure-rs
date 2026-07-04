@@ -5,6 +5,7 @@
 
 use crate::data::{AnyDataArray, DataArray, UnstructuredGrid};
 use crate::types::{CellType, VtkError};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::types::CgnsInfo;
@@ -27,6 +28,7 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
     let mut all_points = Vec::new();
     let mut all_cell_types = Vec::new();
     let mut all_connectivity: Vec<Vec<i64>> = Vec::new();
+    let mut all_flow_data: BTreeMap<String, Vec<f64>> = BTreeMap::new();
 
     for base_name in &base_names {
         let base = file
@@ -63,28 +65,21 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
                     all_points.push(cz[i]);
                 }
 
-                // Read element connectivity if unstructured
-                if let Ok(elems) = zone.group("Elements") {
-                    if let Ok(conn_ds) = elems.dataset("ElementConnectivity") {
-                        let conn: Vec<i32> = conn_ds
-                            .read_raw()
-                            .map_err(|e| VtkError::Parse(format!("connectivity: {e}")))?;
-                        // Read element type
-                        let etype = elems
-                            .attr("ElementType")
-                            .and_then(|a| a.read_scalar::<i32>())
-                            .unwrap_or(5); // default TRI_3
-
-                        let (cell_type, npn) = cgns_element_type(etype);
-                        for chunk in conn.chunks_exact(npn) {
-                            let cell: Vec<i64> = chunk
-                                .iter()
-                                .map(|&v| (v - 1) as i64 + base_idx as i64) // CGNS 1-based
-                                .collect();
-                            all_cell_types.push(cell_type);
-                            all_connectivity.push(cell);
-                        }
+                for section_name in list_groups(&zone)? {
+                    let Ok(section) = zone.group(&section_name) else {
+                        continue;
+                    };
+                    if !is_cgns_node(&section, "Elements_t")
+                        && section.dataset("ElementConnectivity").is_err()
+                    {
+                        continue;
                     }
+                    read_cgns_section(
+                        &section,
+                        base_idx,
+                        &mut all_cell_types,
+                        &mut all_connectivity,
+                    )?;
                 }
 
                 // Read flow solution variables
@@ -92,8 +87,9 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
                     let var_names = list_datasets(&flow);
                     for vname in &var_names {
                         if let Ok(vals) = read_f64_ds(&flow, vname) {
-                            // Will be added as point data below
-                            let _ = vals; // placeholder
+                            if vals.len() == cx.len() {
+                                all_flow_data.entry(vname.clone()).or_default().extend(vals);
+                            }
                         }
                     }
                 }
@@ -117,7 +113,13 @@ pub fn read_cgns(path: &Path) -> Result<(UnstructuredGrid, CgnsInfo), VtkError> 
     let mut grid = UnstructuredGrid::new();
     grid.points = points;
     for (ct, conn) in all_cell_types.iter().zip(all_connectivity.iter()) {
-        grid.insert_cell(*ct, conn);
+        grid.push_cell(*ct, conn);
+    }
+    for (name, vals) in all_flow_data {
+        if vals.len() == num_nodes {
+            grid.point_data_mut()
+                .add_array(AnyDataArray::F64(DataArray::from_vec(name, vals, 1)));
+        }
     }
 
     Ok((grid, info))
@@ -151,4 +153,50 @@ fn read_f64_ds(group: &hdf5::Group, name: &str) -> Result<Vec<f64>, VtkError> {
         .map_err(|e| VtkError::Parse(format!("dataset '{name}': {e}")))?;
     ds.read_raw::<f64>()
         .map_err(|e| VtkError::Parse(format!("read '{name}': {e}")))
+}
+
+fn is_cgns_node(group: &hdf5::Group, label: &str) -> bool {
+    group
+        .attr("label")
+        .or_else(|_| group.attr("Label"))
+        .and_then(|a| a.read_scalar::<hdf5::types::VarLenAscii>())
+        .map(|s| s.as_str() == label)
+        .unwrap_or(false)
+}
+
+fn read_cgns_section(
+    section: &hdf5::Group,
+    base_idx: usize,
+    all_cell_types: &mut Vec<CellType>,
+    all_connectivity: &mut Vec<Vec<i64>>,
+) -> Result<(), VtkError> {
+    let conn_ds = section
+        .dataset("ElementConnectivity")
+        .map_err(|e| VtkError::Parse(format!("ElementConnectivity: {e}")))?;
+    let conn: Vec<i32> = conn_ds
+        .read_raw()
+        .map_err(|e| VtkError::Parse(format!("connectivity: {e}")))?;
+    let etype = section
+        .attr("ElementType")
+        .and_then(|a| a.read_scalar::<i32>())
+        .or_else(|_| {
+            section
+                .dataset("ElementType")
+                .and_then(|ds| ds.read_scalar::<i32>())
+        })
+        .unwrap_or(5);
+
+    let (cell_type, npn) = cgns_element_type(etype);
+    if npn == 0 {
+        return Ok(());
+    }
+    for chunk in conn.chunks_exact(npn) {
+        let cell: Vec<i64> = chunk
+            .iter()
+            .map(|&v| (v - 1) as i64 + base_idx as i64)
+            .collect();
+        all_cell_types.push(cell_type);
+        all_connectivity.push(cell);
+    }
+    Ok(())
 }

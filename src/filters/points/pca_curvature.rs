@@ -1,24 +1,24 @@
-//! PCACurvatureEstimation — estimate curvature via PCA on local neighborhoods.
+//! PCACurvatureEstimation - estimate curvature via PCA on local neighborhoods.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// For each point, find k nearest neighbors (brute-force), compute PCA on
-/// the neighborhood, and use the ratio of the smallest eigenvalue to the
-/// sum of all eigenvalues as a curvature estimate.
+/// the neighborhood, and compute the three VTK PCA curvature measures from
+/// the sorted eigenvalues.
 ///
-/// Adds a "Curvature" scalar array to point data.
+/// Adds a "PCACurvature" 3-component array to point data.
 pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
     let n = input.points.len();
-    let mut curvatures = vec![0.0f64; n];
+    let mut curvatures = vec![0.0f32; 3 * n];
 
     if n == 0 || k == 0 {
         let mut result = input.clone();
         result
             .point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "Curvature",
+            .add_array(AnyDataArray::F32(DataArray::from_vec(
+                "PCACurvature",
                 curvatures,
-                1,
+                3,
             )));
         return result;
     }
@@ -26,7 +26,7 @@ pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
     for i in 0..n {
-        // Find k nearest neighbors (brute-force)
+        // Retrieve the local neighborhood.
         let mut dists: Vec<(usize, f64)> = (0..n)
             .map(|j| {
                 let d = (pts[i][0] - pts[j][0]).powi(2)
@@ -39,7 +39,7 @@ pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
         let kk = k.min(n);
         let neighbors: Vec<usize> = dists[..kk].iter().map(|&(j, _)| j).collect();
 
-        // Compute centroid
+        // First step: compute the mean position of the neighborhood.
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
@@ -53,7 +53,7 @@ pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
         cy /= m;
         cz /= m;
 
-        // Compute 3x3 covariance matrix
+        // Now compute the covariance matrix.
         let mut cov = [[0.0f64; 3]; 3];
         for &j in &neighbors {
             let dx = pts[j][0] - cx;
@@ -72,21 +72,24 @@ pub fn pca_curvature_estimation(input: &PolyData, k: usize) -> PolyData {
             }
         }
 
-        // Compute eigenvalues using the characteristic equation of a 3x3 symmetric matrix
+        // Next extract the eigenvalues.
         let eigenvalues = symmetric_3x3_eigenvalues(cov);
         let sum = eigenvalues[0] + eigenvalues[1] + eigenvalues[2];
-        if sum > 1e-20 {
-            curvatures[i] = eigenvalues[0] / sum; // smallest / sum
+        if sum != 0.0 {
+            let offset = 3 * i;
+            curvatures[offset] = ((eigenvalues[2] - eigenvalues[1]) / sum) as f32;
+            curvatures[offset + 1] = (2.0 * (eigenvalues[1] - eigenvalues[0]) / sum) as f32;
+            curvatures[offset + 2] = (3.0 * eigenvalues[0] / sum) as f32;
         }
     }
 
     let mut result = input.clone();
     result
         .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Curvature",
+        .add_array(AnyDataArray::F32(DataArray::from_vec(
+            "PCACurvature",
             curvatures,
-            1,
+            3,
         )));
     result
 }
@@ -150,14 +153,15 @@ mod tests {
         }
 
         let result = pca_curvature_estimation(&pd, 8);
-        let arr = result.point_data().get_array("Curvature").unwrap();
+        let arr = result.point_data().get_array("PCACurvature").unwrap();
+        assert_eq!(arr.num_components(), 3);
         // Interior points should have very low curvature
-        let mut buf = [0.0f64];
+        let mut buf = [0.0f64; 3];
         arr.tuple_as_f64(12, &mut buf); // center point
         assert!(
-            buf[0] < 0.1,
+            buf[2] < 0.1,
             "flat surface curvature should be near zero, got {}",
-            buf[0]
+            buf[2]
         );
     }
 
@@ -177,7 +181,8 @@ mod tests {
         }
 
         let result = pca_curvature_estimation(&pd, 6);
-        let arr = result.point_data().get_array("Curvature").unwrap();
+        let arr = result.point_data().get_array("PCACurvature").unwrap();
         assert_eq!(arr.num_tuples(), 100);
+        assert_eq!(arr.num_components(), 3);
     }
 }

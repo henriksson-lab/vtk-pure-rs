@@ -20,15 +20,23 @@ pub fn block_matching_flow(
         _ => return img_a.clone(),
     };
     let dims = img_a.dimensions();
+    if img_b.dimensions() != dims {
+        return img_a.clone();
+    }
     let (nx, ny) = (dims[0], dims[1]);
+    let nxy = nx * ny;
+    if arr_a.num_tuples() < nxy || arr_b.num_tuples() < nxy {
+        return img_a.clone();
+    }
+    let block_size = block_size.max(1);
     let mut buf = [0.0f64];
-    let va: Vec<f64> = (0..arr_a.num_tuples())
+    let va: Vec<f64> = (0..nxy)
         .map(|i| {
             arr_a.tuple_as_f64(i, &mut buf);
             buf[0]
         })
         .collect();
-    let vb: Vec<f64> = (0..arr_b.num_tuples())
+    let vb: Vec<f64> = (0..nxy)
         .map(|i| {
             arr_b.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -52,10 +60,11 @@ pub fn block_matching_flow(
                         for bx in 0..block_size {
                             let ax = ix - half + bx;
                             let ay = iy - half + by;
-                            let bxx = (ix as isize - half as isize + bx as isize + dx) as usize;
-                            let byy = (iy as isize - half as isize + by as isize + dy) as usize;
-                            if bxx < nx && byy < ny {
-                                sad += (va[ax + ay * nx] - vb[bxx + byy * nx]).abs();
+                            let bxx = ix as isize - half as isize + bx as isize + dx;
+                            let byy = iy as isize - half as isize + by as isize + dy;
+                            if bxx >= 0 && byy >= 0 && bxx < nx as isize && byy < ny as isize {
+                                sad +=
+                                    (va[ax + ay * nx] - vb[bxx as usize + byy as usize * nx]).abs();
                             } else {
                                 sad += 255.0;
                             }

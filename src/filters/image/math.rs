@@ -23,11 +23,12 @@ pub fn image_scale(input: &ImageData, scalars: &str, factor: f64) -> ImageData {
     };
 
     let n = arr.num_tuples();
-    let mut values = vec![0.0f64; n];
-    let mut buf = [0.0f64];
+    let nc = arr.num_components();
+    let mut values = Vec::with_capacity(n * nc);
+    let mut buf = vec![0.0f64; nc];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = buf[0] * factor;
+        values.extend(buf.iter().map(|v| v * factor));
     }
 
     let mut img = input.clone();
@@ -38,7 +39,7 @@ pub fn image_scale(input: &ImageData, scalars: &str, factor: f64) -> ImageData {
             new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
                 scalars,
                 values.clone(),
-                1,
+                nc,
             )));
         } else {
             new_attrs.add_array(a.clone());
@@ -67,14 +68,19 @@ where
         None => return a.clone(),
     };
 
-    let n = arr_a.num_tuples().min(arr_b.num_tuples());
-    let mut values = vec![0.0f64; n];
-    let mut ba = [0.0f64];
-    let mut bb = [0.0f64];
+    if arr_a.num_tuples() != arr_b.num_tuples() || arr_a.num_components() != arr_b.num_components()
+    {
+        return a.clone();
+    }
+    let n = arr_a.num_tuples();
+    let nc = arr_a.num_components();
+    let mut values = Vec::with_capacity(n * nc);
+    let mut ba = vec![0.0f64; nc];
+    let mut bb = vec![0.0f64; nc];
     for i in 0..n {
         arr_a.tuple_as_f64(i, &mut ba);
         arr_b.tuple_as_f64(i, &mut bb);
-        values[i] = op(ba[0], bb[0]);
+        values.extend(ba.iter().zip(bb.iter()).map(|(x, y)| op(*x, *y)));
     }
 
     let mut img = a.clone();
@@ -82,7 +88,7 @@ where
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             output_name,
             values,
-            1,
+            nc,
         )));
     img
 }
@@ -144,5 +150,52 @@ mod tests {
         assert_eq!(buf[0], 10.0);
         arr.tuple_as_f64(1, &mut buf);
         assert_eq!(buf[0], 21.0);
+    }
+
+    #[test]
+    fn binary_ops_preserve_components() {
+        let mut a = ImageData::with_dimensions(2, 1, 1);
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                2,
+            )));
+        let mut b = ImageData::with_dimensions(2, 1, 1);
+        b.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![10.0, 20.0, 30.0, 40.0],
+                2,
+            )));
+
+        let result = image_add(&a, &b, "v", "sum");
+        let arr = result.point_data().get_array("sum").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64, 0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [11.0, 22.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [33.0, 44.0]);
+    }
+
+    #[test]
+    fn scale_preserves_components() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![2.0, 4.0, 6.0, 8.0],
+                2,
+            )));
+
+        let result = image_scale(&img, "v", 0.5);
+        let arr = result.point_data().get_array("v").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64, 0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [1.0, 2.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [3.0, 4.0]);
     }
 }

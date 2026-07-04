@@ -136,7 +136,6 @@ def bench_transform():
     t = vtk.vtkTransform()
     t.RotateZ(45)
     t.Scale(2, 2, 2)
-    t.Translate(1, 0, 0)
     tf.SetTransform(t)
     tf.SetInputData(sp32)
     tf.Update()

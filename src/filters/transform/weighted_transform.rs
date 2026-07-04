@@ -17,14 +17,12 @@ pub struct WeightedTransformEntry {
 /// Apply weighted transform blending to mesh points.
 ///
 /// Each point is transformed by the weighted sum of all transforms.
-/// Weights are normalized to sum to 1.
 pub fn weighted_transform(mesh: &PolyData, transforms: &[WeightedTransformEntry]) -> PolyData {
     if transforms.is_empty() || mesh.points.len() == 0 {
         return mesh.clone();
     }
 
-    let total_weight: f64 = transforms.iter().map(|t| t.weight).sum();
-    if total_weight < 1e-15 {
+    if transforms.iter().all(|t| t.weight == 0.0) {
         return mesh.clone();
     }
 
@@ -36,7 +34,7 @@ pub fn weighted_transform(mesh: &PolyData, transforms: &[WeightedTransformEntry]
         let mut result = [0.0; 3];
 
         for t in transforms {
-            let w = t.weight / total_weight;
+            let w = t.weight;
             let m = &t.matrix;
             let tx = m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3];
             let ty = m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7];
@@ -81,16 +79,15 @@ pub fn skeletal_transform(
         let p = mesh.points.get(i);
         weights.tuple_as_f64(i, &mut buf);
 
-        let mut result = [0.0; 3];
-        let w_sum: f64 = buf.iter().sum();
-        if w_sum < 1e-15 {
+        if buf.iter().all(|&w| w == 0.0) {
             new_points.push(p);
             continue;
         }
 
+        let mut result = [0.0; 3];
         for (bi, m) in bone_matrices.iter().enumerate() {
-            let w = buf[bi] / w_sum;
-            if w < 1e-15 {
+            let w = buf[bi];
+            if w == 0.0 {
                 continue;
             }
             result[0] += w * (m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3]);
@@ -123,6 +120,7 @@ pub fn translation_matrix(tx: f64, ty: f64, tz: f64) -> [f64; 16] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn identity_transform() {
@@ -160,6 +158,27 @@ mod tests {
         let p = result.points.get(0);
         assert!((p[0] - 1.0).abs() < 1e-10); // 50% of 2.0
         assert!((p[1] - 2.0).abs() < 1e-10); // 50% of 4.0
+    }
+
+    #[test]
+    fn weighted_transform_does_not_normalize_weights() {
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let result = weighted_transform(
+            &mesh,
+            &[
+                WeightedTransformEntry {
+                    matrix: translation_matrix(2.0, 0.0, 0.0),
+                    weight: 2.0,
+                },
+                WeightedTransformEntry {
+                    matrix: translation_matrix(0.0, 4.0, 0.0),
+                    weight: 3.0,
+                },
+            ],
+        );
+        let p = result.points.get(0);
+        assert!((p[0] - 4.0).abs() < 1e-10);
+        assert!((p[1] - 12.0).abs() < 1e-10);
     }
 
     #[test]

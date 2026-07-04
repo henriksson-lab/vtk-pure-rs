@@ -21,7 +21,7 @@ pub fn cylindrical_coords(mesh: &PolyData) -> PolyData {
     for i in 0..n {
         let p = mesh.points.get(i);
         r_data.push(((p[0] - cx).powi(2) + (p[1] - cy).powi(2)).sqrt());
-        theta_data.push((p[1] - cy).atan2(p[0] - cx));
+        theta_data.push(vtk_azimuth(p[0] - cx, p[1] - cy));
         z_data.push(p[2]);
     }
     let mut result = mesh.clone();
@@ -38,6 +38,15 @@ pub fn cylindrical_coords(mesh: &PolyData) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("CylZ", z_data, 1)));
     result.point_data_mut().set_active_scalars("CylR");
     result
+}
+
+fn vtk_azimuth(x: f64, y: f64) -> f64 {
+    let rr = x * x + y * y;
+    if rr == 0.0 {
+        0.0
+    } else {
+        std::f64::consts::PI + (-y).atan2(-x)
+    }
 }
 
 #[cfg(test)]

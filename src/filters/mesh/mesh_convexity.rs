@@ -8,31 +8,29 @@ pub fn vertex_convexity(mesh: &PolyData) -> PolyData {
     }
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-            }
+        let ids: Vec<usize> = cell
+            .iter()
+            .filter_map(|&id| valid_point_id(id, n))
+            .collect();
+        for pair in ids.windows(2) {
+            add_edge(&mut adj, pair[0], pair[1]);
+        }
+        if ids.len() > 2 {
+            add_edge(&mut adj, ids[ids.len() - 1], ids[0]);
         }
     }
     let mut vnorm = vec![[0.0f64; 3]; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        let ids: Vec<usize> = cell
+            .iter()
+            .filter_map(|&id| valid_point_id(id, n))
+            .collect();
+        if ids.len() < 3 {
             continue;
         }
-        let a = cell[0] as usize;
-        let b = cell[1] as usize;
-        let c = cell[2] as usize;
-        if a >= n || b >= n || c >= n {
-            continue;
-        }
+        let a = ids[0];
+        let b = ids[1];
+        let c = ids[2];
         let pa = mesh.points.get(a);
         let pb = mesh.points.get(b);
         let pc = mesh.points.get(c);
@@ -41,13 +39,10 @@ pub fn vertex_convexity(mesh: &PolyData) -> PolyData {
         let nx = u[1] * v[2] - u[2] * v[1];
         let ny = u[2] * v[0] - u[0] * v[2];
         let nz = u[0] * v[1] - u[1] * v[0];
-        for &vi in &cell[..] {
-            let vi = vi as usize;
-            if vi < n {
-                vnorm[vi][0] += nx;
-                vnorm[vi][1] += ny;
-                vnorm[vi][2] += nz;
-            }
+        for &vi in &ids {
+            vnorm[vi][0] += nx;
+            vnorm[vi][1] += ny;
+            vnorm[vi][2] += nz;
         }
     }
     for vn in &mut vnorm {
@@ -84,6 +79,19 @@ pub fn vertex_convexity(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("Convexity");
     result
+}
+
+fn add_edge(adj: &mut [Vec<usize>], a: usize, b: usize) {
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 #[cfg(test)]

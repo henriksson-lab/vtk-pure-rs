@@ -10,7 +10,12 @@ pub fn image_langevin_function(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            1.0 / (buf[0].abs().max(0.001)).tanh() - 1.0 / buf[0].abs().max(0.001)
+            let x = buf[0];
+            if x.abs() < 1e-6 {
+                x / 3.0
+            } else {
+                1.0 / x.tanh() - 1.0 / x
+            }
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +38,23 @@ mod tests {
         );
         let r = image_langevin_function(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn preserves_odd_symmetry() {
+        let img = ImageData::from_function(
+            [2, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| if x == 0.0 { -1.0 } else { 1.0 },
+        );
+        let r = image_langevin_function(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut first = [0.0f64];
+        let mut second = [0.0f64];
+        arr.tuple_as_f64(0, &mut first);
+        arr.tuple_as_f64(1, &mut second);
+        assert!((first[0] + second[0]).abs() < 1e-12);
     }
 }

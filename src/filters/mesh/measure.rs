@@ -34,7 +34,11 @@ pub fn measure_mesh(input: &PolyData) -> MeshMeasurements {
             _ => {}
         }
 
-        if cell.len() >= 3 {
+        if cell.len() >= 3
+            && cell
+                .iter()
+                .all(|&id| id >= 0 && (id as usize) < input.points.len())
+        {
             let v0 = input.points.get(cell[0] as usize);
             for i in 1..cell.len() - 1 {
                 let v1 = input.points.get(cell[i] as usize);
@@ -53,15 +57,26 @@ pub fn measure_mesh(input: &PolyData) -> MeshMeasurements {
         }
     }
 
-    let mut total_line_len = 0.0;
     let mut num_lines = 0;
     for cell in input.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         num_lines += 1;
         for i in 0..cell.len() - 1 {
-            total_line_len += dist(
-                input.points.get(cell[i] as usize),
-                input.points.get(cell[i + 1] as usize),
-            );
+            if cell[i] < 0 || cell[i + 1] < 0 {
+                continue;
+            }
+            let a = cell[i] as usize;
+            let b = cell[i + 1] as usize;
+            if a >= input.points.len() || b >= input.points.len() {
+                continue;
+            }
+            let d = dist(input.points.get(a), input.points.get(b));
+            min_edge = min_edge.min(d);
+            max_edge = max_edge.max(d);
+            sum_edge += d;
+            edge_count += 1;
         }
     }
 
@@ -76,7 +91,7 @@ pub fn measure_mesh(input: &PolyData) -> MeshMeasurements {
         num_other_polys: num_other,
         num_lines: num_lines,
         total_area: total_area,
-        total_edge_length: sum_edge + total_line_len,
+        total_edge_length: sum_edge,
         min_edge_length: min_edge,
         max_edge_length: max_edge,
         avg_edge_length: if edge_count > 0 {

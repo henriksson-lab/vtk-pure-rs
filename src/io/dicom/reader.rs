@@ -116,23 +116,43 @@ pub fn read_dicom(path: &Path) -> Result<(ImageData, DicomInfo), VtkError> {
 
     let n = (info.rows * info.columns) as usize;
     let scalars: Vec<f64> = match info.bits_allocated {
-        8 => pixel_data
-            .iter()
-            .take(n)
-            .map(|&v| v as f64 * info.rescale_slope + info.rescale_intercept)
-            .collect(),
-        16 => pixel_data
-            .chunks_exact(2)
-            .take(n)
-            .map(|b| {
-                let raw = if info.pixel_representation == 0 {
-                    u16::from_le_bytes([b[0], b[1]]) as f64
-                } else {
-                    i16::from_le_bytes([b[0], b[1]]) as f64
-                };
-                raw * info.rescale_slope + info.rescale_intercept
-            })
-            .collect(),
+        8 => {
+            if pixel_data.len() < n {
+                return Err(VtkError::Parse("incomplete DICOM pixel data".into()));
+            }
+            let mut scalars = Vec::with_capacity(n);
+            for row in 0..info.rows as usize {
+                let src_row = info.rows as usize - 1 - row;
+                let start = src_row * info.columns as usize;
+                let end = start + info.columns as usize;
+                scalars.extend(
+                    pixel_data[start..end]
+                        .iter()
+                        .map(|&v| v as f64 * info.rescale_slope + info.rescale_intercept),
+                );
+            }
+            scalars
+        }
+        16 => {
+            if pixel_data.len() < n * 2 {
+                return Err(VtkError::Parse("incomplete DICOM pixel data".into()));
+            }
+            let mut scalars = Vec::with_capacity(n);
+            for row in 0..info.rows as usize {
+                let src_row = info.rows as usize - 1 - row;
+                let start = src_row * info.columns as usize * 2;
+                let end = start + info.columns as usize * 2;
+                scalars.extend(pixel_data[start..end].chunks_exact(2).map(|b| {
+                    let raw = if info.pixel_representation == 0 {
+                        u16::from_le_bytes([b[0], b[1]]) as f64
+                    } else {
+                        i16::from_le_bytes([b[0], b[1]]) as f64
+                    };
+                    raw * info.rescale_slope + info.rescale_intercept
+                }));
+            }
+            scalars
+        }
         o => return Err(VtkError::Unsupported(format!("bits_allocated={o}"))),
     };
 
@@ -144,7 +164,7 @@ pub fn read_dicom(path: &Path) -> Result<(ImageData, DicomInfo), VtkError> {
     ]);
     img.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "PixelData",
+            "DICOMImage",
             scalars,
             1,
         )));
@@ -199,5 +219,24 @@ mod tests {
     #[test]
     fn rescale() {
         assert!((1024.0f64 * 1.0 + (-1024.0)).abs() < 1e-10);
+    }
+
+    #[test]
+    fn dicom_rows_are_flipped_to_vtk_order() {
+        let info = DicomInfo {
+            rows: 2,
+            columns: 2,
+            bits_allocated: 8,
+            ..Default::default()
+        };
+        let pixel_data = [1u8, 2, 3, 4];
+        let mut scalars = Vec::new();
+        for row in 0..info.rows as usize {
+            let src_row = info.rows as usize - 1 - row;
+            let start = src_row * info.columns as usize;
+            let end = start + info.columns as usize;
+            scalars.extend(pixel_data[start..end].iter().map(|&v| v as f64));
+        }
+        assert_eq!(scalars, vec![3.0, 4.0, 1.0, 2.0]);
     }
 }

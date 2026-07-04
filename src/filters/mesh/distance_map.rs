@@ -130,9 +130,16 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let (Ok(a), Ok(b)) = (
+                usize::try_from(cell[i]),
+                usize::try_from(cell[(i + 1) % nc]),
+            ) else {
+                continue;
+            };
             if a < n && b < n {
                 adj[a].insert(b);
                 adj[b].insert(a);
@@ -147,9 +154,19 @@ fn find_boundary_vertices(mesh: &PolyData, n: usize) -> Vec<bool> {
         std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let (Ok(a), Ok(b)) = (
+                usize::try_from(cell[i]),
+                usize::try_from(cell[(i + 1) % nc]),
+            ) else {
+                continue;
+            };
+            if a >= n || b >= n {
+                continue;
+            }
             *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }

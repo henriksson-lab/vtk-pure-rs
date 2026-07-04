@@ -21,30 +21,30 @@ impl ScalarType {
         match self {
             ScalarType::F32 => "float",
             ScalarType::F64 => "double",
-            ScalarType::I8 => "char",
+            ScalarType::I8 => "signed_char",
             ScalarType::I16 => "short",
             ScalarType::I32 => "int",
-            ScalarType::I64 => "long",
+            ScalarType::I64 => "vtktypeint64",
             ScalarType::U8 => "unsigned_char",
             ScalarType::U16 => "unsigned_short",
             ScalarType::U32 => "unsigned_int",
-            ScalarType::U64 => "unsigned_long",
+            ScalarType::U64 => "vtktypeuint64",
         }
     }
 
     /// Parse a VTK legacy type name.
     pub fn from_vtk_name(name: &str) -> Option<ScalarType> {
-        match name {
+        match name.to_ascii_lowercase().as_str() {
             "float" => Some(ScalarType::F32),
             "double" => Some(ScalarType::F64),
-            "char" => Some(ScalarType::I8),
+            "char" | "signed_char" | "int8" | "vtktypeint8" => Some(ScalarType::I8),
             "short" => Some(ScalarType::I16),
             "int" => Some(ScalarType::I32),
-            "long" => Some(ScalarType::I64),
-            "unsigned_char" => Some(ScalarType::U8),
+            "long" | "long_long" | "vtkidtype" | "vtktypeint64" => Some(ScalarType::I64),
+            "unsigned_char" | "uint8" | "vtktypeuint8" => Some(ScalarType::U8),
             "unsigned_short" => Some(ScalarType::U16),
             "unsigned_int" => Some(ScalarType::U32),
-            "unsigned_long" => Some(ScalarType::U64),
+            "unsigned_long" | "unsigned_long_long" | "vtktypeuint64" => Some(ScalarType::U64),
             _ => None,
         }
     }
@@ -130,6 +130,30 @@ mod tests {
         ] {
             assert_eq!(ScalarType::from_vtk_name(ty.vtk_name()), Some(ty));
         }
+    }
+
+    #[test]
+    fn vtk_aliases_match_legacy_names() {
+        assert_eq!(
+            ScalarType::from_vtk_name("signed_char"),
+            Some(ScalarType::I8)
+        );
+        assert_eq!(
+            ScalarType::from_vtk_name("unsigned_char"),
+            Some(ScalarType::U8)
+        );
+        assert_eq!(
+            ScalarType::from_vtk_name("long_long"),
+            Some(ScalarType::I64)
+        );
+        assert_eq!(
+            ScalarType::from_vtk_name("unsigned_long_long"),
+            Some(ScalarType::U64)
+        );
+        assert_eq!(
+            ScalarType::from_vtk_name("vtkIdType"),
+            Some(ScalarType::I64)
+        );
     }
 
     #[test]

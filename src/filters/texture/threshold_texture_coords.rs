@@ -1,119 +1,115 @@
 //! Threshold-based texture coordinate generation.
-//!
-//! Generates texture coordinates based on scalar value thresholds,
-//! mapping scalar ranges to UV regions.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
-/// Generate texture coordinates from scalar values.
+const DEFAULT_IN_TEXTURE_COORD: [f64; 3] = [0.75, 0.0, 0.0];
+const DEFAULT_OUT_TEXTURE_COORD: [f64; 3] = [0.25, 0.0, 0.0];
+const DEFAULT_TEXTURE_DIMENSION: usize = 2;
+
+/// Criterion used by VTK's threshold texture coordinate filter.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ThresholdFunction {
+    Lower(f64),
+    Upper(f64),
+    Between(f64, f64),
+}
+
+impl ThresholdFunction {
+    fn contains(self, scalar: f64) -> bool {
+        match self {
+            ThresholdFunction::Lower(lower) => scalar <= lower,
+            ThresholdFunction::Upper(upper) => scalar >= upper,
+            ThresholdFunction::Between(lower, upper) => scalar >= lower && scalar <= upper,
+        }
+    }
+}
+
+/// Generate VTK-style threshold texture coordinates from point scalars.
 ///
-/// Maps scalar values linearly to U coordinate in [0, 1].
-/// V is set to 0.5 (for 1D texture lookup / color ramp).
-pub fn texture_coords_from_scalar(mesh: &PolyData, array_name: &str) -> PolyData {
+/// Points satisfying `threshold_function` receive `in_texture_coord`; all
+/// others receive `out_texture_coord`. `texture_dimension` is clamped to 1..=3.
+pub fn threshold_texture_coords(
+    mesh: &PolyData,
+    array_name: &str,
+    threshold_function: ThresholdFunction,
+    texture_dimension: usize,
+    in_texture_coord: [f64; 3],
+    out_texture_coord: [f64; 3],
+) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() >= 1 => a,
         _ => return mesh.clone(),
     };
 
+    let texture_dimension = texture_dimension.clamp(1, 3);
     let n = arr.num_tuples();
+    let mut tcoords = Vec::with_capacity(n * texture_dimension);
     let mut buf = [0.0f64];
-    let mut min_val = f64::MAX;
-    let mut max_val = f64::MIN;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        min_val = min_val.min(buf[0]);
-        max_val = max_val.max(buf[0]);
-    }
-
-    let range = max_val - min_val;
-    let mut tcoords = Vec::with_capacity(n * 2);
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        let u = if range > 1e-15 {
-            (buf[0] - min_val) / range
+        let coord = if threshold_function.contains(buf[0]) {
+            in_texture_coord
         } else {
-            0.5
+            out_texture_coord
         };
-        tcoords.push(u);
-        tcoords.push(0.5);
+        tcoords.extend_from_slice(&coord[..texture_dimension]);
     }
 
     let mut result = mesh.clone();
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "TCoords", tcoords, 2,
+            "TCoords",
+            tcoords,
+            texture_dimension,
         )));
     result.point_data_mut().set_active_tcoords("TCoords");
     result
 }
 
-/// Generate texture coordinates with a custom range mapping.
+/// VTK default: threshold by upper value 1.0 and emit 2D in/out coordinates.
+pub fn texture_coords_from_scalar(mesh: &PolyData, array_name: &str) -> PolyData {
+    threshold_texture_coords(
+        mesh,
+        array_name,
+        ThresholdFunction::Upper(1.0),
+        DEFAULT_TEXTURE_DIMENSION,
+        DEFAULT_IN_TEXTURE_COORD,
+        DEFAULT_OUT_TEXTURE_COORD,
+    )
+}
+
+/// Generate threshold texture coordinates for values between lower and upper.
 pub fn texture_coords_from_scalar_range(
     mesh: &PolyData,
     array_name: &str,
     scalar_min: f64,
     scalar_max: f64,
 ) -> PolyData {
-    let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return mesh.clone(),
-    };
-
-    let n = arr.num_tuples();
-    let range = scalar_max - scalar_min;
-    let mut tcoords = Vec::with_capacity(n * 2);
-    let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        let u = if range.abs() > 1e-15 {
-            ((buf[0] - scalar_min) / range).clamp(0.0, 1.0)
-        } else {
-            0.5
-        };
-        tcoords.push(u);
-        tcoords.push(0.5);
-    }
-
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "TCoords", tcoords, 2,
-        )));
-    result.point_data_mut().set_active_tcoords("TCoords");
-    result
+    threshold_texture_coords(
+        mesh,
+        array_name,
+        ThresholdFunction::Between(scalar_min, scalar_max),
+        DEFAULT_TEXTURE_DIMENSION,
+        DEFAULT_IN_TEXTURE_COORD,
+        DEFAULT_OUT_TEXTURE_COORD,
+    )
 }
 
-/// Generate binary texture coordinates: below threshold → u=0, above → u=1.
+/// Generate threshold texture coordinates for values greater than or equal to threshold.
 pub fn texture_coords_binary_threshold(
     mesh: &PolyData,
     array_name: &str,
     threshold: f64,
 ) -> PolyData {
-    let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return mesh.clone(),
-    };
-
-    let n = arr.num_tuples();
-    let mut tcoords = Vec::with_capacity(n * 2);
-    let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        let u = if buf[0] >= threshold { 1.0 } else { 0.0 };
-        tcoords.push(u);
-        tcoords.push(0.5);
-    }
-
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "TCoords", tcoords, 2,
-        )));
-    result.point_data_mut().set_active_tcoords("TCoords");
-    result
+    threshold_texture_coords(
+        mesh,
+        array_name,
+        ThresholdFunction::Upper(threshold),
+        DEFAULT_TEXTURE_DIMENSION,
+        DEFAULT_IN_TEXTURE_COORD,
+        DEFAULT_OUT_TEXTURE_COORD,
+    )
 }
 
 #[cfg(test)]
@@ -138,9 +134,9 @@ mod tests {
         let tc = result.point_data().tcoords().unwrap();
         let mut buf = [0.0f64; 2];
         tc.tuple_as_f64(0, &mut buf);
-        assert!((buf[0] - 0.0).abs() < 1e-10);
+        assert!((buf[0] - 0.25).abs() < 1e-10);
         tc.tuple_as_f64(2, &mut buf);
-        assert!((buf[0] - 1.0).abs() < 1e-10);
+        assert!((buf[0] - 0.75).abs() < 1e-10);
     }
 
     #[test]
@@ -149,7 +145,7 @@ mod tests {
         let tc = result.point_data().tcoords().unwrap();
         let mut buf = [0.0f64; 2];
         tc.tuple_as_f64(2, &mut buf);
-        assert!((buf[0] - 0.5).abs() < 1e-10); // 100/200 = 0.5
+        assert!((buf[0] - 0.75).abs() < 1e-10);
     }
 
     #[test]
@@ -158,9 +154,28 @@ mod tests {
         let tc = result.point_data().tcoords().unwrap();
         let mut buf = [0.0f64; 2];
         tc.tuple_as_f64(0, &mut buf);
-        assert_eq!(buf[0], 0.0);
+        assert_eq!(buf[0], 0.25);
         tc.tuple_as_f64(1, &mut buf);
-        assert_eq!(buf[0], 1.0); // 50 >= 50
+        assert_eq!(buf[0], 0.75);
+    }
+
+    #[test]
+    fn custom_dimension_and_coordinates() {
+        let result = threshold_texture_coords(
+            &make_mesh(),
+            "val",
+            ThresholdFunction::Lower(0.0),
+            3,
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+        );
+        let tc = result.point_data().tcoords().unwrap();
+        assert_eq!(tc.num_components(), 3);
+        let mut buf = [0.0f64; 3];
+        tc.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [1.0, 2.0, 3.0]);
+        tc.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [4.0, 5.0, 6.0]);
     }
 
     #[test]

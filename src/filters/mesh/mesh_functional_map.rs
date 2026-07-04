@@ -8,10 +8,11 @@ pub fn compute_functional_map(
 ) -> Vec<Vec<f64>> {
     let basis_a = compute_basis(mesh_a, num_basis, iterations);
     let basis_b = compute_basis(mesh_b, num_basis, iterations);
+    let effective_basis = basis_a.len().min(basis_b.len());
     // Functional map C: f_B = C * f_A
     // Simplified: identity map (assuming similar shapes)
-    let mut c = vec![vec![0.0f64; num_basis]; num_basis];
-    for i in 0..num_basis {
+    let mut c = vec![vec![0.0f64; effective_basis]; effective_basis];
+    for i in 0..effective_basis {
         c[i][i] = 1.0;
     }
     c
@@ -38,8 +39,12 @@ pub fn transfer_function(
         .collect();
     let basis_a = compute_basis(mesh_a, num_basis, iterations);
     let basis_b = compute_basis(mesh_b, num_basis, iterations);
+    let effective_basis = basis_a.len().min(basis_b.len());
+    if effective_basis == 0 {
+        return mesh_b.clone();
+    }
     // Project function onto basis A
-    let coeffs: Vec<f64> = (0..num_basis)
+    let coeffs: Vec<f64> = (0..effective_basis)
         .map(|k| {
             (0..na.min(vals.len()))
                 .map(|i| vals[i] * basis_a[k][i])
@@ -49,7 +54,7 @@ pub fn transfer_function(
     // Reconstruct on mesh B (using identity functional map)
     let transferred: Vec<f64> = (0..nb)
         .map(|i| {
-            (0..num_basis)
+            (0..effective_basis)
                 .map(|k| {
                     coeffs[k]
                         * if i < basis_b[k].len() {
@@ -72,7 +77,10 @@ pub fn transfer_function(
 }
 fn compute_basis(mesh: &PolyData, num_basis: usize, iterations: usize) -> Vec<Vec<f64>> {
     let n = mesh.points.len();
-    let ne = num_basis.min(n).max(1);
+    if n == 0 || num_basis == 0 {
+        return Vec::new();
+    }
+    let ne = num_basis.min(n);
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();

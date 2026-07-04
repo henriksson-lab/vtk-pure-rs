@@ -17,13 +17,13 @@
 /// ```
 #[derive(Debug, Clone)]
 pub struct Material {
-    /// Ambient light contribution. Default: 0.1
+    /// Ambient light contribution. Default: 0.0
     pub ambient: f64,
-    /// Diffuse light contribution. Default: 0.7
+    /// Diffuse light contribution. Default: 1.0
     pub diffuse: f64,
-    /// Specular highlight contribution. Default: 0.3
+    /// Specular highlight contribution. Default: 0.0
     pub specular: f64,
-    /// Specular power (shininess). Higher = tighter highlights. Default: 32.0
+    /// Specular power (shininess). Higher = tighter highlights. Default: 1.0
     pub specular_power: f64,
     /// Specular highlight color. Default: white [1, 1, 1]
     pub specular_color: [f32; 3],
@@ -33,7 +33,7 @@ pub struct Material {
     pub edge_visibility: bool,
     /// Line width for wireframe/edge rendering. Default: 1.0
     pub line_width: f32,
-    /// Point size for point rendering. Default: 3.0
+    /// Point size for point rendering. Default: 1.0
     pub point_size: f32,
     /// Whether to use flat shading (per-face normals). Default: false
     pub flat_shading: bool,
@@ -50,15 +50,15 @@ pub struct Material {
 impl Default for Material {
     fn default() -> Self {
         Self {
-            ambient: 0.1,
-            diffuse: 0.7,
-            specular: 0.3,
-            specular_power: 32.0,
+            ambient: 0.0,
+            diffuse: 1.0,
+            specular: 0.0,
+            specular_power: 1.0,
             specular_color: [1.0, 1.0, 1.0],
             edge_color: [0.0, 0.0, 0.0],
             edge_visibility: false,
             line_width: 1.0,
-            point_size: 3.0,
+            point_size: 1.0,
             flat_shading: false,
             backface_culling: false,
             metallic: 0.0,
@@ -105,7 +105,7 @@ impl Material {
         Self {
             pbr: true,
             metallic: 1.0,
-            roughness,
+            roughness: roughness.clamp(0.0, 1.0),
             ..Default::default()
         }
     }
@@ -115,7 +115,7 @@ impl Material {
         Self {
             pbr: true,
             metallic: 0.0,
-            roughness,
+            roughness: roughness.clamp(0.0, 1.0),
             ..Default::default()
         }
     }
@@ -152,8 +152,11 @@ mod tests {
     #[test]
     fn default_material() {
         let m = Material::default();
-        assert_eq!(m.ambient, 0.1);
-        assert_eq!(m.diffuse, 0.7);
+        assert_eq!(m.ambient, 0.0);
+        assert_eq!(m.diffuse, 1.0);
+        assert_eq!(m.specular, 0.0);
+        assert_eq!(m.specular_power, 1.0);
+        assert_eq!(m.point_size, 1.0);
         assert!(!m.flat_shading);
     }
 
@@ -190,6 +193,12 @@ mod tests {
         assert!(m.pbr);
         assert_eq!(m.metallic, 0.0);
         assert_eq!(m.roughness, 0.8);
+    }
+
+    #[test]
+    fn pbr_roughness_is_clamped_like_vtk_property() {
+        assert_eq!(Material::pbr_metal(-0.5).roughness, 0.0);
+        assert_eq!(Material::pbr_dielectric(1.5).roughness, 1.0);
     }
 
     #[test]

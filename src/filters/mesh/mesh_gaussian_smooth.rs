@@ -2,23 +2,19 @@
 use crate::data::PolyData;
 pub fn gaussian_smooth(mesh: &PolyData, iterations: usize, sigma: f64) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || iterations == 0 || sigma <= 0.0 {
         return mesh.clone();
     }
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+            add_neighbor_edge(cell[i], cell[(i + 1) % nc], &mut nb);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_edge(edge[0], edge[1], &mut nb);
         }
     }
     let s2 = 2.0 * sigma * sigma;
@@ -53,6 +49,29 @@ pub fn gaussian_smooth(mesh: &PolyData, iterations: usize, sigma: f64) -> PolyDa
     }
     r
 }
+
+fn add_neighbor_edge(a: i64, b: i64, nb: &mut [Vec<usize>]) {
+    let n = nb.len();
+    let Some(a) = valid_point_id(a, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b, n) else {
+        return;
+    };
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -51,6 +51,10 @@ pub fn composite_tiles(
 /// `num_tiles` controls the number of horizontal bands.  The actual number
 /// of threads equals `num_tiles`.
 pub fn tile_render(scene: &Scene, width: u32, height: u32, num_tiles: u32) -> Vec<u8> {
+    if width == 0 || height == 0 {
+        return Vec::new();
+    }
+
     let num_tiles = num_tiles.max(1);
     let tile_height = (height + num_tiles - 1) / num_tiles;
 
@@ -72,15 +76,11 @@ pub fn tile_render(scene: &Scene, width: u32, height: u32, num_tiles: u32) -> Ve
             .map(|(y_start, th)| {
                 let sc = scene_clone.clone();
                 let w = width;
+                let full_h = height;
                 thread::spawn(move || {
                     // Render full image in this thread, then extract tile rows.
-                    // This is simpler and correct; a production implementation
-                    // would adjust the camera frustum per tile.
-                    let _rt = RayTracer::new(w, th);
-                    // Adjust camera to render only this tile's scanlines by
-                    // using a sub-scene that renders the correct FOV slice.
-                    // For simplicity we render the full image and crop.
-                    let full_rt = RayTracer::new(w, y_start + th);
+                    // This keeps camera projection identical to a non-tiled render.
+                    let full_rt = RayTracer::new(w, full_h);
                     let full = full_rt.render(&sc);
                     // Extract the rows [y_start .. y_start+th]
                     let row_bytes = w as usize * 4;
@@ -115,5 +115,23 @@ mod tests {
         assert_eq!(&img[0..4], &[255, 0, 0, 255]);
         // Bottom-right pixel = white
         assert_eq!(&img[12..16], &[255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn tile_render_matches_single_ray_trace() {
+        use crate::data::PolyData;
+        use crate::render::Actor;
+
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let mut scene = Scene::new().with_actor(Actor::new(mesh).with_color(0.8, 0.2, 0.2));
+        scene.camera.position = glam::DVec3::new(0.5, 0.4, 2.0);
+        scene.camera.focal_point = glam::DVec3::new(0.5, 0.4, 0.0);
+
+        let tiled = tile_render(&scene, 16, 16, 4);
+        let single = RayTracer::new(16, 16).render(&scene);
+        assert_eq!(tiled, single);
     }
 }

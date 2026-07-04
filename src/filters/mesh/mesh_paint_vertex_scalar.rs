@@ -12,12 +12,16 @@ pub fn paint_scalar_sphere(
     let existing = mesh.point_data().get_array(array_name);
     let mut buf = [0.0f64];
     let mut data: Vec<f64> = if let Some(arr) = existing {
-        (0..n)
-            .map(|i| {
-                arr.tuple_as_f64(i, &mut buf);
-                buf[0]
-            })
-            .collect()
+        if arr.num_components() == 0 || arr.num_tuples() < n {
+            vec![0.0; n]
+        } else {
+            (0..n)
+                .map(|i| {
+                    arr.tuple_as_f64(i, &mut buf);
+                    buf[0]
+                })
+                .collect()
+        }
     } else {
         vec![0.0; n]
     };
@@ -25,6 +29,12 @@ pub fn paint_scalar_sphere(
         let p = mesh.points.get(i);
         let d2 =
             (p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2);
+        if radius <= 0.0 {
+            if d2 <= 1e-30 {
+                data[i] = value;
+            }
+            continue;
+        }
         if d2 <= r2 {
             let t = 1.0 - (d2 / r2).sqrt();
             data[i] = data[i] * (1.0 - t) + value * t;
@@ -50,12 +60,16 @@ pub fn paint_scalar_line(
     let existing = mesh.point_data().get_array(array_name);
     let mut buf = [0.0f64];
     let mut data: Vec<f64> = if let Some(arr) = existing {
-        (0..n)
-            .map(|i| {
-                arr.tuple_as_f64(i, &mut buf);
-                buf[0]
-            })
-            .collect()
+        if arr.num_components() == 0 || arr.num_tuples() < n {
+            vec![0.0; n]
+        } else {
+            (0..n)
+                .map(|i| {
+                    arr.tuple_as_f64(i, &mut buf);
+                    buf[0]
+                })
+                .collect()
+        }
     } else {
         vec![0.0; n]
     };
@@ -70,6 +84,12 @@ pub fn paint_scalar_line(
         let t = t.clamp(0.0, 1.0);
         let proj = [p0[0] + t * d[0], p0[1] + t * d[1], p0[2] + t * d[2]];
         let d2 = (p[0] - proj[0]).powi(2) + (p[1] - proj[1]).powi(2) + (p[2] - proj[2]).powi(2);
+        if radius <= 0.0 {
+            if d2 <= 1e-30 {
+                data[i] = value;
+            }
+            continue;
+        }
         if d2 <= r2 {
             let w = 1.0 - (d2 / r2).sqrt();
             data[i] = data[i] * (1.0 - w) + value * w;

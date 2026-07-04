@@ -9,15 +9,17 @@ pub fn diffusion_distance_map(mesh: &PolyData, source: usize, time: f64, steps: 
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -58,6 +60,10 @@ pub fn diffusion_distance_map(mesh: &PolyData, source: usize, time: f64, steps: 
         )));
     r.point_data_mut().set_active_scalars("DiffusionDist");
     r
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 #[cfg(test)]
 mod tests {

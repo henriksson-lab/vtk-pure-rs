@@ -2,7 +2,7 @@
 use crate::data::{CellArray, Points, PolyData};
 pub fn coarsen_by_ratio(mesh: &PolyData, ratio: f64) -> PolyData {
     let n = mesh.points.len();
-    if n < 4 {
+    if n < 4 || ratio >= 1.0 {
         return mesh.clone();
     }
     let mut mn = [f64::INFINITY; 3];
@@ -24,6 +24,7 @@ fn grid_simplify(mesh: &PolyData, cs: f64) -> PolyData {
     let cs = cs.max(1e-15);
     let mut grid: std::collections::HashMap<(i64, i64, i64), ([f64; 3], usize)> =
         std::collections::HashMap::new();
+    let mut keys = Vec::new();
     let mut remap = vec![0usize; n];
     for i in 0..n {
         let p = mesh.points.get(i);
@@ -32,7 +33,10 @@ fn grid_simplify(mesh: &PolyData, cs: f64) -> PolyData {
             (p[1] / cs).floor() as i64,
             (p[2] / cs).floor() as i64,
         );
-        let e = grid.entry(k).or_insert(([0.0, 0.0, 0.0], 0));
+        let e = grid.entry(k).or_insert_with(|| {
+            keys.push(k);
+            ([0.0, 0.0, 0.0], 0)
+        });
         e.0[0] += p[0];
         e.0[1] += p[1];
         e.0[2] += p[2];
@@ -41,7 +45,8 @@ fn grid_simplify(mesh: &PolyData, cs: f64) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut key_to_idx: std::collections::HashMap<(i64, i64, i64), usize> =
         std::collections::HashMap::new();
-    for (&k, v) in &grid {
+    for &k in &keys {
+        let v = &grid[&k];
         let c = v.1 as f64;
         let idx = pts.len();
         pts.push([v.0[0] / c, v.0[1] / c, v.0[2] / c]);
@@ -58,9 +63,21 @@ fn grid_simplify(mesh: &PolyData, cs: f64) -> PolyData {
     }
     let mut polys = CellArray::new();
     for cell in mesh.polys.iter() {
-        let mapped: Vec<i64> = cell.iter().map(|&v| remap[v as usize] as i64).collect();
+        if cell.iter().any(|&v| v < 0 || v as usize >= remap.len()) {
+            continue;
+        }
+        let mut mapped = Vec::with_capacity(cell.len());
+        for &v in cell {
+            let id = remap[v as usize] as i64;
+            if mapped.last().copied() != Some(id) {
+                mapped.push(id);
+            }
+        }
+        if mapped.len() > 1 && mapped.first() == mapped.last() {
+            mapped.pop();
+        }
         let unique: std::collections::HashSet<i64> = mapped.iter().copied().collect();
-        if unique.len() >= 3 {
+        if unique.len() >= 3 && unique.len() == mapped.len() {
             polys.push_cell(&mapped);
         }
     }

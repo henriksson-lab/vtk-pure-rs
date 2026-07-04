@@ -1,6 +1,7 @@
 //! Transfer data between meshes: cell↔point, mesh↔mesh, resample.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::types::Scalar;
 
 /// Transfer all cell data to point data by averaging adjacent cells.
 pub fn cell_data_to_point_data_all(mesh: &PolyData) -> PolyData {
@@ -20,13 +21,16 @@ pub fn cell_data_to_point_data_all(mesh: &PolyData) -> PolyData {
         let mut counts = vec![0usize; n];
         let mut buf = vec![0.0f64; nc];
 
-        for (ci, cell) in mesh.polys.iter().enumerate() {
+        for (ci, cell) in poly_data_cells(mesh).into_iter().enumerate() {
             if ci >= arr.num_tuples() {
                 break;
             }
             arr.tuple_as_f64(ci, &mut buf);
             for &pid in cell {
                 let idx = pid as usize;
+                if idx >= n {
+                    continue;
+                }
                 counts[idx] += 1;
                 for c in 0..nc {
                     sums[idx * nc + c] += buf[c];
@@ -46,7 +50,7 @@ pub fn cell_data_to_point_data_all(mesh: &PolyData) -> PolyData {
         }
         result
             .point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
+            .add_array(array_from_f64_like(arr, &name, data, nc));
     }
     result
 }
@@ -55,7 +59,7 @@ pub fn cell_data_to_point_data_all(mesh: &PolyData) -> PolyData {
 pub fn point_data_to_cell_data_all(mesh: &PolyData) -> PolyData {
     let pd = mesh.point_data();
     let mut result = mesh.clone();
-    let n_cells = mesh.polys.num_cells();
+    let n_cells = mesh.total_cells();
 
     for ai in 0..pd.num_arrays() {
         let arr = match pd.get_array_by_index(ai) {
@@ -67,24 +71,39 @@ pub fn point_data_to_cell_data_all(mesh: &PolyData) -> PolyData {
         let mut data = Vec::with_capacity(n_cells * nc);
         let mut buf = vec![0.0f64; nc];
 
-        for cell in mesh.polys.iter() {
+        for cell in poly_data_cells(mesh) {
             let mut avg = vec![0.0f64; nc];
+            let mut count = 0usize;
             for &pid in cell {
-                arr.tuple_as_f64(pid as usize, &mut buf);
+                let idx = pid as usize;
+                if idx >= arr.num_tuples() {
+                    continue;
+                }
+                arr.tuple_as_f64(idx, &mut buf);
                 for c in 0..nc {
                     avg[c] += buf[c];
                 }
+                count += 1;
             }
-            let k = cell.len() as f64;
+            let k = count.max(1) as f64;
             for c in 0..nc {
                 data.push(avg[c] / k.max(1.0));
             }
         }
         result
             .cell_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
+            .add_array(array_from_f64_like(arr, &name, data, nc));
     }
     result
+}
+
+fn poly_data_cells(mesh: &PolyData) -> Vec<&[i64]> {
+    let mut cells = Vec::with_capacity(mesh.total_cells());
+    cells.extend(mesh.verts.iter());
+    cells.extend(mesh.lines.iter());
+    cells.extend(mesh.polys.iter());
+    cells.extend(mesh.strips.iter());
+    cells
 }
 
 /// Resample point data from source onto target mesh via closest point.
@@ -129,9 +148,39 @@ pub fn resample_point_data(source: &PolyData, target: &PolyData) -> PolyData {
         }
         result
             .point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(&name, data, nc)));
+            .add_array(array_from_f64_like(arr, &name, data, nc));
     }
     result
+}
+
+fn array_from_f64_like(
+    template: &AnyDataArray,
+    name: &str,
+    values: Vec<f64>,
+    num_components: usize,
+) -> AnyDataArray {
+    fn convert<T: Scalar>(name: &str, values: &[f64], num_components: usize) -> DataArray<T> {
+        DataArray::from_vec(
+            name,
+            values.iter().copied().map(T::from_f64).collect(),
+            num_components,
+        )
+    }
+
+    match template {
+        AnyDataArray::F32(_) => AnyDataArray::F32(convert(name, &values, num_components)),
+        AnyDataArray::F64(_) => {
+            AnyDataArray::F64(DataArray::from_vec(name, values, num_components))
+        }
+        AnyDataArray::I8(_) => AnyDataArray::I8(convert(name, &values, num_components)),
+        AnyDataArray::I16(_) => AnyDataArray::I16(convert(name, &values, num_components)),
+        AnyDataArray::I32(_) => AnyDataArray::I32(convert(name, &values, num_components)),
+        AnyDataArray::I64(_) => AnyDataArray::I64(convert(name, &values, num_components)),
+        AnyDataArray::U8(_) => AnyDataArray::U8(convert(name, &values, num_components)),
+        AnyDataArray::U16(_) => AnyDataArray::U16(convert(name, &values, num_components)),
+        AnyDataArray::U32(_) => AnyDataArray::U32(convert(name, &values, num_components)),
+        AnyDataArray::U64(_) => AnyDataArray::U64(convert(name, &values, num_components)),
+    }
 }
 
 #[cfg(test)]
@@ -194,5 +243,25 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 100.0); // closest to src[0]
+    }
+
+    #[test]
+    fn preserves_array_type() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::I32(DataArray::from_vec(
+                "ids",
+                vec![1, 2, 3],
+                1,
+            )));
+
+        let result = point_data_to_cell_data_all(&mesh);
+        assert!(matches!(
+            result.cell_data().get_array("ids"),
+            Some(AnyDataArray::I32(_))
+        ));
     }
 }

@@ -81,48 +81,53 @@ pub fn repair_face_orientation(mesh: &PolyData) -> PolyData {
         }
     }
 
-    // BFS to orient consistently from seed face
+    // BFS each connected component to orient neighbors consistently.
     let mut oriented = vec![false; n_cells];
     let mut flipped = vec![false; n_cells];
     let mut queue = std::collections::VecDeque::new();
-    queue.push_back(0);
-    oriented[0] = true;
 
-    while let Some(ci) = queue.pop_front() {
-        let cell = &all_cells[ci];
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            let edge = (a.min(b), a.max(b));
-            if let Some(nbs) = edge_adj.get(&edge) {
-                for &ni in nbs {
-                    if oriented[ni] {
-                        continue;
-                    }
-                    oriented[ni] = true;
-                    // Check if neighbor shares this edge in same direction (needs flip)
-                    let nb_cell = &all_cells[ni];
-                    let nnc = nb_cell.len();
-                    let same_dir = (0..nnc).any(|j| {
-                        let na = nb_cell[j] as usize;
-                        let nb = nb_cell[(j + 1) % nnc] as usize;
-                        (na == a && nb == b) || (na == b && nb == a && flipped[ci])
-                    });
-                    // If both use (a,b) in same direction, one needs flipping
-                    let needs_flip = (0..nnc).any(|j| {
-                        let na = nb_cell[j] as usize;
-                        let nb_v = nb_cell[(j + 1) % nnc] as usize;
-                        if flipped[ci] {
-                            na == b && nb_v == a
-                        } else {
-                            na == a && nb_v == b
+    for seed in 0..n_cells {
+        if oriented[seed] {
+            continue;
+        }
+        queue.push_back(seed);
+        oriented[seed] = true;
+
+        while let Some(ci) = queue.pop_front() {
+            let cell = &all_cells[ci];
+            let nc = cell.len();
+            for i in 0..nc {
+                let a = cell[i] as usize;
+                let b = cell[(i + 1) % nc] as usize;
+                let edge = (a.min(b), a.max(b));
+                if let Some(nbs) = edge_adj.get(&edge) {
+                    for &ni in nbs {
+                        if ni == ci || oriented[ni] {
+                            continue;
                         }
-                    });
-                    if needs_flip {
-                        flipped[ni] = true;
+                        let nb_cell = &all_cells[ni];
+                        let nnc = nb_cell.len();
+                        let neighbor_same_raw_direction = (0..nnc).any(|j| {
+                            let na = nb_cell[j] as usize;
+                            let nb = nb_cell[(j + 1) % nnc] as usize;
+                            na == a && nb == b
+                        });
+                        let neighbor_reverse_raw_direction = (0..nnc).any(|j| {
+                            let na = nb_cell[j] as usize;
+                            let nb = nb_cell[(j + 1) % nnc] as usize;
+                            na == b && nb == a
+                        });
+                        if !neighbor_same_raw_direction && !neighbor_reverse_raw_direction {
+                            continue;
+                        }
+
+                        let current_effective_direction = if flipped[ci] { -1 } else { 1 };
+                        let neighbor_raw_direction =
+                            if neighbor_same_raw_direction { 1 } else { -1 };
+                        flipped[ni] = neighbor_raw_direction == current_effective_direction;
+                        oriented[ni] = true;
+                        queue.push_back(ni);
                     }
-                    queue.push_back(ni);
                 }
             }
         }
@@ -184,5 +189,30 @@ mod tests {
         ); // second face has wrong winding
         let repaired = repair_face_orientation(&mesh);
         assert_eq!(repaired.polys.num_cells(), 2);
+    }
+
+    #[test]
+    fn repair_handles_disconnected_components() {
+        let mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [1.5, 1.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [3.5, 1.0, 0.0],
+                [4.5, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2], [4, 5, 6], [6, 7, 5]],
+        );
+        let repaired = repair_face_orientation(&mesh);
+        let checked = check_face_orientation(&repaired);
+        let arr = checked.cell_data().get_array("Consistent").unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..arr.num_tuples() {
+            arr.tuple_as_f64(i, &mut buf);
+            assert_eq!(buf[0], 1.0, "cell {i} should be consistent");
+        }
     }
 }

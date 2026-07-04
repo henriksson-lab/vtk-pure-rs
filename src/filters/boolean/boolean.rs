@@ -128,17 +128,20 @@ fn centroid(tri: &Tri) -> [f64; 3] {
 /// Ray-casting inside/outside test. Casts a ray in +X from the point and
 /// counts triangle intersections. Odd count = inside.
 fn is_inside(tris: &[Tri], point: [f64; 3]) -> bool {
-    let mut count = 0u32;
+    let mut hits = Vec::new();
     for tri in tris {
-        if ray_hits_triangle(point, tri) {
-            count += 1;
+        if let Some(t) = ray_triangle_parameter(point, tri) {
+            hits.push(t);
         }
     }
-    count % 2 == 1
+
+    hits.sort_by(|a, b| a.total_cmp(b));
+    hits.dedup_by(|a, b| (*a - *b).abs() <= 1.0e-9);
+    hits.len() % 2 == 1
 }
 
 /// Möller–Trumbore ray-triangle intersection (+X direction).
-fn ray_hits_triangle(origin: [f64; 3], tri: &Tri) -> bool {
+fn ray_triangle_parameter(origin: [f64; 3], tri: &Tri) -> Option<f64> {
     let e1 = sub(tri[1], tri[0]);
     let e2 = sub(tri[2], tri[0]);
     let dir = [1.0, 0.0, 0.0];
@@ -146,24 +149,24 @@ fn ray_hits_triangle(origin: [f64; 3], tri: &Tri) -> bool {
     let h = cross(dir, e2);
     let a = dot(e1, h);
     if a.abs() < 1e-12 {
-        return false;
+        return None;
     }
 
     let f = 1.0 / a;
     let s = sub(origin, tri[0]);
     let u = f * dot(s, h);
     if !(0.0..=1.0).contains(&u) {
-        return false;
+        return None;
     }
 
     let q = cross(s, e1);
     let v = f * dot(dir, q);
     if v < 0.0 || u + v > 1.0 {
-        return false;
+        return None;
     }
 
     let t = f * dot(e2, q);
-    t > 1e-12
+    (t > 1e-12).then_some(t)
 }
 
 fn add_triangle(points: &mut Points<f64>, polys: &mut CellArray, tri: &Tri, reverse: bool) {
@@ -242,6 +245,14 @@ mod tests {
         let result = boolean(&a, &b, BooleanOp::Union);
         // Disjoint: union = all triangles from both
         assert_eq!(result.polys.num_cells(), 24); // 12 + 12
+    }
+
+    #[test]
+    fn ray_cast_counts_triangulated_face_once() {
+        let mesh = make_box([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let tris = collect_triangles(&mesh);
+        assert!(is_inside(&tris, [0.5, 0.5, 0.5]));
+        assert!(!is_inside(&tris, [2.0, 0.5, 0.5]));
     }
 
     #[test]

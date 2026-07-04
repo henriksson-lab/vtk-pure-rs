@@ -5,7 +5,7 @@ pub fn deform_1d_lattice(
     axis: usize,
     control_points: &[(f64, [f64; 3])],
 ) -> PolyData {
-    if control_points.is_empty() {
+    if axis >= 3 || control_points.is_empty() {
         return mesh.clone();
     }
     let n = mesh.points.len();

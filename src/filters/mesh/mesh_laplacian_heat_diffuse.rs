@@ -3,21 +3,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn heat_diffuse(mesh: &PolyData, initial: &[f64], time: f64, steps: usize) -> PolyData {
     let n = mesh.points.len();
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
-        }
-    }
+    build_neighbors(mesh, &mut nb, n);
     let dt = time / steps.max(1) as f64;
     let mut u: Vec<f64> = if initial.len() >= n {
         initial[..n].to_vec()
@@ -54,14 +40,7 @@ pub fn heat_from_vertex(mesh: &PolyData, source: usize, time: f64, steps: usize)
 pub fn heat_from_boundary(mesh: &PolyData, time: f64, steps: usize) -> PolyData {
     let n = mesh.points.len();
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
-        }
-    }
+    build_edge_counts(mesh, &mut ec, n);
     let mut initial = vec![0.0f64; n];
     for (&(a, b), &c) in &ec {
         if c == 1 {
@@ -70,6 +49,100 @@ pub fn heat_from_boundary(mesh: &PolyData, time: f64, steps: usize) -> PolyData 
         }
     }
     heat_diffuse(mesh, &initial, time, steps)
+}
+
+fn build_neighbors(mesh: &PolyData, nb: &mut [Vec<usize>], n: usize) {
+    for cell in mesh.polys.iter() {
+        for i in 0..cell.len() {
+            add_neighbor_pair(nb, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(nb, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(nb, n, tri[0], tri[1]);
+            add_neighbor_pair(nb, n, tri[1], tri[2]);
+            add_neighbor_pair(nb, n, tri[2], tri[0]);
+        }
+    }
+}
+
+fn build_edge_counts(
+    mesh: &PolyData,
+    ec: &mut std::collections::HashMap<(usize, usize), usize>,
+    n: usize,
+) {
+    for cell in mesh.polys.iter() {
+        for i in 0..cell.len() {
+            add_edge_count(ec, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge_count(ec, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_edge_count(ec, n, tri[0], tri[1]);
+            add_edge_count(ec, n, tri[1], tri[2]);
+            add_edge_count(ec, n, tri[2], tri[0]);
+        }
+    }
+}
+
+fn add_neighbor_pair(nb: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+}
+
+fn add_edge_count(
+    ec: &mut std::collections::HashMap<(usize, usize), usize>,
+    n: usize,
+    a_id: i64,
+    b_id: i64,
+) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
 }
 #[cfg(test)]
 mod tests {

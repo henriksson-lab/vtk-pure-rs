@@ -14,16 +14,7 @@ pub fn soft_laplacian_deform(
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+            add_neighbor_pair(&mut nb, n, cell[i], cell[(i + 1) % nc]);
         }
     }
     let mut pos: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
@@ -87,12 +78,30 @@ pub fn rigid_handle_deform(
 ) -> PolyData {
     let mut handles: Vec<(usize, [f64; 3], f64)> = Vec::new();
     for &fi in fixed {
-        handles.push((fi, mesh.points.get(fi), 1.0));
+        if fi < mesh.points.len() {
+            handles.push((fi, mesh.points.get(fi), 1.0));
+        }
     }
     for &(mi, target) in moved {
         handles.push((mi, target, 1.0));
     }
     soft_laplacian_deform(mesh, &handles, iterations)
+}
+fn add_neighbor_pair(nb: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
 }
 #[cfg(test)]
 mod tests {

@@ -12,7 +12,9 @@ pub fn spectral_embedding_2d(mesh: &PolyData, iterations: usize) -> PolyData {
         if c.len() != 3 {
             continue;
         }
-        let ids = [c[0] as usize, c[1] as usize, c[2] as usize];
+        let Some(ids) = triangle_point_ids(c, n) else {
+            continue;
+        };
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),
@@ -28,11 +30,7 @@ pub fn spectral_embedding_2d(mesh: &PolyData, iterations: usize) -> PolyData {
                 + (eij[2] * eik[0] - eij[0] * eik[2]).powi(2)
                 + (eij[0] * eik[1] - eij[1] * eik[0]).powi(2))
             .sqrt();
-            let cot = if cl > 1e-15 {
-                (dot / cl).abs() * 0.5
-            } else {
-                0.01
-            };
+            let cot = if cl > 1e-15 { dot / cl * 0.5 } else { 0.0 };
             nb[ids[j]].push((ids[k], cot));
             nb[ids[k]].push((ids[j], cot));
         }
@@ -84,6 +82,22 @@ pub fn spectral_embedding_2d(mesh: &PolyData, iterations: usize) -> PolyData {
         )));
     r.point_data_mut().set_active_tcoords("SpectralUV");
     r
+}
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 #[cfg(test)]
 mod tests {

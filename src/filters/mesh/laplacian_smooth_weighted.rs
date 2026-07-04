@@ -21,8 +21,12 @@ pub fn weighted_laplacian_smooth(
             let mut buf = [0.0f64];
             (0..n)
                 .map(|i| {
-                    a.tuple_as_f64(i, &mut buf);
-                    buf[0].clamp(0.0, 1.0)
+                    if i < a.num_tuples() {
+                        a.tuple_as_f64(i, &mut buf);
+                        buf[0].clamp(0.0, 1.0)
+                    } else {
+                        1.0
+                    }
                 })
                 .collect::<Vec<f64>>()
         }
@@ -74,8 +78,12 @@ pub fn conditional_smooth(
             let mut buf = [0.0f64];
             (0..n)
                 .map(|i| {
-                    a.tuple_as_f64(i, &mut buf);
-                    buf[0] >= threshold
+                    if i < a.num_tuples() {
+                        a.tuple_as_f64(i, &mut buf);
+                        buf[0] >= threshold
+                    } else {
+                        true
+                    }
                 })
                 .collect::<Vec<bool>>()
         }
@@ -113,15 +121,43 @@ fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
     for c in m.polys.iter() {
         let nc = c.len();
         for i in 0..nc {
-            let x = c[i] as usize;
-            let y = c[(i + 1) % nc] as usize;
-            if x < n && y < n {
-                a[x].insert(y);
-                a[y].insert(x);
-            }
+            add_edge(&mut a, n, c[i], c[(i + 1) % nc]);
+        }
+    }
+    for c in m.lines.iter() {
+        for edge in c.windows(2) {
+            add_edge(&mut a, n, edge[0], edge[1]);
+        }
+    }
+    for c in m.strips.iter() {
+        if c.len() < 3 {
+            continue;
+        }
+        for i in 0..c.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [c[i], c[i + 1], c[i + 2]]
+            } else {
+                [c[i + 1], c[i], c[i + 2]]
+            };
+            add_edge(&mut a, n, tri[0], tri[1]);
+            add_edge(&mut a, n, tri[1], tri[2]);
+            add_edge(&mut a, n, tri[2], tri[0]);
         }
     }
     a.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn add_edge(adj: &mut [std::collections::HashSet<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    adj[a].insert(b);
+    adj[b].insert(a);
 }
 
 #[cfg(test)]

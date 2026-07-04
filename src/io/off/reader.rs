@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 use std::io::BufRead;
 
 /// Reader for Object File Format (OFF).
@@ -13,122 +13,71 @@ impl<R: BufRead> OffReader<R> {
 
     /// Read an OFF file and return a PolyData mesh.
     pub fn read(&mut self) -> Result<PolyData, String> {
-        let mut lines = Vec::new();
         let mut line_buf = String::new();
-        loop {
-            line_buf.clear();
-            let n = self
-                .reader
-                .read_line(&mut line_buf)
-                .map_err(|e| e.to_string())?;
-            if n == 0 {
-                break;
-            }
-            let trimmed = line_buf.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            lines.push(trimmed.to_string());
-        }
 
-        if lines.is_empty() {
+        if self
+            .reader
+            .read_line(&mut line_buf)
+            .map_err(|e| e.to_string())?
+            == 0
+        {
             return Err("empty OFF file".into());
         }
 
-        let mut idx = 0;
-
-        // Parse header
-        let header = &lines[idx];
-        let has_colors = header.starts_with("COFF") || header.starts_with("coff");
-        let has_normals = header.starts_with("NOFF") || header.starts_with("noff");
-        let is_off = header == "OFF" || header == "off" || has_colors || has_normals;
-
-        if !is_off {
-            // Some OFF files have counts on the same line as "OFF"
-            if !header.contains("OFF") && !header.contains("off") {
-                return Err(format!("not an OFF file, got: {header}"));
-            }
-        }
-
-        idx += 1;
-        if idx >= lines.len() {
-            return Err("unexpected end of OFF file".into());
+        let header = line_buf.trim_end_matches('\n').trim_end_matches('\r');
+        if header != "OFF" {
+            return Err(format!("not an OFF file, got: {header}"));
         }
 
         // Parse counts: nVertices nFaces nEdges
-        let counts: Vec<usize> = lines[idx]
-            .split_whitespace()
-            .filter_map(|s| s.parse().ok())
-            .collect();
-        if counts.len() < 2 {
-            return Err(format!("expected vertex/face counts, got: {}", lines[idx]));
+        let counts_line = self.next_data_line("counts")?;
+        let mut counts = counts_line.split_whitespace();
+        let n_verts: usize = parse_next(&mut counts, "number of points")?;
+        let n_faces: usize = parse_next(&mut counts, "number of polygons")?;
+        if n_verts == 0 {
+            return Err("file contains 0 points".into());
         }
-        let n_verts = counts[0];
-        let n_faces = counts[1];
-        idx += 1;
+        if n_faces == 0 {
+            return Err("file contains 0 polygons".into());
+        }
 
         // Parse vertices
         let mut points = Points::<f64>::new();
-        let mut colors: Vec<f64> = Vec::new();
 
-        for i in 0..n_verts {
-            if idx + i >= lines.len() {
-                return Err(format!("expected {n_verts} vertices, got {i}"));
-            }
-            let parts: Vec<f64> = lines[idx + i]
-                .split_whitespace()
-                .filter_map(|s| s.parse().ok())
-                .collect();
-            if parts.len() < 3 {
-                return Err(format!("vertex {i} has fewer than 3 coordinates"));
-            }
-            points.push([parts[0], parts[1], parts[2]]);
-
-            if has_colors && parts.len() >= 6 {
-                // Colors as floats or ints (0-255)
-                let r = if parts[3] > 1.0 {
-                    parts[3] / 255.0
-                } else {
-                    parts[3]
-                };
-                let g = if parts[4] > 1.0 {
-                    parts[4] / 255.0
-                } else {
-                    parts[4]
-                };
-                let b = if parts[5] > 1.0 {
-                    parts[5] / 255.0
-                } else {
-                    parts[5]
-                };
-                colors.push(r);
-                colors.push(g);
-                colors.push(b);
-            }
+        for _ in 0..n_verts {
+            let point_line = self.next_data_line("point coordinates")?;
+            let mut parts = point_line.split_whitespace();
+            let x: f64 = parse_next(&mut parts, "point x")?;
+            let y: f64 = parse_next(&mut parts, "point y")?;
+            let z: f64 = parse_next(&mut parts, "point z")?;
+            points.push([x, y, z]);
         }
-        idx += n_verts;
 
         // Parse faces
         let mut polys = CellArray::new();
         for i in 0..n_faces {
-            if idx + i >= lines.len() {
-                return Err(format!("expected {n_faces} faces, got {i}"));
+            let face_line = self.next_data_line("face")?;
+            let mut parts = face_line.split_whitespace();
+            let n: usize = parse_next(&mut parts, "face point count")?;
+            if n < 1 {
+                return Err(format!("face {i}: expected at least 1 index"));
             }
-            let parts: Vec<i64> = lines[idx + i]
-                .split_whitespace()
-                .filter_map(|s| s.parse().ok())
-                .collect();
-            if parts.is_empty() {
-                continue;
-            }
-            let n = parts[0] as usize;
-            if parts.len() < n + 1 {
+            if n > 100 {
                 return Err(format!(
-                    "face {i}: expected {n} indices, got {}",
-                    parts.len() - 1
+                    "face {i}: point count exceeds maximum allowed count of 100"
                 ));
             }
-            let ids: Vec<i64> = parts[1..=n].to_vec();
+
+            let mut ids = Vec::with_capacity(n);
+            for j in 0..n {
+                let id: i64 = parse_next(&mut parts, &format!("face {i} point index {j}"))?;
+                ids.push(id);
+            }
+            for &id in &ids {
+                if id < 0 || id as usize >= n_verts {
+                    return Err(format!("face {i}: invalid point index {id}"));
+                }
+            }
             polys.push_cell(&ids);
         }
 
@@ -136,14 +85,41 @@ impl<R: BufRead> OffReader<R> {
         mesh.points = points;
         mesh.polys = polys;
 
-        if !colors.is_empty() && colors.len() == n_verts * 3 {
-            let arr = DataArray::from_vec("Colors", colors, 3);
-            mesh.point_data_mut().add_array(AnyDataArray::F64(arr));
-            mesh.point_data_mut().set_active_scalars("Colors");
-        }
-
         Ok(mesh)
     }
+
+    fn next_data_line(&mut self, context: &str) -> Result<String, String> {
+        let mut line_buf = String::new();
+        loop {
+            line_buf.clear();
+            if self
+                .reader
+                .read_line(&mut line_buf)
+                .map_err(|e| e.to_string())?
+                == 0
+            {
+                return Err(format!(
+                    "unexpected end of OFF file while reading {context}"
+                ));
+            }
+            let trimmed = line_buf.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            return Ok(trimmed.to_string());
+        }
+    }
+}
+
+fn parse_next<T: std::str::FromStr>(
+    tokens: &mut std::str::SplitWhitespace<'_>,
+    context: &str,
+) -> Result<T, String> {
+    tokens
+        .next()
+        .ok_or_else(|| format!("failed to parse {context}"))?
+        .parse()
+        .map_err(|_| format!("failed to parse {context}"))
 }
 
 /// Read an OFF file from a file path.
@@ -180,9 +156,7 @@ mod tests {
         let data =
             b"COFF\n3 1 0\n0 0 0 255 0 0 255\n1 0 0 0 255 0 255\n0 1 0 0 0 255 255\n3 0 1 2\n";
         let mut reader = OffReader::new(&data[..]);
-        let mesh = reader.read().unwrap();
-        assert_eq!(mesh.points.len(), 3);
-        assert!(mesh.point_data().scalars().is_some());
+        assert!(reader.read().is_err());
     }
 
     #[test]
@@ -233,6 +207,12 @@ mod tests {
     fn comments_and_blank_lines() {
         let data =
             b"# This is a comment\nOFF\n# another comment\n\n3 1 0\n0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n";
+        assert!(OffReader::new(&data[..]).read().is_err());
+    }
+
+    #[test]
+    fn comments_and_blank_lines_after_header() {
+        let data = b"OFF\n# another comment\n\n3 1 0\n0 0 0\n1 0 0\n0 1 0\n3 0 1 2\n";
         let mesh = OffReader::new(&data[..]).read().unwrap();
         assert_eq!(mesh.points.len(), 3);
     }

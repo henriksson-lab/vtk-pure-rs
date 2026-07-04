@@ -3,7 +3,7 @@
 //! Splits a non-convex mesh into approximately convex parts using
 //! concavity-based recursive splitting.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Decompose a mesh into approximately convex parts.
 ///
@@ -101,7 +101,7 @@ pub fn count_convex_parts(mesh: &PolyData) -> usize {
     }
 }
 
-fn estimate_concavity(mesh: &PolyData, centroids: &[[f64; 3]], part: &[usize]) -> f64 {
+fn estimate_concavity(_mesh: &PolyData, centroids: &[[f64; 3]], part: &[usize]) -> f64 {
     if part.len() < 2 {
         return 0.0;
     }

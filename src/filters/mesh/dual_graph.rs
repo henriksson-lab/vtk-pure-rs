@@ -22,14 +22,25 @@ pub fn dual_graph(input: &PolyData) -> PolyData {
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
+        let mut n = 0.0;
         for &id in cell {
-            let p = input.points.get(id as usize);
+            let Ok(id) = usize::try_from(id) else {
+                continue;
+            };
+            if id >= input.points.len() {
+                continue;
+            }
+            let p = input.points.get(id);
             cx += p[0];
             cy += p[1];
             cz += p[2];
+            n += 1.0;
         }
-        let n = cell.len() as f64;
-        out_points.push([cx / n, cy / n, cz / n]);
+        if n == 0.0 {
+            out_points.push([0.0; 3]);
+        } else {
+            out_points.push([cx / n, cy / n, cz / n]);
+        }
         face_ids.push(fi as f64);
     }
 
@@ -39,6 +50,13 @@ pub fn dual_graph(input: &PolyData) -> PolyData {
         for i in 0..cell.len() {
             let a = cell[i];
             let b = cell[(i + 1) % cell.len()];
+            if a < 0
+                || b < 0
+                || a as usize >= input.points.len()
+                || b as usize >= input.points.len()
+            {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
@@ -46,7 +64,7 @@ pub fn dual_graph(input: &PolyData) -> PolyData {
 
     let mut out_lines = CellArray::new();
     for faces in edge_faces.values() {
-        if faces.len() == 2 {
+        if faces.len() >= 2 {
             out_lines.push_cell(&[faces[0] as i64, faces[1] as i64]);
         }
     }
@@ -112,5 +130,22 @@ mod tests {
         let pd = PolyData::new();
         let result = dual_graph(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn non_manifold_edge_uses_first_two_faces() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([0.0, 0.0, 1.0]);
+        pd.points.push([0.0, -1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[1, 0, 3]);
+        pd.polys.push_cell(&[0, 1, 4]);
+
+        let result = dual_graph(&pd);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.lines.iter().next().unwrap(), &[0, 1]);
     }
 }

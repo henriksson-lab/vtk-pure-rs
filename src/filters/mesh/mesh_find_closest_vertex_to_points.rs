@@ -2,6 +2,12 @@
 use crate::data::PolyData;
 pub fn closest_vertices(mesh: &PolyData, query_points: &[[f64; 3]]) -> Vec<(usize, f64)> {
     let n = mesh.points.len();
+    if n == 0 {
+        return query_points
+            .iter()
+            .map(|_| (usize::MAX, f64::INFINITY))
+            .collect();
+    }
     query_points
         .iter()
         .map(|q| {

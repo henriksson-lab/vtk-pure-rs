@@ -3,7 +3,7 @@
 //! Maps points to cylindrical (theta, height) coordinates for texture mapping.
 //! Analogous to VTK's vtkTextureMapToCylinder.
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{obb_tree::Obb, AnyDataArray, DataArray, PolyData};
 
 /// Generate cylindrical texture coordinates for a mesh.
 ///
@@ -15,6 +15,16 @@ pub fn texture_map_to_cylinder(
     axis_point1: [f64; 3],
     axis_point2: [f64; 3],
 ) -> PolyData {
+    texture_map_to_cylinder_with_prevent_seam(input, axis_point1, axis_point2, true)
+}
+
+/// Generate cylindrical texture coordinates with VTK's `PreventSeam` option.
+pub fn texture_map_to_cylinder_with_prevent_seam(
+    input: &PolyData,
+    axis_point1: [f64; 3],
+    axis_point2: [f64; 3],
+    prevent_seam: bool,
+) -> PolyData {
     let n = input.points.len();
     if n == 0 {
         return input.clone();
@@ -25,46 +35,58 @@ pub fn texture_map_to_cylinder(
         axis_point2[1] - axis_point1[1],
         axis_point2[2] - axis_point1[2],
     ];
-    let axis_len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
-    if axis_len < 1e-15 {
+    let axis_len2 = dot(axis, axis);
+    if axis_len2 == 0.0 {
         return input.clone();
     }
-    let axis_norm = [axis[0] / axis_len, axis[1] / axis_len, axis[2] / axis_len];
 
-    // Build local coordinate frame
-    // Find a vector not parallel to axis
-    let up = if axis_norm[0].abs() < 0.9 {
-        [1.0, 0.0, 0.0]
-    } else {
-        [0.0, 1.0, 0.0]
-    };
-    let u_dir = cross(axis_norm, up);
-    let u_len = (u_dir[0] * u_dir[0] + u_dir[1] * u_dir[1] + u_dir[2] * u_dir[2]).sqrt();
-    let u_dir = [u_dir[0] / u_len, u_dir[1] / u_len, u_dir[2] / u_len];
-    let v_dir = cross(axis_norm, u_dir);
+    let mut v = [1.0, 0.0, 0.0];
+    let mut vp = cross(axis, v);
+    if norm(vp) == 0.0 {
+        v = [0.0, 1.0, 0.0];
+        vp = cross(axis, v);
+    }
+    let mut vec = cross(vp, axis);
+    if normalize(&mut vec) == 0.0 {
+        return input.clone();
+    }
 
     let mut tcoords = DataArray::<f64>::new("TCoords", 2);
 
     for i in 0..n {
         let p = input.points.get(i);
-        let d = [
+        let mut d = [
             p[0] - axis_point1[0],
             p[1] - axis_point1[1],
             p[2] - axis_point1[2],
         ];
+        let t = dot(d, axis) / axis_len2;
+        let closest_t = t.clamp(0.0, 1.0);
+        let closest = [
+            axis_point1[0] + closest_t * axis[0],
+            axis_point1[1] + closest_t * axis[1],
+            axis_point1[2] + closest_t * axis[2],
+        ];
 
-        // Project onto axis for height parameter
-        let t = dot(d, axis_norm) / axis_len;
+        for j in 0..3 {
+            d[j] = p[j] - closest[j];
+        }
+        normalize(&mut d);
 
-        // Project perpendicular to axis for angle
-        let proj_u = dot(d, u_dir);
-        let proj_v = dot(d, v_dir);
-        let theta = proj_v.atan2(proj_u);
+        let theta_x = dot(d, vec).clamp(-1.0, 1.0).acos();
+        let vp = cross(vec, d);
+        let theta_y = dot(axis, vp);
+        let u = if prevent_seam {
+            theta_x / std::f64::consts::PI
+        } else {
+            let mut u = theta_x / (2.0 * std::f64::consts::PI);
+            if theta_y < 0.0 {
+                u = 1.0 - u;
+            }
+            u
+        };
 
-        let u = (theta + std::f64::consts::PI) / (2.0 * std::f64::consts::PI);
-        let v = t.clamp(0.0, 1.0);
-
-        tcoords.push_tuple(&[u, v]);
+        tcoords.push_tuple(&[u, t]);
     }
 
     let mut result = input.clone();
@@ -77,42 +99,27 @@ pub fn texture_map_to_cylinder(
 
 /// Generate cylindrical texture coordinates with automatic axis detection.
 ///
-/// Uses the longest axis of the bounding box as the cylinder axis.
+/// Uses the primary axis of the oriented bounding box as the cylinder axis.
 pub fn texture_map_to_cylinder_auto(input: &PolyData) -> PolyData {
     let n = input.points.len();
     if n == 0 {
         return input.clone();
     }
 
-    // Find bounding box
-    let mut min = input.points.get(0);
-    let mut max = min;
-    for i in 1..n {
-        let p = input.points.get(i);
-        for j in 0..3 {
-            min[j] = min[j].min(p[j]);
-            max[j] = max[j].max(p[j]);
-        }
-    }
-
-    let extents = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
-    let longest = if extents[0] >= extents[1] && extents[0] >= extents[2] {
-        0
-    } else if extents[1] >= extents[2] {
-        1
-    } else {
-        2
-    };
-
-    let center = [
-        (min[0] + max[0]) / 2.0,
-        (min[1] + max[1]) / 2.0,
-        (min[2] + max[2]) / 2.0,
+    let points: Vec<[f64; 3]> = input.points.iter().collect();
+    let obb = Obb::from_points(&points);
+    let axis = obb.axes[0];
+    let half_extent = obb.half_extents[0];
+    let p1 = [
+        obb.center[0] - axis[0] * half_extent,
+        obb.center[1] - axis[1] * half_extent,
+        obb.center[2] - axis[2] * half_extent,
     ];
-    let mut p1 = center;
-    let mut p2 = center;
-    p1[longest] = min[longest];
-    p2[longest] = max[longest];
+    let p2 = [
+        obb.center[0] + axis[0] * half_extent,
+        obb.center[1] + axis[1] * half_extent,
+        obb.center[2] + axis[2] * half_extent,
+    ];
 
     texture_map_to_cylinder(input, p1, p2)
 }
@@ -127,6 +134,20 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     ]
+}
+
+fn norm(a: [f64; 3]) -> f64 {
+    dot(a, a).sqrt()
+}
+
+fn normalize(a: &mut [f64; 3]) -> f64 {
+    let len = norm(*a);
+    if len != 0.0 {
+        a[0] /= len;
+        a[1] /= len;
+        a[2] /= len;
+    }
+    len
 }
 
 #[cfg(test)]

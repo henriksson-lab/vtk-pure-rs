@@ -1,4 +1,4 @@
-//! Compute deviation angle between vertex normal and average neighbor normal.
+//! Compute deviation angle between vertex normal and adjacent face normals.
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 pub fn normal_deviation(mesh: &PolyData) -> PolyData {
@@ -6,85 +6,53 @@ pub fn normal_deviation(mesh: &PolyData) -> PolyData {
     if n == 0 {
         return mesh.clone();
     }
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+
+    let mut vertex_normals = vec![[0.0f64; 3]; n];
+    let mut face_normals_per_vertex: Vec<Vec<[f64; 3]>> = vec![Vec::new(); n];
+
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-            }
-        }
-    }
-    let mut vnorm = vec![[0.0f64; 3]; n];
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.iter().any(|&point_id| point(mesh, point_id).is_none()) {
             continue;
         }
-        let a = cell[0] as usize;
-        let b = cell[1] as usize;
-        let c = cell[2] as usize;
-        if a >= n || b >= n || c >= n {
+        let face_normal = polygon_normal(mesh, cell);
+        let length = norm(face_normal);
+        if length == 0.0 {
             continue;
         }
-        let pa = mesh.points.get(a);
-        let pb = mesh.points.get(b);
-        let pc = mesh.points.get(c);
-        let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
-        let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
-        let nx = u[1] * v[2] - u[2] * v[1];
-        let ny = u[2] * v[0] - u[0] * v[2];
-        let nz = u[0] * v[1] - u[1] * v[0];
-        for &vi in &cell[..] {
-            let vi = vi as usize;
-            if vi < n {
-                vnorm[vi][0] += nx;
-                vnorm[vi][1] += ny;
-                vnorm[vi][2] += nz;
-            }
+        let unit_face_normal = [
+            face_normal[0] / length,
+            face_normal[1] / length,
+            face_normal[2] / length,
+        ];
+
+        for &point_id in cell {
+            let point_id = point_id as usize;
+            vertex_normals[point_id][0] += face_normal[0];
+            vertex_normals[point_id][1] += face_normal[1];
+            vertex_normals[point_id][2] += face_normal[2];
+            face_normals_per_vertex[point_id].push(unit_face_normal);
         }
     }
-    for vn in &mut vnorm {
-        let l = (vn[0] * vn[0] + vn[1] * vn[1] + vn[2] * vn[2]).sqrt();
-        if l > 1e-15 {
-            vn[0] /= l;
-            vn[1] /= l;
-            vn[2] /= l;
-        }
+
+    for normal in &mut vertex_normals {
+        normalize(normal);
     }
+
     let deviation: Vec<f64> = (0..n)
         .map(|i| {
-            if adj[i].is_empty() {
-                return 0.0;
+            let vertex_normal = vertex_normals[i];
+            let mut max_angle = 0.0f64;
+            for face_normal in &face_normals_per_vertex[i] {
+                let dot = (vertex_normal[0] * face_normal[0]
+                    + vertex_normal[1] * face_normal[1]
+                    + vertex_normal[2] * face_normal[2])
+                    .clamp(-1.0, 1.0);
+                max_angle = max_angle.max(dot.acos().to_degrees());
             }
-            let ni = vnorm[i];
-            let mut avg = [0.0f64; 3];
-            for &j in &adj[i] {
-                avg[0] += vnorm[j][0];
-                avg[1] += vnorm[j][1];
-                avg[2] += vnorm[j][2];
-            }
-            let k = adj[i].len() as f64;
-            avg[0] /= k;
-            avg[1] /= k;
-            avg[2] /= k;
-            let al = (avg[0] * avg[0] + avg[1] * avg[1] + avg[2] * avg[2]).sqrt();
-            if al < 1e-15 {
-                return 0.0;
-            }
-            avg[0] /= al;
-            avg[1] /= al;
-            avg[2] /= al;
-            let dot = ni[0] * avg[0] + ni[1] * avg[1] + ni[2] * avg[2];
-            dot.clamp(-1.0, 1.0).acos() * 180.0 / std::f64::consts::PI
+            max_angle
         })
         .collect();
+
     let mut result = mesh.clone();
     result
         .point_data_mut()
@@ -97,6 +65,82 @@ pub fn normal_deviation(mesh: &PolyData) -> PolyData {
         .point_data_mut()
         .set_active_scalars("NormalDeviation");
     result
+}
+
+fn polygon_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
+    if cell.len() < 3 {
+        return [0.0; 3];
+    }
+
+    let mut common_id = None;
+    let mut point_id = 0;
+    let mut v1 = [0.0; 3];
+    while point_id < cell.len() - 2 {
+        let Some(p0) = point(mesh, cell[point_id]) else {
+            return [0.0; 3];
+        };
+        let Some(p1) = point(mesh, cell[point_id + 1]) else {
+            return [0.0; 3];
+        };
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        if norm_squared(v1) > 0.0 {
+            common_id = Some(point_id);
+            point_id += 2;
+            break;
+        }
+        point_id += 1;
+    }
+
+    let Some(common_id) = common_id else {
+        return [0.0; 3];
+    };
+    let Some(p0) = point(mesh, cell[common_id]) else {
+        return [0.0; 3];
+    };
+
+    let mut normal = [0.0; 3];
+    while point_id < cell.len() {
+        let Some(p) = point(mesh, cell[point_id]) else {
+            return [0.0; 3];
+        };
+        let v2 = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
+        let cross = [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+        normal[0] += cross[0];
+        normal[1] += cross[1];
+        normal[2] += cross[2];
+        v1 = v2;
+        point_id += 1;
+    }
+
+    normal
+}
+
+fn point(mesh: &PolyData, id: i64) -> Option<[f64; 3]> {
+    usize::try_from(id)
+        .ok()
+        .filter(|&idx| idx < mesh.points.len())
+        .map(|idx| mesh.points.get(idx))
+}
+
+fn normalize(vector: &mut [f64; 3]) {
+    let length = norm(*vector);
+    if length > 0.0 {
+        vector[0] /= length;
+        vector[1] /= length;
+        vector[2] /= length;
+    }
+}
+
+fn norm(vector: [f64; 3]) -> f64 {
+    norm_squared(vector).sqrt()
+}
+
+fn norm_squared(vector: [f64; 3]) -> f64 {
+    vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]
 }
 
 #[cfg(test)]

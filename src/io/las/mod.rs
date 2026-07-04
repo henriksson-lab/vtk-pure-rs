@@ -19,7 +19,7 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
     let mut header = [0u8; 223]; // remaining header bytes (after signature)
     reader.read_exact(&mut header).map_err(|e| e.to_string())?;
 
-    let _point_format = header[100]; // offset 104 from start - 4
+    let point_format = header[100]; // offset 104 from start - 4
     let point_record_len = u16::from_le_bytes([header[101], header[102]]);
     let num_points =
         u32::from_le_bytes([header[103], header[104], header[105], header[106]]) as usize;
@@ -39,10 +39,17 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
         .map_err(|e| e.to_string())?;
 
     let mut points = Points::<f64>::new();
-    let mut intensity_data = Vec::with_capacity(num_points);
-    let mut classification_data = Vec::with_capacity(num_points);
+    let mut intensity = Vec::with_capacity(num_points);
+    let mut classification = Vec::with_capacity(num_points);
+    let mut color = Vec::with_capacity(num_points * 3);
 
     let mut point_buf = vec![0u8; point_record_len as usize];
+    if point_buf.len() < 14 {
+        return Err(format!(
+            "LAS point record length too small: {}",
+            point_record_len
+        ));
+    }
 
     for _ in 0..num_points {
         if reader.read_exact(&mut point_buf).is_err() {
@@ -61,33 +68,45 @@ pub fn read_las<R: Read + Seek>(reader: &mut R) -> Result<PolyData, String> {
         points.push([x, y, z]);
 
         // Intensity (u16 at offset 12)
-        if point_buf.len() >= 14 {
-            let intensity = u16::from_le_bytes([point_buf[12], point_buf[13]]);
-            intensity_data.push(intensity as f64);
-        }
+        let point_intensity = u16::from_le_bytes([point_buf[12], point_buf[13]]);
+        intensity.push(point_intensity);
 
-        // Classification (u8 at offset 15)
-        if point_buf.len() >= 16 {
-            classification_data.push(point_buf[15] as f64);
+        match point_format {
+            2 | 3 | 5 if point_buf.len() >= 26 => {
+                color.push(u16::from_le_bytes([point_buf[20], point_buf[21]]));
+                color.push(u16::from_le_bytes([point_buf[22], point_buf[23]]));
+                color.push(u16::from_le_bytes([point_buf[24], point_buf[25]]));
+            }
+            0 | 1 if point_buf.len() >= 16 => {
+                classification.push(point_buf[15] as u16);
+            }
+            _ => {}
         }
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
+    for i in 0..mesh.points.len() {
+        mesh.verts.push_cell(&[i as i64]);
+    }
 
-    if !intensity_data.is_empty() {
+    if !intensity.is_empty() {
         mesh.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "Intensity",
-                intensity_data,
+            .add_array(AnyDataArray::U16(DataArray::from_vec(
+                "intensity",
+                intensity,
                 1,
             )));
     }
-    if !classification_data.is_empty() {
+    if !color.is_empty() {
         mesh.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "Classification",
-                classification_data,
+            .add_array(AnyDataArray::U16(DataArray::from_vec("color", color, 3)));
+    }
+    if !classification.is_empty() {
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::U16(DataArray::from_vec(
+                "classification",
+                classification,
                 1,
             )));
     }
@@ -208,6 +227,8 @@ mod tests {
         let mut cursor = std::io::Cursor::new(buf);
         let loaded = read_las(&mut cursor).unwrap();
         assert_eq!(loaded.points.len(), 3);
+        assert_eq!(loaded.verts.num_cells(), 3);
+        assert!(loaded.point_data().get_array("intensity").is_some());
 
         // Check approximate coordinate preservation
         let p = loaded.points.get(0);
@@ -222,5 +243,25 @@ mod tests {
         let mut buf = Vec::new();
         write_las(&mut buf, &mesh).unwrap();
         assert!(buf.is_empty()); // no output for empty
+    }
+
+    #[test]
+    fn reads_format_two_color_array() {
+        let mut buf = Vec::new();
+        write_las(&mut buf, &PolyData::from_points(vec![[1.0, 2.0, 3.0]])).unwrap();
+        buf[104] = 2;
+        buf[105..107].copy_from_slice(&26u16.to_le_bytes());
+        buf.extend_from_slice(&[10, 0, 20, 0, 30, 0]);
+
+        let mut cursor = std::io::Cursor::new(buf);
+        let loaded = read_las(&mut cursor).unwrap();
+
+        assert!(loaded.point_data().get_array("intensity").is_some());
+        let color = loaded.point_data().get_array("color").unwrap();
+        assert_eq!(color.num_components(), 3);
+        let mut tuple = [0.0; 3];
+        color.tuple_as_f64(0, &mut tuple);
+        assert_eq!(tuple, [10.0, 20.0, 30.0]);
+        assert!(loaded.point_data().get_array("classification").is_none());
     }
 }

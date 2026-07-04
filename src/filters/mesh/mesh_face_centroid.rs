@@ -1,10 +1,17 @@
 //! Compute face centroids as a point cloud.
 use crate::data::{CellArray, Points, PolyData};
 pub fn face_centroids(mesh: &PolyData) -> PolyData {
+    let num_points = mesh.points.len();
     let mut pts = Points::<f64>::new();
     let mut verts = CellArray::new();
     for cell in mesh.polys.iter() {
         if cell.is_empty() {
+            continue;
+        }
+        if !cell
+            .iter()
+            .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < num_points))
+        {
             continue;
         }
         let mut cx = 0.0;

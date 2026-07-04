@@ -41,21 +41,24 @@ pub fn image_not(input: &ImageData, scalars: &str, threshold: f64, output: &str)
         None => return input.clone(),
     };
     let n = arr.num_tuples();
-    let mut buf = [0.0f64];
-    let values: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            if buf[0] >= threshold {
-                0.0
-            } else {
-                1.0
-            }
-        })
-        .collect();
+    let num_components = arr.num_components();
+    if num_components == 0 {
+        return input.clone();
+    }
+    let mut buf = vec![0.0f64; num_components];
+    let mut values = Vec::with_capacity(n * num_components);
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values.extend(buf.iter().map(|&v| if v >= threshold { 0.0 } else { 1.0 }));
+    }
 
     let mut img = input.clone();
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(output, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            output,
+            values,
+            num_components,
+        )));
     img
 }
 
@@ -78,24 +81,36 @@ where
         Some(x) => x,
         None => return a.clone(),
     };
-    let n = arr_a.num_tuples().min(arr_b.num_tuples());
-    let mut ba = [0.0f64];
-    let mut bb = [0.0f64];
-    let values: Vec<f64> = (0..n)
-        .map(|i| {
-            arr_a.tuple_as_f64(i, &mut ba);
-            arr_b.tuple_as_f64(i, &mut bb);
-            if op(ba[0] >= threshold, bb[0] >= threshold) {
+    if arr_a.num_tuples() != arr_b.num_tuples() {
+        return a.clone();
+    }
+    let num_components = arr_a.num_components();
+    if num_components == 0 || arr_b.num_components() != num_components {
+        return a.clone();
+    }
+    let n = arr_a.num_tuples();
+    let mut ba = vec![0.0f64; num_components];
+    let mut bb = vec![0.0f64; num_components];
+    let mut values = Vec::with_capacity(n * num_components);
+    for i in 0..n {
+        arr_a.tuple_as_f64(i, &mut ba);
+        arr_b.tuple_as_f64(i, &mut bb);
+        values.extend(ba.iter().zip(bb.iter()).map(|(&va, &vb)| {
+            if op(va >= threshold, vb >= threshold) {
                 1.0
             } else {
                 0.0
             }
-        })
-        .collect();
+        }));
+    }
 
     let mut img = a.clone();
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(output, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            output,
+            values,
+            num_components,
+        )));
     img
 }
 
@@ -166,5 +181,50 @@ mod tests {
         assert_eq!(buf[0], 0.0); // both true
         arr.tuple_as_f64(1, &mut buf);
         assert_eq!(buf[0], 1.0);
+    }
+
+    #[test]
+    fn logical_ops_process_all_components() {
+        let mut a = ImageData::with_dimensions(2, 1, 1);
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "m",
+                vec![1.0, 0.0, 0.0, 1.0],
+                2,
+            )));
+        let mut b = ImageData::with_dimensions(2, 1, 1);
+        b.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "m",
+                vec![1.0, 1.0, 0.0, 0.0],
+                2,
+            )));
+
+        let r = image_and(&a, &b, "m", 0.5, "out");
+        let arr = r.point_data().get_array("out").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64, 0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [1.0, 0.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn not_processes_all_components() {
+        let mut a = ImageData::with_dimensions(1, 1, 1);
+        a.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "m",
+                vec![1.0, 0.0],
+                2,
+            )));
+
+        let r = image_not(&a, "m", 0.5, "out");
+        let arr = r.point_data().get_array("out").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64, 0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [0.0, 1.0]);
     }
 }

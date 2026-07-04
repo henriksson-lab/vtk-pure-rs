@@ -1,12 +1,21 @@
 //! Decimate by collapsing shortest edges.
 use crate::data::{CellArray, Points, PolyData};
 pub fn collapse_short_edges(mesh: &PolyData, min_length: f64) -> PolyData {
+    if !min_length.is_finite() || min_length <= 0.0 {
+        return mesh.clone();
+    }
     let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
-    let mut tris: Vec<[usize; 3]> = mesh
+    let tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| {
+            Some([
+                valid_point_id(c[0], mesh.points.len())?,
+                valid_point_id(c[1], mesh.points.len())?,
+                valid_point_id(c[2], mesh.points.len())?,
+            ])
+        })
         .collect();
     let npts = pts.len();
     let ml2 = min_length * min_length;
@@ -75,6 +84,10 @@ fn res(mut v: usize, remap: &[usize]) -> usize {
         v = remap[v];
     }
     v
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 #[cfg(test)]
 mod tests {

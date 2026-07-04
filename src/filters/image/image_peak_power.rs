@@ -10,7 +10,7 @@ pub fn image_peak_power(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] / buf[0].abs().max(1e-15)
+            buf[0] * buf[0]
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,17 @@ mod tests {
         );
         let r = image_peak_power(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn squares_peak_amplitude() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-3.0, 0.0, 2.0], 1),
+        ));
+
+        let r = image_peak_power(&img, "v");
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+
+        assert_eq!(values, vec![9.0, 0.0, 4.0]);
     }
 }

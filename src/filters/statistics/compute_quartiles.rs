@@ -40,9 +40,9 @@ pub fn compute_quartiles_array(array: &AnyDataArray) -> Option<Quartiles> {
     }
     values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
-    let q1 = percentile(&values, 0.25);
-    let median = percentile(&values, 0.5);
-    let q3 = percentile(&values, 0.75);
+    let q1 = ntile(&values, 1, 4);
+    let median = ntile(&values, 2, 4);
+    let q3 = ntile(&values, 3, 4);
     let iqr = q3 - q1;
 
     Some(Quartiles {
@@ -111,16 +111,12 @@ pub fn five_number_summary(table: &Table) -> Table {
     result
 }
 
-fn percentile(sorted: &[f64], p: f64) -> f64 {
+fn ntile(sorted: &[f64], k: usize, intervals: usize) -> f64 {
     let n = sorted.len();
-    if n == 1 {
-        return sorted[0];
-    }
-    let idx = p * (n - 1) as f64;
-    let lo = idx.floor() as usize;
-    let hi = idx.ceil() as usize;
-    let frac = idx - lo as f64;
-    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+    let np = k as f64 * n as f64 / intervals as f64;
+    let q_idx1 = np.round().clamp(1.0, n as f64) as usize;
+    let q_idx2 = (np + 1.0).floor().clamp(1.0, n as f64) as usize;
+    0.5 * (sorted[q_idx1 - 1] + sorted[q_idx2 - 1])
 }
 
 #[cfg(test)]
@@ -137,7 +133,9 @@ mod tests {
         let q = compute_quartiles_array(&arr).unwrap();
         assert_eq!(q.min, 1.0);
         assert_eq!(q.max, 8.0);
+        assert!((q.q1 - 2.5).abs() < 0.01);
         assert!((q.median - 4.5).abs() < 0.01);
+        assert!((q.q3 - 6.5).abs() < 0.01);
         assert!(q.q1 < q.median);
         assert!(q.q3 > q.median);
         assert!(q.iqr > 0.0);

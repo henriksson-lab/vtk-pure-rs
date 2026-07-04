@@ -17,6 +17,9 @@ pub fn image_structure_tensor(input: &ImageData, scalars: &str, radius: usize) -
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
     let sp = input.spacing();
+    if n == 0 || arr.num_tuples() != n || sp[0] == 0.0 || sp[1] == 0.0 {
+        return input.clone();
+    }
     let r = radius.max(1) as i64;
 
     let mut buf = [0.0f64];
@@ -41,10 +44,6 @@ pub fn image_structure_tensor(input: &ImageData, scalars: &str, radius: usize) -
             for i in 0..nx {
                 let ii = i as i64;
                 let jj = j as i64;
-                // Gradient at this point
-                let gx = (get(ii + 1, jj, k) - get(ii - 1, jj, k)) / (2.0 * sp[0]);
-                let gy = (get(ii, jj + 1, k) - get(ii, jj - 1, k)) / (2.0 * sp[1]);
-
                 // Accumulate structure tensor in neighborhood
                 let mut sxx = 0.0;
                 let mut sxy = 0.0;

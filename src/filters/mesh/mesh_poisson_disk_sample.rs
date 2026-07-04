@@ -2,11 +2,17 @@
 use crate::data::{CellArray, Points, PolyData};
 
 pub fn poisson_disk_sample(mesh: &PolyData, min_distance: f64, seed: u64) -> PolyData {
+    let n = mesh.points.len();
     let tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| {
+            let a = usize::try_from(c[0]).ok()?;
+            let b = usize::try_from(c[1]).ok()?;
+            let c = usize::try_from(c[2]).ok()?;
+            (a < n && b < n && c < n).then_some([a, b, c])
+        })
         .collect();
     if tris.is_empty() {
         return PolyData::new();
@@ -37,7 +43,7 @@ pub fn poisson_disk_sample(mesh: &PolyData, min_distance: f64, seed: u64) -> Pol
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((rng >> 33) as f64) / (u32::MAX as f64)
+        ((rng >> 11) as f64) * (1.0 / ((1u64 << 53) as f64))
     };
     let mut samples: Vec<[f64; 3]> = Vec::new();
     let min_d2 = min_distance * min_distance;
@@ -103,5 +109,23 @@ mod tests {
         );
         let r = poisson_disk_sample(&mesh, 1.0, 42);
         assert!(r.points.len() > 5);
+    }
+
+    #[test]
+    fn samples_all_weighted_triangles() {
+        let mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [11.0, 0.0, 0.0],
+                [10.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
+        );
+        let r = poisson_disk_sample(&mesh, 0.1, 42);
+        assert!(r.points.iter().any(|p| p[0] < 1.0));
+        assert!(r.points.iter().any(|p| p[0] > 10.0));
     }
 }

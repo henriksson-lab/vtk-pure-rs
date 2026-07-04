@@ -11,14 +11,28 @@ pub fn build_laplacian(mesh: &PolyData) -> LaplacianMatrix {
     let n = mesh.points.len();
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                adj[a].insert(b);
-                adj[b].insert(a);
-            }
+        for i in 0..cell.len() {
+            add_edge(&mut adj, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(&mut adj, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_edge(&mut adj, n, tri[0], tri[1]);
+            add_edge(&mut adj, n, tri[1], tri[2]);
+            add_edge(&mut adj, n, tri[2], tri[0]);
         }
     }
     let diag: Vec<f64> = adj.iter().map(|s| s.len() as f64).collect();
@@ -45,6 +59,19 @@ pub fn laplacian_diagonal(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("LaplacianDiag");
     result
+}
+
+fn add_edge(adj: &mut [std::collections::HashSet<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    adj[a].insert(b);
+    adj[b].insert(a);
 }
 
 #[cfg(test)]

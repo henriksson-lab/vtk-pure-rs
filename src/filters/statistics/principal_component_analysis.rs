@@ -72,29 +72,19 @@ pub fn pca(table: &Table, max_components: usize) -> Option<PcaResult> {
         }
     }
 
-    // Power iteration for eigendecomposition
     let num_components = max_components.min(p);
+    let mut components = jacobi_eigen_decomposition(cov);
+    components.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+    let total_variance: f64 = components.iter().map(|(eval, _)| eval.max(0.0)).sum();
+
     let mut eigenvalues = Vec::new();
     let mut eigenvectors = Vec::new();
-    let mut deflated = cov.clone();
-
-    for _ in 0..num_components {
-        let (eval, evec) = power_iteration(&deflated, 200);
-        if eval.abs() < 1e-15 {
-            break;
-        }
+    for (eval, evec) in components.into_iter().take(num_components) {
+        let eval = eval.max(0.0);
         eigenvalues.push(eval);
-        eigenvectors.push(evec.clone());
-
-        // Deflate: A = A - λ * v * v^T
-        for i in 0..p {
-            for j in 0..p {
-                deflated[i][j] -= eval * evec[i] * evec[j];
-            }
-        }
+        eigenvectors.push(evec);
     }
 
-    let total_variance: f64 = eigenvalues.iter().sum();
     let explained_variance_ratio = if total_variance > 1e-15 {
         eigenvalues.iter().map(|e| e / total_variance).collect()
     } else {
@@ -160,53 +150,72 @@ fn extract_scalar_columns(table: &Table) -> Vec<Vec<f64>> {
     cols
 }
 
-fn power_iteration(matrix: &[Vec<f64>], max_iter: usize) -> (f64, Vec<f64>) {
-    let p = matrix.len();
-    if p == 0 {
-        return (0.0, Vec::new());
+fn jacobi_eigen_decomposition(mut matrix: Vec<Vec<f64>>) -> Vec<(f64, Vec<f64>)> {
+    let n = matrix.len();
+    if n == 0 {
+        return Vec::new();
     }
 
-    let mut v = vec![1.0 / (p as f64).sqrt(); p];
+    let mut eigenvectors = vec![vec![0.0; n]; n];
+    for i in 0..n {
+        eigenvectors[i][i] = 1.0;
+    }
 
-    for _ in 0..max_iter {
-        // w = A * v
-        let mut w = vec![0.0; p];
-        for i in 0..p {
-            for j in 0..p {
-                w[i] += matrix[i][j] * v[j];
+    for _ in 0..(100 * n * n) {
+        let mut p = 0;
+        let mut q = 0;
+        let mut max_offdiag = 0.0f64;
+        for i in 0..n {
+            for j in i + 1..n {
+                let value = matrix[i][j].abs();
+                if value > max_offdiag {
+                    max_offdiag = value;
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if max_offdiag < 1e-12 {
+            break;
+        }
+
+        let app = matrix[p][p];
+        let aqq = matrix[q][q];
+        let apq = matrix[p][q];
+        let theta = 0.5 * (2.0 * apq).atan2(aqq - app);
+        let c = theta.cos();
+        let s = theta.sin();
+
+        for i in 0..n {
+            if i != p && i != q {
+                let aip = matrix[i][p];
+                let aiq = matrix[i][q];
+                matrix[i][p] = c * aip - s * aiq;
+                matrix[p][i] = matrix[i][p];
+                matrix[i][q] = s * aip + c * aiq;
+                matrix[q][i] = matrix[i][q];
             }
         }
 
-        // eigenvalue = v^T * w
-        let _eigenvalue: f64 = v.iter().zip(w.iter()).map(|(a, b)| a * b).sum();
+        matrix[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        matrix[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        matrix[p][q] = 0.0;
+        matrix[q][p] = 0.0;
 
-        // Normalize w
-        let norm = w.iter().map(|x| x * x).sum::<f64>().sqrt();
-        if norm < 1e-15 {
-            break;
-        }
-        for x in &mut w {
-            *x /= norm;
-        }
-
-        // Check convergence
-        let diff: f64 = v.iter().zip(w.iter()).map(|(a, b)| (a - b).abs()).sum();
-        v = w;
-        if diff < 1e-12 {
-            break;
+        for row in &mut eigenvectors {
+            let vip = row[p];
+            let viq = row[q];
+            row[p] = c * vip - s * viq;
+            row[q] = s * vip + c * viq;
         }
     }
 
-    let mut eigenvalue = 0.0;
-    for i in 0..p {
-        let mut av_i = 0.0;
-        for j in 0..p {
-            av_i += matrix[i][j] * v[j];
-        }
-        eigenvalue += v[i] * av_i;
-    }
-
-    (eigenvalue, v)
+    (0..n)
+        .map(|i| {
+            let eigenvector = (0..n).map(|row| eigenvectors[row][i]).collect();
+            (matrix[i][i], eigenvector)
+        })
+        .collect()
 }
 
 #[cfg(test)]

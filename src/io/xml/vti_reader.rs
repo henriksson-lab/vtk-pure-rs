@@ -5,8 +5,8 @@ use crate::data::ImageData;
 use crate::types::VtkError;
 
 use crate::io::xml::vtp_reader::{
-    extract_appended_base64, extract_appended_raw, extract_attr, extract_section,
-    parse_attribute_arrays,
+    extract_appended_base64, extract_appended_raw, extract_attr, extract_section_with_tag,
+    parse_attribute_arrays_with_hints,
 };
 
 /// Reader for VTK XML ImageData format (.vti).
@@ -63,25 +63,39 @@ impl VtiReader {
                     image.set_spacing([vals[0], vals[1], vals[2]]);
                 }
             }
+            if let Some(direction_str) = extract_attr(&id_tag, "Direction") {
+                let vals: Vec<f64> = direction_str
+                    .split_whitespace()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                if vals.len() == 9 && !is_identity_direction(&vals) {
+                    return Err(VtkError::Parse(
+                        "ImageData Direction is not supported by this axis-aligned data model"
+                            .into(),
+                    ));
+                }
+            }
         }
 
         // Parse PointData
-        if let Some(pd_section) = extract_section(&content, "PointData") {
-            parse_attribute_arrays(
+        if let Some((tag, pd_section)) = extract_section_with_tag(&content, "PointData") {
+            parse_attribute_arrays_with_hints(
                 &pd_section,
                 image.point_data_mut(),
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                Some(&tag),
             )?;
         }
 
         // Parse CellData
-        if let Some(cd_section) = extract_section(&content, "CellData") {
-            parse_attribute_arrays(
+        if let Some((tag, cd_section)) = extract_section_with_tag(&content, "CellData") {
+            parse_attribute_arrays_with_hints(
                 &cd_section,
                 image.cell_data_mut(),
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                Some(&tag),
             )?;
         }
 
@@ -94,6 +108,13 @@ fn find_tag(content: &str, tag: &str) -> Option<String> {
     let start = content.find(&pattern)?;
     let end = content[start..].find('>')?;
     Some(content[start..start + end + 1].to_string())
+}
+
+fn is_identity_direction(vals: &[f64]) -> bool {
+    const IDENTITY: [f64; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+    vals.iter()
+        .zip(IDENTITY)
+        .all(|(&a, b)| (a - b).abs() <= f64::EPSILON)
 }
 
 #[cfg(test)]

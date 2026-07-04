@@ -15,24 +15,31 @@ pub fn edge_histogram(mesh: &PolyData, n_bins: usize) -> EdgeHistogram {
     let nb = n_bins.max(1);
     let mut lengths = Vec::new();
     let mut seen = std::collections::HashSet::new();
+    for cell in mesh.lines.iter() {
+        for pair in cell.windows(2) {
+            insert_edge_length(mesh, n, pair[0], pair[1], &mut seen, &mut lengths);
+        }
+    }
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a >= n || b >= n {
-                continue;
-            }
-            let e = if a < b { (a, b) } else { (b, a) };
-            if !seen.insert(e) {
-                continue;
-            }
-            let pa = mesh.points.get(a);
-            let pb = mesh.points.get(b);
-            lengths.push(
-                ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                    .sqrt(),
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_edge_length(
+                mesh,
+                n,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+                &mut seen,
+                &mut lengths,
             );
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge_length(mesh, n, tri[0], tri[1], &mut seen, &mut lengths);
+            insert_edge_length(mesh, n, tri[1], tri[2], &mut seen, &mut lengths);
+            insert_edge_length(mesh, n, tri[2], tri[0], &mut seen, &mut lengths);
         }
     }
     if lengths.is_empty() {
@@ -65,6 +72,30 @@ pub fn edge_histogram(mesh: &PolyData, n_bins: usize) -> EdgeHistogram {
         mean_length: mean_l,
         total_edges: lengths.len(),
     }
+}
+
+fn insert_edge_length(
+    mesh: &PolyData,
+    n: usize,
+    a: i64,
+    b: i64,
+    seen: &mut std::collections::HashSet<(usize, usize)>,
+    lengths: &mut Vec<f64>,
+) {
+    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
+        return;
+    };
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    let e = if a < b { (a, b) } else { (b, a) };
+    if !seen.insert(e) {
+        return;
+    }
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    lengths
+        .push(((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt());
 }
 
 #[cfg(test)]

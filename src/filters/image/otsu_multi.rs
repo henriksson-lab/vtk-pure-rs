@@ -9,6 +9,9 @@ pub fn otsu_threshold_value(input: &ImageData, scalars: &str, bins: usize) -> f6
         _ => return 0.0,
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return 0.0;
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -62,9 +65,15 @@ pub fn otsu_threshold_value(input: &ImageData, scalars: &str, bins: usize) -> f6
 
 /// Apply Otsu threshold and return binary image.
 pub fn otsu_binary(input: &ImageData, scalars: &str, bins: usize) -> ImageData {
-    let thresh = otsu_threshold_value(input, scalars, bins);
-    let arr = input.point_data().get_array(scalars).unwrap();
+    let arr = match input.point_data().get_array(scalars) {
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
+    };
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
+    let thresh = otsu_threshold_value(input, scalars, bins);
     let mut buf = [0.0f64];
     let data: Vec<f64> = (0..n)
         .map(|i| {
@@ -90,6 +99,9 @@ pub fn otsu_multi_level(input: &ImageData, scalars: &str, levels: usize) -> Imag
         _ => return input.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -124,16 +136,67 @@ fn find_thresholds_recursive(vals: &[f64], remaining: usize, thresholds: &mut Ve
     if remaining == 0 || vals.len() < 2 {
         return;
     }
-    let mn = vals.iter().cloned().fold(f64::INFINITY, f64::min);
-    let mx = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let mid = (mn + mx) / 2.0;
-    thresholds.push(mid);
+    let threshold = match otsu_threshold_from_values(vals, 256) {
+        Some(t) => t,
+        None => return,
+    };
+    thresholds.push(threshold);
     if remaining > 1 {
-        let lo: Vec<f64> = vals.iter().filter(|&&v| v < mid).cloned().collect();
-        let hi: Vec<f64> = vals.iter().filter(|&&v| v >= mid).cloned().collect();
+        let lo: Vec<f64> = vals.iter().filter(|&&v| v < threshold).cloned().collect();
+        let hi: Vec<f64> = vals.iter().filter(|&&v| v >= threshold).cloned().collect();
         find_thresholds_recursive(&lo, remaining / 2, thresholds);
         find_thresholds_recursive(&hi, remaining - remaining / 2 - 1, thresholds);
     }
+}
+
+fn otsu_threshold_from_values(vals: &[f64], bins: usize) -> Option<f64> {
+    if vals.len() < 2 {
+        return None;
+    }
+    let mn = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+    let mx = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    if !mn.is_finite() || !mx.is_finite() || mx <= mn {
+        return None;
+    }
+    let bins = bins.max(2);
+    let range = mx - mn;
+    let mut hist = vec![0usize; bins];
+    for &v in vals {
+        let bi = (((v - mn) / range * bins as f64).floor() as usize).min(bins - 1);
+        hist[bi] += 1;
+    }
+
+    let total = vals.len() as f64;
+    let mut sum_total = 0.0;
+    for (i, &count) in hist.iter().enumerate() {
+        sum_total += i as f64 * count as f64;
+    }
+
+    let mut best_thresh = None;
+    let mut best_var = 0.0f64;
+    let mut w0 = 0.0;
+    let mut sum0 = 0.0;
+
+    for (t, &count) in hist.iter().enumerate() {
+        w0 += count as f64;
+        if w0 == 0.0 {
+            continue;
+        }
+        let w1 = total - w0;
+        if w1 == 0.0 {
+            break;
+        }
+        sum0 += t as f64 * count as f64;
+        let m0 = sum0 / w0;
+        let m1 = (sum_total - sum0) / w1;
+        let var = w0 * w1 * (m0 - m1) * (m0 - m1);
+        if var > best_var {
+            best_var = var;
+            best_thresh = Some(t);
+        }
+    }
+
+    best_thresh.map(|t| mn + (t as f64 + 0.5) / bins as f64 * range)
 }
 
 #[cfg(test)]

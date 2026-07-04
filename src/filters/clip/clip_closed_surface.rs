@@ -9,7 +9,7 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Clip a triangle mesh by a plane and cap the cross-section.
 ///
-/// Keeps the half-space where `dot(p - origin, normal) > 0`.
+/// Keeps the half-space where `dot(p - origin, normal) >= 0`.
 /// Triangles crossing the plane are split, and a cap polygon is generated
 /// from the intersection edges to close the mesh.
 ///
@@ -53,8 +53,8 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
             })
             .collect();
 
-        let all_inside = dists.iter().all(|&d| d > 0.0);
-        let all_outside = dists.iter().all(|&d| d <= 0.0);
+        let all_inside = dists.iter().all(|&d| d >= 0.0);
+        let all_outside = dists.iter().all(|&d| d < 0.0);
 
         if all_inside {
             out_polys.push_cell(cell);
@@ -144,12 +144,12 @@ fn clip_and_collect(
         let di = dists[i];
         let dj = dists[j];
 
-        if di > 0.0 {
+        if di >= 0.0 {
             result.push(cell[i]);
         }
 
         // Check for crossing
-        if (di > 0.0) != (dj > 0.0) {
+        if (di >= 0.0) != (dj >= 0.0) {
             let edge_key = if cell[i] < cell[j] {
                 (cell[i], cell[j])
             } else {

@@ -6,6 +6,9 @@ pub fn persistence_simplify(mesh: &PolyData, array_name: &str, min_persistence: 
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {

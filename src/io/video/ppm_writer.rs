@@ -22,8 +22,20 @@ pub fn write_ppm_sequence(seq: &FrameSequence, dir: &Path) -> Result<(), String>
 
 /// Write a single PPM P6 binary file.
 pub fn write_ppm(path: &Path, width: u32, height: u32, rgb: &[u8]) -> Result<(), String> {
+    let expected = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|n| n.checked_mul(3))
+        .ok_or_else(|| "image dimensions are too large".to_string())?;
+    if rgb.len() != expected {
+        return Err(format!(
+            "pixel data size mismatch: expected {expected}, got {}",
+            rgb.len()
+        ));
+    }
+
     let mut file = std::fs::File::create(path).map_err(|e| format!("create file: {e}"))?;
-    let header = format!("P6\n{width} {height}\n255\n");
+    let header =
+        format!("P6\n# ppm file written by the visualization toolkit\n{width} {height}\n255\n");
     file.write_all(header.as_bytes())
         .map_err(|e| format!("write header: {e}"))?;
     file.write_all(rgb)
@@ -50,10 +62,19 @@ mod tests {
         assert!(ppm_path.exists());
 
         let content = std::fs::read(&ppm_path).unwrap();
-        // PPM header: "P6\n2 2\n255\n" followed by 12 bytes RGB
-        assert!(content.starts_with(b"P6\n2 2\n255\n"));
-        assert_eq!(content.len(), "P6\n2 2\n255\n".len() + 12);
+        // PPM header followed by 12 bytes RGB.
+        let header = "P6\n# ppm file written by the visualization toolkit\n2 2\n255\n";
+        assert!(content.starts_with(header.as_bytes()));
+        assert_eq!(content.len(), header.len() + 12);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_ppm_rejects_wrong_pixel_count() {
+        let path = std::env::temp_dir().join("vtk_bad_ppm_test.ppm");
+        let err = write_ppm(&path, 2, 2, &[0; 3]).unwrap_err();
+        assert!(err.contains("pixel data size mismatch"));
+        let _ = std::fs::remove_file(&path);
     }
 }

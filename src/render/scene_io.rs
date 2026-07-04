@@ -69,6 +69,14 @@ pub fn save_scene_config<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<
             light.color[0], light.color[1], light.color[2]
         )?;
         writeln!(w, "light.{i}.intensity {}", light.intensity)?;
+        if let LightType::Spot {
+            cone_angle,
+            exponent,
+        } = light.light_type
+        {
+            writeln!(w, "light.{i}.cone_angle {cone_angle}")?;
+            writeln!(w, "light.{i}.exponent {exponent}")?;
+        }
     }
     writeln!(w)?;
 
@@ -157,25 +165,31 @@ pub fn load_scene_config<R: BufRead>(r: R, scene: &mut Scene) -> std::io::Result
                 });
             }
             key if key.starts_with("light.") && key.ends_with(".type") => {
+                let Some(index) = light_index(key) else {
+                    continue;
+                };
                 let lt = match parts[1] {
                     "directional" => LightType::Directional,
                     "point" => LightType::Point,
                     "ambient" => LightType::Ambient,
+                    "spot" => LightType::Spot {
+                        cone_angle: 30.0,
+                        exponent: 1.0,
+                    },
                     _ => LightType::Directional,
                 };
-                scene.lights.push(Light {
-                    light_type: lt,
-                    ..Light::default()
-                });
+                let light = ensure_light(&mut scene.lights, index);
+                light.light_type = lt;
             }
             key if key.starts_with("light.") && key.ends_with(".intensity") => {
-                if let Some(light) = scene.lights.last_mut() {
-                    light.intensity = parts[1].parse().unwrap_or(1.0);
+                if let Some(index) = light_index(key) {
+                    ensure_light(&mut scene.lights, index).intensity =
+                        parts[1].parse().unwrap_or(1.0);
                 }
             }
             key if key.starts_with("light.") && key.ends_with(".color") && parts.len() >= 4 => {
-                if let Some(light) = scene.lights.last_mut() {
-                    light.color = [
+                if let Some(index) = light_index(key) {
+                    ensure_light(&mut scene.lights, index).color = [
                         parts[1].parse().unwrap_or(1.0),
                         parts[2].parse().unwrap_or(1.0),
                         parts[3].parse().unwrap_or(1.0),
@@ -183,8 +197,8 @@ pub fn load_scene_config<R: BufRead>(r: R, scene: &mut Scene) -> std::io::Result
                 }
             }
             key if key.starts_with("light.") && key.ends_with(".direction") && parts.len() >= 4 => {
-                if let Some(light) = scene.lights.last_mut() {
-                    light.direction = [
+                if let Some(index) = light_index(key) {
+                    ensure_light(&mut scene.lights, index).direction = [
                         parts[1].parse().unwrap_or(0.0),
                         parts[2].parse().unwrap_or(0.0),
                         parts[3].parse().unwrap_or(-1.0),
@@ -192,12 +206,40 @@ pub fn load_scene_config<R: BufRead>(r: R, scene: &mut Scene) -> std::io::Result
                 }
             }
             key if key.starts_with("light.") && key.ends_with(".position") && parts.len() >= 4 => {
-                if let Some(light) = scene.lights.last_mut() {
-                    light.position = [
+                if let Some(index) = light_index(key) {
+                    ensure_light(&mut scene.lights, index).position = [
                         parts[1].parse().unwrap_or(0.0),
                         parts[2].parse().unwrap_or(0.0),
                         parts[3].parse().unwrap_or(0.0),
                     ];
+                }
+            }
+            key if key.starts_with("light.") && key.ends_with(".cone_angle") => {
+                if let Some(index) = light_index(key) {
+                    let light = ensure_light(&mut scene.lights, index);
+                    let cone_angle = parts[1].parse().unwrap_or(30.0);
+                    let exponent = match light.light_type {
+                        LightType::Spot { exponent, .. } => exponent,
+                        _ => 1.0,
+                    };
+                    light.light_type = LightType::Spot {
+                        cone_angle,
+                        exponent,
+                    };
+                }
+            }
+            key if key.starts_with("light.") && key.ends_with(".exponent") => {
+                if let Some(index) = light_index(key) {
+                    let light = ensure_light(&mut scene.lights, index);
+                    let exponent = parts[1].parse().unwrap_or(1.0);
+                    let cone_angle = match light.light_type {
+                        LightType::Spot { cone_angle, .. } => cone_angle,
+                        _ => 30.0,
+                    };
+                    light.light_type = LightType::Spot {
+                        cone_angle,
+                        exponent,
+                    };
                 }
             }
             _ => {}
@@ -205,6 +247,17 @@ pub fn load_scene_config<R: BufRead>(r: R, scene: &mut Scene) -> std::io::Result
     }
 
     Ok(())
+}
+
+fn light_index(key: &str) -> Option<usize> {
+    key.split('.').nth(1)?.parse().ok()
+}
+
+fn ensure_light(lights: &mut Vec<Light>, index: usize) -> &mut Light {
+    while lights.len() <= index {
+        lights.push(Light::default());
+    }
+    &mut lights[index]
 }
 
 #[cfg(test)]
@@ -251,5 +304,37 @@ mod tests {
 
         assert_eq!(loaded.lights.len(), 1);
         assert!((loaded.lights[0].intensity - 0.8).abs() < 0.01);
+    }
+
+    #[test]
+    fn roundtrip_spot_light() {
+        let mut scene = Scene::new();
+        scene.clear_lights();
+        scene.add_light(Light::spot(
+            [1.0, 2.0, 3.0],
+            [0.0, -1.0, 0.0],
+            [0.8, 0.7, 0.6],
+            1.5,
+            45.0,
+        ));
+
+        let mut buf = Vec::new();
+        save_scene_config(&mut buf, &scene).unwrap();
+
+        let mut loaded = Scene::new();
+        load_scene_config(std::io::BufReader::new(&buf[..]), &mut loaded).unwrap();
+
+        assert_eq!(loaded.lights.len(), 1);
+        match loaded.lights[0].light_type {
+            LightType::Spot {
+                cone_angle,
+                exponent,
+            } => {
+                assert!((cone_angle - 45.0).abs() < 1e-6);
+                assert!((exponent - 1.0).abs() < 1e-6);
+            }
+            _ => panic!("expected spot light"),
+        }
+        assert_eq!(loaded.lights[0].position, [1.0, 2.0, 3.0]);
     }
 }

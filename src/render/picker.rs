@@ -1,5 +1,3 @@
-use crate::data::PolyData;
-
 use crate::render::Scene;
 
 /// Result of a pick operation.
@@ -35,7 +33,11 @@ pub fn pick(
     let mut best: Option<PickResult> = None;
 
     for (actor_idx, actor) in scene.actors.iter().enumerate() {
-        if let Some(hit) = ray_cast_poly_data(&actor.data, ray_origin, ray_dir) {
+        if !actor.visible {
+            continue;
+        }
+
+        if let Some(hit) = ray_cast_actor(actor, ray_origin, ray_dir) {
             let dominated = best.as_ref().is_some_and(|b| hit.1 >= b.t);
             if !dominated {
                 best = Some(PickResult {
@@ -52,9 +54,9 @@ pub fn pick(
     best
 }
 
-/// Ray-cast against PolyData polygons. Returns (cell_id, t, closest_point_id, position).
-fn ray_cast_poly_data(
-    pd: &PolyData,
+/// Ray-cast against an actor's polygons. Returns (cell_id, t, closest_point_id, position).
+fn ray_cast_actor(
+    actor: &crate::render::Actor,
     origin: [f64; 3],
     dir: [f64; 3],
 ) -> Option<(usize, f64, usize, [f64; 3])> {
@@ -70,18 +72,29 @@ fn ray_cast_poly_data(
     let mut best_pos = [0.0; 3];
     let mut found = false;
 
+    let pd = &actor.data;
+    let actor_position = actor.position;
+    let scale = actor.scale;
+
+    let poly_cell_offset = pd.verts.num_cells() + pd.lines.num_cells();
     for (ci, cell) in pd.polys.iter().enumerate() {
         if cell.len() < 3 {
             continue;
         }
-        let v0 = pd.points.get(cell[0] as usize);
+        if !cell
+            .iter()
+            .all(|&id| id >= 0 && (id as usize) < pd.points.len())
+        {
+            continue;
+        }
+        let v0 = transform_point(pd.points.get(cell[0] as usize), actor_position, scale);
         for i in 1..cell.len() - 1 {
-            let v1 = pd.points.get(cell[i] as usize);
-            let v2 = pd.points.get(cell[i + 1] as usize);
+            let v1 = transform_point(pd.points.get(cell[i] as usize), actor_position, scale);
+            let v2 = transform_point(pd.points.get(cell[i + 1] as usize), actor_position, scale);
             if let Some(t) = ray_triangle(origin, d, v0, v1, v2) {
                 if t > 1e-12 && t < best_t {
                     best_t = t;
-                    best_cell = ci;
+                    best_cell = poly_cell_offset + ci;
                     let pos = [
                         origin[0] + t * d[0],
                         origin[1] + t * d[1],
@@ -91,10 +104,53 @@ fn ray_cast_poly_data(
                     // Find closest vertex in cell
                     let mut min_dist2 = f64::INFINITY;
                     for &pid in cell {
-                        let p = pd.points.get(pid as usize);
-                        let dx = p[0] - pos[0];
-                        let dy = p[1] - pos[1];
-                        let dz = p[2] - pos[2];
+                        let p = transform_point(pd.points.get(pid as usize), actor_position, scale);
+                        let dx = p[0] - best_pos[0];
+                        let dy = p[1] - best_pos[1];
+                        let dz = p[2] - best_pos[2];
+                        let dist2 = dx * dx + dy * dy + dz * dz;
+                        if dist2 < min_dist2 {
+                            min_dist2 = dist2;
+                            best_point = pid as usize;
+                        }
+                    }
+                    found = true;
+                }
+            }
+        }
+    }
+    let strip_cell_offset = pd.verts.num_cells() + pd.lines.num_cells() + pd.polys.num_cells();
+    for (strip_id, strip) in pd.strips.iter().enumerate() {
+        if strip.len() < 3 {
+            continue;
+        }
+        if !strip
+            .iter()
+            .all(|&id| id >= 0 && (id as usize) < pd.points.len())
+        {
+            continue;
+        }
+        for sub_id in 0..strip.len() - 2 {
+            let [i0, i1, i2] = triangle_strip_subcell_indices(strip, sub_id);
+            let v0 = transform_point(pd.points.get(i0), actor_position, scale);
+            let v1 = transform_point(pd.points.get(i1), actor_position, scale);
+            let v2 = transform_point(pd.points.get(i2), actor_position, scale);
+            if let Some(t) = ray_triangle(origin, d, v0, v1, v2) {
+                if t > 1e-12 && t < best_t {
+                    best_t = t;
+                    best_cell = strip_cell_offset + strip_id;
+                    let pos = [
+                        origin[0] + t * d[0],
+                        origin[1] + t * d[1],
+                        origin[2] + t * d[2],
+                    ];
+                    best_pos = pos;
+                    let mut min_dist2 = f64::INFINITY;
+                    for &pid in strip {
+                        let p = transform_point(pd.points.get(pid as usize), actor_position, scale);
+                        let dx = p[0] - best_pos[0];
+                        let dy = p[1] - best_pos[1];
+                        let dz = p[2] - best_pos[2];
                         let dist2 = dx * dx + dy * dy + dz * dz;
                         if dist2 < min_dist2 {
                             min_dist2 = dist2;
@@ -112,6 +168,30 @@ fn ray_cast_poly_data(
     } else {
         None
     }
+}
+
+fn triangle_strip_subcell_indices(strip: &[i64], sub_id: usize) -> [usize; 3] {
+    if sub_id & 1 == 0 {
+        [
+            strip[sub_id] as usize,
+            strip[sub_id + 1] as usize,
+            strip[sub_id + 2] as usize,
+        ]
+    } else {
+        [
+            strip[sub_id + 1] as usize,
+            strip[sub_id] as usize,
+            strip[sub_id + 2] as usize,
+        ]
+    }
+}
+
+fn transform_point(p: [f64; 3], position: [f64; 3], scale: f64) -> [f64; 3] {
+    [
+        p[0] * scale + position[0],
+        p[1] * scale + position[1],
+        p[2] * scale + position[2],
+    ]
 }
 
 /// Moller-Trumbore ray-triangle intersection.
@@ -159,6 +239,7 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::PolyData;
     use crate::render::{Actor, Camera, Scene};
 
     #[test]
@@ -200,9 +281,72 @@ mod tests {
     }
 
     #[test]
+    fn pick_respects_actor_transform_and_visibility() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let hidden = Actor::new(pd.clone()).with_visible(false);
+        let translated = Actor::new(pd).with_position(2.0, 0.0, 0.0).with_scale(2.0);
+        let mut scene = Scene::new();
+        scene.add_actor(hidden);
+        scene.add_actor(translated);
+        scene.camera.position = glam::DVec3::new(3.0, 0.6, 5.0);
+        scene.camera.focal_point = glam::DVec3::new(3.0, 0.6, 0.0);
+
+        let result = pick(&scene, 400.0, 300.0, 800, 600).unwrap();
+        assert_eq!(result.actor_index, 1);
+        assert_eq!(result.cell_id, 0);
+        assert!(result.position[0] >= 2.0);
+        assert!(result.position[0] <= 4.0);
+        assert!(result.position[2].abs() < 1e-6);
+    }
+
+    #[test]
+    fn pick_skips_invalid_polygon_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, -1, 2]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let mut scene = Scene::new();
+        scene.add_actor(Actor::new(pd));
+        scene.camera.position = glam::DVec3::new(0.3, 0.3, 5.0);
+        scene.camera.focal_point = glam::DVec3::new(0.3, 0.3, 0.0);
+
+        let result = pick(&scene, 400.0, 300.0, 800, 600).unwrap();
+        assert_eq!(result.cell_id, 2);
+        assert!(result.position[2].abs() < 1e-6);
+    }
+
+    #[test]
+    fn pick_triangle_strip_uses_flat_poly_data_cell_id() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.lines.push_cell(&[0, 1]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let mut scene = Scene::new();
+        scene.add_actor(Actor::new(pd));
+        scene.camera.position = glam::DVec3::new(0.75, 0.75, 5.0);
+        scene.camera.focal_point = glam::DVec3::new(0.75, 0.75, 0.0);
+
+        let result = pick(&scene, 400.0, 300.0, 800, 600).unwrap();
+        assert_eq!(result.cell_id, 2);
+        assert!(result.position[2].abs() < 1e-6);
+    }
+
+    #[test]
     fn unproject_center_ray() {
         let camera = Camera::default();
-        let (origin, dir) = camera.unproject(400.0, 300.0, 800, 600);
+        let (_origin, dir) = camera.unproject(400.0, 300.0, 800, 600);
         // Center of screen should point along camera direction
         let cam_dir = camera.direction();
         let dot = dir.x * cam_dir.x + dir.y * cam_dir.y + dir.z * cam_dir.z;

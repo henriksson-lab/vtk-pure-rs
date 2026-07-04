@@ -9,11 +9,12 @@ use crate::data::{CellArray, Points, PolyData};
 /// compute exact intersection curves.
 pub fn boolean_difference(a: &PolyData, b: &PolyData) -> PolyData {
     // Precompute face normals and face data for mesh B's inside/outside test
+    let a_tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = collect_triangles(a);
     let b_tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = collect_triangles(b);
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
-    let mut point_map: HashMap<usize, usize> = HashMap::new();
+    let mut point_map: HashMap<(usize, usize), usize> = HashMap::new();
 
     for cell in a.polys.iter() {
         if cell.len() < 3 {
@@ -41,23 +42,85 @@ pub fn boolean_difference(a: &PolyData, b: &PolyData) -> PolyData {
         }
 
         // Map and add points
-        let mut new_cell: Vec<i64> = Vec::with_capacity(cell.len());
-        for &idx in cell.iter() {
-            let orig: usize = idx as usize;
-            let mapped: usize = *point_map.entry(orig).or_insert_with(|| {
-                let new_idx: usize = out_points.len();
-                out_points.push(a.points.get(orig));
-                new_idx
-            });
-            new_cell.push(mapped as i64);
+        push_mapped_cell(
+            &mut out_points,
+            &mut out_polys,
+            &mut point_map,
+            0,
+            a,
+            cell,
+            false,
+        );
+    }
+
+    for cell in b.polys.iter() {
+        if cell.len() < 3 {
+            continue;
         }
-        out_polys.push_cell(&new_cell);
+
+        let mut cx: f64 = 0.0;
+        let mut cy: f64 = 0.0;
+        let mut cz: f64 = 0.0;
+        let count: f64 = cell.len() as f64;
+        for &idx in cell.iter() {
+            let p = b.points.get(idx as usize);
+            cx += p[0];
+            cy += p[1];
+            cz += p[2];
+        }
+        cx /= count;
+        cy /= count;
+        cz /= count;
+
+        // VTK difference keeps the second input's intersection portion and
+        // reverses its winding when ReorientDifferenceCells is enabled.
+        if !is_inside_mesh([cx, cy, cz], &a_tris) {
+            continue;
+        }
+
+        push_mapped_cell(
+            &mut out_points,
+            &mut out_polys,
+            &mut point_map,
+            1,
+            b,
+            cell,
+            true,
+        );
     }
 
     let mut result = PolyData::new();
     result.points = out_points;
     result.polys = out_polys;
     result
+}
+
+fn push_mapped_cell(
+    out_points: &mut Points<f64>,
+    out_polys: &mut CellArray,
+    point_map: &mut HashMap<(usize, usize), usize>,
+    source_id: usize,
+    source: &PolyData,
+    cell: &[i64],
+    reverse: bool,
+) {
+    let ids: Box<dyn Iterator<Item = &i64>> = if reverse {
+        Box::new(cell.iter().rev())
+    } else {
+        Box::new(cell.iter())
+    };
+
+    let mut new_cell: Vec<i64> = Vec::with_capacity(cell.len());
+    for &idx in ids {
+        let orig: usize = idx as usize;
+        let mapped: usize = *point_map.entry((source_id, orig)).or_insert_with(|| {
+            let new_idx: usize = out_points.len();
+            out_points.push(source.points.get(orig));
+            new_idx
+        });
+        new_cell.push(mapped as i64);
+    }
+    out_polys.push_cell(&new_cell);
 }
 
 fn collect_triangles(pd: &PolyData) -> Vec<([f64; 3], [f64; 3], [f64; 3])> {
@@ -79,18 +142,20 @@ fn collect_triangles(pd: &PolyData) -> Vec<([f64; 3], [f64; 3], [f64; 3])> {
 /// Ray-casting inside/outside test. Cast a ray in +X direction from point and
 /// count intersections with triangles.
 fn is_inside_mesh(point: [f64; 3], tris: &[([f64; 3], [f64; 3], [f64; 3])]) -> bool {
-    let mut crossings: usize = 0;
+    let mut intersections: Vec<f64> = Vec::new();
     let origin = point;
     let dir: [f64; 3] = [1.0, 0.0, 0.0]; // +X ray
 
     for &(v0, v1, v2) in tris {
-        if ray_triangle_intersect(origin, dir, v0, v1, v2) {
-            crossings += 1;
+        if let Some(t) = ray_triangle_intersect(origin, dir, v0, v1, v2) {
+            if !intersections.iter().any(|&prev| (prev - t).abs() < 1e-9) {
+                intersections.push(t);
+            }
         }
     }
 
     // Odd number of crossings means inside
-    crossings % 2 == 1
+    intersections.len() % 2 == 1
 }
 
 /// Moller-Trumbore ray-triangle intersection test.
@@ -100,7 +165,7 @@ fn ray_triangle_intersect(
     v0: [f64; 3],
     v1: [f64; 3],
     v2: [f64; 3],
-) -> bool {
+) -> Option<f64> {
     let eps: f64 = 1e-10;
 
     let e1: [f64; 3] = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
@@ -110,7 +175,7 @@ fn ray_triangle_intersect(
     let a: f64 = dot(e1, h);
 
     if a.abs() < eps {
-        return false;
+        return None;
     }
 
     let f: f64 = 1.0 / a;
@@ -118,18 +183,22 @@ fn ray_triangle_intersect(
     let u: f64 = f * dot(s, h);
 
     if u < 0.0 || u > 1.0 {
-        return false;
+        return None;
     }
 
     let q: [f64; 3] = cross(s, e1);
     let v: f64 = f * dot(dir, q);
 
     if v < 0.0 || u + v > 1.0 {
-        return false;
+        return None;
     }
 
     let t: f64 = f * dot(e2, q);
-    t > eps
+    if t > eps {
+        Some(t)
+    } else {
+        None
+    }
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -206,6 +275,19 @@ mod tests {
             result.polys.num_cells(),
             0,
             "all faces of a should be inside b"
+        );
+    }
+
+    #[test]
+    fn difference_keeps_reversed_inner_surface() {
+        let a = make_box(2.0);
+        let b = make_box(0.5);
+
+        let result = boolean_difference(&a, &b);
+        assert_eq!(
+            result.polys.num_cells(),
+            24,
+            "difference should keep A outside B plus B inside A"
         );
     }
 

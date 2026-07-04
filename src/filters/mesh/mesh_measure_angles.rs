@@ -2,9 +2,14 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Compute minimum interior angle per triangle (degrees).
 pub fn min_angles(mesh: &PolyData) -> PolyData {
+    let num_points = mesh.points.len();
     let mut data = Vec::new();
     for cell in mesh.polys.iter() {
-        if cell.len() != 3 {
+        if cell.len() != 3
+            || !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < num_points))
+        {
             data.push(0.0);
             continue;
         }
@@ -41,9 +46,14 @@ pub fn min_angles(mesh: &PolyData) -> PolyData {
 }
 /// Compute maximum interior angle per triangle (degrees).
 pub fn max_angles(mesh: &PolyData) -> PolyData {
+    let num_points = mesh.points.len();
     let mut data = Vec::new();
     for cell in mesh.polys.iter() {
-        if cell.len() != 3 {
+        if cell.len() != 3
+            || !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < num_points))
+        {
             data.push(0.0);
             continue;
         }

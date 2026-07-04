@@ -10,9 +10,9 @@ pub fn image_nuttall_window(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.3635819 - 0.4891775 * (buf[0] * std::f64::consts::PI).cos()
-                + 0.1365995 * (2.0 * buf[0] * std::f64::consts::PI).cos()
-                - 0.0106411 * (3.0 * buf[0] * std::f64::consts::PI).cos()
+            0.3635819 - 0.4891775 * (2.0 * buf[0] * std::f64::consts::PI).cos()
+                + 0.1365995 * (4.0 * buf[0] * std::f64::consts::PI).cos()
+                - 0.0106411 * (6.0 * buf[0] * std::f64::consts::PI).cos()
         })
         .collect();
     let dims = input.dimensions();
@@ -35,5 +35,27 @@ mod tests {
         );
         let r = image_nuttall_window(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn normalized_nuttall_window_values() {
+        let img = ImageData::from_function(
+            [3, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, _, _| x / 2.0,
+        );
+
+        let r = image_nuttall_window(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.0003628).abs() < 1e-12);
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-12);
+        arr.tuple_as_f64(2, &mut buf);
+        assert!((buf[0] - 0.0003628).abs() < 1e-12);
     }
 }

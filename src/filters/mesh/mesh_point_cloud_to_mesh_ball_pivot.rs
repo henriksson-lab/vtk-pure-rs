@@ -1,5 +1,5 @@
 //! Simple ball-pivot-like surface reconstruction from point cloud.
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 /// Simple triangle fan reconstruction from nearest neighbors.
 pub fn reconstruct_surface_knn(points: &PolyData, k: usize) -> PolyData {
     let n = points.points.len();

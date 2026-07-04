@@ -10,14 +10,17 @@ pub fn image_psychometric_function(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            1.0 - 0.5 * (-(buf[0] / 10.0).powf(3.5)).exp()
+            let stimulus = buf[0].max(0.0);
+            1.0 - 0.5 * (-(stimulus / 10.0).powf(3.5)).exp()
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -33,5 +36,20 @@ mod tests {
         );
         let r = image_psychometric_function(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn clamps_negative_stimulus_for_weibull_domain() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-1.0, 0.0, 10.0], 1),
+        ));
+
+        let r = image_psychometric_function(&img, "v");
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+
+        assert_eq!(values[0], 0.5);
+        assert_eq!(values[1], 0.5);
+        assert!(values[2] > values[1]);
+        assert!(values.iter().all(|v| v.is_finite()));
     }
 }

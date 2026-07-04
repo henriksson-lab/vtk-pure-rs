@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use std::collections::BTreeMap;
 
 /// K-nearest-neighbor classification of an ImageData scalar field.
 ///
@@ -11,12 +12,12 @@ pub fn image_knn_classify(
     k: usize,
 ) -> ImageData {
     let va = match input.point_data().get_array(values_name) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
     let la = match input.point_data().get_array(labels_name) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let n = va.num_tuples().min(la.num_tuples());
@@ -61,16 +62,18 @@ pub fn image_knn_classify(
             .iter()
             .map(|&(tv, tl)| ((values[i] - tv).abs(), tl))
             .collect();
-        dists.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        dists.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
         // Majority vote
-        let mut votes = std::collections::HashMap::new();
+        let mut votes = BTreeMap::new();
         for &(_, label) in dists.iter().take(k) {
             *votes.entry(label).or_insert(0usize) += 1;
         }
         classified[i] = votes
             .into_iter()
-            .max_by_key(|&(_, c)| c)
+            .max_by(|(label_a, count_a), (label_b, count_b)| {
+                count_a.cmp(count_b).then_with(|| label_b.cmp(label_a))
+            })
             .map(|(l, _)| l as f64)
             .unwrap_or(0.0);
     }
@@ -133,6 +136,29 @@ mod tests {
         assert_eq!(buf[0], 5.0); // preserved
         arr.tuple_as_f64(2, &mut buf);
         assert_eq!(buf[0], 3.0);
+    }
+
+    #[test]
+    fn tied_votes_choose_lowest_label() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 5.0, 10.0],
+                1,
+            )));
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "l",
+                vec![1.0, 0.0, 2.0],
+                1,
+            )));
+
+        let result = image_knn_classify(&img, "v", "l", 2);
+        let arr = result.point_data().get_array("Classified").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 
     #[test]

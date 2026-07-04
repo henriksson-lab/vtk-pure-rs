@@ -14,24 +14,35 @@ pub fn image_reflection_coefficient(input: &ImageData, scalars: &str) -> ImageDa
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test() {
-        let img = ImageData::from_function(
+        let mut img = ImageData::from_function(
             [5, 5, 1],
             [1.0, 1.0, 1.0],
             [0.0, 0.0, 0.0],
             "v",
             |x, _, _| x + 1.0,
         );
+        img.set_extent([2, 6, 3, 7, 0, 0]);
         let r = image_reflection_coefficient(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        assert_eq!(r.extent(), [2, 6, 3, 7, 0, 0]);
+
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut out = [0.0f64];
+        arr.tuple_as_f64(0, &mut out);
+        assert!((out[0] - 0.0).abs() < 1e-12);
+        arr.tuple_as_f64(1, &mut out);
+        assert!((out[0] - (1.0 / 3.0)).abs() < 1e-12);
     }
 }

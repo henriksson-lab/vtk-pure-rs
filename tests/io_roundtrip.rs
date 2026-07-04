@@ -3,7 +3,13 @@
 //! Each test writes a PolyData to a format and reads it back,
 //! verifying that the geometry is preserved.
 
-use vtk_data::{AnyDataArray, DataArray, PolyData};
+use vtk_pure_rs::data::{AnyDataArray, DataArray, PolyData};
+use vtk_pure_rs::io::gltf as vtk_io_gltf;
+use vtk_pure_rs::io::legacy as vtk_io_legacy;
+use vtk_pure_rs::io::obj as vtk_io_obj;
+use vtk_pure_rs::io::ply as vtk_io_ply;
+use vtk_pure_rs::io::stl as vtk_io_stl;
+use vtk_pure_rs::io::xml as vtk_io_xml;
 
 fn make_triangle() -> PolyData {
     PolyData::from_triangles(

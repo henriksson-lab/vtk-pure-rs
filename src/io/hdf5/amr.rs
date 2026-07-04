@@ -104,9 +104,14 @@ pub fn read_amr(path: &Path) -> Result<AmrData, VtkError> {
 
                     let mut img = ImageData::with_dimensions(nx, ny, nz);
                     img.set_spacing(dx_arr);
-                    if data.len() == nx * ny * nz {
+                    let tuple_count = nx * ny * nz;
+                    if tuple_count > 0 && data.len() == tuple_count * num_components {
                         img.point_data_mut()
-                            .add_array(AnyDataArray::F64(DataArray::from_vec("data", data, 1)));
+                            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                                "data",
+                                data,
+                                num_components,
+                            )));
                     }
                     boxes.push(img);
                 }

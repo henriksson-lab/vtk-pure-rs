@@ -10,6 +10,9 @@ pub fn dirichlet_energy(input: &PolyData) -> f64 {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= input.points.len() || b >= input.points.len() {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             if seen.insert(key) {
                 let pa = input.points.get(a);
@@ -36,11 +39,13 @@ pub fn willmore_energy(input: &PolyData) -> f64 {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
+            if a < n && b < n {
+                if !neighbors[a].contains(&b) {
+                    neighbors[a].push(b);
+                }
+                if !neighbors[b].contains(&a) {
+                    neighbors[b].push(a);
+                }
             }
         }
     }

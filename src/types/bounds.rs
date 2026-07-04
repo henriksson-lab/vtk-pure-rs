@@ -36,7 +36,7 @@ impl BoundingBox {
 
     /// Returns true if no points have been added.
     pub fn is_empty(&self) -> bool {
-        self.x_min > self.x_max
+        self.x_min > self.x_max || self.y_min > self.y_max || self.z_min > self.z_max
     }
 
     /// Expand the bounding box to include the given point.
@@ -93,7 +93,9 @@ impl BoundingBox {
 
     /// Check if two bounding boxes overlap.
     pub fn intersects(&self, other: &BoundingBox) -> bool {
-        self.x_min <= other.x_max
+        !self.is_empty()
+            && !other.is_empty()
+            && self.x_min <= other.x_max
             && self.x_max >= other.x_min
             && self.y_min <= other.y_max
             && self.y_max >= other.y_min
@@ -103,6 +105,12 @@ impl BoundingBox {
 
     /// Compute the union of two bounding boxes.
     pub fn union(&self, other: &BoundingBox) -> BoundingBox {
+        if other.is_empty() {
+            return *self;
+        }
+        if self.is_empty() {
+            return *other;
+        }
         BoundingBox {
             x_min: self.x_min.min(other.x_min),
             x_max: self.x_max.max(other.x_max),
@@ -211,6 +219,15 @@ mod tests {
         let i = a.intersection(&b);
         assert_eq!(i.x_min, 1.0);
         assert_eq!(i.x_max, 2.0);
+    }
+
+    #[test]
+    fn union_ignores_empty_bounds() {
+        let empty = BoundingBox::empty();
+        let valid = BoundingBox::from_corners([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]);
+
+        assert_eq!(empty.union(&valid), valid);
+        assert_eq!(valid.union(&empty), valid);
     }
 
     #[test]

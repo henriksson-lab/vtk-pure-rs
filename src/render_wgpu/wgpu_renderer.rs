@@ -105,6 +105,7 @@ pub struct WgpuRenderer {
     ssao_pass: SsaoPass,
     dof_pass: DofPass,
     pipeline_lines_no_msaa: wgpu::RenderPipeline,
+    pipeline_depth_no_msaa: wgpu::RenderPipeline,
     width: u32,
     height: u32,
 }
@@ -347,6 +348,7 @@ impl WgpuRenderer {
             1,
             None,
         );
+        let pipeline_depth_no_msaa = create_depth_pipeline(&device, &pipeline_layout, &shader, 1);
 
         Ok(Self {
             device,
@@ -377,6 +379,7 @@ impl WgpuRenderer {
             pipeline_triangles_cull,
             pipeline_triangles_blend_cull,
             pipeline_lines_no_msaa,
+            pipeline_depth_no_msaa,
             width,
             height,
         })
@@ -903,12 +906,6 @@ impl WgpuRenderer {
             });
         }
 
-        // Skybox (render gradient background before 3D scene)
-        if !matches!(scene.skybox, crate::render::Skybox::Solid(_)) {
-            self.skybox_pass
-                .render(&self.queue, &mut encoder, resolve_target, &scene.skybox);
-        }
-
         // 3D scene with MSAA
         self.render_3d_msaa(scene, msaa_view, resolve_target, depth_view, &mut encoder);
 
@@ -999,10 +996,29 @@ impl WgpuRenderer {
             });
             let ssao_depth_view = ssao_depth_tex.create_view(&Default::default());
 
-            // Quick depth-only pass at 1x MSAA for SSAO
+            let cam_dist = scene.camera.distance();
+            let mut depth_draws = Vec::new();
+            for actor in &scene.actors {
+                if !actor.visible
+                    || actor.opacity < 1.0
+                    || actor.representation != Representation::Surface
+                {
+                    continue;
+                }
+                if let Some(gpu_mesh) = self.prepare_actor_mesh(actor, cam_dist, scene) {
+                    depth_draws.push((
+                        gpu_mesh,
+                        actor.material.clone(),
+                        actor.position,
+                        actor.scale,
+                    ));
+                }
+            }
+
+            // VTK's SSAO delegate renders scene depth before computing occlusion.
             {
                 let mut depth_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("ssao depth resolve"),
+                    label: Some("ssao depth pass"),
                     color_attachments: &[],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                         view: &ssao_depth_view,
@@ -1014,9 +1030,15 @@ impl WgpuRenderer {
                     }),
                     ..Default::default()
                 });
-                // Re-draw opaque geometry for depth only using the no-MSAA line pipeline (has depth)
-                // This is a simplified approach; production would use a depth-only pipeline
-                depth_pass.set_pipeline(&self.pipeline_lines_no_msaa);
+                depth_pass.set_pipeline(&self.pipeline_depth_no_msaa);
+                depth_pass.set_bind_group(0, &self.bind_group, &[]);
+                for (mesh, material, position, scale) in &depth_draws {
+                    self.write_uniforms(scene, material, 1.0, false, *position, *scale);
+                    depth_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                    depth_pass
+                        .set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    depth_pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
+                }
             }
 
             let aspect = self.width as f64 / self.height as f64;
@@ -1029,6 +1051,7 @@ impl WgpuRenderer {
                 intensity: scene.ssao.intensity,
                 bias: scene.ssao.bias,
                 num_samples: scene.ssao.num_samples,
+                blur: scene.ssao.blur,
             };
 
             self.ssao_pass.render(
@@ -1599,6 +1622,45 @@ fn create_pipeline_with_cull(
     })
 }
 
+fn create_depth_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    sample_count: u32,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("depth pipeline"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            buffers: &[Vertex::layout()],
+            compilation_options: Default::default(),
+        },
+        fragment: None,
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: wgpu::MultisampleState {
+            count: sample_count,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+        cache: None,
+    })
+}
+
 fn create_depth_texture(
     device: &wgpu::Device,
     width: u32,
@@ -1650,17 +1712,47 @@ fn poly_data_to_points(
     coloring: &crate::render::Coloring,
 ) -> (Vec<Vertex>, Vec<u32>) {
     let point_colors = mesh::resolve_colors_pub(poly_data, coloring);
-    let n = poly_data.points.len();
-    let mut vertices = Vec::with_capacity(n);
-    let mut indices = Vec::with_capacity(n);
-    for i in 0..n {
-        let p = poly_data.points.get(i);
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+    let has_topology = poly_data.verts.num_cells() > 0
+        || poly_data.lines.num_cells() > 0
+        || poly_data.polys.num_cells() > 0;
+    let mut push_point = |point_id: u32, cell_id: u32| {
+        let p = poly_data.points.get(point_id as usize);
+        let idx = vertices.len() as u32;
         vertices.push(Vertex {
             position: [p[0] as f32, p[1] as f32, p[2] as f32],
             normal: [0.0, 0.0, 1.0],
-            color: point_colors[i],
+            color: point_colors[point_id as usize],
+            cell_id,
         });
-        indices.push(i as u32);
+        indices.push(idx);
+    };
+
+    for (ci, cell) in poly_data.verts.iter().enumerate() {
+        for &point_id in cell {
+            push_point(point_id as u32, ci as u32);
+        }
+    }
+    let line_cell_offset = poly_data.verts.num_cells();
+    for (ci, cell) in poly_data.lines.iter().enumerate() {
+        let cell_id = (line_cell_offset + ci) as u32;
+        for &point_id in cell {
+            push_point(point_id as u32, cell_id);
+        }
+    }
+    let poly_cell_offset = poly_data.verts.num_cells() + poly_data.lines.num_cells();
+    for (ci, cell) in poly_data.polys.iter().enumerate() {
+        let cell_id = (poly_cell_offset + ci) as u32;
+        for &point_id in cell {
+            push_point(point_id as u32, cell_id);
+        }
+    }
+
+    if !has_topology {
+        for i in 0..poly_data.points.len() {
+            push_point(i as u32, i as u32);
+        }
     }
     (vertices, indices)
 }
@@ -1676,6 +1768,9 @@ fn poly_data_to_point_sprites(
 ) -> (Vec<Vertex>, Vec<u32>) {
     let point_colors = mesh::resolve_colors_pub(poly_data, coloring);
     let n = poly_data.points.len();
+    let has_topology = poly_data.verts.num_cells() > 0
+        || poly_data.lines.num_cells() > 0
+        || poly_data.polys.num_cells() > 0;
     let half = size * 0.5;
     let mut vertices = Vec::with_capacity(n * 4);
     let mut indices = Vec::with_capacity(n * 6);
@@ -1697,12 +1792,12 @@ fn poly_data_to_point_sprites(
         camera_right[0] * camera_up[1] - camera_right[1] * camera_up[0],
     ];
 
-    for i in 0..n {
-        let p = poly_data.points.get(i);
+    let mut emit_sprite = |point_id: u32, cell_id: u32| {
+        let p = poly_data.points.get(point_id as usize);
         let px = p[0] as f32;
         let py = p[1] as f32;
         let pz = p[2] as f32;
-        let color = point_colors[i];
+        let color = point_colors[point_id as usize];
         let base = vertices.len() as u32;
 
         // 4 corners: -r-u, +r-u, +r+u, -r+u
@@ -1710,24 +1805,54 @@ fn poly_data_to_point_sprites(
             position: [px - r[0] - u[0], py - r[1] - u[1], pz - r[2] - u[2]],
             normal: norm,
             color,
+            cell_id,
         });
         vertices.push(Vertex {
             position: [px + r[0] - u[0], py + r[1] - u[1], pz + r[2] - u[2]],
             normal: norm,
             color,
+            cell_id,
         });
         vertices.push(Vertex {
             position: [px + r[0] + u[0], py + r[1] + u[1], pz + r[2] + u[2]],
             normal: norm,
             color,
+            cell_id,
         });
         vertices.push(Vertex {
             position: [px - r[0] + u[0], py - r[1] + u[1], pz - r[2] + u[2]],
             normal: norm,
             color,
+            cell_id,
         });
 
         indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    };
+
+    for (ci, cell) in poly_data.verts.iter().enumerate() {
+        for &point_id in cell {
+            emit_sprite(point_id as u32, ci as u32);
+        }
+    }
+    let line_cell_offset = poly_data.verts.num_cells();
+    for (ci, cell) in poly_data.lines.iter().enumerate() {
+        let cell_id = (line_cell_offset + ci) as u32;
+        for &point_id in cell {
+            emit_sprite(point_id as u32, cell_id);
+        }
+    }
+    let poly_cell_offset = poly_data.verts.num_cells() + poly_data.lines.num_cells();
+    for (ci, cell) in poly_data.polys.iter().enumerate() {
+        let cell_id = (poly_cell_offset + ci) as u32;
+        for &point_id in cell {
+            emit_sprite(point_id as u32, cell_id);
+        }
+    }
+
+    if !has_topology {
+        for i in 0..n {
+            emit_sprite(i as u32, i as u32);
+        }
     }
 
     (vertices, indices)
@@ -1746,61 +1871,77 @@ fn poly_data_to_wide_lines(
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
 
-    for cell in poly_data.polys.iter() {
+    let mut emit_segment = |id0: usize, id1: usize, cell_id: u32| {
+        let p0 = poly_data.points.get(id0);
+        let p1 = poly_data.points.get(id1);
+        let p0f = [p0[0] as f32, p0[1] as f32, p0[2] as f32];
+        let p1f = [p1[0] as f32, p1[1] as f32, p1[2] as f32];
+
+        // Line direction
+        let dx = p1f[0] - p0f[0];
+        let dy = p1f[1] - p0f[1];
+        let dz = p1f[2] - p0f[2];
+
+        // Offset = normalize(cross(line_dir, camera_dir)) * half
+        let cx = dy * camera_dir[2] - dz * camera_dir[1];
+        let cy = dz * camera_dir[0] - dx * camera_dir[2];
+        let cz = dx * camera_dir[1] - dy * camera_dir[0];
+        let len = (cx * cx + cy * cy + cz * cz).sqrt();
+        if len < 1e-10 {
+            return;
+        }
+        let ox = cx / len * half;
+        let oy = cy / len * half;
+        let oz = cz / len * half;
+
+        let base = vertices.len() as u32;
+        let c0 = point_colors[id0];
+        let c1 = point_colors[id1];
+        let norm = [camera_dir[0], camera_dir[1], camera_dir[2]];
+
+        vertices.push(Vertex {
+            position: [p0f[0] - ox, p0f[1] - oy, p0f[2] - oz],
+            normal: norm,
+            color: c0,
+            cell_id,
+        });
+        vertices.push(Vertex {
+            position: [p0f[0] + ox, p0f[1] + oy, p0f[2] + oz],
+            normal: norm,
+            color: c0,
+            cell_id,
+        });
+        vertices.push(Vertex {
+            position: [p1f[0] + ox, p1f[1] + oy, p1f[2] + oz],
+            normal: norm,
+            color: c1,
+            cell_id,
+        });
+        vertices.push(Vertex {
+            position: [p1f[0] - ox, p1f[1] - oy, p1f[2] - oz],
+            normal: norm,
+            color: c1,
+            cell_id,
+        });
+
+        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    };
+
+    let line_cell_offset = poly_data.verts.num_cells();
+    for (ci, cell) in poly_data.lines.iter().enumerate() {
+        let cell_id = (line_cell_offset + ci) as u32;
+        for segment in cell.windows(2) {
+            emit_segment(segment[0] as usize, segment[1] as usize, cell_id);
+        }
+    }
+
+    let poly_cell_offset = poly_data.verts.num_cells() + poly_data.lines.num_cells();
+    for (ci, cell) in poly_data.polys.iter().enumerate() {
+        let cell_id = (poly_cell_offset + ci) as u32;
         let nc = cell.len();
         for i in 0..nc {
             let j = (i + 1) % nc;
-            let id0 = cell[i] as usize;
-            let id1 = cell[j] as usize;
-            let p0 = poly_data.points.get(id0);
-            let p1 = poly_data.points.get(id1);
-            let p0f = [p0[0] as f32, p0[1] as f32, p0[2] as f32];
-            let p1f = [p1[0] as f32, p1[1] as f32, p1[2] as f32];
-
-            // Line direction
-            let dx = p1f[0] - p0f[0];
-            let dy = p1f[1] - p0f[1];
-            let dz = p1f[2] - p0f[2];
-
-            // Offset = normalize(cross(line_dir, camera_dir)) * half
-            let cx = dy * camera_dir[2] - dz * camera_dir[1];
-            let cy = dz * camera_dir[0] - dx * camera_dir[2];
-            let cz = dx * camera_dir[1] - dy * camera_dir[0];
-            let len = (cx * cx + cy * cy + cz * cz).sqrt();
-            if len < 1e-10 {
-                continue;
-            }
-            let ox = cx / len * half;
-            let oy = cy / len * half;
-            let oz = cz / len * half;
-
-            let base = vertices.len() as u32;
-            let c0 = point_colors[id0];
-            let c1 = point_colors[id1];
-            let norm = [camera_dir[0], camera_dir[1], camera_dir[2]];
-
-            vertices.push(Vertex {
-                position: [p0f[0] - ox, p0f[1] - oy, p0f[2] - oz],
-                normal: norm,
-                color: c0,
-            });
-            vertices.push(Vertex {
-                position: [p0f[0] + ox, p0f[1] + oy, p0f[2] + oz],
-                normal: norm,
-                color: c0,
-            });
-            vertices.push(Vertex {
-                position: [p1f[0] + ox, p1f[1] + oy, p1f[2] + oz],
-                normal: norm,
-                color: c1,
-            });
-            vertices.push(Vertex {
-                position: [p1f[0] - ox, p1f[1] - oy, p1f[2] - oz],
-                normal: norm,
-                color: c1,
-            });
-
-            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+            emit_segment(cell[i] as usize, cell[j] as usize, cell_id);
         }
     }
 

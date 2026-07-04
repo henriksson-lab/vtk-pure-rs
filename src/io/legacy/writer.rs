@@ -78,16 +78,16 @@ impl LegacyWriter {
             self.write_cells(w, "TRIANGLE_STRIPS", &data.strips)?;
         }
 
-        // Point data
-        if data.point_data().num_arrays() > 0 {
-            writeln!(w, "POINT_DATA {}", data.points.len())?;
-            self.write_attributes(w, data.point_data())?;
-        }
-
         // Cell data
         if data.cell_data().num_arrays() > 0 {
             writeln!(w, "CELL_DATA {}", data.total_cells())?;
             self.write_attributes(w, data.cell_data())?;
+        }
+
+        // Point data
+        if data.point_data().num_arrays() > 0 {
+            writeln!(w, "POINT_DATA {}", data.points.len())?;
+            self.write_attributes(w, data.point_data())?;
         }
 
         Ok(())
@@ -184,10 +184,30 @@ impl LegacyWriter {
         w: &mut W,
         arr: &AnyDataArray,
     ) -> Result<(), VtkError> {
+        if let AnyDataArray::U8(a) = arr {
+            writeln!(w, "COLOR_SCALARS {} {}", a.name(), a.num_components())?;
+            match self.file_type {
+                FileType::Ascii => {
+                    for i in 0..a.num_tuples() {
+                        let t = a.tuple(i);
+                        for v in t {
+                            write!(w, "{} ", *v as f32 / 255.0)?;
+                        }
+                        writeln!(w)?;
+                    }
+                }
+                FileType::Binary => {
+                    w.write_all(a.as_slice())?;
+                    writeln!(w)?;
+                }
+            }
+            return Ok(());
+        }
+
         let name = arr.name();
         let nc = arr.num_components();
         let nt = arr.num_tuples();
-        let type_name = arr.scalar_type().vtk_name();
+        let type_name = legacy_scalar_type_name(arr);
 
         if nc == 1 {
             writeln!(w, "SCALARS {} {}", name, type_name)?;
@@ -219,7 +239,7 @@ impl LegacyWriter {
             "{} {} {}",
             keyword,
             arr.name(),
-            arr.scalar_type().vtk_name()
+            legacy_scalar_type_name(arr)
         )?;
 
         match self.file_type {
@@ -303,6 +323,14 @@ impl LegacyWriter {
     }
 }
 
+fn legacy_scalar_type_name(arr: &AnyDataArray) -> &'static str {
+    match arr {
+        AnyDataArray::I64(_) => "vtktypeint64",
+        AnyDataArray::U64(_) => "vtktypeuint64",
+        _ => arr.scalar_type().vtk_name(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,5 +376,62 @@ mod tests {
 
         assert!(output.contains("VECTORS velocity double"));
         assert!(!output.contains("SCALARS velocity"));
+    }
+
+    #[test]
+    fn writes_cell_data_before_point_data() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let point_scalars = DataArray::from_vec("point_values", vec![1.0f64, 2.0, 3.0], 1);
+        let cell_scalars = DataArray::from_vec("cell_values", vec![4.0f64], 1);
+        pd.point_data_mut().add_array(point_scalars.into());
+        pd.cell_data_mut().add_array(cell_scalars.into());
+
+        let writer = LegacyWriter::ascii();
+        let mut buf = Vec::new();
+        writer.write_poly_data_to(&mut buf, &pd).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        let cell_data = output.find("CELL_DATA 1").unwrap();
+        let point_data = output.find("POINT_DATA 3").unwrap();
+        assert!(cell_data < point_data);
+    }
+
+    #[test]
+    fn writes_u8_scalars_as_color_scalars() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let colors = DataArray::from_vec("rgb", vec![255u8, 0, 0, 0, 255, 0, 0, 0, 255], 3);
+        pd.point_data_mut().add_array(colors.into());
+        pd.point_data_mut().set_active_scalars("rgb");
+
+        let writer = LegacyWriter::ascii();
+        let mut buf = Vec::new();
+        writer.write_poly_data_to(&mut buf, &pd).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("COLOR_SCALARS rgb 3"));
+        assert!(!output.contains("SCALARS rgb unsigned_char"));
+    }
+
+    #[test]
+    fn writes_fixed_width_i64_scalar_type_name() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let ids = DataArray::from_vec("ids", vec![1i64, 2, 3], 1);
+        pd.point_data_mut().add_array(ids.into());
+
+        let writer = LegacyWriter::ascii();
+        let mut buf = Vec::new();
+        writer.write_poly_data_to(&mut buf, &pd).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("SCALARS ids vtktypeint64"));
     }
 }

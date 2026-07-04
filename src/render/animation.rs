@@ -56,6 +56,16 @@ impl<T: Clone> Track<T> {
 
     /// Add a keyframe at the given time.
     pub fn add(&mut self, time: f64, value: T, easing: Easing) {
+        if let Some(keyframe) = self
+            .keyframes
+            .iter_mut()
+            .find(|keyframe| keyframe.time == time)
+        {
+            keyframe.value = value;
+            keyframe.easing = easing;
+            return;
+        }
+
         self.keyframes.push(Keyframe {
             time,
             value,
@@ -135,11 +145,42 @@ impl Track<[f64; 3]> {
     }
 }
 
+impl Track<[f64; 2]> {
+    /// Evaluate a 2D vector track at a given time.
+    pub fn eval(&self, time: f64) -> [f64; 2] {
+        if self.keyframes.is_empty() {
+            return [0.0; 2];
+        }
+        if time <= self.keyframes[0].time {
+            return self.keyframes[0].value;
+        }
+        if time >= self.keyframes.last().unwrap().time {
+            return self.keyframes.last().unwrap().value;
+        }
+        for i in 0..self.keyframes.len() - 1 {
+            let k0 = &self.keyframes[i];
+            let k1 = &self.keyframes[i + 1];
+            if time >= k0.time && time <= k1.time {
+                let t = (time - k0.time) / (k1.time - k0.time);
+                let eased = k1.easing.eval(t);
+                return [
+                    k0.value[0] + eased * (k1.value[0] - k0.value[0]),
+                    k0.value[1] + eased * (k1.value[1] - k0.value[1]),
+                ];
+            }
+        }
+        self.keyframes.last().unwrap().value
+    }
+}
+
 /// Camera animation with position and focal point tracks.
 #[derive(Debug, Clone)]
 pub struct CameraAnimation {
     pub position: Track<[f64; 3]>,
     pub focal_point: Track<[f64; 3]>,
+    pub view_up: Track<[f64; 3]>,
+    pub fov: Track<f64>,
+    pub clipping_range: Track<[f64; 2]>,
 }
 
 impl CameraAnimation {
@@ -147,6 +188,9 @@ impl CameraAnimation {
         Self {
             position: Track::new(),
             focal_point: Track::new(),
+            view_up: Track::new(),
+            fov: Track::new(),
+            clipping_range: Track::new(),
         }
     }
 
@@ -160,11 +204,28 @@ impl CameraAnimation {
             let f = self.focal_point.eval(time);
             camera.focal_point = glam::DVec3::new(f[0], f[1], f[2]);
         }
+        if !self.view_up.is_empty() {
+            let v = self.view_up.eval(time);
+            camera.view_up = glam::DVec3::new(v[0], v[1], v[2]);
+        }
+        if !self.fov.is_empty() {
+            camera.fov = self.fov.eval(time);
+        }
+        if !self.clipping_range.is_empty() {
+            let cr = self.clipping_range.eval(time);
+            camera.near_clip = cr[0];
+            camera.far_clip = cr[1];
+        }
     }
 
     /// Total duration.
     pub fn duration(&self) -> f64 {
-        self.position.duration().max(self.focal_point.duration())
+        self.position
+            .duration()
+            .max(self.focal_point.duration())
+            .max(self.view_up.duration())
+            .max(self.fov.duration())
+            .max(self.clipping_range.duration())
     }
 
     /// Create a turntable (orbit) animation around a center point.
@@ -235,6 +296,17 @@ mod tests {
     }
 
     #[test]
+    fn track_replaces_duplicate_time() {
+        let mut track = Track::<f64>::new();
+        track.add(0.0, 0.0, Easing::Linear);
+        track.add(1.0, 10.0, Easing::Linear);
+        track.add(1.0, 20.0, Easing::Linear);
+
+        assert_eq!(track.len(), 2);
+        assert!((track.eval(1.0) - 20.0).abs() < 1e-12);
+    }
+
+    #[test]
     fn track_vec3_interpolation() {
         let mut track = Track::<[f64; 3]>::new();
         track.add(0.0, [0.0, 0.0, 0.0], Easing::Linear);
@@ -243,6 +315,17 @@ mod tests {
         let v = track.eval(1.0);
         assert!((v[0] - 3.0).abs() < 1e-12);
         assert!((v[1] - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn track_vec2_interpolation() {
+        let mut track = Track::<[f64; 2]>::new();
+        track.add(0.0, [0.0, 10.0], Easing::Linear);
+        track.add(2.0, [4.0, 20.0], Easing::Linear);
+
+        let v = track.eval(1.0);
+        assert!((v[0] - 2.0).abs() < 1e-12);
+        assert!((v[1] - 15.0).abs() < 1e-12);
     }
 
     #[test]
@@ -267,11 +350,32 @@ mod tests {
     }
 
     #[test]
+    fn camera_animation_applies_camera_properties() {
+        let mut anim = CameraAnimation::new();
+        anim.view_up.add(0.0, [0.0, 1.0, 0.0], Easing::Linear);
+        anim.view_up.add(1.0, [0.0, 0.0, 1.0], Easing::Linear);
+        anim.fov.add(0.0, 30.0, Easing::Linear);
+        anim.fov.add(1.0, 60.0, Easing::Linear);
+        anim.clipping_range.add(0.0, [0.1, 100.0], Easing::Linear);
+        anim.clipping_range.add(1.0, [1.1, 200.0], Easing::Linear);
+
+        let mut camera = crate::render::Camera::default();
+        anim.apply(&mut camera, 0.5);
+
+        assert!((camera.view_up.y - 0.5).abs() < 1e-12);
+        assert!((camera.view_up.z - 0.5).abs() < 1e-12);
+        assert!((camera.fov - 45.0).abs() < 1e-12);
+        assert!((camera.near_clip - 0.6).abs() < 1e-12);
+        assert!((camera.far_clip - 150.0).abs() < 1e-12);
+    }
+
+    #[test]
     fn duration() {
         let mut anim = CameraAnimation::new();
         anim.position.add(0.0, [0.0, 0.0, 0.0], Easing::Linear);
         anim.position.add(3.0, [1.0, 0.0, 0.0], Easing::Linear);
-        assert_eq!(anim.duration(), 3.0);
+        anim.fov.add(4.0, 30.0, Easing::Linear);
+        assert_eq!(anim.duration(), 4.0);
     }
 
     #[test]

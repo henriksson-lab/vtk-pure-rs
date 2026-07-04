@@ -17,20 +17,30 @@ pub fn apply_mask(
         Some(a) => a,
         None => return image.clone(),
     };
-    let n = arr.num_tuples().min(mask.num_tuples());
-    let mut ab = [0.0f64];
+    if arr.num_tuples() != mask.num_tuples() {
+        return image.clone();
+    }
+    let n = arr.num_tuples();
+    let nc = arr.num_components();
+    let mut ab = vec![0.0f64; nc];
     let mut mb = [0.0f64];
-    let mut output = Vec::with_capacity(n);
+    let mut output = Vec::with_capacity(n * nc);
     for i in 0..n {
         arr.tuple_as_f64(i, &mut ab);
         mask.tuple_as_f64(i, &mut mb);
-        output.push(if mb[0] > 0.5 { ab[0] } else { fill_value });
+        if mb[0] > 0.5 {
+            output.extend_from_slice(&ab);
+        } else {
+            for _ in 0..nc {
+                output.push(fill_value);
+            }
+        }
     }
     let mut result = image.clone();
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            array_name, output, 1,
+            array_name, output, nc,
         )));
     result
 }
@@ -119,7 +129,10 @@ pub fn dice_coefficient(image: &ImageData, mask_a: &str, mask_b: &str) -> f64 {
         Some(x) => x,
         None => return 0.0,
     };
-    let n = a.num_tuples().min(b.num_tuples());
+    if a.num_tuples() != b.num_tuples() {
+        return 0.0;
+    }
+    let n = a.num_tuples();
     let mut ab = [0.0f64];
     let mut bb = [0.0f64];
     let mut both = 0usize;
@@ -161,7 +174,10 @@ fn combine_masks(
         Some(x) => x,
         None => return image.clone(),
     };
-    let n = arr_a.num_tuples().min(arr_b.num_tuples());
+    if arr_a.num_tuples() != arr_b.num_tuples() {
+        return image.clone();
+    }
+    let n = arr_a.num_tuples();
     let mut ab = [0.0f64];
     let mut bb = [0.0f64];
     let output: Vec<f64> = (0..n)

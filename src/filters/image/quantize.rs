@@ -5,15 +5,19 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Maps continuous values to the nearest of N evenly-spaced levels.
 pub fn image_quantize(input: &ImageData, scalars: &str, n_levels: usize) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
     let nl = n_levels.max(2);
     let mut buf = [0.0f64];
 
     let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
@@ -31,19 +35,10 @@ pub fn image_quantize(input: &ImageData, scalars: &str, n_levels: usize) -> Imag
         .collect();
 
     let mut img = input.clone();
-    let mut attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            attrs.add_array(a.clone());
-        }
-    }
+    let mut attrs = input.point_data().clone();
+    attrs.remove_array(scalars);
+    attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+    attrs.set_active_scalars(scalars);
     *img.point_data_mut() = attrs;
     img
 }
@@ -61,15 +56,19 @@ pub fn image_dither_quantize(
     seed: u64,
 ) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return input.clone();
+    }
     let nl = n_levels.max(2);
     let mut buf = [0.0f64];
 
     let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
@@ -94,19 +93,10 @@ pub fn image_dither_quantize(
         .collect();
 
     let mut img = input.clone();
-    let mut attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                1,
-            )));
-        } else {
-            attrs.add_array(a.clone());
-        }
-    }
+    let mut attrs = input.point_data().clone();
+    attrs.remove_array(scalars);
+    attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+    attrs.set_active_scalars(scalars);
     *img.point_data_mut() = attrs;
     img
 }
@@ -170,5 +160,20 @@ mod tests {
         let img = ImageData::with_dimensions(3, 1, 1);
         let r = image_quantize(&img, "nope", 5);
         assert_eq!(r.dimensions(), [3, 1, 1]);
+    }
+
+    #[test]
+    fn vector_array_is_not_reinterpreted_as_scalar() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "rgb",
+                vec![0.0, 0.5, 1.0, 1.0, 0.5, 0.0],
+                3,
+            )));
+
+        let result = image_quantize(&img, "rgb", 2);
+        let arr = result.point_data().get_array("rgb").unwrap();
+        assert_eq!(arr.num_components(), 3);
     }
 }

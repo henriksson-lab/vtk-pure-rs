@@ -1,50 +1,68 @@
 //! Color conversion utilities.
 
-/// Convert RGB [0,1] to HSV [0,360], [0,1], [0,1].
+/// Convert RGB [0,1] to VTK HSV [0,1], [0,1], [0,1].
 pub fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let delta = max - min;
+    let mut cmax = r;
+    let mut cmin = r;
+    if g > cmax {
+        cmax = g;
+    } else if g < cmin {
+        cmin = g;
+    }
+    if b > cmax {
+        cmax = b;
+    } else if b < cmin {
+        cmin = b;
+    }
 
-    let v = max;
-    let s = if max > 0.0 { delta / max } else { 0.0 };
+    let v = cmax;
+    let s = if v > 0.0 { (cmax - cmin) / cmax } else { 0.0 };
 
-    let h = if delta < 1e-6 {
-        0.0
-    } else if (max - r).abs() < 1e-6 {
-        60.0 * (((g - b) / delta) % 6.0)
-    } else if (max - g).abs() < 1e-6 {
-        60.0 * ((b - r) / delta + 2.0)
+    let h = if s > 0.0 {
+        let mut h = if r == cmax {
+            (1.0 / 6.0) * (g - b) / (cmax - cmin)
+        } else if g == cmax {
+            (1.0 / 3.0) + (1.0 / 6.0) * (b - r) / (cmax - cmin)
+        } else {
+            (2.0 / 3.0) + (1.0 / 6.0) * (r - g) / (cmax - cmin)
+        };
+        if h < 0.0 {
+            h += 1.0;
+        }
+        h
     } else {
-        60.0 * ((r - g) / delta + 4.0)
+        0.0
     };
 
-    let h = if h < 0.0 { h + 360.0 } else { h };
     (h, s, v)
 }
 
-/// Convert HSV [0,360], [0,1], [0,1] to RGB [0,1].
+/// Convert VTK HSV [0,1], [0,1], [0,1] to RGB [0,1].
 pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
-    let c = v * s;
-    let h2 = h / 60.0;
-    let x = c * (1.0 - ((h2 % 2.0) - 1.0).abs());
-    let m = v - c;
+    let onethird = 1.0 / 3.0;
+    let onesixth = 1.0 / 6.0;
+    let twothird = 2.0 / 3.0;
+    let fivesixth = 5.0 / 6.0;
 
-    let (r, g, b) = if h2 < 1.0 {
-        (c, x, 0.0)
-    } else if h2 < 2.0 {
-        (x, c, 0.0)
-    } else if h2 < 3.0 {
-        (0.0, c, x)
-    } else if h2 < 4.0 {
-        (0.0, x, c)
-    } else if h2 < 5.0 {
-        (x, 0.0, c)
+    let (mut r, mut g, mut b) = if h > onesixth && h <= onethird {
+        ((onethird - h) / onesixth, 1.0, 0.0)
+    } else if h > onethird && h <= 0.5 {
+        (0.0, 1.0, (h - onethird) / onesixth)
+    } else if h > 0.5 && h <= twothird {
+        (0.0, (twothird - h) / onesixth, 1.0)
+    } else if h > twothird && h <= fivesixth {
+        ((h - twothird) / onesixth, 0.0, 1.0)
+    } else if h > fivesixth && h <= 1.0 {
+        (1.0, 0.0, (1.0 - h) / onesixth)
     } else {
-        (c, 0.0, x)
+        (1.0, h / onesixth, 0.0)
     };
 
-    (r + m, g + m, b + m)
+    r = s * r + (1.0 - s);
+    g = s * g + (1.0 - s);
+    b = s * b + (1.0 - s);
+
+    (r * v, g * v, b * v)
 }
 
 /// Parse a hex color string (#RRGGBB or RRGGBB) to RGB [0,1].
@@ -97,19 +115,20 @@ mod tests {
     #[test]
     fn rgb_hsv_roundtrip() {
         let (h, s, v) = rgb_to_hsv(1.0, 0.0, 0.0);
-        assert!((h).abs() < 1.0); // red = 0°
+        assert!((h).abs() < 1e-5); // red = 0 in VTK's normalized hue
         assert!((s - 1.0).abs() < 1e-5);
         assert!((v - 1.0).abs() < 1e-5);
 
         let (r, g, b) = hsv_to_rgb(h, s, v);
         assert!((r - 1.0).abs() < 1e-4);
         assert!(g.abs() < 1e-4);
+        assert!(b.abs() < 1e-4);
     }
 
     #[test]
     fn green_hsv() {
         let (h, _, _) = rgb_to_hsv(0.0, 1.0, 0.0);
-        assert!((h - 120.0).abs() < 1.0);
+        assert!((h - (1.0 / 3.0)).abs() < 1e-5);
     }
 
     #[test]

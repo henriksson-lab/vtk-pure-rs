@@ -154,7 +154,7 @@ fn compute_stats(name: &str, values: &mut [f64]) -> ArrayDescriptiveStats {
     // Mean
     let mean = values.iter().sum::<f64>() / nf;
 
-    // Variance, skewness, kurtosis (sample)
+    // Central moments, following vtkDescriptiveStatistics' primary M2/M3/M4 values.
     let mut m2 = 0.0;
     let mut m3 = 0.0;
     let mut m4 = 0.0;
@@ -165,19 +165,27 @@ fn compute_stats(name: &str, values: &mut [f64]) -> ArrayDescriptiveStats {
         m3 += d2 * d;
         m4 += d2 * d2;
     }
-    let variance = m2 / nf;
+    let near_constant = m2 * m2 <= f32::EPSILON as f64 * mean.abs();
+    let variance = if near_constant {
+        0.0
+    } else if n > 1 {
+        m2 / (nf - 1.0)
+    } else {
+        f64::NAN
+    };
     let std_dev = variance.sqrt();
 
-    let skewness = if std_dev > 1e-15 {
-        (m3 / nf) / (std_dev * std_dev * std_dev)
+    let skewness = if near_constant || n <= 2 {
+        f64::NAN
     } else {
-        0.0
+        nf / ((nf - 1.0) * (nf - 2.0)) * m3 / (variance * std_dev)
     };
 
-    let kurtosis = if std_dev > 1e-15 {
-        (m4 / nf) / (variance * variance) - 3.0 // excess kurtosis
+    let kurtosis = if near_constant || n <= 3 {
+        f64::NAN
     } else {
-        0.0
+        (nf / (nf - 1.0)) * ((nf + 1.0) / (nf - 2.0)) / (nf - 3.0) * m4 / (variance * variance)
+            - 3.0 * ((nf - 1.0) / (nf - 2.0)) * ((nf - 1.0) / (nf - 3.0))
     };
 
     // Median
@@ -280,8 +288,8 @@ fn pearson(a: &[f64], b: &[f64]) -> f64 {
     }
 
     let denom = (var_a * var_b).sqrt();
-    if denom < 1e-15 {
-        0.0
+    if denom < f64::MIN_POSITIVE {
+        f64::NAN
     } else {
         cov / denom
     }

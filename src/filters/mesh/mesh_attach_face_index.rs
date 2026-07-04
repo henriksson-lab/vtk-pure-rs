@@ -5,6 +5,12 @@ pub fn attach_face_id(mesh: &PolyData) -> PolyData {
     let data: Vec<f64> = (0..nc).map(|i| i as f64).collect();
     let mut r = mesh.clone();
     r.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "FaceIndex",
+            data.clone(),
+            1,
+        )));
+    r.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("FaceID", data, 1)));
     r
 }
@@ -25,6 +31,13 @@ pub fn attach_face_perimeter(mesh: &PolyData) -> PolyData {
         .iter()
         .map(|cell| {
             let nc = cell.len();
+            if nc < 2
+                || !cell
+                    .iter()
+                    .all(|&id| valid_point_id(id, mesh.points.len()).is_some())
+            {
+                return 0.0;
+            }
             (0..nc)
                 .map(|i| {
                     let a = mesh.points.get(cell[i] as usize);
@@ -39,6 +52,11 @@ pub fn attach_face_perimeter(mesh: &PolyData) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("Perimeter", data, 1)));
     r
 }
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,10 +69,11 @@ mod tests {
         let r = attach_face_id(&m);
         let mut buf = [0.0];
         r.cell_data()
-            .get_array("FaceID")
+            .get_array("FaceIndex")
             .unwrap()
             .tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 0.0);
+        assert!(r.cell_data().get_array("FaceID").is_some());
     }
     #[test]
     fn test_vc() {

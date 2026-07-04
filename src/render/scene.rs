@@ -276,9 +276,24 @@ impl Scene {
         }
         let mut bb = BoundingBox::empty();
         for actor in &self.actors {
+            if !actor.visible {
+                continue;
+            }
             let ab = actor.data.points.bounds();
-            bb.expand([ab.x_min, ab.y_min, ab.z_min]);
-            bb.expand([ab.x_max, ab.y_max, ab.z_max]);
+            for x in [ab.x_min, ab.x_max] {
+                for y in [ab.y_min, ab.y_max] {
+                    for z in [ab.z_min, ab.z_max] {
+                        bb.expand([
+                            x * actor.scale + actor.position[0],
+                            y * actor.scale + actor.position[1],
+                            z * actor.scale + actor.position[2],
+                        ]);
+                    }
+                }
+            }
+        }
+        if bb.x_min > bb.x_max {
+            return;
         }
         let center = [
             (bb.x_min + bb.x_max) / 2.0,
@@ -487,6 +502,28 @@ mod tests {
         s.add_actor(Actor::new(pd));
         s.reset_camera();
         assert!(s.camera.distance() > 5.0);
+    }
+
+    #[test]
+    fn reset_camera_uses_visible_actor_world_bounds() {
+        let visible_pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let hidden_pd = PolyData::from_triangles(
+            vec![[100.0, 0.0, 0.0], [101.0, 0.0, 0.0], [100.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let mut s = Scene::new()
+            .with_actor(
+                Actor::new(visible_pd)
+                    .with_position(10.0, 0.0, 0.0)
+                    .with_scale(2.0),
+            )
+            .with_actor(Actor::new(hidden_pd).with_visible(false));
+        s.reset_camera();
+        assert!((s.camera.focal_point.x - 11.0).abs() < 1e-6);
+        assert!((s.camera.focal_point.y - 1.0).abs() < 1e-6);
     }
 
     #[test]

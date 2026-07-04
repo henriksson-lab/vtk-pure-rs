@@ -6,8 +6,11 @@ pub fn persistence_diagram_polydata(mesh: &PolyData, array_name: &str) -> PolyDa
         _ => return PolyData::new(),
     };
     let n = mesh.points.len();
+    if n == 0 || arr.num_tuples() < n {
+        return PolyData::new();
+    }
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..arr.num_tuples())
+    let vals: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -17,9 +20,13 @@ pub fn persistence_diagram_polydata(mesh: &PolyData, array_name: &str) -> PolyDa
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            if let (Ok(a), Ok(b)) = (
+                usize::try_from(cell[i]),
+                usize::try_from(cell[(i + 1) % nc]),
+            ) {
+                if a >= n || b >= n {
+                    continue;
+                }
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }
@@ -87,6 +94,8 @@ pub fn persistence_diagram_polydata(mesh: &PolyData, array_name: &str) -> PolyDa
     pts.push([mn, mn, 0.0]);
     pts.push([mx, mx, 0.0]);
     lines.push_cell(&[db as i64, (db + 1) as i64]);
+    persistence.push(0.0);
+    persistence.push(0.0);
     let mut r = PolyData::new();
     r.points = pts;
     r.verts = verts;

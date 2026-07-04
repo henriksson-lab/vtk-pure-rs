@@ -14,17 +14,34 @@ pub fn intrinsic_distance(input: &PolyData, sources: &[usize]) -> PolyData {
 
     let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 3 || cell.iter().any(|&id| id < 0 || id as usize >= n) {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            let pa = input.points.get(a);
-            let pb = input.points.get(b);
-            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                .sqrt();
-            if !adj[a].iter().any(|&(v, _)| v == b) {
-                adj[a].push((b, d));
-                adj[b].push((a, d));
-            }
+            add_edge(input, &mut adj, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in input.lines.iter() {
+        if cell.iter().any(|&id| id < 0 || id as usize >= n) {
+            continue;
+        }
+        for edge in cell.windows(2) {
+            add_edge(input, &mut adj, n, edge[0], edge[1]);
+        }
+    }
+    for strip in input.strips.iter() {
+        if strip.len() < 3 || strip.iter().any(|&id| id < 0 || id as usize >= n) {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_edge(input, &mut adj, n, tri[0], tri[1]);
+            add_edge(input, &mut adj, n, tri[1], tri[2]);
+            add_edge(input, &mut adj, n, tri[2], tri[0]);
         }
     }
 
@@ -77,7 +94,29 @@ pub fn intrinsic_distance(input: &PolyData, sources: &[usize]) -> PolyData {
             dist,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("IntrinsicDistance");
     pd
+}
+
+fn add_edge(input: &PolyData, adj: &mut [Vec<(usize, f64)>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+
+    let pa = input.points.get(a);
+    let pb = input.points.get(b);
+    let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+    if !adj[a].iter().any(|&(v, _)| v == b) {
+        adj[a].push((b, d));
+    }
+    if !adj[b].iter().any(|&(v, _)| v == a) {
+        adj[b].push((a, d));
+    }
 }
 
 /// Compute geodesic distance between two specific vertices.
@@ -123,7 +162,18 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([3.0, 4.0, 0.0]);
-        pd.polys.push_cell(&[0, 1]);
+        pd.lines.push_cell(&[0, 1]);
+
+        let d = geodesic_distance_between(&pd, 0, 1);
+        assert!((d - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn line_cells_are_edges() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([3.0, 4.0, 0.0]);
+        pd.lines.push_cell(&[0, 1]);
 
         let d = geodesic_distance_between(&pd, 0, 1);
         assert!((d - 5.0).abs() < 1e-10);
@@ -141,6 +191,20 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(1, &mut buf);
         assert_eq!(buf[0], -1.0); // unreachable
+    }
+
+    #[test]
+    fn invalid_connectivity_is_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 99, 1]);
+
+        let result = intrinsic_distance(&pd, &[0]);
+        let arr = result.point_data().get_array("IntrinsicDistance").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], -1.0);
     }
 
     #[test]

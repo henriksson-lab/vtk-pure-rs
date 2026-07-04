@@ -24,9 +24,9 @@ impl VtiBinaryWriter {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
         writeln!(
             w,
-            "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">"
+            "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt32\">"
         )?;
-        writeln!(w, "  <ImageData WholeExtent=\"{} {} {} {} {} {}\" Origin=\"{} {} {}\" Spacing=\"{} {} {}\">",
+        writeln!(w, "  <ImageData WholeExtent=\"{} {} {} {} {} {}\" Origin=\"{} {} {}\" Spacing=\"{} {} {}\" Direction=\"1 0 0 0 1 0 0 0 1\">",
             ext[0], ext[1], ext[2], ext[3], ext[4], ext[5],
             origin[0], origin[1], origin[2],
             spacing[0], spacing[1], spacing[2],
@@ -37,12 +37,8 @@ impl VtiBinaryWriter {
             ext[0], ext[1], ext[2], ext[3], ext[4], ext[5],
         )?;
 
-        if data.point_data().num_arrays() > 0 {
-            write_binary_attrs(w, "PointData", data.point_data())?;
-        }
-        if data.cell_data().num_arrays() > 0 {
-            write_binary_attrs(w, "CellData", data.cell_data())?;
-        }
+        write_binary_attrs(w, "PointData", data.point_data())?;
+        write_binary_attrs(w, "CellData", data.cell_data())?;
 
         writeln!(w, "    </Piece>")?;
         writeln!(w, "  </ImageData>")?;
@@ -56,24 +52,50 @@ fn write_binary_attrs<W: Write>(
     section: &str,
     attrs: &DataSetAttributes,
 ) -> Result<(), VtkError> {
-    writeln!(w, "      <{section}>")?;
+    let scalars_name = attrs.scalars().map(|a| a.name().to_string());
+    let normals_name = attrs.normals().map(|a| a.name().to_string());
+    let vectors_name = attrs.vectors().map(|a| a.name().to_string());
+    let mut attrs_str = String::new();
+    if let Some(ref name) = scalars_name {
+        attrs_str.push_str(&format!(" Scalars=\"{}\"", xml_escape_attr(name)));
+    }
+    if let Some(ref name) = normals_name {
+        attrs_str.push_str(&format!(" Normals=\"{}\"", xml_escape_attr(name)));
+    }
+    if let Some(ref name) = vectors_name {
+        attrs_str.push_str(&format!(" Vectors=\"{}\"", xml_escape_attr(name)));
+    }
+
+    writeln!(w, "      <{section}{attrs_str}>")?;
     for i in 0..attrs.num_arrays() {
         if let Some(arr) = attrs.get_array_by_index(i) {
             let type_name = match arr.scalar_type() {
                 crate::types::ScalarType::F32 => "Float32",
                 crate::types::ScalarType::F64 => "Float64",
+                crate::types::ScalarType::I8 => "Int8",
+                crate::types::ScalarType::I16 => "Int16",
                 crate::types::ScalarType::I32 => "Int32",
                 crate::types::ScalarType::I64 => "Int64",
                 crate::types::ScalarType::U8 => "UInt8",
-                _ => "Float64",
+                crate::types::ScalarType::U16 => "UInt16",
+                crate::types::ScalarType::U32 => "UInt32",
+                crate::types::ScalarType::U64 => "UInt64",
             };
             let encoded = binary::encode_data_array_binary(arr);
             writeln!(w, "        <DataArray type=\"{type_name}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"binary\">{encoded}</DataArray>",
-                arr.name(), arr.num_components())?;
+                xml_escape_attr(arr.name()), arr.num_components())?;
         }
     }
     writeln!(w, "      </{section}>")?;
     Ok(())
+}
+
+fn xml_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -92,6 +114,20 @@ mod tests {
         let xml = String::from_utf8(buf).unwrap();
         assert!(xml.contains("format=\"binary\""));
         assert!(xml.contains("ImageData"));
+        assert!(xml.contains("<CellData>"));
+    }
+
+    #[test]
+    fn writes_empty_data_sections_like_vtk_xml_writer() {
+        let img = ImageData::with_dimensions(2, 2, 2);
+        let mut buf = Vec::new();
+        VtiBinaryWriter::write_to(&mut buf, &img).unwrap();
+        let xml = String::from_utf8(buf).unwrap();
+
+        assert!(xml.contains("<PointData>"));
+        assert!(xml.contains("</PointData>"));
+        assert!(xml.contains("<CellData>"));
+        assert!(xml.contains("</CellData>"));
     }
 
     #[test]

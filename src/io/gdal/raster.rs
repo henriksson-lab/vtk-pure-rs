@@ -4,11 +4,11 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 use crate::types::VtkError;
 use std::path::Path;
 
-use crate::types::{RasterBandInfo, RasterInfo, SpatialRef};
+use super::types::{RasterBandInfo, RasterInfo, SpatialRef};
 
 /// Read a raster file (GeoTIFF, etc.) as ImageData.
 ///
-/// Each band becomes a scalar array in point data.
+/// Each band becomes a scalar array in cell data.
 pub fn read_raster(path: &Path) -> Result<(ImageData, RasterInfo), VtkError> {
     let dataset = gdal::Dataset::open(path).map_err(|e| {
         VtkError::Io(std::io::Error::new(
@@ -32,16 +32,11 @@ pub fn read_raster(path: &Path) -> Result<(ImageData, RasterInfo), VtkError> {
         })
         .unwrap_or_default();
 
-    let pixel_w = geo_transform[1].abs();
-    let pixel_h = geo_transform[5].abs();
+    let (origin, spacing, flip_axis) = raster_geometry(width, height, geo_transform);
 
-    let mut img = ImageData::with_dimensions(width, height, 1);
-    img.set_spacing([pixel_w, pixel_h, 1.0]);
-    img.set_origin([
-        geo_transform[0],
-        geo_transform[3] - height as f64 * pixel_h,
-        0.0,
-    ]);
+    let mut img = ImageData::with_dimensions(width + 1, height + 1, 1);
+    img.set_spacing(spacing);
+    img.set_origin(origin);
 
     let mut band_infos = Vec::new();
 
@@ -57,7 +52,7 @@ pub fn read_raster(path: &Path) -> Result<(ImageData, RasterInfo), VtkError> {
             .read_as::<f64>((0, 0), (width, height), (width, height), None)
             .map_err(|e| VtkError::Parse(format!("read band {band_idx}: {e}")))?;
 
-        let data: Vec<f64> = buf.data().to_vec();
+        let data = orient_raster_data(buf.data(), width, height, flip_axis);
 
         // Compute min/max
         let (mut min, mut max) = (f64::MAX, f64::MIN);
@@ -86,8 +81,11 @@ pub fn read_raster(path: &Path) -> Result<(ImageData, RasterInfo), VtkError> {
             max,
         });
 
-        img.point_data_mut()
+        img.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec(&band_name, data, 1)));
+        if img.cell_data().scalars().is_none() {
+            img.cell_data_mut().set_active_scalars(&band_name);
+        }
     }
 
     let info = RasterInfo {
@@ -111,21 +109,19 @@ pub fn read_raster_as_mesh(path: &Path) -> Result<crate::data::PolyData, VtkErro
 
     let w = info.width;
     let h = info.height;
-    let origin_x = info.origin_x();
-    let origin_y = info.origin_y();
-    let dx = info.pixel_width();
-    let dy = info.pixel_height();
+    let origin = img.origin();
+    let spacing = img.spacing();
 
     let scalars = img
-        .point_data()
+        .cell_data()
         .get_array_by_index(0)
         .ok_or_else(|| VtkError::Parse("no band data".into()))?;
 
     let mut points = crate::data::Points::<f64>::new();
     for j in 0..h {
         for i in 0..w {
-            let x = origin_x + i as f64 * dx;
-            let y = origin_y + j as f64 * dy;
+            let x = origin[0] + i as f64 * spacing[0];
+            let y = origin[1] + j as f64 * spacing[1];
             let mut z = [0.0f64];
             scalars.tuple_as_f64(j * w + i, &mut z);
             points.push([x, y, z[0]]);
@@ -147,4 +143,46 @@ pub fn read_raster_as_mesh(path: &Path) -> Result<crate::data::PolyData, VtkErro
     pd.points = points;
     pd.polys = polys;
     Ok(pd)
+}
+
+fn raster_geometry(
+    width: usize,
+    height: usize,
+    geo_transform: [f64; 6],
+) -> ([f64; 3], [f64; 3], [bool; 2]) {
+    let upper_left = geo_transform_point(geo_transform, 0.0, 0.0);
+    let lower_right = geo_transform_point(geo_transform, width as f64, height as f64);
+    let geo_spacing = [
+        (lower_right[0] - upper_left[0]) / width as f64,
+        (lower_right[1] - upper_left[1]) / height as f64,
+    ];
+
+    (
+        [
+            upper_left[0].min(lower_right[0]),
+            upper_left[1].min(lower_right[1]),
+            0.0,
+        ],
+        [geo_spacing[0].abs(), geo_spacing[1].abs(), 1.0],
+        [geo_spacing[0] < 0.0, geo_spacing[1] < 0.0],
+    )
+}
+
+fn geo_transform_point(geo_transform: [f64; 6], x: f64, y: f64) -> [f64; 2] {
+    [
+        geo_transform[0] + geo_transform[1] * x + geo_transform[2] * y,
+        geo_transform[3] + geo_transform[4] * x + geo_transform[5] * y,
+    ]
+}
+
+fn orient_raster_data(data: &[f64], width: usize, height: usize, flip_axis: [bool; 2]) -> Vec<f64> {
+    let mut oriented = vec![0.0; data.len()];
+    for j in 0..height {
+        let source_j = if flip_axis[1] { height - 1 - j } else { j };
+        for i in 0..width {
+            let source_i = if flip_axis[0] { width - 1 - i } else { i };
+            oriented[j * width + i] = data[source_j * width + source_i];
+        }
+    }
+    oriented
 }

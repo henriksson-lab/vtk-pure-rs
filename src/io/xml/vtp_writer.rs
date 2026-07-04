@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::data::{AnyDataArray, CellArray, DataSetAttributes, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, PolyData};
 use crate::types::VtkError;
 
 /// Writer for VTK XML PolyData format (.vtp).
@@ -20,7 +20,7 @@ impl VtpWriter {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
         writeln!(
             w,
-            "<VTKFile type=\"PolyData\" version=\"1.0\" byte_order=\"LittleEndian\">"
+            "<VTKFile type=\"PolyData\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt32\">"
         )?;
         writeln!(w, "  <PolyData>")?;
 
@@ -32,9 +32,12 @@ impl VtpWriter {
 
         writeln!(
             w,
-            "    <Piece NumberOfPoints=\"{}\" NumberOfVerts=\"{}\" NumberOfLines=\"{}\" NumberOfPolys=\"{}\" NumberOfStrips=\"{}\">",
-            n_points, n_verts, n_lines, n_polys, n_strips
+            "    <Piece NumberOfPoints=\"{}\" NumberOfVerts=\"{}\" NumberOfLines=\"{}\" NumberOfStrips=\"{}\" NumberOfPolys=\"{}\">",
+            n_points, n_verts, n_lines, n_strips, n_polys
         )?;
+
+        write_data_arrays(w, "PointData", data.point_data())?;
+        write_data_arrays(w, "CellData", data.cell_data())?;
 
         // Points
         writeln!(w, "      <Points>")?;
@@ -52,28 +55,10 @@ impl VtpWriter {
         writeln!(w, "      </Points>")?;
 
         // Cells
-        if n_verts > 0 {
-            write_cell_section(w, "Verts", &data.verts)?;
-        }
-        if n_lines > 0 {
-            write_cell_section(w, "Lines", &data.lines)?;
-        }
-        if n_polys > 0 {
-            write_cell_section(w, "Polys", &data.polys)?;
-        }
-        if n_strips > 0 {
-            write_cell_section(w, "Strips", &data.strips)?;
-        }
-
-        // Point data
-        if data.point_data().num_arrays() > 0 {
-            write_data_arrays(w, "PointData", data.point_data())?;
-        }
-
-        // Cell data
-        if data.cell_data().num_arrays() > 0 {
-            write_data_arrays(w, "CellData", data.cell_data())?;
-        }
+        write_cell_section(w, "Verts", &data.verts)?;
+        write_cell_section(w, "Lines", &data.lines)?;
+        write_cell_section(w, "Strips", &data.strips)?;
+        write_cell_section(w, "Polys", &data.polys)?;
 
         writeln!(w, "    </Piece>")?;
         writeln!(w, "  </PolyData>")?;
@@ -174,18 +159,35 @@ fn write_any_data_array<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), V
     )?;
 
     write!(w, "          ")?;
-    let nt = arr.num_tuples();
-    let nc = arr.num_components();
-    let mut buf = vec![0.0f64; nc];
-    for i in 0..nt {
-        arr.tuple_as_f64(i, &mut buf);
-        for v in &buf {
-            write!(w, "{} ", v)?;
-        }
-    }
+    write_array_values_ascii(w, arr)?;
     writeln!(w)?;
 
     writeln!(w, "        </DataArray>")?;
+    Ok(())
+}
+
+fn write_array_values_ascii<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), VtkError> {
+    match arr {
+        AnyDataArray::F32(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::F64(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I8(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I16(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I32(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I64(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U8(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U16(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U32(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U64(a) => write_typed_array_values_ascii(w, a),
+    }
+}
+
+fn write_typed_array_values_ascii<W: Write, T: crate::types::Scalar>(
+    w: &mut W,
+    arr: &DataArray<T>,
+) -> Result<(), VtkError> {
+    for value in arr.as_slice() {
+        write!(w, "{} ", value)?;
+    }
     Ok(())
 }
 
@@ -237,6 +239,7 @@ mod tests {
 
         assert!(output.contains("<PointData Scalars=\"temperature\">"));
         assert!(output.contains("Name=\"temperature\""));
+        assert!(output.find("<PointData").unwrap() < output.find("<Points>").unwrap());
     }
 
     #[test]
@@ -255,5 +258,22 @@ mod tests {
 
         assert!(output.contains("Scalars=\"a&amp;b\""));
         assert!(output.contains("Name=\"a&amp;b\""));
+    }
+
+    #[test]
+    fn writes_integer_arrays_without_float_conversion() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let ids = DataArray::from_vec("ids", vec![9_007_199_254_740_993u64; 3], 1);
+        pd.point_data_mut().add_array(ids.into());
+
+        let mut buf = Vec::new();
+        VtpWriter::write_to(&mut buf, &pd).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("9007199254740993 "));
+        assert!(!output.contains("9007199254740992 "));
     }
 }

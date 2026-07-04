@@ -10,7 +10,7 @@ pub fn image_michaelis_menten_enzyme(input: &ImageData, scalars: &str) -> ImageD
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            100.0 * buf[0] / (0.5 + buf[0].max(0.0))
+            100.0 * buf[0].max(0.0) / (0.5 + buf[0].max(0.0))
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,9 @@ mod tests {
         );
         let r = image_michaelis_menten_enzyme(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 200.0 / 3.0).abs() < 1e-12);
     }
 }

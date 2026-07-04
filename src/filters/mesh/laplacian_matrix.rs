@@ -14,14 +14,27 @@ pub fn laplacian_coordinates(input: &PolyData) -> PolyData {
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
+            add_neighbor_pair(&mut neighbors, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut neighbors, n, edge[0], edge[1]);
+        }
+    }
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut neighbors, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut neighbors, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut neighbors, n, tri[2], tri[0]);
         }
     }
 
@@ -91,6 +104,23 @@ pub fn laplacian_magnitude(input: &PolyData) -> PolyData {
             1,
         )));
     pd
+}
+
+fn add_neighbor_pair(neighbors: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !neighbors[a].contains(&b) {
+        neighbors[a].push(b);
+    }
+    if !neighbors[b].contains(&a) {
+        neighbors[b].push(a);
+    }
 }
 
 #[cfg(test)]

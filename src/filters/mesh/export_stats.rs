@@ -1,4 +1,5 @@
 use crate::data::{DataSet, PolyData};
+use std::collections::BTreeSet;
 
 /// Comprehensive mesh statistics summary as a printable string.
 pub fn mesh_stats_report(input: &PolyData) -> String {
@@ -11,12 +12,30 @@ pub fn mesh_stats_report(input: &PolyData) -> String {
     let n_cell_arrays = input.cell_data().num_arrays();
     let bb = input.bounds();
 
-    let mut edge_set = std::collections::HashSet::new();
+    let mut edge_set = BTreeSet::new();
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut edge_set, input.points.len(), edge[0], edge[1]);
+        }
+    }
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            edge_set.insert(if a < b { (a, b) } else { (b, a) });
+            insert_edge(
+                &mut edge_set,
+                input.points.len(),
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edge_set, input.points.len(), tri[0], tri[1]);
+            insert_edge(&mut edge_set, input.points.len(), tri[1], tri[2]);
+            insert_edge(&mut edge_set, input.points.len(), tri[2], tri[0]);
         }
     }
 
@@ -63,6 +82,22 @@ pub fn is_all_triangles(input: &PolyData) -> bool {
 /// Check if mesh has only quads.
 pub fn is_all_quads(input: &PolyData) -> bool {
     input.polys.iter().all(|c| c.len() == 4)
+}
+
+fn insert_edge(edges: &mut BTreeSet<(usize, usize)>, n_points: usize, a: i64, b: i64) {
+    let (Some(a), Some(b)) = (
+        valid_point_index(a, n_points),
+        valid_point_index(b, n_points),
+    ) else {
+        return;
+    };
+    if a != b {
+        edges.insert((a.min(b), a.max(b)));
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]

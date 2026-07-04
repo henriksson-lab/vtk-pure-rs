@@ -19,25 +19,53 @@ impl VtpReader {
     }
 
     pub fn read_from<R: BufRead>(reader: R) -> Result<PolyData, VtkError> {
-        let content: String = reader
-            .lines()
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(VtkError::Io)?
-            .join("\n");
+        let mut bytes = Vec::new();
+        let mut reader = reader;
+        reader.read_to_end(&mut bytes).map_err(VtkError::Io)?;
+        let content = String::from_utf8_lossy(&bytes);
 
         // Extract appended data section if present (raw binary after '_')
-        let appended_raw = extract_appended_raw(&content);
+        let appended_raw = extract_appended_raw_from_bytes(&bytes);
         let appended_b64 = extract_appended_base64(&content);
+        let header_type = extract_vtk_header_type(&content);
+
+        let piece_tag = find_piece_or_primary_tag(&content, "PolyData")
+            .ok_or_else(|| VtkError::Parse("missing PolyData element".into()))?;
+        let number_of_points = extract_required_usize_attr(&piece_tag, "NumberOfPoints")?;
+        let number_of_verts = extract_usize_attr(&piece_tag, "NumberOfVerts")?.unwrap_or(0);
+        let number_of_lines = extract_usize_attr(&piece_tag, "NumberOfLines")?.unwrap_or(0);
+        let number_of_strips = extract_usize_attr(&piece_tag, "NumberOfStrips")?.unwrap_or(0);
+        let number_of_polys = extract_usize_attr(&piece_tag, "NumberOfPolys")?.unwrap_or(0);
 
         let mut pd = PolyData::new();
 
         // Extract Points
         if let Some(points_section) = extract_section(&content, "Points") {
-            pd.points = parse_points_section(
-                &points_section,
-                appended_raw.as_deref(),
-                appended_b64.as_deref(),
-            )?;
+            if points_section.matches("<DataArray").count() == 1 {
+                pd.points = parse_points_section(
+                    &points_section,
+                    appended_raw.as_deref(),
+                    appended_b64.as_deref(),
+                    header_type.as_deref(),
+                )?;
+            } else if number_of_points > 0 {
+                return Err(VtkError::Parse(
+                    "A piece is missing its Points element or element does not have exactly 1 array."
+                        .into(),
+                ));
+            }
+        } else if number_of_points > 0 {
+            return Err(VtkError::Parse(
+                "A piece is missing its Points element or element does not have exactly 1 array."
+                    .into(),
+            ));
+        }
+        if pd.points.len() != number_of_points {
+            return Err(VtkError::Parse(format!(
+                "Piece declares {} points but {} were read",
+                number_of_points,
+                pd.points.len()
+            )));
         }
 
         // Extract cell sections
@@ -46,54 +74,102 @@ impl VtpReader {
                 &polys_section,
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                header_type.as_deref(),
             )?;
+            validate_cell_count("Polys", pd.polys.num_cells(), number_of_polys)?;
         }
         if let Some(lines_section) = extract_section(&content, "Lines") {
             pd.lines = parse_cell_section(
                 &lines_section,
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                header_type.as_deref(),
             )?;
+            validate_cell_count("Lines", pd.lines.num_cells(), number_of_lines)?;
         }
         if let Some(verts_section) = extract_section(&content, "Verts") {
             pd.verts = parse_cell_section(
                 &verts_section,
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                header_type.as_deref(),
             )?;
+            validate_cell_count("Verts", pd.verts.num_cells(), number_of_verts)?;
         }
         if let Some(strips_section) = extract_section(&content, "Strips") {
             pd.strips = parse_cell_section(
                 &strips_section,
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
+                header_type.as_deref(),
             )?;
+            validate_cell_count("Strips", pd.strips.num_cells(), number_of_strips)?;
         }
 
         // Extract PointData
         if let Some((tag, pd_section)) = extract_section_with_tag(&content, "PointData") {
-            parse_attribute_arrays_with_hints(
+            parse_attribute_arrays_with_hints_and_header_type(
                 &pd_section,
                 pd.point_data_mut(),
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
                 Some(&tag),
+                header_type.as_deref(),
             )?;
         }
 
         // Extract CellData
         if let Some((tag, cd_section)) = extract_section_with_tag(&content, "CellData") {
-            parse_attribute_arrays_with_hints(
+            parse_attribute_arrays_with_hints_and_header_type(
                 &cd_section,
                 pd.cell_data_mut(),
                 appended_raw.as_deref(),
                 appended_b64.as_deref(),
                 Some(&tag),
+                header_type.as_deref(),
             )?;
         }
 
         Ok(pd)
     }
+}
+
+fn find_piece_or_primary_tag(content: &str, primary: &str) -> Option<String> {
+    find_open_tag(content, "Piece").or_else(|| find_open_tag(content, primary))
+}
+
+fn find_open_tag(content: &str, tag: &str) -> Option<String> {
+    let open_pattern = format!("<{}", tag);
+    let start = content.find(&open_pattern)?;
+    let tag_end = content[start..].find('>')?;
+    Some(content[start..start + tag_end + 1].to_string())
+}
+
+fn extract_required_usize_attr(tag: &str, attr_name: &str) -> Result<usize, VtkError> {
+    let value = extract_attr(tag, attr_name)
+        .ok_or_else(|| VtkError::Parse(format!("Piece is missing its {attr_name} attribute")))?;
+    value
+        .parse()
+        .map_err(|_| VtkError::Parse(format!("invalid {attr_name} attribute: {value}")))
+}
+
+fn extract_usize_attr(tag: &str, attr_name: &str) -> Result<Option<usize>, VtkError> {
+    extract_attr(tag, attr_name)
+        .map(|value| {
+            value
+                .parse()
+                .map_err(|_| VtkError::Parse(format!("invalid {attr_name} attribute: {value}")))
+        })
+        .transpose()
+}
+
+fn validate_cell_count(tag: &str, actual: usize, expected: usize) -> Result<(), VtkError> {
+    if actual != expected {
+        return Err(VtkError::Parse(format!(
+            "{tag} declares {expected} cells but {actual} were read"
+        )));
+    }
+    Ok(())
 }
 
 /// Extract content between <tag> and </tag>.
@@ -121,10 +197,25 @@ pub(crate) fn extract_section_with_tag(content: &str, tag: &str) -> Option<(Stri
 
 /// Extract attribute from a tag string.
 pub(crate) fn extract_attr(tag: &str, attr_name: &str) -> Option<String> {
-    let pattern = format!("{}=\"", attr_name);
-    let start = tag.find(&pattern)?;
-    let value_start = start + pattern.len();
-    let end = tag[value_start..].find('"')?;
+    let pattern = format!("{}=", attr_name);
+    let start = tag.match_indices(&pattern).find_map(|(start, _)| {
+        let is_name_boundary = start == 0
+            || tag[..start]
+                .chars()
+                .next_back()
+                .is_some_and(|c| c == '<' || c.is_whitespace());
+        is_name_boundary.then_some(start)
+    })?;
+    let mut value_start = start + pattern.len();
+    while tag[value_start..].starts_with(char::is_whitespace) {
+        value_start += tag[value_start..].chars().next()?.len_utf8();
+    }
+    let quote = tag[value_start..].chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    value_start += quote.len_utf8();
+    let end = tag[value_start..].find(quote)?;
     Some(xml_unescape_attr(&tag[value_start..value_start + end]))
 }
 
@@ -139,25 +230,38 @@ fn xml_unescape_attr(value: &str) -> String {
 
 /// Extract raw appended data (encoding="raw") - bytes after the '_' marker.
 pub(crate) fn extract_appended_raw(content: &str) -> Option<Vec<u8>> {
-    let section_start = content.find("<AppendedData")?;
-    let tag_str = &content[section_start..];
-    let tag_end = tag_str.find('>')?;
-    let tag = &tag_str[..tag_end + 1];
+    extract_appended_raw_from_bytes(content.as_bytes())
+}
+
+pub(crate) fn extract_appended_raw_from_bytes(content: &[u8]) -> Option<Vec<u8>> {
+    let section_start = find_bytes(content, b"<AppendedData")?;
+    let tag_end_rel = content[section_start..].iter().position(|&b| b == b'>')?;
+    let tag_end = section_start + tag_end_rel;
+    let tag = std::str::from_utf8(&content[section_start..=tag_end]).ok()?;
 
     let encoding = extract_attr(tag, "encoding").unwrap_or_default();
     if encoding != "raw" {
         return None;
     }
 
-    let after_tag = &content[section_start + tag_end + 1..];
-    // Find the underscore marker
-    let underscore_pos = after_tag.find('_')?;
-    let data_start = underscore_pos + 1;
-    let end_tag = after_tag.find("</AppendedData>")?;
-    if data_start >= end_tag {
+    let mut data_start = tag_end + 1;
+    while data_start < content.len() && content[data_start].is_ascii_whitespace() {
+        data_start += 1;
+    }
+    if data_start < content.len() && content[data_start] == b'_' {
+        data_start += 1;
+    }
+    let end_tag = find_bytes(&content[data_start..], b"</AppendedData>")?;
+    if end_tag == 0 {
         return None;
     }
-    Some(after_tag[data_start..end_tag].as_bytes().to_vec())
+    Some(content[data_start..data_start + end_tag].to_vec())
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 /// Extract base64-encoded appended data.
@@ -203,10 +307,18 @@ pub(crate) fn detect_format(tag: &str) -> DataFormat {
     }
 }
 
+pub(crate) fn extract_vtk_header_type(content: &str) -> Option<String> {
+    let start = content.find("<VTKFile")?;
+    let tag_end = content[start..].find('>')?;
+    let tag = &content[start..start + tag_end + 1];
+    extract_attr(tag, "header_type")
+}
+
 fn parse_points_section(
     section: &str,
     appended_raw: Option<&[u8]>,
     appended_b64: Option<&str>,
+    header_type: Option<&str>,
 ) -> Result<Points<f64>, VtkError> {
     // Find the DataArray tag in the section
     let da_start = section
@@ -218,21 +330,39 @@ fn parse_points_section(
     let tag = &section[da_start..da_start + tag_end + 1];
     let type_str = extract_attr(tag, "type").unwrap_or_else(|| "Float64".to_string());
 
-    let content_start = da_start + tag_end + 1;
-    let content_end = section[content_start..]
-        .find("</DataArray>")
-        .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
-    let content = section[content_start..content_start + content_end].trim();
+    let content;
+    if tag.trim_end().ends_with("/>") {
+        content = "";
+    } else {
+        let content_start = da_start + tag_end + 1;
+        let content_end = section[content_start..]
+            .find("</DataArray>")
+            .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
+        content = section[content_start..content_start + content_end].trim();
+    }
 
     match detect_format(tag) {
         DataFormat::Ascii => parse_points_ascii(content),
         DataFormat::Binary => {
-            let arr = binary::parse_binary_data_array(content, "Points", &type_str, 3)?;
+            let arr = binary::parse_binary_data_array_with_header_type(
+                content,
+                "Points",
+                &type_str,
+                3,
+                header_type,
+            )?;
             data_array_to_points(&arr)
         }
         DataFormat::Appended(offset) => {
-            let arr =
-                parse_from_appended(appended_raw, appended_b64, offset, "Points", &type_str, 3)?;
+            let arr = parse_from_appended_with_header_type(
+                appended_raw,
+                appended_b64,
+                offset,
+                "Points",
+                &type_str,
+                3,
+                header_type,
+            )?;
             data_array_to_points(&arr)
         }
     }
@@ -274,9 +404,12 @@ fn parse_cell_section(
     section: &str,
     appended_raw: Option<&[u8]>,
     appended_b64: Option<&str>,
+    header_type: Option<&str>,
 ) -> Result<CellArray, VtkError> {
     let mut connectivity_values: Vec<i64> = Vec::new();
     let mut offsets_values: Vec<i64> = Vec::new();
+    let mut found_connectivity = false;
+    let mut found_offsets = false;
 
     let mut search_pos = 0;
     while let Some(da_start) = section[search_pos..].find("<DataArray") {
@@ -286,11 +419,18 @@ fn parse_cell_section(
             .ok_or_else(|| VtkError::Parse("unclosed DataArray tag".into()))?;
         let tag = &section[abs_start..abs_start + tag_end + 1];
 
-        let content_start = abs_start + tag_end + 1;
-        let content_end = section[content_start..]
-            .find("</DataArray>")
-            .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
-        let content = section[content_start..content_start + content_end].trim();
+        let (content, next_search_pos) = if tag.trim_end().ends_with("/>") {
+            ("", abs_start + tag_end + 1)
+        } else {
+            let content_start = abs_start + tag_end + 1;
+            let content_end = section[content_start..]
+                .find("</DataArray>")
+                .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
+            (
+                section[content_start..content_start + content_end].trim(),
+                content_start + content_end + "</DataArray>".len(),
+            )
+        };
 
         let name = extract_attr(tag, "Name").unwrap_or_default();
         let type_str = extract_attr(tag, "type").unwrap_or_else(|| "Int64".to_string());
@@ -304,51 +444,99 @@ fn parse_cell_section(
                 })
                 .collect::<Result<_, _>>()?,
             DataFormat::Binary => {
-                let arr = binary::parse_binary_data_array(content, &name, &type_str, 1)?;
+                let arr = binary::parse_binary_data_array_with_header_type(
+                    content,
+                    &name,
+                    &type_str,
+                    1,
+                    header_type,
+                )?;
                 any_data_array_to_i64(&arr)
             }
             DataFormat::Appended(offset) => {
-                let arr =
-                    parse_from_appended(appended_raw, appended_b64, offset, &name, &type_str, 1)?;
+                let arr = parse_from_appended_with_header_type(
+                    appended_raw,
+                    appended_b64,
+                    offset,
+                    &name,
+                    &type_str,
+                    1,
+                    header_type,
+                )?;
                 any_data_array_to_i64(&arr)
             }
         };
 
         match name.as_str() {
-            "connectivity" => connectivity_values = values,
-            "offsets" => offsets_values = values,
+            "connectivity" => {
+                connectivity_values = values;
+                found_connectivity = true;
+            }
+            "offsets" => {
+                offsets_values = values;
+                found_offsets = true;
+            }
             _ => {}
         }
 
-        search_pos = content_start + content_end + "</DataArray>".len();
+        search_pos = next_search_pos;
+    }
+
+    if found_offsets && !found_connectivity {
+        return Err(VtkError::Parse(
+            "Cannot read cell connectivity because the \"connectivity\" array could not be found."
+                .into(),
+        ));
+    }
+    if found_connectivity && !found_offsets {
+        return Err(VtkError::Parse(
+            "Cannot read cell offsets because the \"offsets\" array could not be found.".into(),
+        ));
     }
 
     let mut cells = CellArray::new();
     let mut prev_offset = 0;
     for &offset in &offsets_values {
+        if offset < prev_offset {
+            return Err(VtkError::Parse(
+                "cell offsets are not non-decreasing".into(),
+            ));
+        }
+        if offset < 0 {
+            return Err(VtkError::Parse("cell offset is negative".into()));
+        }
         let start = prev_offset as usize;
         let end = offset as usize;
-        if end <= connectivity_values.len() && start < end {
-            cells.push_cell(&connectivity_values[start..end]);
+        if end > connectivity_values.len() {
+            return Err(VtkError::Parse(
+                "cell offsets exceed connectivity length".into(),
+            ));
         }
+        cells.push_cell(&connectivity_values[start..end]);
         prev_offset = offset;
+    }
+    if prev_offset as usize != connectivity_values.len() {
+        return Err(VtkError::Parse(
+            "cell offsets do not consume all connectivity entries".into(),
+        ));
     }
 
     Ok(cells)
 }
 
 pub(crate) fn any_data_array_to_i64(arr: &AnyDataArray) -> Vec<i64> {
-    let nt = arr.num_tuples();
-    let nc = arr.num_components();
-    let mut result = Vec::with_capacity(nt * nc);
-    let mut buf = vec![0.0f64; nc];
-    for i in 0..nt {
-        arr.tuple_as_f64(i, &mut buf);
-        for &v in &buf {
-            result.push(v as i64);
-        }
+    match arr {
+        AnyDataArray::F32(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::F64(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::I8(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::I16(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::I32(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::I64(a) => a.as_slice().to_vec(),
+        AnyDataArray::U8(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::U16(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::U32(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
+        AnyDataArray::U64(a) => a.as_slice().iter().map(|&v| v as i64).collect(),
     }
-    result
 }
 
 pub(crate) fn parse_from_appended(
@@ -364,6 +552,40 @@ pub(crate) fn parse_from_appended(
     }
     if let Some(b64) = appended_b64 {
         return binary::parse_appended_base64_data_array(b64, offset, name, type_str, nc);
+    }
+    Err(VtkError::Parse(
+        "appended format specified but no AppendedData section found".into(),
+    ))
+}
+
+pub(crate) fn parse_from_appended_with_header_type(
+    appended_raw: Option<&[u8]>,
+    appended_b64: Option<&str>,
+    offset: usize,
+    name: &str,
+    type_str: &str,
+    nc: usize,
+    header_type: Option<&str>,
+) -> Result<AnyDataArray, VtkError> {
+    if let Some(raw) = appended_raw {
+        return binary::parse_appended_data_array_with_header_type(
+            raw,
+            offset,
+            name,
+            type_str,
+            nc,
+            header_type,
+        );
+    }
+    if let Some(b64) = appended_b64 {
+        return binary::parse_appended_base64_data_array_with_header_type(
+            b64,
+            offset,
+            name,
+            type_str,
+            nc,
+            header_type,
+        );
     }
     Err(VtkError::Parse(
         "appended format specified but no AppendedData section found".into(),
@@ -386,6 +608,24 @@ pub(crate) fn parse_attribute_arrays_with_hints(
     appended_b64: Option<&str>,
     section_tag: Option<&str>,
 ) -> Result<(), VtkError> {
+    parse_attribute_arrays_with_hints_and_header_type(
+        section,
+        attrs,
+        appended_raw,
+        appended_b64,
+        section_tag,
+        None,
+    )
+}
+
+pub(crate) fn parse_attribute_arrays_with_hints_and_header_type(
+    section: &str,
+    attrs: &mut crate::data::DataSetAttributes,
+    appended_raw: Option<&[u8]>,
+    appended_b64: Option<&str>,
+    section_tag: Option<&str>,
+    header_type: Option<&str>,
+) -> Result<(), VtkError> {
     let mut search_pos = 0;
     let has_scalars_hint = section_tag.and_then(|tag| extract_attr(tag, "Scalars"));
     while let Some(da_start) = section[search_pos..].find("<DataArray") {
@@ -395,11 +635,18 @@ pub(crate) fn parse_attribute_arrays_with_hints(
             .ok_or_else(|| VtkError::Parse("unclosed DataArray tag".into()))?;
         let tag = &section[abs_start..abs_start + tag_end + 1];
 
-        let content_start = abs_start + tag_end + 1;
-        let content_end = section[content_start..]
-            .find("</DataArray>")
-            .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
-        let content = section[content_start..content_start + content_end].trim();
+        let (content, next_search_pos) = if tag.trim_end().ends_with("/>") {
+            ("", abs_start + tag_end + 1)
+        } else {
+            let content_start = abs_start + tag_end + 1;
+            let content_end = section[content_start..]
+                .find("</DataArray>")
+                .ok_or_else(|| VtkError::Parse("missing </DataArray>".into()))?;
+            (
+                section[content_start..content_start + content_end].trim(),
+                content_start + content_end + "</DataArray>".len(),
+            )
+        };
 
         let name = extract_attr(tag, "Name").unwrap_or_else(|| "data".to_string());
         let type_str = extract_attr(tag, "type").unwrap_or_else(|| "Float64".to_string());
@@ -409,10 +656,22 @@ pub(crate) fn parse_attribute_arrays_with_hints(
 
         let arr = match detect_format(tag) {
             DataFormat::Ascii => parse_ascii_data_array(content, &name, &type_str, nc)?,
-            DataFormat::Binary => binary::parse_binary_data_array(content, &name, &type_str, nc)?,
-            DataFormat::Appended(offset) => {
-                parse_from_appended(appended_raw, appended_b64, offset, &name, &type_str, nc)?
-            }
+            DataFormat::Binary => binary::parse_binary_data_array_with_header_type(
+                content,
+                &name,
+                &type_str,
+                nc,
+                header_type,
+            )?,
+            DataFormat::Appended(offset) => parse_from_appended_with_header_type(
+                appended_raw,
+                appended_b64,
+                offset,
+                &name,
+                &type_str,
+                nc,
+                header_type,
+            )?,
         };
 
         let arr_name = arr.name().to_string();
@@ -421,7 +680,7 @@ pub(crate) fn parse_attribute_arrays_with_hints(
             attrs.set_active_scalars(&arr_name);
         }
 
-        search_pos = content_start + content_end + "</DataArray>".len();
+        search_pos = next_search_pos;
     }
 
     if let Some(tag) = section_tag {
@@ -444,52 +703,27 @@ pub(crate) fn parse_ascii_data_array(
     type_str: &str,
     nc: usize,
 ) -> Result<AnyDataArray, VtkError> {
-    let values: Vec<f64> = content
-        .split_whitespace()
-        .map(|s| {
-            s.parse()
-                .map_err(|_| VtkError::Parse(format!("invalid DataArray value: {}", s)))
-        })
-        .collect::<Result<_, _>>()?;
+    fn parse_values<T: std::str::FromStr>(content: &str) -> Result<Vec<T>, VtkError> {
+        content
+            .split_whitespace()
+            .map(|s| {
+                s.parse()
+                    .map_err(|_| VtkError::Parse(format!("invalid DataArray value: {}", s)))
+            })
+            .collect()
+    }
 
     let arr = match type_str {
-        "Float32" => {
-            let data: Vec<f32> = values.iter().map(|&v| v as f32).collect();
-            AnyDataArray::F32(DataArray::from_vec(name, data, nc))
-        }
-        "Float64" => AnyDataArray::F64(DataArray::from_vec(name, values, nc)),
-        "Int8" => {
-            let data: Vec<i8> = values.iter().map(|&v| v as i8).collect();
-            AnyDataArray::I8(DataArray::from_vec(name, data, nc))
-        }
-        "Int16" => {
-            let data: Vec<i16> = values.iter().map(|&v| v as i16).collect();
-            AnyDataArray::I16(DataArray::from_vec(name, data, nc))
-        }
-        "Int32" => {
-            let data: Vec<i32> = values.iter().map(|&v| v as i32).collect();
-            AnyDataArray::I32(DataArray::from_vec(name, data, nc))
-        }
-        "Int64" => {
-            let data: Vec<i64> = values.iter().map(|&v| v as i64).collect();
-            AnyDataArray::I64(DataArray::from_vec(name, data, nc))
-        }
-        "UInt8" => {
-            let data: Vec<u8> = values.iter().map(|&v| v as u8).collect();
-            AnyDataArray::U8(DataArray::from_vec(name, data, nc))
-        }
-        "UInt16" => {
-            let data: Vec<u16> = values.iter().map(|&v| v as u16).collect();
-            AnyDataArray::U16(DataArray::from_vec(name, data, nc))
-        }
-        "UInt32" => {
-            let data: Vec<u32> = values.iter().map(|&v| v as u32).collect();
-            AnyDataArray::U32(DataArray::from_vec(name, data, nc))
-        }
-        "UInt64" => {
-            let data: Vec<u64> = values.iter().map(|&v| v as u64).collect();
-            AnyDataArray::U64(DataArray::from_vec(name, data, nc))
-        }
+        "Float32" => AnyDataArray::F32(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "Float64" => AnyDataArray::F64(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "Int8" => AnyDataArray::I8(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "Int16" => AnyDataArray::I16(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "Int32" => AnyDataArray::I32(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "Int64" => AnyDataArray::I64(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "UInt8" => AnyDataArray::U8(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "UInt16" => AnyDataArray::U16(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "UInt32" => AnyDataArray::U32(DataArray::from_vec(name, parse_values(content)?, nc)),
+        "UInt64" => AnyDataArray::U64(DataArray::from_vec(name, parse_values(content)?, nc)),
         other => {
             return Err(VtkError::Parse(format!(
                 "unsupported DataArray type: {}",
@@ -570,6 +804,28 @@ mod tests {
     }
 
     #[test]
+    fn reads_single_quoted_xml_attributes() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type='PolyData' version='1.0' byte_order='LittleEndian'>
+  <PolyData>
+    <Piece NumberOfPoints='1' NumberOfVerts='0' NumberOfLines='0' NumberOfPolys='0' NumberOfStrips='0'>
+      <Points>
+        <DataArray type='Float64' NumberOfComponents='3' format='ascii'>0 0 0</DataArray>
+      </Points>
+      <PointData Scalars='ids'>
+        <DataArray type='UInt16' Name='ids' NumberOfComponents='1' format='ascii'>7</DataArray>
+      </PointData>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let result = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap();
+
+        assert_eq!(result.points.len(), 1);
+        assert_eq!(result.point_data().scalars().unwrap().name(), "ids");
+    }
+
+    #[test]
     fn reads_ascii_integer_array_type() {
         let xml = r#"<?xml version="1.0"?>
 <VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
@@ -591,6 +847,187 @@ mod tests {
             result.point_data().scalars().unwrap(),
             AnyDataArray::U16(_)
         ));
+    }
+
+    #[test]
+    fn reads_ascii_uint64_without_float_rounding() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPoints="1" NumberOfVerts="0" NumberOfLines="0" NumberOfPolys="0" NumberOfStrips="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">0 0 0</DataArray>
+      </Points>
+      <PointData Scalars="ids">
+        <DataArray type="UInt64" Name="ids" NumberOfComponents="1" format="ascii">9007199254740993</DataArray>
+      </PointData>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let result = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap();
+
+        match result.point_data().scalars().unwrap() {
+            AnyDataArray::U64(arr) => assert_eq!(arr.as_slice(), &[9_007_199_254_740_993]),
+            other => panic!("unexpected array type: {:?}", other.scalar_type()),
+        }
+    }
+
+    #[test]
+    fn reads_raw_appended_binary_without_utf8_conversion() {
+        let mut appended = Vec::new();
+        appended.extend_from_slice(&24u32.to_le_bytes());
+        for v in [0.0f64, 0.0, 0.0] {
+            appended.extend_from_slice(&v.to_le_bytes());
+        }
+        let connectivity_offset = appended.len();
+        appended.extend_from_slice(&8u32.to_le_bytes());
+        appended.extend_from_slice(&0i64.to_le_bytes());
+        let offsets_offset = appended.len();
+        appended.extend_from_slice(&8u32.to_le_bytes());
+        appended.extend_from_slice(&1i64.to_le_bytes());
+        appended.push(0xff);
+
+        let mut xml = format!(
+            r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian" header_type="UInt32">
+  <PolyData>
+    <Piece NumberOfPoints="1" NumberOfVerts="1" NumberOfLines="0" NumberOfPolys="0" NumberOfStrips="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="appended" offset="0"/>
+      </Points>
+      <Verts>
+        <DataArray type="Int64" Name="connectivity" format="appended" offset="{connectivity_offset}"/>
+        <DataArray type="Int64" Name="offsets" format="appended" offset="{offsets_offset}"/>
+      </Verts>
+    </Piece>
+  </PolyData>
+  <AppendedData encoding="raw">_"#
+        )
+        .into_bytes();
+        xml.extend_from_slice(&appended);
+        xml.extend_from_slice(b"</AppendedData>\n</VTKFile>");
+
+        let result =
+            VtpReader::read_from(std::io::BufReader::new(std::io::Cursor::new(xml))).unwrap();
+
+        assert_eq!(result.points.get(0), [0.0, 0.0, 0.0]);
+        assert_eq!(result.verts.cell(0), &[0]);
+    }
+
+    #[test]
+    fn reads_appended_base64_uint64_header() {
+        let mut appended = Vec::new();
+        appended.extend_from_slice(&24u64.to_le_bytes());
+        for v in [1.0f64, 2.0, 3.0] {
+            appended.extend_from_slice(&v.to_le_bytes());
+        }
+        let connectivity_offset = appended.len();
+        appended.extend_from_slice(&8u64.to_le_bytes());
+        appended.extend_from_slice(&0i64.to_le_bytes());
+        let offsets_offset = appended.len();
+        appended.extend_from_slice(&8u64.to_le_bytes());
+        appended.extend_from_slice(&1i64.to_le_bytes());
+
+        let encoded = binary::base64_encode(&appended);
+        let xml = format!(
+            r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian" header_type="UInt64">
+  <PolyData>
+    <Piece NumberOfPoints="1" NumberOfVerts="1" NumberOfLines="0" NumberOfPolys="0" NumberOfStrips="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="appended" offset="0"/>
+      </Points>
+      <Verts>
+        <DataArray type="Int64" Name="connectivity" format="appended" offset="{connectivity_offset}"/>
+        <DataArray type="Int64" Name="offsets" format="appended" offset="{offsets_offset}"/>
+      </Verts>
+    </Piece>
+  </PolyData>
+  <AppendedData encoding="base64">_{encoded}</AppendedData>
+</VTKFile>"#
+        );
+
+        let result = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap();
+
+        assert_eq!(result.points.get(0), [1.0, 2.0, 3.0]);
+        assert_eq!(result.verts.cell(0), &[0]);
+    }
+
+    #[test]
+    fn rejects_cell_section_missing_offsets() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPoints="3" NumberOfVerts="0" NumberOfLines="0" NumberOfPolys="1" NumberOfStrips="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">0 0 0 1 0 0 0 1 0</DataArray>
+      </Points>
+      <Polys>
+        <DataArray type="Int64" Name="connectivity" format="ascii">0 1 2</DataArray>
+      </Polys>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let err = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap_err();
+        assert!(format!("{err}").contains("offsets"));
+    }
+
+    #[test]
+    fn rejects_missing_number_of_points_attribute() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPolys="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii"></DataArray>
+      </Points>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let err = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap_err();
+        assert!(format!("{err}").contains("NumberOfPoints"));
+    }
+
+    #[test]
+    fn rejects_points_element_without_exactly_one_array() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPoints="1" NumberOfPolys="0">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">0 0 0</DataArray>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">1 1 1</DataArray>
+      </Points>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let err = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap_err();
+        assert!(format!("{err}").contains("Points"));
+    }
+
+    #[test]
+    fn rejects_declared_poly_count_mismatch_when_section_is_read() {
+        let xml = r#"<?xml version="1.0"?>
+<VTKFile type="PolyData" version="1.0" byte_order="LittleEndian">
+  <PolyData>
+    <Piece NumberOfPoints="3" NumberOfPolys="2">
+      <Points>
+        <DataArray type="Float64" NumberOfComponents="3" format="ascii">0 0 0 1 0 0 0 1 0</DataArray>
+      </Points>
+      <Polys>
+        <DataArray type="Int64" Name="connectivity" format="ascii">0 1 2</DataArray>
+        <DataArray type="Int64" Name="offsets" format="ascii">3</DataArray>
+      </Polys>
+    </Piece>
+  </PolyData>
+</VTKFile>"#;
+
+        let err = VtpReader::read_from(std::io::BufReader::new(xml.as_bytes())).unwrap_err();
+        assert!(format!("{err}").contains("Polys declares 2 cells"));
     }
 
     #[test]

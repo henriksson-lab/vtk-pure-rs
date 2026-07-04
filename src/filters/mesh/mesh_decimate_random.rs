@@ -18,6 +18,10 @@ pub fn decimate_random(mesh: &PolyData, keep_ratio: f64, seed: u64) -> PolyData 
         .iter()
         .enumerate()
         .filter(|(i, _)| kept.contains(i))
+        .filter(|(_, c)| {
+            c.iter()
+                .all(|&v| valid_point_id(v, mesh.points.len()).is_some())
+        })
         .map(|(_, c)| c.to_vec())
         .collect();
     let mut used = vec![false; mesh.points.len()];
@@ -42,6 +46,10 @@ pub fn decimate_random(mesh: &PolyData, keep_ratio: f64, seed: u64) -> PolyData 
     r.points = pts;
     r.polys = polys;
     r
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 #[cfg(test)]
 mod tests {

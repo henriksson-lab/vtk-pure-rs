@@ -51,42 +51,36 @@ pub fn cotangent_curvature_flow(mesh: &PolyData, iterations: usize, dt: f64) -> 
     let mut positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
 
     for _ in 0..iterations {
-        let mut new_pos = positions.clone();
+        let mut displacements = vec![[0.0; 3]; n];
+        let mut weights = vec![0.0; n];
 
-        // Compute cotangent Laplacian
+        // Compute symmetric cotangent Laplacian contributions per edge.
         for cell in &all_cells {
             if cell.len() != 3 {
                 continue;
             }
             let vi = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+            if vi.iter().any(|&id| id >= n) {
+                continue;
+            }
 
-            for local in 0..3 {
-                let i = vi[local];
-                let j = vi[(local + 1) % 3];
-                let k = vi[(local + 2) % 3];
+            for &(a, b, k) in &[
+                (vi[0], vi[1], vi[2]),
+                (vi[1], vi[2], vi[0]),
+                (vi[2], vi[0], vi[1]),
+            ] {
+                let pa = positions[a];
+                let pb = positions[b];
+                let pk = positions[k];
 
-                let eij = [
-                    positions[j][0] - positions[i][0],
-                    positions[j][1] - positions[i][1],
-                    positions[j][2] - positions[i][2],
-                ];
-                let ekj = [
-                    positions[j][0] - positions[k][0],
-                    positions[j][1] - positions[k][1],
-                    positions[j][2] - positions[k][2],
-                ];
-                let eki = [
-                    positions[i][0] - positions[k][0],
-                    positions[i][1] - positions[k][1],
-                    positions[i][2] - positions[k][2],
-                ];
+                let vka = [pa[0] - pk[0], pa[1] - pk[1], pa[2] - pk[2]];
+                let vkb = [pb[0] - pk[0], pb[1] - pk[1], pb[2] - pk[2]];
 
-                // Cotangent of angle at vertex k
-                let dot_k = eki[0] * ekj[0] + eki[1] * ekj[1] + eki[2] * ekj[2];
+                let dot_k = vka[0] * vkb[0] + vka[1] * vkb[1] + vka[2] * vkb[2];
                 let cross_k = [
-                    eki[1] * ekj[2] - eki[2] * ekj[1],
-                    eki[2] * ekj[0] - eki[0] * ekj[2],
-                    eki[0] * ekj[1] - eki[1] * ekj[0],
+                    vka[1] * vkb[2] - vka[2] * vkb[1],
+                    vka[2] * vkb[0] - vka[0] * vkb[2],
+                    vka[0] * vkb[1] - vka[1] * vkb[0],
                 ];
                 let sin_k =
                     (cross_k[0] * cross_k[0] + cross_k[1] * cross_k[1] + cross_k[2] * cross_k[2])
@@ -95,8 +89,22 @@ pub fn cotangent_curvature_flow(mesh: &PolyData, iterations: usize, dt: f64) -> 
 
                 let w = cot_k.max(0.0) * 0.5; // clamp negative weights
                 for c in 0..3 {
-                    new_pos[i][c] += dt * w * eij[c];
+                    let edge = pb[c] - pa[c];
+                    displacements[a][c] += w * edge;
+                    displacements[b][c] -= w * edge;
                 }
+                weights[a] += w;
+                weights[b] += w;
+            }
+        }
+
+        let mut new_pos = positions.clone();
+        for i in 0..n {
+            if weights[i] <= 1e-15 {
+                continue;
+            }
+            for c in 0..3 {
+                new_pos[i][c] += dt * displacements[i][c] / weights[i];
             }
         }
 
@@ -191,6 +199,24 @@ mod tests {
         let mesh = make_bumpy();
         let result = cotangent_curvature_flow(&mesh, 5, 0.05);
         assert_eq!(result.points.len(), mesh.points.len());
+    }
+
+    #[test]
+    fn cotangent_flow_is_independent_of_triangle_winding() {
+        let points = vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let a = PolyData::from_triangles(points.clone(), vec![[0, 1, 2]]);
+        let b = PolyData::from_triangles(points, vec![[0, 2, 1]]);
+
+        let ra = cotangent_curvature_flow(&a, 1, 0.1);
+        let rb = cotangent_curvature_flow(&b, 1, 0.1);
+
+        for i in 0..3 {
+            let pa = ra.points.get(i);
+            let pb = rb.points.get(i);
+            for c in 0..3 {
+                assert!((pa[c] - pb[c]).abs() < 1e-12);
+            }
+        }
     }
     #[test]
     fn curvature_computation() {

@@ -18,23 +18,31 @@ pub fn dual_contour_on_mesh(mesh: &PolyData, array_name: &str, isovalue: f64) ->
     let mut face_has_dual = vec![false; cells.len()];
     let mut face_dual_idx = vec![0usize; cells.len()];
     for (ci, c) in cells.iter().enumerate() {
-        if c.is_empty() {
+        let valid_ids: Vec<usize> = c
+            .iter()
+            .filter_map(|&v| {
+                usize::try_from(v)
+                    .ok()
+                    .filter(|&v| v < mesh.points.len() && v < vals.len())
+            })
+            .collect();
+        if valid_ids.is_empty() {
             continue;
         }
-        let signs: Vec<bool> = c.iter().map(|&v| vals[v as usize] >= isovalue).collect();
+        let signs: Vec<bool> = valid_ids.iter().map(|&v| vals[v] >= isovalue).collect();
         let crosses = signs.windows(2).any(|w| w[0] != w[1])
             || (*signs.first().unwrap() != *signs.last().unwrap());
         if crosses {
             let mut cx = 0.0;
             let mut cy = 0.0;
             let mut cz = 0.0;
-            for &v in c {
-                let p = mesh.points.get(v as usize);
+            for &v in &valid_ids {
+                let p = mesh.points.get(v);
                 cx += p[0];
                 cy += p[1];
                 cz += p[2];
             }
-            let n = c.len() as f64;
+            let n = valid_ids.len() as f64;
             face_dual_idx[ci] = dual_pts.len();
             dual_pts.push([cx / n, cy / n, cz / n]);
             face_has_dual[ci] = true;
@@ -46,8 +54,15 @@ pub fn dual_contour_on_mesh(mesh: &PolyData, array_name: &str, isovalue: f64) ->
     for (ci, c) in cells.iter().enumerate() {
         let nc = c.len();
         for i in 0..nc {
-            let a = c[i] as usize;
-            let b = c[(i + 1) % nc] as usize;
+            let Ok(a) = usize::try_from(c[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(c[(i + 1) % nc]) else {
+                continue;
+            };
+            if a >= mesh.points.len() || b >= mesh.points.len() {
+                continue;
+            }
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }

@@ -36,11 +36,11 @@ pub struct RasterInfo {
 }
 
 impl RasterInfo {
-    /// Pixel size in X direction.
+    /// Pixel size in X direction as reported by GDAL.
     pub fn pixel_width(&self) -> f64 {
         self.geo_transform[1]
     }
-    /// Pixel size in Y direction (usually negative).
+    /// Pixel size in Y direction as reported by GDAL (usually negative for north-up images).
     pub fn pixel_height(&self) -> f64 {
         self.geo_transform[5]
     }

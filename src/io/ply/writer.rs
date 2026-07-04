@@ -27,7 +27,8 @@ impl PlyWriter {
         // Header
         writeln!(w, "ply")?;
         writeln!(w, "format ascii 1.0")?;
-        writeln!(w, "comment vtk-rs export")?;
+        writeln!(w, "comment VTK generated PLY File")?;
+        writeln!(w, "obj_info vtkPolyData points and polygons: vtk4.0")?;
         writeln!(w, "element vertex {}", n_verts)?;
         writeln!(w, "property float x")?;
         writeln!(w, "property float y")?;
@@ -72,8 +73,18 @@ impl PlyWriter {
 
         // Faces
         for cell in data.polys.iter() {
+            if cell.len() > u8::MAX as usize {
+                return Err(VtkError::Unsupported(
+                    "PLY face vertex count exceeds uchar list count".into(),
+                ));
+            }
             write!(w, "{}", cell.len())?;
             for &id in cell {
+                if id < i32::MIN as i64 || id > i32::MAX as i64 {
+                    return Err(VtkError::Unsupported(
+                        "PLY face vertex index exceeds int range".into(),
+                    ));
+                }
                 write!(w, " {}", id)?;
             }
             writeln!(w)?;

@@ -13,6 +13,7 @@ pub fn image_pad(input: &ImageData, scalars: &str, pad: [usize; 3], fill_value: 
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
+    let nc = arr.num_components();
     let origin = input.origin();
     let spacing = input.spacing();
 
@@ -27,8 +28,8 @@ pub fn image_pad(input: &ImageData, scalars: &str, pad: [usize; 3], fill_value: 
     ];
 
     let new_n = new_nx * new_ny * new_nz;
-    let mut values = vec![fill_value; new_n];
-    let mut buf = [0.0f64];
+    let mut values = vec![fill_value; new_n * nc];
+    let mut buf = vec![0.0f64; nc];
 
     for k in 0..nz {
         for j in 0..ny {
@@ -37,7 +38,8 @@ pub fn image_pad(input: &ImageData, scalars: &str, pad: [usize; 3], fill_value: 
                 let di = i + pad[0];
                 let dj = j + pad[1];
                 let dk = k + pad[2];
-                values[dk * new_ny * new_nx + dj * new_nx + di] = buf[0];
+                let dst = (dk * new_ny * new_nx + dj * new_nx + di) * nc;
+                values[dst..dst + nc].copy_from_slice(&buf);
             }
         }
     }
@@ -46,7 +48,7 @@ pub fn image_pad(input: &ImageData, scalars: &str, pad: [usize; 3], fill_value: 
     img.set_origin(new_origin);
     img.set_spacing(spacing);
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, nc)));
     img
 }
 

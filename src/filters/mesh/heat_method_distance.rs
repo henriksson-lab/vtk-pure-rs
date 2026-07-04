@@ -16,9 +16,19 @@ pub fn heat_method_distance(input: &PolyData, sources: &[usize], diffusion_time:
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
+        let cn = cell.len();
+        if cn < 2 {
+            continue;
+        }
+        for i in 0..cn {
+            if cell[i] < 0 || cell[(i + 1) % cn] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let b = cell[(i + 1) % cn] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -78,6 +88,7 @@ pub fn heat_method_distance(input: &PolyData, sources: &[usize], diffusion_time:
             result,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("HeatDistance");
     pd
 }
 

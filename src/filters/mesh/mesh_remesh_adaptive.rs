@@ -6,17 +6,17 @@ pub fn remesh_by_curvature(
     max_edge: f64,
     iterations: usize,
 ) -> PolyData {
+    let min_edge = min_edge.max(0.0);
+    let max_edge = max_edge.max(min_edge);
     let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
     let mut tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
+        .filter(|c| c.len() == 3 && valid_cell_points(c, pts.len()))
         .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
         .collect();
-    let n = pts.len();
-    // Estimate curvature per vertex
-    let curv = estimate_curvature(&pts, &tris, n);
     for _ in 0..iterations {
+        let curv = estimate_curvature(&pts, &tris, pts.len());
         // Split long edges in high-curvature regions
         let mut new_tris = Vec::new();
         let mut em: std::collections::HashMap<(usize, usize), usize> =
@@ -115,6 +115,10 @@ fn res(mut v: usize, r: &[usize]) -> usize {
 }
 fn edge_len(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+fn valid_cell_points(cell: &[i64], num_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| usize::try_from(id).ok().is_some_and(|idx| idx < num_points))
 }
 fn estimate_curvature(pts: &[[f64; 3]], tris: &[[usize; 3]], n: usize) -> Vec<f64> {
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];

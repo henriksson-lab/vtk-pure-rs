@@ -12,15 +12,19 @@ pub fn bilateral_mesh_smooth(
     iterations: usize,
 ) -> PolyData {
     let n = input.points.len();
-    if n == 0 {
+    if n == 0 || iterations == 0 || sigma_spatial <= 0.0 || sigma_normal <= 0.0 {
         return input.clone();
     }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
+        let num_ids = cell.len();
+        for i in 0..num_ids {
             let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let b = cell[(i + 1) % num_ids] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -41,9 +45,15 @@ pub fn bilateral_mesh_smooth(
             if cell.len() < 3 {
                 continue;
             }
-            let v0 = pts[cell[0] as usize];
-            let v1 = pts[cell[1] as usize];
-            let v2 = pts[cell[2] as usize];
+            let a = cell[0] as usize;
+            let b = cell[1] as usize;
+            let c = cell[2] as usize;
+            if a >= n || b >= n || c >= n {
+                continue;
+            }
+            let v0 = pts[a];
+            let v1 = pts[b];
+            let v2 = pts[c];
             let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
             let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
             let fn_ = [
@@ -53,6 +63,9 @@ pub fn bilateral_mesh_smooth(
             ];
             for &id in cell.iter() {
                 let i = id as usize;
+                if i >= n {
+                    continue;
+                }
                 vnormals[i][0] += fn_[0];
                 vnormals[i][1] += fn_[1];
                 vnormals[i][2] += fn_[2];
@@ -74,29 +87,25 @@ pub fn bilateral_mesh_smooth(
             }
             let p = pts[i];
             let ni = vnormals[i];
-            let mut sx = 0.0;
-            let mut sy = 0.0;
-            let mut sz = 0.0;
+            let mut sum = 0.0;
             let mut sw = 0.0;
 
             for &j in &neighbors[i] {
                 let q = pts[j];
-                let nj = vnormals[j];
-                let d2 = (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2);
-                let ndiff = 1.0 - (ni[0] * nj[0] + ni[1] * nj[1] + ni[2] * nj[2]).max(0.0);
-                let w = (-d2 * inv_2ss - ndiff * ndiff * inv_2sn).exp();
-                sx += w * q[0];
-                sy += w * q[1];
-                sz += w * q[2];
+                let d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+                let d2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+                let h = d[0] * ni[0] + d[1] * ni[1] + d[2] * ni[2];
+                let w = (-d2 * inv_2ss - h * h * inv_2sn).exp();
+                sum += w * h;
                 sw += w;
             }
 
             if sw > 1e-15 {
-                let alpha = 0.5;
+                let offset = sum / sw;
                 new_pts[i] = [
-                    p[0] * (1.0 - alpha) + sx / sw * alpha,
-                    p[1] * (1.0 - alpha) + sy / sw * alpha,
-                    p[2] * (1.0 - alpha) + sz / sw * alpha,
+                    p[0] + offset * ni[0],
+                    p[1] + offset * ni[1],
+                    p[2] + offset * ni[2],
                 ];
             }
         }
@@ -141,5 +150,16 @@ mod tests {
         let pd = PolyData::new();
         let result = bilateral_mesh_smooth(&pd, 1.0, 1.0, 5);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn invalid_connectivity_is_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let result = bilateral_mesh_smooth(&pd, 1.0, 1.0, 1);
+        assert_eq!(result.points.len(), 2);
     }
 }

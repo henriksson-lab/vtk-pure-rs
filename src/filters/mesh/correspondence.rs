@@ -20,17 +20,17 @@ pub fn find_correspondences(source: &PolyData, target: &PolyData) -> PolyData {
 
     for i in 0..n_src {
         if let Some((idx, d2)) = tree.nearest(source.points.get(i)) {
-            indices.push(idx as f64);
+            indices.push(idx as i64);
             distances.push(d2.sqrt());
         } else {
-            indices.push(-1.0);
+            indices.push(-1);
             distances.push(f64::MAX);
         }
     }
 
     let mut pd = source.clone();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
+        .add_array(AnyDataArray::I64(DataArray::from_vec(
             "CorrespondenceIndex",
             indices,
             1,

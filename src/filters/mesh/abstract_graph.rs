@@ -1,15 +1,27 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
-use std::collections::{HashMap, HashSet};
+use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Build the adjacency matrix of a mesh as sparse (row, col, weight) triples.
 ///
 /// Weight = Euclidean edge length. Useful for graph algorithms.
 pub fn adjacency_matrix(input: &PolyData) -> Vec<(usize, usize, f64)> {
     let mut edges: HashMap<(usize, usize), f64> = HashMap::new();
+    let n = input.points.len();
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % cell.len()];
+            if a_id < 0 || b_id < 0 {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
+            if a >= n || b >= n || a == b {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edges.entry(key).or_insert_with(|| {
                 let pa = input.points.get(a);
@@ -36,9 +48,20 @@ pub fn betweenness_centrality(input: &PolyData, num_sources: usize) -> PolyData 
 
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % cell.len()];
+            if a_id < 0 || b_id < 0 {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
+            if a >= n || b >= n || a == b {
+                continue;
+            }
             if !adj[a].contains(&b) {
                 adj[a].push(b);
             }

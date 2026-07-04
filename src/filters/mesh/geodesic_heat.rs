@@ -120,6 +120,13 @@ pub fn geodesic_iso_lines(
             if cell.len() < 3 {
                 continue;
             }
+            if cell
+                .iter()
+                .any(|&id| id < 0 || id as usize >= scalars.len())
+            {
+                continue;
+            }
+            let mut crossings = Vec::new();
             for edge_i in 0..cell.len() {
                 let a = cell[edge_i] as usize;
                 let b = cell[(edge_i + 1) % cell.len()] as usize;
@@ -138,10 +145,10 @@ pub fn geodesic_iso_lines(
                 ];
                 let idx = all_points.len() as i64;
                 all_points.push(pt);
-                // We'll pair consecutive crossings per cell in a simplified way
-                if idx > 0 && idx % 2 == 1 {
-                    all_lines.push_cell(&[idx - 1, idx]);
-                }
+                crossings.push(idx);
+            }
+            for pair in crossings.chunks_exact(2) {
+                all_lines.push_cell(pair);
             }
         }
     }
@@ -157,15 +164,57 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            adj[a].insert(b);
+            adj[b].insert(a);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            let Some(a) = valid_point_id(edge[0], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(edge[1], n) else {
+                continue;
+            };
+            adj[a].insert(b);
+            adj[b].insert(a);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            for edge in [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]] {
+                let Some(a) = valid_point_id(edge[0], n) else {
+                    continue;
+                };
+                let Some(b) = valid_point_id(edge[1], n) else {
+                    continue;
+                };
                 adj[a].insert(b);
                 adj[b].insert(a);
             }
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 fn avg_edge_len(mesh: &PolyData, adj: &[Vec<usize>]) -> f64 {
@@ -237,5 +286,57 @@ mod tests {
         let mesh = PolyData::from_triangles(pts, tris);
         let lines = geodesic_iso_lines(&mesh, &[0], 3, 30);
         assert!(lines.points.len() > 0);
+    }
+
+    #[test]
+    fn iso_lines_pair_crossings_per_cell() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.points.push([10.0, 0.0, 0.0]);
+        mesh.points.push([11.0, 0.0, 0.0]);
+        mesh.points.push([10.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[3, 4, 5]);
+
+        let lines = geodesic_iso_lines(&mesh, &[0], 1, 1);
+        for cell in lines.lines.iter() {
+            assert_eq!(cell.len(), 2);
+            let a = lines.points.get(cell[0] as usize);
+            let b = lines.points.get(cell[1] as usize);
+            assert!(
+                (a[0] - b[0]).abs() < 2.0,
+                "iso segment endpoints should come from the same source cell"
+            );
+        }
+    }
+
+    #[test]
+    fn iso_lines_skips_invalid_cell_ids() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[0, 2, 99]);
+
+        let lines = geodesic_iso_lines(&mesh, &[0], 1, 1);
+        assert!(lines.points.len() <= 2);
+    }
+
+    #[test]
+    fn heat_distance_uses_line_cells() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([2.0, 0.0, 0.0]);
+        mesh.lines.push_cell(&[0, 1, 2]);
+
+        let result = geodesic_heat(&mesh, &[0], 4);
+        let arr = result.point_data().get_array("GeodesicHeat").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(2, &mut buf);
+        assert!(buf[0] > 0.0);
     }
 }

@@ -1,7 +1,7 @@
 //! FITS (Flexible Image Transport System) reader for vtk-rs.
 //!
 //! Reads simple 2D/3D FITS image data (primary HDU) into ImageData.
-//! Supports BITPIX -32 (f32), -64 (f64), 16 (i16), 32 (i32).
+//! Supports BITPIX 8 (u8), 16 (i16), 32 (i32), 64 (i64), -32 (f32), -64 (f64).
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
 use std::io::{Read, Seek};
@@ -50,6 +50,9 @@ pub fn read_fits<R: Read + Seek>(r: &mut R) -> Result<ImageData, String> {
     if naxis < 1 {
         return Err("NAXIS < 1".into());
     }
+    if naxis > 3 {
+        return Err(format!("unsupported NAXIS {naxis}"));
+    }
     let dims = [
         naxis_vals[0],
         if naxis >= 2 { naxis_vals[1] } else { 1 },
@@ -61,9 +64,10 @@ pub fn read_fits<R: Read + Seek>(r: &mut R) -> Result<ImageData, String> {
         8 => 1,
         16 => 2,
         32 => 4,
+        64 => 8,
         -32 => 4,
         -64 => 8,
-        _ => 4,
+        _ => return Err(format!("unsupported BITPIX {bitpix}")),
     };
     let mut raw = vec![0u8; total * bytes_per_pixel];
     r.read_exact(&mut raw).map_err(|e| e.to_string())?;
@@ -76,8 +80,9 @@ pub fn read_fits<R: Read + Seek>(r: &mut R) -> Result<ImageData, String> {
             -64 => f64::from_be_bytes(raw[off..off + 8].try_into().unwrap()),
             16 => i16::from_be_bytes(raw[off..off + 2].try_into().unwrap()) as f64,
             32 => i32::from_be_bytes(raw[off..off + 4].try_into().unwrap()) as f64,
+            64 => i64::from_be_bytes(raw[off..off + 8].try_into().unwrap()) as f64,
             8 => raw[off] as f64,
-            _ => 0.0,
+            _ => unreachable!(),
         };
         data.push(val * bscale + bzero);
     }

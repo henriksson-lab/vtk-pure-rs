@@ -19,8 +19,14 @@ pub fn filtration_components(
         }
     };
     let n = mesh.points.len();
+    if n == 0 || arr.num_tuples() < n {
+        return PersistenceInfo {
+            num_components_at: vec![],
+            betti_0_final: 0,
+        };
+    }
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..arr.num_tuples())
+    let vals: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -32,17 +38,31 @@ pub fn filtration_components(
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+            add_neighbor_pair(&mut nb, n, cell[i], cell[(i + 1) % nc]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut nb, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut nb, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut nb, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut nb, n, tri[2], tri[0]);
         }
     }
     let nl = num_levels.max(2);
@@ -87,6 +107,28 @@ fn union(p: &mut [usize], a: usize, b: usize) {
     if ra != rb {
         p[rb] = ra;
     }
+}
+
+fn add_neighbor_pair(nb: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+}
+
+fn valid_point_id(point_id: i64, npoints: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&id| id < npoints)
 }
 #[cfg(test)]
 mod tests {

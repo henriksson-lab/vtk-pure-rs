@@ -25,9 +25,12 @@ pub fn count_components(input: &PolyData, label: bool) -> (ComponentCount, PolyD
             if cell.len() < 2 {
                 continue;
             }
-            let first: usize = cell[0] as usize;
-            for &id in &cell[1..] {
-                union(&mut parent, &mut rank, first, id as usize);
+            let mut valid_ids = cell.iter().filter_map(|&id| valid_point_id(id, n));
+            let Some(first) = valid_ids.next() else {
+                continue;
+            };
+            for id in valid_ids {
+                union(&mut parent, &mut rank, first, id);
             }
         }
     }
@@ -91,10 +94,14 @@ fn union(parent: &mut [usize], rank: &mut [usize], a: usize, b: usize) {
     }
 }
 
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{CellArray, Points, PolyData};
+    use crate::data::PolyData;
 
     fn make_two_triangles() -> PolyData {
         let mut pd = PolyData::new();
@@ -147,5 +154,16 @@ mod tests {
         // Vertices in the same triangle share an id.
         arr.tuple_as_f64(1, &mut buf);
         assert_eq!(buf[0], id_a);
+    }
+
+    #[test]
+    fn invalid_cell_ids_are_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, -1, 99]);
+
+        let (result, _) = count_components(&pd, false);
+        assert_eq!(result.count, 2);
     }
 }

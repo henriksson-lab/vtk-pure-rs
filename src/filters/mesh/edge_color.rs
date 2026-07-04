@@ -13,21 +13,27 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 /// edges are colored red `[1, 0, 0]`.
 pub fn color_edges_by_angle(input: &PolyData, sharp_threshold_deg: f64) -> PolyData {
     let cos_threshold: f64 = sharp_threshold_deg.to_radians().cos();
+    let faces = surface_faces(input);
 
     // Compute face normals.
-    let face_normals: Vec<[f64; 3]> = input
-        .polys
+    let face_normals: Vec<[f64; 3]> = faces
         .iter()
-        .map(|c| polygon_normal(&input.points, &c))
+        .map(|c| polygon_normal(&input.points, c).unwrap_or([0.0, 0.0, 1.0]))
         .collect();
 
     // Build edge -> face mapping.
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    for (fi, cell) in input.polys.iter().enumerate() {
+    for (fi, cell) in faces.iter().enumerate() {
         let n: usize = cell.len();
+        if n < 2 {
+            continue;
+        }
         for i in 0..n {
             let a: i64 = cell[i];
             let b: i64 = cell[(i + 1) % n];
+            if !valid_point_id(a, input.points.len()) || !valid_point_id(b, input.points.len()) {
+                continue;
+            }
             let key: (i64, i64) = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
@@ -73,6 +79,20 @@ pub fn color_edges_by_angle(input: &PolyData, sharp_threshold_deg: f64) -> PolyD
     pd
 }
 
+fn surface_faces(input: &PolyData) -> Vec<Vec<i64>> {
+    let mut faces: Vec<Vec<i64>> = input.polys.iter().map(|cell| cell.to_vec()).collect();
+    for strip in input.strips.iter() {
+        for i in 0..strip.len().saturating_sub(2) {
+            if i % 2 == 0 {
+                faces.push(vec![strip[i], strip[i + 1], strip[i + 2]]);
+            } else {
+                faces.push(vec![strip[i + 1], strip[i], strip[i + 2]]);
+            }
+        }
+    }
+    faces
+}
+
 fn map_point(
     id: i64,
     src: &Points<f64>,
@@ -81,32 +101,41 @@ fn map_point(
 ) -> i64 {
     *map.entry(id).or_insert_with(|| {
         let idx: i64 = dst.len() as i64;
-        dst.push(src.get(id as usize));
+        dst.push(src.get(usize::try_from(id).expect("edge point id must be nonnegative")));
         idx
     })
 }
 
-fn polygon_normal(points: &Points<f64>, cell: &[i64]) -> [f64; 3] {
+fn polygon_normal(points: &Points<f64>, cell: &[i64]) -> Option<[f64; 3]> {
     let mut nx: f64 = 0.0;
     let mut ny: f64 = 0.0;
     let mut nz: f64 = 0.0;
     let n: usize = cell.len();
     if n < 3 {
-        return [0.0, 0.0, 1.0];
+        return None;
     }
     for i in 0..n {
-        let p: [f64; 3] = points.get(cell[i] as usize);
-        let q: [f64; 3] = points.get(cell[(i + 1) % n] as usize);
+        let a = usize::try_from(cell[i]).ok()?;
+        let b = usize::try_from(cell[(i + 1) % n]).ok()?;
+        if a >= points.len() || b >= points.len() {
+            return None;
+        }
+        let p: [f64; 3] = points.get(a);
+        let q: [f64; 3] = points.get(b);
         nx += (p[1] - q[1]) * (p[2] + q[2]);
         ny += (p[2] - q[2]) * (p[0] + q[0]);
         nz += (p[0] - q[0]) * (p[1] + q[1]);
     }
     let len: f64 = (nx * nx + ny * ny + nz * nz).sqrt();
     if len > 1e-20 {
-        [nx / len, ny / len, nz / len]
+        Some([nx / len, ny / len, nz / len])
     } else {
-        [0.0, 0.0, 1.0]
+        None
     }
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> bool {
+    usize::try_from(id).is_ok_and(|id| id < n_points)
 }
 
 #[cfg(test)]

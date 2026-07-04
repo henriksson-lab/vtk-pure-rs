@@ -8,6 +8,9 @@ pub fn apply_displacement(mesh: &PolyData, array_name: &str, scale: f64) -> Poly
         None => return mesh.clone(),
     };
     let nc = arr.num_components();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut pts = Points::<f64>::new();
     let mut buf = vec![0.0f64; nc];
     for i in 0..n {

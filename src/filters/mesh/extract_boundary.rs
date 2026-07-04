@@ -1,20 +1,12 @@
 //! Extract boundary loops from a mesh as polylines.
 
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Extract boundary edges as polyline loops.
 pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
     // Find boundary edges (shared by exactly 1 face)
-    let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
-        std::collections::HashMap::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
-        }
-    }
+    let edge_count = polygon_edge_counts(mesh);
     let boundary_edges: Vec<(usize, usize)> = edge_count
         .iter()
         .filter(|(_, &c)| c == 1)
@@ -28,15 +20,14 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
     }
 
     // Build adjacency for boundary vertices
-    let mut adj: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    let mut adj: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
     for &(a, b) in &boundary_edges {
-        adj.entry(a).or_default().push(b);
-        adj.entry(b).or_default().push(a);
+        adj.entry(a).or_default().insert(b);
+        adj.entry(b).or_default().insert(a);
     }
 
     // Trace loops
-    let mut visited_edges: std::collections::HashSet<(usize, usize)> =
-        std::collections::HashSet::new();
+    let mut visited_edges: BTreeSet<(usize, usize)> = BTreeSet::new();
     let mut loops: Vec<Vec<usize>> = Vec::new();
 
     for &start in adj.keys() {
@@ -48,6 +39,7 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
         }
         let mut loop_verts = vec![start];
         let mut current = start;
+        let mut closed = false;
         loop {
             let next = adj
                 .get(&current)
@@ -60,6 +52,8 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
                 Some(nb) => {
                     visited_edges.insert((current.min(nb), current.max(nb)));
                     if nb == start {
+                        loop_verts.push(nb);
+                        closed = true;
                         break;
                     }
                     loop_verts.push(nb);
@@ -68,7 +62,7 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
                 None => break,
             }
         }
-        if loop_verts.len() >= 2 {
+        if closed && loop_verts.len() >= 4 {
             loops.push(loop_verts);
         }
     }
@@ -76,7 +70,7 @@ pub fn extract_boundary_loops(mesh: &PolyData) -> PolyData {
     // Build output
     let mut pts = Points::<f64>::new();
     let mut lines = CellArray::new();
-    let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut pt_map: HashMap<usize, usize> = HashMap::new();
 
     for lp in &loops {
         let ids: Vec<i64> = lp
@@ -103,6 +97,56 @@ pub fn boundary_loop_count(mesh: &PolyData) -> usize {
     extract_boundary_loops(mesh).lines.num_cells()
 }
 
+fn polygon_edge_counts(mesh: &PolyData) -> BTreeMap<(usize, usize), usize> {
+    let mut edge_count = BTreeMap::new();
+    let n_points = mesh.points.len();
+
+    for cell in mesh.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_counted_edge(
+                &mut edge_count,
+                n_points,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_counted_edge(&mut edge_count, n_points, tri[0], tri[1]);
+            insert_counted_edge(&mut edge_count, n_points, tri[1], tri[2]);
+            insert_counted_edge(&mut edge_count, n_points, tri[2], tri[0]);
+        }
+    }
+
+    edge_count
+}
+
+fn insert_counted_edge(
+    edge_count: &mut BTreeMap<(usize, usize), usize>,
+    n_points: usize,
+    a: i64,
+    b: i64,
+) {
+    let (Some(a), Some(b)) = (
+        valid_point_index(a, n_points),
+        valid_point_index(b, n_points),
+    ) else {
+        return;
+    };
+    if a != b {
+        *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,6 +158,10 @@ mod tests {
             vec![[0, 1, 2]],
         );
         assert_eq!(boundary_loop_count(&mesh), 1);
+        let loops = extract_boundary_loops(&mesh);
+        let line = loops.lines.cell(0);
+        assert_eq!(line.len(), 4);
+        assert_eq!(line.first(), line.last());
     }
     #[test]
     fn test_two_tris() {

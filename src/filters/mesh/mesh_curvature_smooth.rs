@@ -1,5 +1,5 @@
 //! Curvature-weighted Laplacian smoothing (smooths flat areas more than curved).
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 pub fn curvature_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> PolyData {
     let n = mesh.points.len();
@@ -62,9 +62,8 @@ pub fn curvature_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> Poly
     for p in &positions {
         pts.push(*p);
     }
-    let mut result = PolyData::new();
+    let mut result = mesh.clone();
     result.points = pts;
-    result.polys = mesh.polys.clone();
     result
 }
 

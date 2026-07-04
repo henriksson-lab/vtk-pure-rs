@@ -6,6 +6,9 @@ pub fn scalar_bands(mesh: &PolyData, array_name: &str, num_bands: usize) -> Poly
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return mesh.clone();
+    }
     let nb = num_bands.max(1);
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
@@ -32,7 +35,10 @@ pub fn scalar_bands(mesh: &PolyData, array_name: &str, num_bands: usize) -> Poly
 }
 pub fn scalar_band_colors(mesh: &PolyData, array_name: &str, num_bands: usize) -> PolyData {
     let banded = scalar_bands(mesh, array_name, num_bands);
-    let arr = banded.point_data().get_array("Bands").unwrap();
+    let arr = match banded.point_data().get_array("Bands") {
+        Some(a) => a,
+        None => return banded,
+    };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
     let palette: [[f64; 3]; 10] = [

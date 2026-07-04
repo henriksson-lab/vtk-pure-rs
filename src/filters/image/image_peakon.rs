@@ -10,7 +10,7 @@ pub fn image_peakon(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (-buf[0].abs() * 2.0).exp()
+            (-buf[0].abs()).exp()
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,19 @@ mod tests {
         );
         let r = image_peakon(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn evaluates_unit_peakon_profile() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-1.0, 0.0, 2.0], 1),
+        ));
+
+        let r = image_peakon(&img, "v");
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+
+        assert!((values[0] - (-1.0f64).exp()).abs() < 1e-12);
+        assert_eq!(values[1], 1.0);
+        assert!((values[2] - (-2.0f64).exp()).abs() < 1e-12);
     }
 }

@@ -4,6 +4,9 @@ use crate::data::{AnyDataArray, DataArray, ImageData, Table};
 
 /// Compute mutual information between two scalar arrays on the same ImageData.
 pub fn mutual_information(image: &ImageData, array_a: &str, array_b: &str, n_bins: usize) -> f64 {
+    if n_bins == 0 {
+        return 0.0;
+    }
     let a = match image.point_data().get_array(array_a) {
         Some(x) => x,
         None => return 0.0,
@@ -70,6 +73,9 @@ pub fn mutual_information(image: &ImageData, array_a: &str, array_b: &str, n_bin
 
 /// Compute Shannon entropy of a scalar array.
 pub fn scalar_entropy(image: &ImageData, array_name: &str, n_bins: usize) -> f64 {
+    if n_bins == 0 {
+        return 0.0;
+    }
     let arr = match image.point_data().get_array(array_name) {
         Some(x) => x,
         None => return 0.0,
@@ -105,6 +111,9 @@ pub fn scalar_entropy(image: &ImageData, array_name: &str, n_bins: usize) -> f64
 
 /// Compute joint histogram as a Table.
 pub fn joint_histogram(image: &ImageData, array_a: &str, array_b: &str, n_bins: usize) -> Table {
+    if n_bins == 0 {
+        return Table::new();
+    }
     let a = match image.point_data().get_array(array_a) {
         Some(x) => x,
         None => return Table::new(),
@@ -114,6 +123,9 @@ pub fn joint_histogram(image: &ImageData, array_a: &str, array_b: &str, n_bins: 
         None => return Table::new(),
     };
     let n = a.num_tuples().min(b.num_tuples());
+    if n == 0 {
+        return Table::new();
+    }
     let mut ab = [0.0f64];
     let mut bb = [0.0f64];
 

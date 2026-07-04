@@ -3,7 +3,11 @@ use crate::data::{CellArray, Points, PolyData};
 
 pub fn edge_collapse(mesh: &PolyData, target_faces: usize) -> PolyData {
     let n = mesh.points.len();
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<usize>> = mesh
+        .polys
+        .iter()
+        .filter_map(|c| valid_point_ids(c, n))
+        .collect();
     let n_cells = cells.len();
     if n_cells <= target_faces {
         return mesh.clone();
@@ -11,28 +15,20 @@ pub fn edge_collapse(mesh: &PolyData, target_faces: usize) -> PolyData {
 
     // Union-Find
     let mut parent: Vec<usize> = (0..n).collect();
-    fn find(p: &mut Vec<usize>, x: usize) -> usize {
-        if p[x] != x {
-            p[x] = find(p, p[x]);
-        }
-        p[x]
-    }
 
     // Collect edges with lengths
     let mut edges: Vec<(f64, usize, usize)> = Vec::new();
     for cell in &cells {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < b && a < n && b < n {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                edges.push((d, a, b));
-            }
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            let (a, b) = (a.min(b), a.max(b));
+            let pa = mesh.points.get(a);
+            let pb = mesh.points.get(b);
+            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                .sqrt();
+            edges.push((d, a, b));
         }
     }
     edges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -55,12 +51,8 @@ pub fn edge_collapse(mesh: &PolyData, target_faces: usize) -> PolyData {
             if !active_cells[ci] {
                 continue;
             }
-            let mapped: Vec<usize> = cell
-                .iter()
-                .map(|&v| find(&mut parent, v as usize))
-                .collect();
-            let unique: std::collections::HashSet<usize> = mapped.iter().copied().collect();
-            if unique.len() < 3 {
+            let mapped = compact_mapped_cell(cell, &mut parent);
+            if mapped.len() < 3 {
                 active_cells[ci] = false;
                 remaining -= 1;
             }
@@ -87,13 +79,50 @@ pub fn edge_collapse(mesh: &PolyData, target_faces: usize) -> PolyData {
         if !active_cells[ci] {
             continue;
         }
-        let mapped: Vec<i64> = cell.iter().map(|&v| new_idx[v as usize] as i64).collect();
+        let compact = compact_mapped_cell(cell, &mut parent);
+        if compact.len() < 3 {
+            continue;
+        }
+        let mapped: Vec<i64> = compact.iter().map(|&v| new_idx[v] as i64).collect();
         polys.push_cell(&mapped);
     }
     let mut m = PolyData::new();
     m.points = pts;
     m.polys = polys;
     m
+}
+
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    let ids: Option<Vec<usize>> = cell
+        .iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect();
+    ids.filter(|ids| ids.len() >= 3)
+}
+
+fn find(p: &mut Vec<usize>, x: usize) -> usize {
+    if p[x] != x {
+        p[x] = find(p, p[x]);
+    }
+    p[x]
+}
+
+fn compact_mapped_cell(cell: &[usize], parent: &mut Vec<usize>) -> Vec<usize> {
+    let mut mapped = Vec::with_capacity(cell.len());
+    for &v in cell {
+        let r = find(parent, v);
+        if mapped.last().copied() != Some(r) {
+            mapped.push(r);
+        }
+    }
+    if mapped.len() > 1 && mapped.first() == mapped.last() {
+        mapped.pop();
+    }
+    let unique: std::collections::HashSet<usize> = mapped.iter().copied().collect();
+    if unique.len() != mapped.len() {
+        return Vec::new();
+    }
+    mapped
 }
 
 #[cfg(test)]

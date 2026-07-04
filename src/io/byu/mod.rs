@@ -26,7 +26,7 @@ pub fn write_byu<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
     // Vertices (x y z)
     for i in 0..n_pts {
         let p = mesh.points.get(i);
-        writeln!(w, "{} {} {}", p[0], p[1], p[2])?;
+        writeln!(w, "{:e} {:e} {:e}", p[0], p[1], p[2])?;
     }
 
     // Polygons (1-based indices, last one negative)
@@ -48,58 +48,78 @@ pub fn write_byu<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
 
 /// Read a BYU format file into a PolyData mesh.
 pub fn read_byu<R: BufRead>(reader: R) -> Result<PolyData, String> {
-    let mut all_nums: Vec<f64> = Vec::new();
-    for line in reader.lines() {
-        let line = line.map_err(|e| e.to_string())?;
-        for token in line.split_whitespace() {
-            if let Ok(v) = token.parse::<f64>() {
-                all_nums.push(v);
-            }
-        }
+    let mut input = String::new();
+    let mut reader = reader;
+    reader
+        .read_to_string(&mut input)
+        .map_err(|e| e.to_string())?;
+    let mut tokens = input.split_whitespace();
+
+    let n_parts = next_i64(&mut tokens, "number of parts")?;
+    let n_verts = next_i64(&mut tokens, "number of vertices")?;
+    let n_polys = next_i64(&mut tokens, "number of polygons")?;
+    let _n_edges = next_i64(&mut tokens, "number of edges")?;
+
+    if n_parts < 1 || n_verts < 1 || n_polys < 1 {
+        return Err("Bad MOVIE.BYU file".into());
     }
-
-    if all_nums.len() < 4 {
-        return Err("BYU file too short".into());
-    }
-
-    let _n_parts = all_nums[0] as usize;
-    let n_verts = all_nums[1] as usize;
-    let _n_polys = all_nums[2] as usize;
-    let _n_conn = all_nums[3] as usize;
-
-    // Skip part ranges (2 values per part)
-    let mut idx = 4 + _n_parts * 2;
+    let n_parts = n_parts as usize;
+    let n_verts = n_verts as usize;
+    let n_polys = n_polys as usize;
 
     // Read vertices
-    if idx + n_verts * 3 > all_nums.len() {
-        return Err("not enough vertex data".into());
+    for _ in 0..n_parts {
+        let _part_start = next_i64(&mut tokens, "part start")?;
+        let _part_end = next_i64(&mut tokens, "part end")?;
     }
     let mut points = Points::<f64>::new();
-    for i in 0..n_verts {
-        let base = idx + i * 3;
-        points.push([all_nums[base], all_nums[base + 1], all_nums[base + 2]]);
+    for _ in 0..n_verts {
+        points.push([
+            next_f64(&mut tokens, "point x")?,
+            next_f64(&mut tokens, "point y")?,
+            next_f64(&mut tokens, "point z")?,
+        ]);
     }
-    idx += n_verts * 3;
 
     // Read polygon connectivity
     let mut polys = CellArray::new();
-    let mut current_poly: Vec<i64> = Vec::new();
-    let remaining = &all_nums[idx..];
-    for &val in remaining {
-        let ival = val as i64;
-        if ival < 0 {
-            current_poly.push(-ival - 1); // convert to 0-based
-            polys.push_cell(&current_poly);
-            current_poly.clear();
-        } else {
-            current_poly.push(ival - 1); // convert to 0-based
+    for _ in 0..n_polys {
+        let mut current_poly: Vec<i64> = Vec::new();
+        loop {
+            let value = next_i64(&mut tokens, "polygon connectivity")?;
+            if value == 0 {
+                return Err("BYU point indices are 1-based and must not be zero".into());
+            }
+            if value < 0 {
+                current_poly.push(-value - 1); // convert to 0-based
+                break;
+            }
+            current_poly.push(value - 1); // convert to 0-based
         }
+        if current_poly.is_empty() {
+            return Err("empty BYU polygon".into());
+        }
+        polys.push_cell(&current_poly);
     }
 
     let mut mesh = PolyData::new();
     mesh.points = points;
     mesh.polys = polys;
     Ok(mesh)
+}
+
+fn next_i64<'a>(tokens: &mut impl Iterator<Item = &'a str>, what: &str) -> Result<i64, String> {
+    let token = tokens.next().ok_or_else(|| format!("missing BYU {what}"))?;
+    token
+        .parse::<i64>()
+        .map_err(|_| format!("invalid BYU {what}: {token}"))
+}
+
+fn next_f64<'a>(tokens: &mut impl Iterator<Item = &'a str>, what: &str) -> Result<f64, String> {
+    let token = tokens.next().ok_or_else(|| format!("missing BYU {what}"))?;
+    token
+        .parse::<f64>()
+        .map_err(|_| format!("invalid BYU {what}: {token}"))
 }
 
 /// Read BYU from file path.

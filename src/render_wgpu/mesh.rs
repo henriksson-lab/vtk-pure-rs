@@ -9,6 +9,7 @@ pub struct Vertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub color: [f32; 3],
+    pub cell_id: u32,
 }
 
 impl Vertex {
@@ -35,6 +36,12 @@ impl Vertex {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x3,
                 },
+                // cell id
+                wgpu::VertexAttribute {
+                    offset: 36,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Uint32,
+                },
             ],
         }
     }
@@ -51,7 +58,8 @@ pub fn poly_data_to_mesh(poly_data: &PolyData, coloring: &Coloring) -> (Vec<Vert
     let point_colors = resolve_colors(poly_data, coloring);
     let point_normals = extract_point_normals(poly_data);
 
-    for cell in poly_data.polys.iter() {
+    let poly_cell_offset = poly_data.verts.num_cells() + poly_data.lines.num_cells();
+    for (ci, cell) in poly_data.polys.iter().enumerate() {
         if cell.len() < 3 {
             continue;
         }
@@ -75,36 +83,92 @@ pub fn poly_data_to_mesh(poly_data: &PolyData, coloring: &Coloring) -> (Vec<Vert
                 (flat, flat, flat)
             };
 
-            let base = vertices.len() as u32;
+            push_triangle(
+                &mut vertices,
+                &mut indices,
+                [p0, p1, p2],
+                [n0, n1, n2],
+                [
+                    point_colors[cell[0] as usize],
+                    point_colors[cell[i] as usize],
+                    point_colors[cell[i + 1] as usize],
+                ],
+                (poly_cell_offset + ci) as u32,
+            );
+        }
+    }
 
-            vertices.push(Vertex {
-                position: p0,
-                normal: n0,
-                color: point_colors[cell[0] as usize],
-            });
-            vertices.push(Vertex {
-                position: p1,
-                normal: n1,
-                color: point_colors[cell[i] as usize],
-            });
-            vertices.push(Vertex {
-                position: p2,
-                normal: n2,
-                color: point_colors[cell[i + 1] as usize],
-            });
+    let strip_cell_offset = poly_cell_offset + poly_data.polys.num_cells();
+    for (ci, cell) in poly_data.strips.iter().enumerate() {
+        if cell.len() < 3 {
+            continue;
+        }
 
-            indices.push(base);
-            indices.push(base + 1);
-            indices.push(base + 2);
+        for i in 0..cell.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [cell[i], cell[i + 1], cell[i + 2]]
+            } else {
+                [cell[i + 1], cell[i], cell[i + 2]]
+            };
+
+            let p0 = get_point(poly_data, tri[0] as usize);
+            let p1 = get_point(poly_data, tri[1] as usize);
+            let p2 = get_point(poly_data, tri[2] as usize);
+
+            let (n0, n1, n2) = if let Some(ref pn) = point_normals {
+                (
+                    pn[tri[0] as usize],
+                    pn[tri[1] as usize],
+                    pn[tri[2] as usize],
+                )
+            } else {
+                let e1 = sub(p1, p0);
+                let e2 = sub(p2, p0);
+                let flat = normalize(cross(e1, e2));
+                (flat, flat, flat)
+            };
+
+            push_triangle(
+                &mut vertices,
+                &mut indices,
+                [p0, p1, p2],
+                [n0, n1, n2],
+                [
+                    point_colors[tri[0] as usize],
+                    point_colors[tri[1] as usize],
+                    point_colors[tri[2] as usize],
+                ],
+                (strip_cell_offset + ci) as u32,
+            );
         }
     }
 
     (vertices, indices)
 }
 
+fn push_triangle(
+    vertices: &mut Vec<Vertex>,
+    indices: &mut Vec<u32>,
+    positions: [[f32; 3]; 3],
+    normals: [[f32; 3]; 3],
+    colors: [[f32; 3]; 3],
+    cell_id: u32,
+) {
+    let base = vertices.len() as u32;
+    for i in 0..3 {
+        vertices.push(Vertex {
+            position: positions[i],
+            normal: normals[i],
+            color: colors[i],
+            cell_id,
+        });
+    }
+    indices.extend_from_slice(&[base, base + 1, base + 2]);
+}
+
 fn extract_point_normals(poly_data: &PolyData) -> Option<Vec<[f32; 3]>> {
     let normals = poly_data.point_data().normals()?;
-    if normals.num_components() != 3 {
+    if normals.num_components() != 3 || normals.num_tuples() < poly_data.points.len() {
         return None;
     }
     let nt = normals.num_tuples();
@@ -248,6 +312,27 @@ mod tests {
         // Quad is fan-triangulated into 2 triangles = 6 vertices
         assert_eq!(verts.len(), 6);
         assert_eq!(idxs.len(), 6);
+    }
+
+    #[test]
+    fn triangle_strip_decomposes_with_vtk_winding() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let (verts, idxs) = poly_data_to_mesh(&pd, &Coloring::Solid([1.0, 1.0, 1.0]));
+
+        assert_eq!(verts.len(), 6);
+        assert_eq!(idxs, vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(verts[0].position, [0.0, 0.0, 0.0]);
+        assert_eq!(verts[1].position, [1.0, 0.0, 0.0]);
+        assert_eq!(verts[2].position, [0.0, 1.0, 0.0]);
+        assert_eq!(verts[3].position, [0.0, 1.0, 0.0]);
+        assert_eq!(verts[4].position, [1.0, 0.0, 0.0]);
+        assert_eq!(verts[5].position, [1.0, 1.0, 0.0]);
     }
 
     #[test]

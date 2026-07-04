@@ -50,7 +50,7 @@ pub fn euclidean_cluster(input: &PolyData, radius: f64, _min_points: usize) -> P
         out_points.push(pts[i]);
     }
 
-    let cluster_f64: Vec<f64> = cluster_ids.iter().map(|&c| c as f64).collect();
+    let cluster_ids: Vec<i64> = cluster_ids.iter().map(|&c| c as i64).collect();
 
     let mut pd = PolyData::new();
     pd.points = out_points;
@@ -58,9 +58,9 @@ pub fn euclidean_cluster(input: &PolyData, radius: f64, _min_points: usize) -> P
         pd.point_data_mut().add_array(array);
     }
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
+        .add_array(AnyDataArray::I64(DataArray::from_vec(
             "ClusterId",
-            cluster_f64,
+            cluster_ids,
             1,
         )));
     pd.point_data_mut().set_active_scalars("ClusterId");

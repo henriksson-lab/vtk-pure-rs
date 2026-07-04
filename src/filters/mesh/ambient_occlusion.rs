@@ -94,6 +94,12 @@ fn compute_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
+        if !cell
+            .iter()
+            .all(|&idx| idx >= 0 && (idx as usize) < input.points.len())
+        {
+            continue;
+        }
         let a = input.points.get(cell[0] as usize);
         let b = input.points.get(cell[1] as usize);
         let c = input.points.get(cell[2] as usize);
@@ -154,6 +160,12 @@ fn collect_triangles(input: &PolyData) -> Vec<[usize; 3]> {
     let mut tris: Vec<[usize; 3]> = Vec::new();
     for cell in input.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if !cell
+            .iter()
+            .all(|&idx| idx >= 0 && (idx as usize) < input.points.len())
+        {
             continue;
         }
         // Fan-triangulate polygons

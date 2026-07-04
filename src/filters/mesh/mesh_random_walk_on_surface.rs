@@ -9,15 +9,20 @@ pub fn random_walk_visit_count(mesh: &PolyData, start: usize, steps: usize, seed
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
+            if a >= n || b >= n {
+                continue;
+            }
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -50,15 +55,20 @@ pub fn random_walk_steady_state(mesh: &PolyData, iterations: usize) -> PolyData 
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
+            if a >= n || b >= n {
+                continue;
+            }
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }

@@ -36,7 +36,13 @@ pub fn propagate_labels(mesh: &PolyData, array_name: &str, iterations: usize) ->
                     *counts.entry(labels[j]).or_insert(0) += 1;
                 }
             }
-            if let Some((&best_label, _)) = counts.iter().max_by_key(|(_, &c)| c) {
+            if let Some((&best_label, _)) =
+                counts
+                    .iter()
+                    .max_by(|(label_a, count_a), (label_b, count_b)| {
+                        count_a.cmp(count_b).then_with(|| label_b.cmp(label_a))
+                    })
+            {
                 new_labels[i] = best_label;
             }
         }
@@ -103,9 +109,35 @@ pub fn random_walk_labels(
 
 fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for cell in mesh.polys.iter() {
+    add_adj_cells(mesh.polys.iter(), true, n, &mut adj);
+    add_adj_cells(mesh.lines.iter(), false, n, &mut adj);
+    adj.into_iter()
+        .map(|s| {
+            let mut neighbors: Vec<usize> = s.into_iter().collect();
+            neighbors.sort_unstable();
+            neighbors
+        })
+        .collect()
+}
+
+fn add_adj_cells<'a, I>(
+    cells: I,
+    closed: bool,
+    n: usize,
+    adj: &mut [std::collections::HashSet<usize>],
+) where
+    I: IntoIterator<Item = &'a [i64]>,
+{
+    for cell in cells {
         let nc = cell.len();
-        for i in 0..nc {
+        if nc < 2 {
+            continue;
+        }
+        let edge_count = if closed { nc } else { nc - 1 };
+        for i in 0..edge_count {
+            if cell[i] < 0 || cell[(i + 1) % nc] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
             if a < n && b < n {
@@ -114,7 +146,6 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
             }
         }
     }
-    adj.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 #[cfg(test)]
@@ -161,5 +192,27 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(2, &mut buf);
         assert!(buf[0] >= 1.0); // should have picked up a label
+    }
+
+    #[test]
+    fn propagation_tie_uses_lowest_label() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([2.0, 0.0, 0.0]);
+        mesh.lines.push_cell(&[0, 1]);
+        mesh.lines.push_cell(&[1, 2]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "label",
+                vec![2.0, -1.0, 1.0],
+                1,
+            )));
+
+        let result = propagate_labels(&mesh, "label", 1);
+        let arr = result.point_data().get_array("label").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

@@ -1,103 +1,97 @@
 //! Close small boundary loops by fan-triangulating them.
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 
 pub fn close_small_holes(mesh: &PolyData, max_hole_edges: usize) -> PolyData {
-    let n = mesh.points.len();
     // Find boundary edges
     let mut edge_count: std::collections::HashMap<(usize, usize), u32> =
         std::collections::HashMap::new();
+    let mut directed_edges = Vec::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 3 {
+            continue;
+        }
         for i in 0..nc {
+            if cell[i] < 0 || cell[(i + 1) % nc] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
+            if a >= mesh.points.len() || b >= mesh.points.len() || a == b {
+                continue;
+            }
             let e = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(e).or_insert(0) += 1;
+            directed_edges.push((a, b));
         }
     }
-    let mut boundary_adj: std::collections::HashMap<usize, Vec<usize>> =
-        std::collections::HashMap::new();
-    for (&(a, b), &c) in &edge_count {
-        if c == 1 {
-            boundary_adj.entry(a).or_default().push(b);
-            boundary_adj.entry(b).or_default().push(a);
-        }
-    }
-    // Trace boundary loops
-    let mut visited_edges: std::collections::HashSet<(usize, usize)> =
-        std::collections::HashSet::new();
+    let boundary_edges: Vec<(usize, usize)> = directed_edges
+        .into_iter()
+        .filter(|&(a, b)| edge_count.get(&(a.min(b), a.max(b))) == Some(&1))
+        .collect();
     let mut new_polys = CellArray::new();
-    // Copy existing polys
     for cell in mesh.polys.iter() {
         new_polys.push_cell(&cell.to_vec());
     }
-    let mut pts = mesh.points.clone();
-    for &start in boundary_adj.keys() {
-        let neighbors = match boundary_adj.get(&start) {
-            Some(n) => n,
-            None => continue,
-        };
-        if neighbors.iter().all(|&nb| {
-            let e = if start < nb { (start, nb) } else { (nb, start) };
-            visited_edges.contains(&e)
-        }) {
+    if boundary_edges.len() < 3 {
+        let mut result = mesh.clone();
+        result.polys = new_polys;
+        return result;
+    }
+
+    let mut edge_ids_by_vertex: std::collections::HashMap<usize, Vec<usize>> =
+        std::collections::HashMap::new();
+    for (edge_id, &(a, b)) in boundary_edges.iter().enumerate() {
+        edge_ids_by_vertex.entry(a).or_default().push(edge_id);
+        edge_ids_by_vertex.entry(b).or_default().push(edge_id);
+    }
+
+    let mut visited_edges = vec![false; boundary_edges.len()];
+    let mut inserted = false;
+    for (start_edge, &(start, next)) in boundary_edges.iter().enumerate() {
+        if visited_edges[start_edge] {
             continue;
         }
         let mut loop_verts = vec![start];
-        let mut current = start;
+        let mut current = next;
+        let mut current_edge = start_edge;
+        let mut valid = true;
         loop {
-            let neighbors = match boundary_adj.get(&current) {
-                Some(n) => n,
-                None => break,
+            visited_edges[current_edge] = true;
+            if current == start {
+                break;
+            }
+            loop_verts.push(current);
+            let Some(edge_ids) = edge_ids_by_vertex.get(&current) else {
+                valid = false;
+                break;
             };
-            let next = neighbors.iter().find(|&&nb| {
-                let e = if current < nb {
-                    (current, nb)
-                } else {
-                    (nb, current)
-                };
-                !visited_edges.contains(&e)
-            });
-            match next {
-                Some(&nb) => {
-                    let e = if current < nb {
-                        (current, nb)
-                    } else {
-                        (nb, current)
-                    };
-                    visited_edges.insert(e);
-                    if nb == start {
-                        break;
-                    }
-                    loop_verts.push(nb);
-                    current = nb;
-                }
-                None => break,
+            let unvisited: Vec<usize> = edge_ids
+                .iter()
+                .copied()
+                .filter(|&edge_id| !visited_edges[edge_id])
+                .collect();
+            if unvisited.len() != 1 {
+                valid = false;
+                break;
             }
+            current_edge = unvisited[0];
+            let (a, b) = boundary_edges[current_edge];
+            current = if a == current { b } else { a };
         }
-        if loop_verts.len() >= 3 && loop_verts.len() <= max_hole_edges {
-            // Fan triangulate from centroid
-            let mut cx = 0.0;
-            let mut cy = 0.0;
-            let mut cz = 0.0;
-            for &v in &loop_verts {
-                let p = mesh.points.get(v);
-                cx += p[0];
-                cy += p[1];
-                cz += p[2];
-            }
-            let k = loop_verts.len() as f64;
-            let center = pts.len();
-            pts.push([cx / k, cy / k, cz / k]);
-            for i in 0..loop_verts.len() {
-                let j = (i + 1) % loop_verts.len();
-                new_polys.push_cell(&[loop_verts[i] as i64, loop_verts[j] as i64, center as i64]);
+        if valid && loop_verts.len() >= 3 && loop_verts.len() <= max_hole_edges {
+            let root = loop_verts[0] as i64;
+            for i in 1..loop_verts.len() - 1 {
+                new_polys.push_cell(&[root, loop_verts[i] as i64, loop_verts[i + 1] as i64]);
+                inserted = true;
             }
         }
     }
-    let mut result = PolyData::new();
-    result.points = pts;
+    let mut result = mesh.clone();
     result.polys = new_polys;
+    if inserted {
+        result.cell_data_mut().clear();
+    }
     result
 }
 

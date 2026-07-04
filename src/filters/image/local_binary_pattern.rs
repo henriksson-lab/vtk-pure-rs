@@ -13,7 +13,9 @@ pub fn image_lbp(input: &ImageData, scalars: &str) -> ImageData {
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
-    let n = nx * ny;
+    let nz = dims[2] as usize;
+    let slice = nx * ny;
+    let n = slice * nz;
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
@@ -23,8 +25,10 @@ pub fn image_lbp(input: &ImageData, scalars: &str) -> ImageData {
         })
         .collect();
 
-    let get = |i: i64, j: i64| -> f64 {
-        values[(j.clamp(0, ny as i64 - 1) as usize) * nx + (i.clamp(0, nx as i64 - 1) as usize)]
+    let get = |i: i64, j: i64, k: usize| -> f64 {
+        values[k * slice
+            + (j.clamp(0, ny as i64 - 1) as usize) * nx
+            + (i.clamp(0, nx as i64 - 1) as usize)]
     };
 
     // 8 neighbors in clockwise order
@@ -40,16 +44,19 @@ pub fn image_lbp(input: &ImageData, scalars: &str) -> ImageData {
     ];
 
     let mut lbp = vec![0.0f64; n];
-    for j in 0..ny {
-        for i in 0..nx {
-            let center = values[j * nx + i];
-            let mut pattern = 0u8;
-            for (bit, &(di, dj)) in offsets.iter().enumerate() {
-                if get(i as i64 + di, j as i64 + dj) >= center {
-                    pattern |= 1 << bit;
+    for k in 0..nz {
+        for j in 0..ny {
+            for i in 0..nx {
+                let idx = k * slice + j * nx + i;
+                let center = values[idx];
+                let mut pattern = 0u8;
+                for (bit, &(di, dj)) in offsets.iter().enumerate() {
+                    if get(i as i64 + di, j as i64 + dj, k) >= center {
+                        pattern |= 1 << bit;
+                    }
                 }
+                lbp[idx] = pattern as f64;
             }
-            lbp[j * nx + i] = pattern as f64;
         }
     }
 
@@ -128,6 +135,22 @@ mod tests {
         // All neighbors >= center (equal) -> all bits set = 255
         arr.tuple_as_f64(4, &mut buf);
         assert_eq!(buf[0], 255.0);
+    }
+
+    #[test]
+    fn processes_each_z_slice() {
+        let mut img = ImageData::with_dimensions(3, 3, 2);
+        let values: Vec<f64> = (0..18).map(|i| i as f64).collect();
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", values, 1)));
+
+        let result = image_lbp(&img, "v");
+        let arr = result.point_data().get_array("LBP").unwrap();
+        assert_eq!(arr.num_tuples(), 18);
+
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(13, &mut buf);
+        assert_eq!(buf[0], 120.0);
     }
 
     #[test]

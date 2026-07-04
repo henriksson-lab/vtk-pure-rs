@@ -9,8 +9,7 @@ pub fn cotan_mean_curvature(mesh: &PolyData) -> PolyData {
     let tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| triangle_point_ids(c, n))
         .collect();
     let mut cotan_lap = vec![[0.0f64; 3]; n];
     let mut area = vec![0.0f64; n];
@@ -61,13 +60,10 @@ pub fn cotan_mean_curvature(mesh: &PolyData) -> PolyData {
     let mean_curv: Vec<f64> = (0..n)
         .map(|i| {
             if area[i] > 1e-15 {
-                let h = 0.5
-                    * (cotan_lap[i][0] * cotan_lap[i][0]
-                        + cotan_lap[i][1] * cotan_lap[i][1]
-                        + cotan_lap[i][2] * cotan_lap[i][2])
-                        .sqrt()
-                    / area[i];
-                h
+                let lx = cotan_lap[i][0] / (2.0 * area[i]);
+                let ly = cotan_lap[i][1] / (2.0 * area[i]);
+                let lz = cotan_lap[i][2] / (2.0 * area[i]);
+                0.5 * (lx * lx + ly * ly + lz * lz).sqrt()
             } else {
                 0.0
             }
@@ -85,6 +81,25 @@ pub fn cotan_mean_curvature(mesh: &PolyData) -> PolyData {
         .point_data_mut()
         .set_active_scalars("CotanMeanCurvature");
     result
+}
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    if cell.len() != 3 {
+        return None;
+    }
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

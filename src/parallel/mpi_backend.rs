@@ -8,9 +8,6 @@
 use mpi::topology::Communicator;
 use mpi::traits::*;
 
-use crate::data::PolyData;
-use crate::parallel::decomposition::Partition;
-
 /// Initialize MPI and return the world communicator info.
 pub struct MpiContext {
     universe: mpi::environment::Universe,

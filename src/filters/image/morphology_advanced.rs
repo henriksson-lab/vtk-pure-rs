@@ -15,80 +15,38 @@ pub fn black_top_hat(image: &ImageData, array_name: &str, radius: usize) -> Imag
 }
 
 /// Morphological skeleton via iterative thinning (2D).
+///
+/// This follows the erosion rules from `vtkImageSkeleton2D` on each XY slice.
 pub fn morphological_skeleton_2d(image: &ImageData, array_name: &str) -> ImageData {
     let arr = match image.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return image.clone(),
     };
     let dims = image.dimensions();
-    let n = dims[0] * dims[1];
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
+    let n = nx * ny * nz;
     let mut buf = [0.0f64];
-    let mut grid: Vec<bool> = (0..n)
+    let mut grid: Vec<f64> = (0..n)
         .map(|i| {
             if i < arr.num_tuples() {
                 arr.tuple_as_f64(i, &mut buf);
-                buf[0] > 0.5
+                if buf[0] > 0.5 {
+                    2.0
+                } else {
+                    0.0
+                }
             } else {
-                false
+                0.0
             }
         })
         .collect();
 
-    // Zhang-Suen thinning (simplified)
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for pass in 0..2 {
-            let mut to_remove = Vec::new();
-            for y in 1..dims[1].saturating_sub(1) {
-                for x in 1..dims[0].saturating_sub(1) {
-                    let idx = x + y * dims[0];
-                    if !grid[idx] {
-                        continue;
-                    }
-                    let p = [
-                        grid[idx - dims[0]] as u8,     // N
-                        grid[idx - dims[0] + 1] as u8, // NE
-                        grid[idx + 1] as u8,           // E
-                        grid[idx + dims[0] + 1] as u8, // SE
-                        grid[idx + dims[0]] as u8,     // S
-                        grid[idx + dims[0] - 1] as u8, // SW
-                        grid[idx - 1] as u8,           // W
-                        grid[idx - dims[0] - 1] as u8, // NW
-                    ];
-                    let b = p.iter().sum::<u8>();
-                    if b < 2 || b > 6 {
-                        continue;
-                    }
-                    let mut transitions = 0u8;
-                    for i in 0..8 {
-                        if p[i] == 0 && p[(i + 1) % 8] == 1 {
-                            transitions += 1;
-                        }
-                    }
-                    if transitions != 1 {
-                        continue;
-                    }
-                    if pass == 0 {
-                        if p[0] * p[2] * p[4] != 0 || p[2] * p[4] * p[6] != 0 {
-                            continue;
-                        }
-                    } else {
-                        if p[0] * p[2] * p[6] != 0 || p[0] * p[4] * p[6] != 0 {
-                            continue;
-                        }
-                    }
-                    to_remove.push(idx);
-                }
-            }
-            for idx in &to_remove {
-                grid[*idx] = false;
-                changed = true;
-            }
-        }
-    }
+    while skeleton_2d_vtk_pass(&mut grid, nx, ny, nz) {}
 
-    let output: Vec<f64> = grid.iter().map(|&b| if b { 1.0 } else { 0.0 }).collect();
+    let output: Vec<f64> = grid
+        .iter()
+        .map(|&v| if v > 1.0 { 1.0 } else { 0.0 })
+        .collect();
     let mut result = image.clone();
     result
         .point_data_mut()
@@ -96,6 +54,130 @@ pub fn morphological_skeleton_2d(image: &ImageData, array_name: &str) -> ImageDa
             array_name, output, 1,
         )));
     result
+}
+
+fn skeleton_2d_vtk_pass(grid: &mut [f64], nx: usize, ny: usize, nz: usize) -> bool {
+    let mut changed = false;
+    if nx == 0 || ny == 0 || nz == 0 {
+        return false;
+    }
+
+    for z in 0..nz {
+        let slice = z * nx * ny;
+        for y in 0..ny {
+            for x in 0..nx {
+                let idx = slice + y * nx + x;
+                if grid[idx] == 0.0 {
+                    continue;
+                }
+
+                let n = [
+                    neighbor(grid, nx, ny, slice, x, y, -1, 0),
+                    neighbor(grid, nx, ny, slice, x, y, -1, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 0, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 1, -1),
+                    neighbor(grid, nx, ny, slice, x, y, 1, 0),
+                    neighbor(grid, nx, ny, slice, x, y, 1, 1),
+                    neighbor(grid, nx, ny, slice, x, y, 0, 1),
+                    neighbor(grid, nx, ny, slice, x, y, -1, 1),
+                ];
+
+                if vtk_skeleton_erodes(n, 0) {
+                    grid[idx] = 1.0;
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    for v in grid {
+        if *v <= 1.0 {
+            *v = 0.0;
+        }
+    }
+
+    changed
+}
+
+fn neighbor(
+    grid: &[f64],
+    nx: usize,
+    ny: usize,
+    slice: usize,
+    x: usize,
+    y: usize,
+    dx: isize,
+    dy: isize,
+) -> f64 {
+    let Some(xx) = x.checked_add_signed(dx) else {
+        return 0.0;
+    };
+    let Some(yy) = y.checked_add_signed(dy) else {
+        return 0.0;
+    };
+    if xx >= nx || yy >= ny {
+        0.0
+    } else {
+        grid[slice + yy * nx + xx]
+    }
+}
+
+fn vtk_skeleton_erodes(n: [f64; 8], prune: i32) -> bool {
+    let mut erode_case = 0;
+    for idx in (0..8).rev() {
+        if n[idx] > 0.0 {
+            erode_case += 1;
+        }
+        if idx != 0 {
+            erode_case *= 2;
+        }
+    }
+
+    if erode_case == 54 || erode_case == 216 {
+        return true;
+    }
+    if erode_case == 99 || erode_case == 141 {
+        return false;
+    }
+
+    let count_faces =
+        (n[0] > 0.0) as i32 + (n[2] > 0.0) as i32 + (n[4] > 0.0) as i32 + (n[6] > 0.0) as i32;
+    let count_corners =
+        (n[1] > 0.0) as i32 + (n[3] > 0.0) as i32 + (n[5] > 0.0) as i32 + (n[7] > 0.0) as i32;
+
+    if count_faces == 2 && count_corners == 0 && n[2] > 0.0 && n[4] > 0.0 {
+        return true;
+    }
+    if prune > 1 && count_faces + count_corners <= 1 {
+        return true;
+    }
+
+    (n[0] == 0.0 || n[2] == 0.0 || n[4] == 0.0 || n[6] == 0.0)
+        && (prune > 1
+            || count_faces != 1
+            || count_corners != 2
+            || ((n[1] == 0.0 || n[2] == 0.0 || n[3] == 0.0)
+                && (n[3] == 0.0 || n[4] == 0.0 || n[5] == 0.0)
+                && (n[5] == 0.0 || n[6] == 0.0 || n[7] == 0.0)
+                && (n[7] == 0.0 || n[0] == 0.0 || n[1] == 0.0)))
+        && (prune != 0
+            || count_faces != 2
+            || count_corners != 2
+            || ((n[1] == 0.0 || n[2] == 0.0 || n[3] == 0.0 || n[4] != 0.0)
+                && (n[0] == 0.0 || n[1] == 0.0 || n[2] == 0.0 || n[3] != 0.0)
+                && (n[7] == 0.0 || n[0] == 0.0 || n[1] == 0.0 || n[2] != 0.0)
+                && (n[6] == 0.0 || n[7] == 0.0 || n[0] == 0.0 || n[1] != 0.0)
+                && (n[5] == 0.0 || n[6] == 0.0 || n[7] == 0.0 || n[0] != 0.0)
+                && (n[4] == 0.0 || n[5] == 0.0 || n[6] == 0.0 || n[7] != 0.0)
+                && (n[3] == 0.0 || n[4] == 0.0 || n[5] == 0.0 || n[6] != 0.0)
+                && (n[2] == 0.0 || n[3] == 0.0 || n[4] == 0.0 || n[5] != 0.0)))
+        && (n[1] == 0.0 || n[0] > 1.0 || n[2] > 1.0)
+        && (n[3] == 0.0 || n[2] > 1.0 || n[4] > 1.0)
+        && (n[5] == 0.0 || n[4] > 1.0 || n[6] > 1.0)
+        && (n[7] == 0.0 || n[6] > 1.0 || n[0] > 1.0)
+        && (n[0] == 0.0 || n[4] == 0.0 || n[2] > 1.0 || n[6] > 1.0)
+        && (n[2] == 0.0 || n[6] == 0.0 || n[0] > 1.0 || n[4] > 1.0)
+        && (prune > 1 || count_faces > 2 || (count_faces == 2 && count_corners > 1))
 }
 
 fn subtract_images(a: &ImageData, b: &ImageData, array_name: &str) -> ImageData {

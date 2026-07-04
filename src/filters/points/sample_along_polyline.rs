@@ -20,21 +20,11 @@ pub fn sample_along_polyline(input: &PolyData, array_name: &str, polyline: &Poly
 
     let n_line = polyline.points.len();
     let mut values = Vec::with_capacity(n_line);
-    let mut arc_len = Vec::with_capacity(n_line);
+    let mut arc_len = vec![0.0; n_line];
     let mut buf = [0.0f64];
-    let mut cumulative = 0.0;
 
     for i in 0..n_line {
         let p = polyline.points.get(i);
-
-        if i > 0 {
-            let prev = polyline.points.get(i - 1);
-            let dx = p[0] - prev[0];
-            let dy = p[1] - prev[1];
-            let dz = p[2] - prev[2];
-            cumulative += (dx * dx + dy * dy + dz * dz).sqrt();
-        }
-        arc_len.push(cumulative);
 
         if let Some((nearest, _)) = tree.nearest(p) {
             arr.tuple_as_f64(nearest, &mut buf);
@@ -43,6 +33,7 @@ pub fn sample_along_polyline(input: &PolyData, array_name: &str, polyline: &Poly
             values.push(0.0);
         }
     }
+    append_arc_length(polyline, &mut arc_len);
 
     let mut pd = polyline.clone();
     pd.point_data_mut()
@@ -51,11 +42,31 @@ pub fn sample_along_polyline(input: &PolyData, array_name: &str, polyline: &Poly
         )));
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "ArcLength",
+            "arc_length",
             arc_len,
             1,
         )));
     pd
+}
+
+fn append_arc_length(polyline: &PolyData, arc_len: &mut [f64]) {
+    for cell in polyline.lines.iter() {
+        if cell.is_empty() {
+            continue;
+        }
+        let mut arc_distance = 0.0;
+        let mut prev = polyline.points.get(cell[0] as usize);
+        for &point_id in &cell[1..] {
+            let point_id = point_id as usize;
+            let cur = polyline.points.get(point_id);
+            let dx = cur[0] - prev[0];
+            let dy = cur[1] - prev[1];
+            let dz = cur[2] - prev[2];
+            arc_distance += (dx * dx + dy * dy + dz * dz).sqrt();
+            arc_len[point_id] = arc_distance;
+            prev = cur;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -84,9 +95,9 @@ mod tests {
 
         let result = sample_along_polyline(&input, "temp", &line);
         assert!(result.point_data().get_array("temp").is_some());
-        assert!(result.point_data().get_array("ArcLength").is_some());
+        assert!(result.point_data().get_array("arc_length").is_some());
 
-        let arr = result.point_data().get_array("ArcLength").unwrap();
+        let arr = result.point_data().get_array("arc_length").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 2.0).abs() < 1e-10);
@@ -98,5 +109,28 @@ mod tests {
         let line = PolyData::new();
         let result = sample_along_polyline(&input, "nope", &line);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn arc_length_uses_line_connectivity() {
+        let mut input = PolyData::new();
+        input.points.push([0.0, 0.0, 0.0]);
+        input
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0], 1)));
+
+        let mut line = PolyData::new();
+        line.points.push([0.0, 0.0, 0.0]);
+        line.points.push([100.0, 0.0, 0.0]);
+        line.points.push([1.0, 0.0, 0.0]);
+        line.lines.push_cell(&[0, 2]);
+
+        let result = sample_along_polyline(&input, "v", &line);
+        let arr = result.point_data().get_array("arc_length").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

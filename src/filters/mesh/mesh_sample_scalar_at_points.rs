@@ -6,6 +6,9 @@ pub fn sample_nearest(mesh: &PolyData, array_name: &str, query_points: &[[f64; 3
         _ => return vec![0.0; query_points.len()],
     };
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return vec![0.0; query_points.len()];
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -45,6 +48,9 @@ pub fn sample_idw(
         _ => return vec![0.0; query_points.len()],
     };
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return vec![0.0; query_points.len()];
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {

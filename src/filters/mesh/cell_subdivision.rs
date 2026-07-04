@@ -10,7 +10,7 @@ pub fn subdivide_cells_if(mesh: &PolyData, predicate: impl Fn(usize, &[i64]) -> 
         std::collections::HashMap::new();
 
     for (ci, cell) in mesh.polys.iter().enumerate() {
-        if cell.len() == 3 && predicate(ci, cell) {
+        if cell.len() == 3 && valid_cell(cell, pts.len()) && predicate(ci, cell) {
             let v = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
             let m01 = get_mid(&mut pts, &mut edge_mids, v[0], v[1]);
             let m12 = get_mid(&mut pts, &mut edge_mids, v[1], v[2]);
@@ -28,7 +28,7 @@ pub fn subdivide_cells_if(mesh: &PolyData, predicate: impl Fn(usize, &[i64]) -> 
     for p in &pts {
         new_pts.push(*p);
     }
-    let mut result = PolyData::new();
+    let mut result = mesh.clone();
     result.points = new_pts;
     result.polys = new_polys;
     result
@@ -37,7 +37,7 @@ pub fn subdivide_cells_if(mesh: &PolyData, predicate: impl Fn(usize, &[i64]) -> 
 /// Subdivide cells with area above threshold.
 pub fn subdivide_large_cells(mesh: &PolyData, max_area: f64) -> PolyData {
     subdivide_cells_if(mesh, |_ci, cell| {
-        if cell.len() < 3 {
+        if cell.len() < 3 || !valid_cell(cell, mesh.points.len()) {
             return false;
         }
         let a = mesh.points.get(cell[0] as usize);
@@ -78,6 +78,11 @@ fn get_mid(
         ]);
         i
     })
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.iter()
+        .all(|&pid| pid >= 0 && (pid as usize) < num_points)
 }
 
 #[cfg(test)]

@@ -29,24 +29,10 @@ fn crop_axis(mesh: &PolyData, axis: usize, positive: bool) -> PolyData {
     }
     cx /= n as f64;
     let mut used = vec![false; n];
-    let mut kept = Vec::new();
-    for cell in mesh.polys.iter() {
-        if cell.is_empty() {
-            continue;
-        }
-        let mut avg = 0.0;
-        for &v in cell {
-            avg += mesh.points.get(v as usize)[axis];
-        }
-        avg /= cell.len() as f64;
-        let keep = if positive { avg >= cx } else { avg <= cx };
-        if keep {
-            for &v in cell {
-                used[v as usize] = true;
-            }
-            kept.push(cell.to_vec());
-        }
-    }
+    let kept_verts = collect_kept_cells(&mesh.verts, mesh, axis, positive, cx, &mut used);
+    let kept_lines = collect_kept_cells(&mesh.lines, mesh, axis, positive, cx, &mut used);
+    let kept_polys = collect_kept_cells(&mesh.polys, mesh, axis, positive, cx, &mut used);
+    let kept_strips = collect_kept_cells(&mesh.strips, mesh, axis, positive, cx, &mut used);
     let mut pm = vec![0usize; n];
     let mut pts = Points::<f64>::new();
     for i in 0..n {
@@ -55,14 +41,66 @@ fn crop_axis(mesh: &PolyData, axis: usize, positive: bool) -> PolyData {
             pts.push(mesh.points.get(i));
         }
     }
-    let mut polys = CellArray::new();
-    for c in &kept {
-        polys.push_cell(&c.iter().map(|&v| pm[v as usize] as i64).collect::<Vec<_>>());
-    }
     let mut r = PolyData::new();
     r.points = pts;
-    r.polys = polys;
+    r.verts = remap_cells(&kept_verts, &pm);
+    r.lines = remap_cells(&kept_lines, &pm);
+    r.polys = remap_cells(&kept_polys, &pm);
+    r.strips = remap_cells(&kept_strips, &pm);
     r
+}
+
+fn collect_kept_cells(
+    cells: &CellArray,
+    mesh: &PolyData,
+    axis: usize,
+    positive: bool,
+    center: f64,
+    used: &mut [bool],
+) -> Vec<Vec<i64>> {
+    let mut kept = Vec::new();
+    for cell in cells.iter() {
+        if cell.is_empty() {
+            continue;
+        }
+        if cell
+            .iter()
+            .any(|&v| v < 0 || v as usize >= mesh.points.len())
+        {
+            continue;
+        }
+        let mut avg = 0.0;
+        for &v in cell {
+            avg += mesh.points.get(v as usize)[axis];
+        }
+        avg /= cell.len() as f64;
+        let keep = if positive {
+            avg >= center
+        } else {
+            avg <= center
+        };
+        if keep {
+            for &v in cell {
+                if v >= 0 && (v as usize) < used.len() {
+                    used[v as usize] = true;
+                }
+            }
+            kept.push(cell.to_vec());
+        }
+    }
+    kept
+}
+
+fn remap_cells(cells: &[Vec<i64>], point_map: &[usize]) -> CellArray {
+    let mut out = CellArray::new();
+    for c in cells {
+        out.push_cell(
+            &c.iter()
+                .map(|&v| point_map[v as usize] as i64)
+                .collect::<Vec<_>>(),
+        );
+    }
+    out
 }
 #[cfg(test)]
 mod tests {

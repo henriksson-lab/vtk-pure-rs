@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Project a mesh onto one of the coordinate planes (drop one axis).
 ///

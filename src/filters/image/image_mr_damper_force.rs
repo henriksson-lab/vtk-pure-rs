@@ -14,10 +14,12 @@ pub fn image_mr_damper_force(input: &ImageData, scalars: &str) -> ImageData {
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -33,5 +35,16 @@ mod tests {
         );
         let r = image_mr_damper_force(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn preserves_input_extent() {
+        let mut img = ImageData::with_dimensions(3, 3, 1);
+        img.set_extent([5, 7, 10, 12, 2, 2]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0; 9], 1)));
+
+        let r = image_mr_damper_force(&img, "v");
+        assert_eq!(r.extent(), [5, 7, 10, 12, 2, 2]);
     }
 }

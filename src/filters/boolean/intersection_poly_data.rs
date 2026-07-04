@@ -1,5 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Compute the intersection lines between two triangle meshes.
 ///
@@ -13,6 +13,7 @@ pub fn intersection_poly_data(a: &PolyData, b: &PolyData) -> PolyData {
     let mut points = Points::<f64>::new();
     let mut lines = CellArray::new();
     let mut point_map: HashMap<PointKey, i64> = HashMap::new();
+    let mut line_map: HashSet<(i64, i64)> = HashSet::new();
 
     // Brute force: test all pairs (works for moderate meshes)
     for ta in &tris_a {
@@ -21,7 +22,8 @@ pub fn intersection_poly_data(a: &PolyData, b: &PolyData) -> PolyData {
                 if dist2(p1, p2) > 1e-20 {
                     let i0 = insert_unique_point(&mut points, &mut point_map, p1);
                     let i1 = insert_unique_point(&mut points, &mut point_map, p2);
-                    if i0 != i1 {
+                    let line_key = (i0.min(i1), i0.max(i1));
+                    if i0 != i1 && line_map.insert(line_key) {
                         lines.push_cell(&[i0, i1]);
                     }
                 }
@@ -271,6 +273,20 @@ mod tests {
         let result = intersection_poly_data(&a, &b);
         // Two perpendicular triangles should intersect in a line segment
         assert!(result.lines.num_cells() >= 1);
+    }
+
+    #[test]
+    fn duplicate_intersection_segments_are_suppressed() {
+        let a = make_xy_tri(0.0);
+        let mut b = PolyData::new();
+        b.points.push([-1.0, 0.0, -1.0]);
+        b.points.push([1.0, 0.0, -1.0]);
+        b.points.push([0.0, 0.0, 1.0]);
+        b.polys.push_cell(&[0, 1, 2]);
+        b.polys.push_cell(&[0, 1, 2]);
+
+        let result = intersection_poly_data(&a, &b);
+        assert_eq!(result.lines.num_cells(), 1);
     }
 
     #[test]

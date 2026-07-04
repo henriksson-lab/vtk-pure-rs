@@ -12,15 +12,30 @@ pub fn detect_holes(input: &PolyData) -> (PolyData, Vec<f64>) {
         return (input.clone(), vec![]);
     }
 
-    let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
-    let mut boundary_adj: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
+    let mut boundary_adj: HashMap<usize, Vec<usize>> = HashMap::new();
 
     for cell in input.polys.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(key).or_insert(0) += 1;
+            add_counted_edge(&mut edge_count, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            for edge in [[tri[0], tri[1]], [tri[1], tri[2]], [tri[2], tri[0]]] {
+                add_counted_edge(&mut edge_count, n, edge[0], edge[1]);
+            }
         }
     }
 
@@ -43,28 +58,39 @@ pub fn detect_holes(input: &PolyData) -> (PolyData, Vec<f64>) {
         current_hole += 1;
         let mut perimeter = 0.0;
         let mut cur = start;
+        let mut closed = false;
 
         loop {
             if visited.contains(&cur) {
                 break;
             }
             visited.insert(cur);
-            hole_ids[cur as usize] = current_hole as f64;
+            hole_ids[cur] = current_hole as f64;
 
             let nexts = boundary_adj.get(&cur);
             let next = nexts.and_then(|v| v.iter().find(|&&n| !visited.contains(&n)));
             match next {
                 Some(&nc) => {
-                    let pa = input.points.get(cur as usize);
-                    let pb = input.points.get(nc as usize);
+                    let pa = input.points.get(cur);
+                    let pb = input.points.get(nc);
                     perimeter += ((pa[0] - pb[0]).powi(2)
                         + (pa[1] - pb[1]).powi(2)
                         + (pa[2] - pb[2]).powi(2))
                     .sqrt();
                     cur = nc;
                 }
-                None => break,
+                None => {
+                    closed = boundary_adj.get(&cur).is_some_and(|v| v.contains(&start));
+                    break;
+                }
             }
+        }
+        if closed && cur != start {
+            let pa = input.points.get(cur);
+            let pb = input.points.get(start);
+            perimeter +=
+                ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                    .sqrt();
         }
         perimeters.push(perimeter);
     }
@@ -75,6 +101,19 @@ pub fn detect_holes(input: &PolyData) -> (PolyData, Vec<f64>) {
             "HoleId", hole_ids, 1,
         )));
     (pd, perimeters)
+}
+
+fn add_counted_edge(edge_count: &mut HashMap<(usize, usize), usize>, n: usize, a: i64, b: i64) {
+    if a < 0 || b < 0 {
+        return;
+    }
+    let a = a as usize;
+    let b = b as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    let key = if a < b { (a, b) } else { (b, a) };
+    *edge_count.entry(key).or_insert(0) += 1;
 }
 
 #[cfg(test)]
@@ -93,6 +132,7 @@ mod tests {
         assert!(result.point_data().get_array("HoleId").is_some());
         assert_eq!(perimeters.len(), 1);
         assert!(perimeters[0] > 0.0);
+        assert!((perimeters[0] - (1.0 + 2.0 * 1.25f64.sqrt())).abs() < 1e-12);
     }
 
     #[test]
@@ -114,6 +154,27 @@ mod tests {
     #[test]
     fn empty_input() {
         let pd = PolyData::new();
+        let (_, perimeters) = detect_holes(&pd);
+        assert!(perimeters.is_empty());
+    }
+
+    #[test]
+    fn ignores_invalid_cell_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 2, -1]);
+
+        let (_, perimeters) = detect_holes(&pd);
+        assert!(perimeters.is_empty());
+    }
+
+    #[test]
+    fn ignores_degenerate_polygon_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0]);
+
         let (_, perimeters) = detect_holes(&pd);
         assert!(perimeters.is_empty());
     }

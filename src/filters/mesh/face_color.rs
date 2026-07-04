@@ -22,9 +22,11 @@ pub fn face_coloring(input: &PolyData) -> PolyData {
 
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n_cells];
     for faces in edge_faces.values() {
-        if faces.len() == 2 {
-            adj[faces[0]].push(faces[1]);
-            adj[faces[1]].push(faces[0]);
+        for i in 0..faces.len() {
+            for j in i + 1..faces.len() {
+                adj[faces[i]].push(faces[j]);
+                adj[faces[j]].push(faces[i]);
+            }
         }
     }
 

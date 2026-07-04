@@ -29,6 +29,9 @@ fn extract_classified(mesh: &PolyData, reference: &PolyData, want_inside: bool) 
     let mut kept = Vec::new();
 
     for cell in mesh.polys.iter() {
+        if cell.is_empty() || !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
         let all_match = cell.iter().all(|&v| inside[v as usize] == want_inside);
         if all_match {
             for &v in cell {
@@ -65,6 +68,9 @@ fn point_inside_mesh(p: [f64; 3], mesh: &PolyData) -> bool {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
@@ -75,6 +81,10 @@ fn point_inside_mesh(p: [f64; 3], mesh: &PolyData) -> bool {
         }
     }
     crossings % 2 == 1
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 
 fn ray_triangle_intersect_x(origin: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {

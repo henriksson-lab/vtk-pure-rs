@@ -10,7 +10,7 @@ pub fn image_oxide_thickness_tribo(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 1e-9 * (buf[0] / buf[0].abs().max(0.01)).sqrt()
+            buf[0] * 1e-9 * (buf[0].max(0.0) / buf[0].abs().max(0.01)).sqrt()
         })
         .collect();
     let dims = input.dimensions();

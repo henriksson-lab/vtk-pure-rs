@@ -88,10 +88,10 @@ impl TransferFunction {
         for i in 0..256 {
             let t = i as f64 / 255.0;
             let rgba = self.sample(t);
-            lut.push((rgba[0] * 255.0) as u8);
-            lut.push((rgba[1] * 255.0) as u8);
-            lut.push((rgba[2] * 255.0) as u8);
-            lut.push((rgba[3] * 255.0) as u8);
+            lut.push((rgba[0].clamp(0.0, 1.0) * 255.0).round() as u8);
+            lut.push((rgba[1].clamp(0.0, 1.0) * 255.0).round() as u8);
+            lut.push((rgba[2].clamp(0.0, 1.0) * 255.0).round() as u8);
+            lut.push((rgba[3].clamp(0.0, 1.0) * 255.0).round() as u8);
         }
         lut
     }
@@ -151,6 +151,10 @@ impl VolumeActor {
     /// Returns None if the position is outside the volume.
     pub fn sample(&self, pos: [f64; 3]) -> Option<f64> {
         let [nx, ny, nz] = self.dimensions;
+        if nx == 0 || ny == 0 || nz == 0 || self.scalars.len() < nx * ny * nz {
+            return None;
+        }
+
         let fi = (pos[0] - self.origin[0]) / self.spacing[0];
         let fj = (pos[1] - self.origin[1]) / self.spacing[1];
         let fk = (pos[2] - self.origin[2]) / self.spacing[2];
@@ -159,13 +163,16 @@ impl VolumeActor {
             return None;
         }
 
-        let i0 = fi as usize;
-        let j0 = fj as usize;
-        let k0 = fk as usize;
-
-        if i0 + 1 >= nx || j0 + 1 >= ny || k0 + 1 >= nz {
+        if fi > (nx - 1) as f64 || fj > (ny - 1) as f64 || fk > (nz - 1) as f64 {
             return None;
         }
+
+        let i0 = (fi as usize).min(nx - 1);
+        let j0 = (fj as usize).min(ny - 1);
+        let k0 = (fk as usize).min(nz - 1);
+        let i1 = (i0 + 1).min(nx - 1);
+        let j1 = (j0 + 1).min(ny - 1);
+        let k1 = (k0 + 1).min(nz - 1);
 
         let u = fi - i0 as f64;
         let v = fj - j0 as f64;
@@ -174,13 +181,13 @@ impl VolumeActor {
         let idx = |i: usize, j: usize, k: usize| k * nx * ny + j * nx + i;
 
         let c000 = self.scalars[idx(i0, j0, k0)];
-        let c100 = self.scalars[idx(i0 + 1, j0, k0)];
-        let c010 = self.scalars[idx(i0, j0 + 1, k0)];
-        let c110 = self.scalars[idx(i0 + 1, j0 + 1, k0)];
-        let c001 = self.scalars[idx(i0, j0, k0 + 1)];
-        let c101 = self.scalars[idx(i0 + 1, j0, k0 + 1)];
-        let c011 = self.scalars[idx(i0, j0 + 1, k0 + 1)];
-        let c111 = self.scalars[idx(i0 + 1, j0 + 1, k0 + 1)];
+        let c100 = self.scalars[idx(i1, j0, k0)];
+        let c010 = self.scalars[idx(i0, j1, k0)];
+        let c110 = self.scalars[idx(i1, j1, k0)];
+        let c001 = self.scalars[idx(i0, j0, k1)];
+        let c101 = self.scalars[idx(i1, j0, k1)];
+        let c011 = self.scalars[idx(i0, j1, k1)];
+        let c111 = self.scalars[idx(i1, j1, k1)];
 
         let c00 = c000 * (1.0 - u) + c100 * u;
         let c10 = c010 * (1.0 - u) + c110 * u;
@@ -198,6 +205,10 @@ impl VolumeActor {
     /// Returns the front-to-back composited RGBA color.
     pub fn cast_ray(&self, origin: [f64; 3], direction: [f64; 3]) -> [f32; 4] {
         let [nx, ny, nz] = self.dimensions;
+        if nx == 0 || ny == 0 || nz == 0 || self.num_steps == 0 {
+            return [0.0, 0.0, 0.0, 0.0];
+        }
+
         let bound_max = [
             self.origin[0] + (nx - 1) as f64 * self.spacing[0],
             self.origin[1] + (ny - 1) as f64 * self.spacing[1],
@@ -334,10 +345,24 @@ mod tests {
     }
 
     #[test]
+    fn transfer_function_lut_clamps_to_u8_range() {
+        let tf = TransferFunction::constant_opacity(ColorMap::jet(), 2.0);
+        let lut = tf.to_lut_rgba();
+        assert_eq!(lut[3], 255);
+    }
+
+    #[test]
     fn volume_sample() {
         let vol = make_test_volume();
         // Sample at center
         let val = vol.sample([0.5, 0.5, 0.5]);
+        assert!(val.is_some());
+    }
+
+    #[test]
+    fn volume_sample_includes_boundary_voxels() {
+        let vol = make_test_volume();
+        let val = vol.sample([1.0, 1.0, 1.0]);
         assert!(val.is_some());
     }
 

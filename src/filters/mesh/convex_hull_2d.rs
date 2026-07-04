@@ -16,11 +16,7 @@ pub fn convex_hull_2d(input: &PolyData) -> PolyData {
             (p[0], p[1], i)
         })
         .collect();
-    pts.sort_by(|a, b| {
-        a.0.partial_cmp(&b.0)
-            .unwrap()
-            .then(a.1.partial_cmp(&b.1).unwrap())
-    });
+    pts.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
 
     let cross = |o: (f64, f64, usize), a: (f64, f64, usize), b: (f64, f64, usize)| -> f64 {
         (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
@@ -71,17 +67,40 @@ pub fn convex_hull_2d(input: &PolyData) -> PolyData {
 pub fn point_in_convex_hull_2d(hull: &PolyData, px: f64, py: f64) -> bool {
     for cell in hull.polys.iter() {
         let n = cell.len();
+        let Some(ids) = valid_point_ids(cell, hull.points.len()) else {
+            continue;
+        };
+        let orientation = polygon_signed_area_xy(hull, &ids);
         for i in 0..n {
-            let a = hull.points.get(cell[i] as usize);
-            let b = hull.points.get(cell[(i + 1) % n] as usize);
+            let a = hull.points.get(ids[i]);
+            let b = hull.points.get(ids[(i + 1) % n]);
             let cross = (b[0] - a[0]) * (py - a[1]) - (b[1] - a[1]) * (px - a[0]);
-            if cross < -1e-10 {
+            if orientation >= 0.0 && cross < -1e-10 {
+                return false;
+            }
+            if orientation < 0.0 && cross > 1e-10 {
                 return false;
             }
         }
         return true;
     }
     false
+}
+
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
+}
+
+fn polygon_signed_area_xy(hull: &PolyData, ids: &[usize]) -> f64 {
+    let mut area = 0.0;
+    for i in 0..ids.len() {
+        let a = hull.points.get(ids[i]);
+        let b = hull.points.get(ids[(i + 1) % ids.len()]);
+        area += a[0] * b[1] - b[0] * a[1];
+    }
+    0.5 * area
 }
 
 #[cfg(test)]
@@ -126,6 +145,19 @@ mod tests {
 
         assert!(point_in_convex_hull_2d(&hull, 1.0, 1.0));
         assert!(!point_in_convex_hull_2d(&hull, 5.0, 5.0));
+    }
+
+    #[test]
+    fn point_inside_reversed_hull() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.0, 2.0, 0.0]);
+        pd.points.push([2.0, 2.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        assert!(point_in_convex_hull_2d(&pd, 1.0, 1.0));
+        assert!(!point_in_convex_hull_2d(&pd, 3.0, 1.0));
     }
 
     #[test]

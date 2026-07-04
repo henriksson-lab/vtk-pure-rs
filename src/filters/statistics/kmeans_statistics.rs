@@ -82,35 +82,16 @@ fn kmeans_core(data: &[Vec<f64>], k: usize, max_iter: usize) -> KmeansResult {
     let d = data[0].len();
     let k = k.min(n);
 
-    // Initialize centroids using k-means++ style: spread out initial picks
-    let mut centroids: Vec<Vec<f64>> = Vec::with_capacity(k);
-    centroids.push(data[0].clone());
-
-    for _ in 1..k {
-        // Pick the point farthest from any existing centroid
-        let mut best_idx = 0;
-        let mut best_dist = 0.0f64;
-        for (i, row) in data.iter().enumerate() {
-            let min_d = centroids
-                .iter()
-                .map(|c| sq_dist(row, c))
-                .fold(f64::MAX, f64::min);
-            if min_d > best_dist {
-                best_dist = min_d;
-                best_idx = i;
-            }
-        }
-        centroids.push(data[best_idx].clone());
-    }
-
-    let mut labels = vec![0usize; n];
+    let mut centroids: Vec<Vec<f64>> = data[..k].to_vec();
+    let mut labels = vec![usize::MAX; n];
     let mut iterations = 0;
+    let tolerance = 0.01f64;
 
-    for iter in 0..max_iter {
+    for iter in 0..max_iter.max(1) {
         iterations = iter + 1;
 
         // Assignment step
-        let mut changed = false;
+        let mut membership_changes = 0usize;
         for (i, row) in data.iter().enumerate() {
             let mut best_c = 0;
             let mut best_d = f64::MAX;
@@ -123,12 +104,8 @@ fn kmeans_core(data: &[Vec<f64>], k: usize, max_iter: usize) -> KmeansResult {
             }
             if labels[i] != best_c {
                 labels[i] = best_c;
-                changed = true;
+                membership_changes += 1;
             }
-        }
-
-        if !changed {
-            break;
         }
 
         // Update step
@@ -146,9 +123,15 @@ fn kmeans_core(data: &[Vec<f64>], k: usize, max_iter: usize) -> KmeansResult {
                 for j in 0..d {
                     new_centroids[ci][j] /= counts[ci] as f64;
                 }
+            } else {
+                new_centroids[ci].clone_from(&centroids[ci]);
             }
         }
         centroids = new_centroids;
+
+        if (membership_changes as f64 / n as f64) < tolerance {
+            break;
+        }
     }
 
     // Compute inertia

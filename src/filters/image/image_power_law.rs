@@ -17,10 +17,12 @@ pub fn image_power_law(input: &ImageData, scalars: &str) -> ImageData {
             }
         })
         .collect();
-    let mut output = input.clone();
-    output
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    let dims = input.dimensions();
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
+        .with_spacing(input.spacing())
+        .with_origin(input.origin())
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
     output
 }
 #[cfg(test)]

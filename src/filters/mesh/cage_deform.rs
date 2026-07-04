@@ -1,4 +1,4 @@
-use crate::data::{DataSet, KdTree, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Simple cage deformation: move control points and propagate.
 ///
@@ -17,19 +17,27 @@ pub fn cage_deform(
     }
 
     let mut points = Points::<f64>::new();
+    let power = if power.is_finite() { power } else { 2.0 };
 
     for i in 0..n {
         let p = input.points.get(i);
+        if let Some(j) = (0..nc).find(|&j| squared_distance(p, cage_original[j]) <= 1e-24) {
+            points.push(cage_deformed[j]);
+            continue;
+        }
+
         let mut dx = 0.0;
         let mut dy = 0.0;
         let mut dz = 0.0;
         let mut total_w = 0.0;
 
         for j in 0..nc {
-            let d2 = (p[0] - cage_original[j][0]).powi(2)
-                + (p[1] - cage_original[j][1]).powi(2)
-                + (p[2] - cage_original[j][2]).powi(2);
-            let w = 1.0 / (d2.max(1e-15)).powf(power * 0.5);
+            let d2 = squared_distance(p, cage_original[j]);
+            let w = if power == 0.0 {
+                1.0
+            } else {
+                1.0 / d2.powf(power * 0.5)
+            };
             let disp = [
                 cage_deformed[j][0] - cage_original[j][0],
                 cage_deformed[j][1] - cage_original[j][1],
@@ -57,6 +65,10 @@ pub fn cage_deform(
     pd
 }
 
+fn squared_distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,6 +85,18 @@ mod tests {
         let result = cage_deform(&pd, &orig, &deformed, 2.0);
         let p = result.points.get(0);
         assert!(p[0] > 5.0); // moved toward deformed cage point
+    }
+
+    #[test]
+    fn exact_control_point_maps_to_deformed_control_point() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+
+        let orig = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]];
+        let deformed = [[10.0, 0.0, 0.0], [1.0, 10.0, 0.0]];
+
+        let result = cage_deform(&pd, &orig, &deformed, 2.0);
+        assert_eq!(result.points.get(0), [10.0, 0.0, 0.0]);
     }
 
     #[test]

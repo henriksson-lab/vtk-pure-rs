@@ -1,10 +1,10 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 
 /// Clip a mesh by a cylinder, keeping points inside or outside.
 ///
 /// The cylinder is defined by a `center` point, an `axis` direction, and a `radius`.
-/// Points are classified as inside if their perpendicular distance to the axis is
-/// less than the radius. If `keep_inside` is true, cells whose **all** vertices
+/// Points are classified as inside if their squared perpendicular distance to
+/// the axis is less than or equal to the squared radius. If `keep_inside` is true, cells whose **all** vertices
 /// are inside the cylinder are kept; otherwise cells whose all vertices are outside.
 pub fn clip_by_cylinder(
     input: &PolyData,
@@ -23,6 +23,7 @@ pub fn clip_by_cylinder(
     // Classify each point: true means inside the cylinder.
     let n: usize = input.points.len();
     let mut inside = vec![false; n];
+    let radius_sq = radius * radius;
     for i in 0..n {
         let p = input.points.get(i);
         let dx: f64 = p[0] - center[0];
@@ -30,19 +31,23 @@ pub fn clip_by_cylinder(
         let dz: f64 = p[2] - center[2];
         let proj: f64 = dx * ax[0] + dy * ax[1] + dz * ax[2];
         let perp_sq: f64 = dx * dx + dy * dy + dz * dz - proj * proj;
-        let dist: f64 = if perp_sq > 0.0 { perp_sq.sqrt() } else { 0.0 };
-        inside[i] = dist < radius;
+        inside[i] = perp_sq.max(0.0) <= radius_sq;
     }
 
     // Build output: keep cells whose all vertices satisfy the condition.
     let mut new_points = Points::new();
     let mut new_polys = CellArray::new();
     let mut point_map: Vec<Option<i64>> = vec![None; n];
+    let mut point_ids = Vec::new();
+    let mut cell_ids = Vec::new();
     let mut next_id: i64 = 0;
 
-    for cell in input.polys.iter() {
+    for (cell_id, cell) in input.polys.iter().enumerate() {
         let all_match = cell.iter().all(|&id| {
-            let flag = inside[id as usize];
+            let Some(idx) = valid_point_id(id, n) else {
+                return false;
+            };
+            let flag = inside[idx];
             if keep_inside {
                 flag
             } else {
@@ -54,21 +59,86 @@ pub fn clip_by_cylinder(
         }
         let mut new_cell = Vec::with_capacity(cell.len());
         for &id in cell {
-            let idx = id as usize;
+            let idx = valid_point_id(id, n).expect("cell ids were validated above");
             if point_map[idx].is_none() {
                 new_points.push(input.points.get(idx));
                 point_map[idx] = Some(next_id);
+                point_ids.push(idx);
                 next_id += 1;
             }
             new_cell.push(point_map[idx].unwrap());
         }
         new_polys.push_cell(&new_cell);
+        cell_ids.push(cell_id);
     }
 
     let mut result = PolyData::new();
     result.points = new_points;
     result.polys = new_polys;
+    copy_attribute_tuples(input.point_data(), result.point_data_mut(), &point_ids);
+    copy_attribute_tuples(input.cell_data(), result.cell_data_mut(), &cell_ids);
     result
+}
+
+fn copy_attribute_tuples(
+    source: &DataSetAttributes,
+    target: &mut DataSetAttributes,
+    tuple_ids: &[usize],
+) {
+    for array in source.iter() {
+        if tuple_ids
+            .iter()
+            .all(|&tuple_id| tuple_id < array.num_tuples())
+        {
+            target.add_array(subset_array(array, tuple_ids));
+        }
+    }
+
+    if let Some(array) = source.scalars() {
+        target.set_active_scalars(array.name());
+    }
+    if let Some(array) = source.vectors() {
+        target.set_active_vectors(array.name());
+    }
+    if let Some(array) = source.normals() {
+        target.set_active_normals(array.name());
+    }
+    if let Some(array) = source.tcoords() {
+        target.set_active_tcoords(array.name());
+    }
+    if let Some(array) = source.tensors() {
+        target.set_active_tensors(array.name());
+    }
+}
+
+fn subset_array(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
+    macro_rules! subset {
+        ($arr:expr, $variant:ident) => {{
+            let nc = $arr.num_components();
+            let mut data = Vec::with_capacity(tuple_ids.len() * nc);
+            for &tuple_id in tuple_ids {
+                data.extend_from_slice($arr.tuple(tuple_id));
+            }
+            AnyDataArray::$variant(DataArray::from_vec($arr.name(), data, nc))
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(arr) => subset!(arr, F32),
+        AnyDataArray::F64(arr) => subset!(arr, F64),
+        AnyDataArray::I8(arr) => subset!(arr, I8),
+        AnyDataArray::I16(arr) => subset!(arr, I16),
+        AnyDataArray::I32(arr) => subset!(arr, I32),
+        AnyDataArray::I64(arr) => subset!(arr, I64),
+        AnyDataArray::U8(arr) => subset!(arr, U8),
+        AnyDataArray::U16(arr) => subset!(arr, U16),
+        AnyDataArray::U32(arr) => subset!(arr, U32),
+        AnyDataArray::U64(arr) => subset!(arr, U64),
+    }
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 
 #[cfg(test)]
@@ -114,5 +184,25 @@ mod tests {
         let result = clip_by_cylinder(&mesh, [5.0, 0.0, 0.0], [0.0, 0.0, 1.0], 100.0, true);
         assert_eq!(result.polys.num_cells(), 2);
         assert_eq!(result.points.len(), 6);
+    }
+
+    #[test]
+    fn skips_cells_with_invalid_point_ids() {
+        let mut mesh = sample_mesh();
+        mesh.polys.push_cell(&[0, -1, 2]);
+        mesh.polys.push_cell(&[0, 99, 2]);
+
+        let result = clip_by_cylinder(&mesh, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 5.0, true);
+        assert_eq!(result.polys.num_cells(), 1);
+    }
+
+    #[test]
+    fn keeps_boundary_points_inside() {
+        let mesh = PolyData::from_triangles(
+            vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let result = clip_by_cylinder(&mesh, [0.0, 0.0, 0.0], [0.0, 0.0, 1.0], 1.0, true);
+        assert_eq!(result.polys.num_cells(), 1);
     }
 }

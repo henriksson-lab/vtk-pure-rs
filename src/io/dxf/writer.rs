@@ -30,25 +30,16 @@ impl<W: Write> DxfWriter<W> {
 
         // Write polygons as 3DFACE entities
         for cell in mesh.polys.iter() {
-            if cell.len() >= 3 {
-                let p0 = mesh.points.get(cell[0] as usize);
-                let p1 = mesh.points.get(cell[1] as usize);
-                let p2 = mesh.points.get(cell[2] as usize);
-                let p3 = if cell.len() >= 4 {
-                    mesh.points.get(cell[3] as usize)
-                } else {
-                    p2 // degenerate quad = triangle
-                };
-
-                writeln!(self.writer, "  0")?;
-                writeln!(self.writer, "3DFACE")?;
-                writeln!(self.writer, "  8")?;
-                writeln!(self.writer, "0")?; // layer
-
-                write_point(&mut self.writer, 10, p0)?;
-                write_point(&mut self.writer, 11, p1)?;
-                write_point(&mut self.writer, 12, p2)?;
-                write_point(&mut self.writer, 13, p3)?;
+            match cell.len() {
+                0..=2 => {}
+                3 | 4 => {
+                    self.write_3dface(mesh, cell)?;
+                }
+                _ => {
+                    for i in 1..cell.len() - 1 {
+                        self.write_3dface(mesh, &[cell[0], cell[i], cell[i + 1]])?;
+                    }
+                }
             }
         }
 
@@ -74,6 +65,27 @@ impl<W: Write> DxfWriter<W> {
         writeln!(self.writer, "EOF")?;
 
         Ok(())
+    }
+
+    fn write_3dface(&mut self, mesh: &PolyData, cell: &[i64]) -> std::io::Result<()> {
+        let p0 = mesh.points.get(cell[0] as usize);
+        let p1 = mesh.points.get(cell[1] as usize);
+        let p2 = mesh.points.get(cell[2] as usize);
+        let p3 = if cell.len() >= 4 {
+            mesh.points.get(cell[3] as usize)
+        } else {
+            p2 // degenerate quad = triangle
+        };
+
+        writeln!(self.writer, "  0")?;
+        writeln!(self.writer, "3DFACE")?;
+        writeln!(self.writer, "  8")?;
+        writeln!(self.writer, "0")?; // layer
+
+        write_point(&mut self.writer, 10, p0)?;
+        write_point(&mut self.writer, 11, p1)?;
+        write_point(&mut self.writer, 12, p2)?;
+        write_point(&mut self.writer, 13, p3)
     }
 }
 

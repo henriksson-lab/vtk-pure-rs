@@ -1,6 +1,6 @@
 //! Advanced mesh measurements: surface integral, volume, moments.
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 
 /// Compute the signed volume of a closed triangle mesh.
 pub fn signed_volume(mesh: &PolyData) -> f64 {
@@ -9,12 +9,17 @@ pub fn signed_volume(mesh: &PolyData) -> f64 {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        vol += a[0] * (b[1] * c[2] - b[2] * c[1])
-            + b[0] * (c[1] * a[2] - c[2] * a[1])
-            + c[0] * (a[1] * b[2] - a[2] * b[1]);
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            vol += a[0] * (b[1] * c[2] - b[2] * c[1])
+                + b[0] * (c[1] * a[2] - c[2] * a[1])
+                + c[0] * (a[1] * b[2] - a[2] * b[1]);
+        }
     }
     vol / 6.0
 }
@@ -26,15 +31,15 @@ pub fn surface_area(mesh: &PolyData) -> f64 {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let nx = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny = e1[2] * e2[0] - e1[0] * e2[2];
-        let nz = e1[0] * e2[1] - e1[1] * e2[0];
-        area += 0.5 * (nx * nx + ny * ny + nz * nz).sqrt();
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            area += tri_area(a, b, c);
+        }
     }
     area
 }
@@ -49,29 +54,41 @@ pub fn center_of_mass(mesh: &PolyData) -> [f64; 3] {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let area = 0.5
-            * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
-                + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
-                + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
-            .sqrt();
-        let mx = (a[0] + b[0] + c[0]) / 3.0;
-        let my = (a[1] + b[1] + c[1]) / 3.0;
-        let mz = (a[2] + b[2] + c[2]) / 3.0;
-        cx += area * mx;
-        cy += area * my;
-        cz += area * mz;
-        total += area;
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            let area = tri_area(a, b, c);
+            let mx = (a[0] + b[0] + c[0]) / 3.0;
+            let my = (a[1] + b[1] + c[1]) / 3.0;
+            let mz = (a[2] + b[2] + c[2]) / 3.0;
+            cx += area * mx;
+            cy += area * my;
+            cz += area * mz;
+            total += area;
+        }
     }
     if total > 1e-15 {
         [cx / total, cy / total, cz / total]
     } else {
         [0.0; 3]
     }
+}
+
+fn tri_area(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
+    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let nx = e1[1] * e2[2] - e1[2] * e2[1];
+    let ny = e1[2] * e2[0] - e1[0] * e2[2];
+    let nz = e1[0] * e2[1] - e1[1] * e2[0];
+    0.5 * (nx * nx + ny * ny + nz * nz).sqrt()
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 
 /// Compute the moment of inertia tensor (3x3 matrix).

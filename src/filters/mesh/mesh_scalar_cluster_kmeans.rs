@@ -6,6 +6,9 @@ pub fn kmeans_scalar(mesh: &PolyData, array_name: &str, k: usize, iterations: us
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return mesh.clone();
+    }
     let k = k.max(1).min(n);
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)

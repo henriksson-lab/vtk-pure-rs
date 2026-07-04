@@ -45,10 +45,10 @@ pub fn correlation_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
     for i in 0..p {
         for j in 0..p {
             let denom = (cov[i][i] * cov[j][j]).sqrt();
-            corr[i][j] = if denom > 1e-15 {
+            corr[i][j] = if denom >= f64::MIN_POSITIVE {
                 cov[i][j] / denom
             } else {
-                0.0
+                f64::NAN
             };
         }
     }
@@ -89,7 +89,11 @@ pub fn spearman_correlation(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
                 var_j += dj * dj;
             }
             let denom = (var_i * var_j).sqrt();
-            corr[i][j] = if denom > 1e-15 { cov / denom } else { 0.0 };
+            corr[i][j] = if denom >= f64::MIN_POSITIVE {
+                cov / denom
+            } else {
+                f64::NAN
+            };
             corr[j][i] = corr[i][j];
         }
     }

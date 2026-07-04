@@ -10,25 +10,44 @@ pub fn mean_edge_length(mesh: &PolyData) -> PolyData {
     let mut count = vec![0u32; n];
     let mut seen = std::collections::HashSet::new();
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a >= n || b >= n {
-                continue;
-            }
-            let e = if a < b { (a, b) } else { (b, a) };
-            if !seen.insert(e) {
-                continue;
-            }
-            let pa = mesh.points.get(a);
-            let pb = mesh.points.get(b);
-            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                .sqrt();
-            sum_len[a] += d;
-            count[a] += 1;
-            sum_len[b] += d;
-            count[b] += 1;
+        for i in 0..cell.len() {
+            accumulate_edge(
+                mesh,
+                n,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+                &mut seen,
+                &mut sum_len,
+                &mut count,
+            );
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            accumulate_edge(
+                mesh,
+                n,
+                edge[0],
+                edge[1],
+                &mut seen,
+                &mut sum_len,
+                &mut count,
+            );
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            accumulate_edge(mesh, n, tri[0], tri[1], &mut seen, &mut sum_len, &mut count);
+            accumulate_edge(mesh, n, tri[1], tri[2], &mut seen, &mut sum_len, &mut count);
+            accumulate_edge(mesh, n, tri[2], tri[0], &mut seen, &mut sum_len, &mut count);
         }
     }
     let avg: Vec<f64> = (0..n)
@@ -50,6 +69,43 @@ pub fn mean_edge_length(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("MeanEdgeLength");
     result
+}
+
+fn accumulate_edge(
+    mesh: &PolyData,
+    n: usize,
+    a_id: i64,
+    b_id: i64,
+    seen: &mut std::collections::HashSet<(usize, usize)>,
+    sum_len: &mut [f64],
+    count: &mut [u32],
+) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    let e = if a < b { (a, b) } else { (b, a) };
+    if !seen.insert(e) {
+        return;
+    }
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+    sum_len[a] += d;
+    count[a] += 1;
+    sum_len[b] += d;
+    count[b] += 1;
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

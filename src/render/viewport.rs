@@ -107,10 +107,14 @@ impl Viewport {
 
     /// Convert to pixel coordinates given window size.
     pub fn to_pixels(&self, window_width: u32, window_height: u32) -> (u32, u32, u32, u32) {
-        let px = (self.x * window_width as f32) as u32;
-        let py = (self.y * window_height as f32) as u32;
-        let pw = (self.width * window_width as f32) as u32;
-        let ph = (self.height * window_height as f32) as u32;
+        let x0 = (self.x * window_width as f32 + 0.5) as u32;
+        let y0 = (self.y * window_height as f32 + 0.5) as u32;
+        let x1 = ((self.x + self.width) * window_width as f32 + 0.5) as u32;
+        let y1 = ((self.y + self.height) * window_height as f32 + 0.5) as u32;
+        let px = x0.min(window_width);
+        let py = y0.min(window_height);
+        let pw = x1.min(window_width).saturating_sub(px);
+        let ph = y1.min(window_height).saturating_sub(py);
         (px, py, pw, ph)
     }
 
@@ -174,5 +178,11 @@ mod tests {
     fn aspect_ratio() {
         let vp = Viewport::new(0.0, 0.0, 0.5, 1.0);
         assert!((vp.aspect_ratio() - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn pixel_conversion_rounds_like_vtk_viewport() {
+        let vp = Viewport::new(0.1, 0.1, 0.2, 0.2);
+        assert_eq!(vp.to_pixels(101, 101), (10, 10, 20, 20));
     }
 }

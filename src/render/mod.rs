@@ -66,8 +66,12 @@ pub mod parallel_render;
 pub mod path_tracer;
 pub mod ray_tracer;
 pub mod subdivision_render;
+pub use path_tracer::PathTracer;
+pub use ray_tracer::RayTracer;
+pub use subdivision_render::SubdivisionConfig;
 #[cfg(feature = "truetype")]
 pub mod truetype_font;
 pub mod web_viewer;
 #[cfg(feature = "truetype")]
 pub use truetype_font::TrueTypeFont;
+pub use web_viewer::WebViewerConfig;

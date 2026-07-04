@@ -1,11 +1,15 @@
 //! Contour tree from scalar field on mesh (simplified).
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
+
 pub fn contour_tree(mesh: &PolyData, array_name: &str) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return PolyData::new(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return PolyData::new();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -15,18 +19,15 @@ pub fn contour_tree(mesh: &PolyData, array_name: &str) -> PolyData {
         .collect();
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+        let ids: Vec<usize> = cell
+            .iter()
+            .filter_map(|&id| valid_point_id(id, n))
+            .collect();
+        for pair in ids.windows(2) {
+            add_edge(&mut nb, pair[0], pair[1]);
+        }
+        if ids.len() > 2 {
+            add_edge(&mut nb, ids[ids.len() - 1], ids[0]);
         }
     }
     // Sort vertices by scalar value
@@ -54,6 +55,7 @@ pub fn contour_tree(mesh: &PolyData, array_name: &str) -> PolyData {
         match components.len() {
             0 => {} // new component
             1 => {
+                tree_edges.push((vi, components[0]));
                 union(&mut parent, vi, components[0]);
             }
             _ => {
@@ -104,9 +106,24 @@ fn union(p: &mut [usize], a: usize, b: usize) {
         p[rb] = ra;
     }
 }
+
+fn add_edge(nb: &mut [Vec<usize>], a: usize, b: usize) {
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
+
     #[test]
     fn test() {
         let mut m = PolyData::from_triangles(

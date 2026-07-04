@@ -25,8 +25,15 @@ pub fn classify_vertices(mesh: &PolyData, edge_threshold_degrees: f64) -> PolyDa
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if a == b {
+                continue;
+            }
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -36,7 +43,7 @@ pub fn classify_vertices(mesh: &PolyData, edge_threshold_degrees: f64) -> PolyDa
             let dot = normals[faces[0]][0] * normals[faces[1]][0]
                 + normals[faces[0]][1] * normals[faces[1]][1]
                 + normals[faces[0]][2] * normals[faces[1]][2];
-            if dot < cos_thresh {
+            if dot <= cos_thresh {
                 sharp_count[a] += 1;
                 sharp_count[b] += 1;
             }
@@ -89,8 +96,15 @@ pub fn extract_feature_lines(mesh: &PolyData, edge_threshold_degrees: f64) -> Po
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
+            if a == b {
+                continue;
+            }
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -107,7 +121,7 @@ pub fn extract_feature_lines(mesh: &PolyData, edge_threshold_degrees: f64) -> Po
             let dot = normals[faces[0]][0] * normals[faces[1]][0]
                 + normals[faces[0]][1] * normals[faces[1]][1]
                 + normals[faces[0]][2] * normals[faces[1]][2];
-            dot < cos_thresh
+            dot <= cos_thresh
         } else {
             true // non-manifold
         };
@@ -163,8 +177,15 @@ pub fn extract_flat_regions(mesh: &PolyData, threshold_degrees: f64) -> PolyData
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
+            if a == b {
+                continue;
+            }
             edge_cells.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -176,7 +197,7 @@ pub fn extract_flat_regions(mesh: &PolyData, threshold_degrees: f64) -> PolyData
             let dot = normals[faces[0]][0] * normals[faces[1]][0]
                 + normals[faces[0]][1] * normals[faces[1]][1]
                 + normals[faces[0]][2] * normals[faces[1]][2];
-            if dot < cos_thresh {
+            if dot <= cos_thresh {
                 is_flat[faces[0]] = false;
                 is_flat[faces[1]] = false;
             }
@@ -193,7 +214,10 @@ pub fn extract_flat_regions(mesh: &PolyData, threshold_degrees: f64) -> PolyData
         }
         let mut ids = Vec::new();
         for &pid in cell {
-            let old = pid as usize;
+            let Some(old) = valid_point_id(pid, mesh.points.len()) else {
+                ids.clear();
+                break;
+            };
             let idx = *pt_map.entry(old).or_insert_with(|| {
                 let i = pts.len();
                 pts.push(mesh.points.get(old));
@@ -201,7 +225,9 @@ pub fn extract_flat_regions(mesh: &PolyData, threshold_degrees: f64) -> PolyData
             });
             ids.push(idx as i64);
         }
-        polys.push_cell(&ids);
+        if ids.len() == cell.len() {
+            polys.push_cell(&ids);
+        }
     }
 
     let mut result = PolyData::new();
@@ -214,22 +240,32 @@ fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-    ];
+    let mut n = [0.0; 3];
+    for i in 0..cell.len() {
+        let Some(p_id) = valid_point_id(cell[i], mesh.points.len()) else {
+            return [0.0, 0.0, 1.0];
+        };
+        let Some(q_id) = valid_point_id(cell[(i + 1) % cell.len()], mesh.points.len()) else {
+            return [0.0, 0.0, 1.0];
+        };
+        let p = mesh.points.get(p_id);
+        let q = mesh.points.get(q_id);
+        n[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        n[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        n[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     if len > 1e-15 {
         [n[0] / len, n[1] / len, n[2] / len]
     } else {
         [0.0, 0.0, 1.0]
     }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

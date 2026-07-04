@@ -73,6 +73,9 @@ pub fn interpolate_points(
 
             // Sort by distance and limit
             neighbors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            if matches!(kernel, InterpolationKernel::NearestNeighbor) {
+                neighbors.truncate(1);
+            }
             if neighbors.len() > max_neighbors {
                 neighbors.truncate(max_neighbors);
             }
@@ -132,13 +135,7 @@ fn kernel_weight(kernel: InterpolationKernel, dist: f64) -> f64 {
                 ((radius - dist) / (radius * dist)).powf(power)
             }
         }
-        InterpolationKernel::NearestNeighbor => {
-            if dist < 1e-15 {
-                1e15
-            } else {
-                1.0 / (dist + 1e-15)
-            }
-        }
+        InterpolationKernel::NearestNeighbor => 1.0,
         InterpolationKernel::SPHCubicSpline { smoothing_length } => {
             let q = dist / smoothing_length;
             let norm = 1.0 / (std::f64::consts::PI * smoothing_length.powi(3));

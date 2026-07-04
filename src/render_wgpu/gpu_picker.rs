@@ -6,8 +6,8 @@ use crate::render_wgpu::mesh::Vertex;
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct PickUniforms {
     mvp: [[f32; 4]; 4],
-    actor_id: f32,
-    _pad: [f32; 3],
+    actor_id: u32,
+    _pad: [u32; 3],
 }
 
 /// GPU-accelerated picker that renders actor/cell IDs to an offscreen buffer.
@@ -22,8 +22,8 @@ pub struct GpuPicker {
 /// Result of a GPU pick operation.
 #[derive(Debug, Clone, Copy)]
 pub struct GpuPickResult {
-    /// Actor index (0-254, 255 = background).
-    pub actor_id: u8,
+    /// Actor/prop index.
+    pub actor_id: u32,
     /// Cell (triangle) index within the actor.
     pub cell_id: u32,
 }
@@ -84,7 +84,7 @@ impl GpuPicker {
                 module: &shader,
                 entry_point: Some("fs_pick"),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    format: wgpu::TextureFormat::Rgba32Uint,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -114,17 +114,23 @@ impl GpuPicker {
         }
     }
 
-    /// Decode a pixel's RGBA values into a pick result.
-    pub fn decode_pixel(r: u8, g: u8, b: u8, a: u8) -> Option<GpuPickResult> {
-        if a == 0 {
-            return None;
-        } // background
-        let actor_id = r;
-        if actor_id == 255 {
+    /// Decode a VTK WebGPU selector ID tuple.
+    ///
+    /// The shader writes `{cell, prop, composite, process} + 1`, reserving zero
+    /// for background pixels.
+    pub fn decode_ids(
+        cell: u32,
+        actor: u32,
+        _composite: u32,
+        _process: u32,
+    ) -> Option<GpuPickResult> {
+        if actor == 0 || cell == 0 {
             return None;
         }
-        let cell_id = ((g as u32) << 8) | (b as u32);
-        Some(GpuPickResult { actor_id, cell_id })
+        Some(GpuPickResult {
+            actor_id: actor - 1,
+            cell_id: cell - 1,
+        })
     }
 }
 
@@ -133,20 +139,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decode_pixel_background() {
-        assert!(GpuPicker::decode_pixel(0, 0, 0, 0).is_none());
+    fn decode_ids_background() {
+        assert!(GpuPicker::decode_ids(0, 0, 0, 0).is_none());
     }
 
     #[test]
-    fn decode_pixel_valid() {
-        let result = GpuPicker::decode_pixel(2, 0, 5, 255).unwrap();
+    fn decode_ids_valid() {
+        let result = GpuPicker::decode_ids(6, 3, 1, 1).unwrap();
         assert_eq!(result.actor_id, 2);
         assert_eq!(result.cell_id, 5);
     }
 
     #[test]
-    fn decode_pixel_large_cell() {
-        let result = GpuPicker::decode_pixel(0, 1, 0, 255).unwrap();
-        assert_eq!(result.cell_id, 256);
+    fn decode_ids_large_cell() {
+        let result = GpuPicker::decode_ids(65_537, 1, 1, 1).unwrap();
+        assert_eq!(result.cell_id, 65_536);
     }
 }

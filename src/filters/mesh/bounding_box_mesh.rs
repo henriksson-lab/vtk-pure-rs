@@ -4,16 +4,19 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Create a wireframe bounding box around a mesh.
 pub fn bounding_box_wireframe(mesh: &PolyData) -> PolyData {
+    if mesh.points.is_empty() {
+        return PolyData::new();
+    }
     let (mn, mx) = bounds(mesh);
     let verts = [
         [mn[0], mn[1], mn[2]],
         [mx[0], mn[1], mn[2]],
-        [mx[0], mx[1], mn[2]],
         [mn[0], mx[1], mn[2]],
+        [mx[0], mx[1], mn[2]],
         [mn[0], mn[1], mx[2]],
         [mx[0], mn[1], mx[2]],
-        [mx[0], mx[1], mx[2]],
         [mn[0], mx[1], mx[2]],
+        [mx[0], mx[1], mx[2]],
     ];
     let mut pts = Points::<f64>::new();
     for v in &verts {
@@ -22,13 +25,13 @@ pub fn bounding_box_wireframe(mesh: &PolyData) -> PolyData {
     let mut lines = CellArray::new();
     let edges = [
         [0, 1],
-        [1, 2],
         [2, 3],
-        [3, 0],
         [4, 5],
-        [5, 6],
         [6, 7],
-        [7, 4],
+        [0, 2],
+        [1, 3],
+        [4, 6],
+        [5, 7],
         [0, 4],
         [1, 5],
         [2, 6],
@@ -45,16 +48,19 @@ pub fn bounding_box_wireframe(mesh: &PolyData) -> PolyData {
 
 /// Create a solid bounding box (6 quad faces) around a mesh.
 pub fn bounding_box_solid(mesh: &PolyData) -> PolyData {
+    if mesh.points.is_empty() {
+        return PolyData::new();
+    }
     let (mn, mx) = bounds(mesh);
     let verts = [
         [mn[0], mn[1], mn[2]],
         [mx[0], mn[1], mn[2]],
-        [mx[0], mx[1], mn[2]],
         [mn[0], mx[1], mn[2]],
+        [mx[0], mx[1], mn[2]],
         [mn[0], mn[1], mx[2]],
         [mx[0], mn[1], mx[2]],
-        [mx[0], mx[1], mx[2]],
         [mn[0], mx[1], mx[2]],
+        [mx[0], mx[1], mx[2]],
     ];
     let mut pts = Points::<f64>::new();
     for v in &verts {
@@ -62,12 +68,12 @@ pub fn bounding_box_solid(mesh: &PolyData) -> PolyData {
     }
     let mut polys = CellArray::new();
     let faces = [
-        [0, 3, 2, 1],
-        [4, 5, 6, 7],
+        [1, 0, 2, 3],
         [0, 1, 5, 4],
-        [2, 3, 7, 6],
-        [0, 4, 7, 3],
-        [1, 2, 6, 5],
+        [2, 0, 4, 6],
+        [3, 2, 6, 7],
+        [1, 3, 7, 5],
+        [7, 6, 4, 5],
     ];
     for f in &faces {
         polys.push_cell(&[f[0] as i64, f[1] as i64, f[2] as i64, f[3] as i64]);
@@ -135,5 +141,13 @@ mod tests {
         );
         let d = bounding_box_diagonal(&mesh);
         assert!((d - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn empty_input_has_empty_boxes() {
+        let mesh = PolyData::new();
+        assert_eq!(bounding_box_wireframe(&mesh).points.len(), 0);
+        assert_eq!(bounding_box_solid(&mesh).points.len(), 0);
+        assert_eq!(bounding_box_diagonal(&mesh), 0.0);
     }
 }

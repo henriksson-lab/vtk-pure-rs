@@ -25,7 +25,7 @@ pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, alpha: f64)
     }
 
     // Box blur (separable, 3 passes)
-    let r = radius.max(1);
+    let r = radius;
 
     // X pass
     let mut tmp = vec![0.0f64; n];
@@ -145,5 +145,23 @@ mod tests {
         let img = ImageData::with_dimensions(2, 2, 2);
         let result = unsharp_mask(&img, "nonexistent", 1, 1.0);
         assert!(result.point_data().get_array("Sharpened").is_none());
+    }
+
+    #[test]
+    fn zero_radius_is_identity() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![1.0, 5.0, 9.0],
+                1,
+            )));
+        let result = unsharp_mask(&img, "val", 0, 4.0);
+        let arr = result.point_data().get_array("Sharpened").unwrap();
+        let mut buf = [0.0f64];
+        for (i, expected) in [1.0, 5.0, 9.0].into_iter().enumerate() {
+            arr.tuple_as_f64(i, &mut buf);
+            assert!((buf[0] - expected).abs() < 1e-10);
+        }
     }
 }

@@ -5,19 +5,19 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Apply per-pixel function.
 pub fn pixel_map(image: &ImageData, array_name: &str, f: impl Fn(f64) -> f64) -> ImageData {
     let arr = match image.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) => a,
         _ => return image.clone(),
     };
-    let mut buf = [0.0f64];
-    let data: Vec<f64> = (0..arr.num_tuples())
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            f(buf[0])
-        })
-        .collect();
+    let nc = arr.num_components();
+    let mut buf = vec![0.0f64; nc];
+    let mut data = Vec::with_capacity(arr.num_tuples() * nc);
+    for i in 0..arr.num_tuples() {
+        arr.tuple_as_f64(i, &mut buf);
+        data.extend(buf.iter().map(|v| f(*v)));
+    }
     let mut r = image.clone();
     r.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, data, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, data, nc)));
     r
 }
 
@@ -37,19 +37,26 @@ pub fn pixel_binary_op(
         Some(x) => x,
         None => return image.clone(),
     };
+    if a.num_components() != b.num_components() {
+        return image.clone();
+    }
     let n = a.num_tuples().min(b.num_tuples());
-    let mut ab = [0.0f64];
-    let mut bb = [0.0f64];
-    let data: Vec<f64> = (0..n)
-        .map(|i| {
-            a.tuple_as_f64(i, &mut ab);
-            b.tuple_as_f64(i, &mut bb);
-            f(ab[0], bb[0])
-        })
-        .collect();
+    let nc = a.num_components();
+    let mut ab = vec![0.0f64; nc];
+    let mut bb = vec![0.0f64; nc];
+    let mut data = Vec::with_capacity(n * nc);
+    for i in 0..n {
+        a.tuple_as_f64(i, &mut ab);
+        b.tuple_as_f64(i, &mut bb);
+        data.extend(ab.iter().zip(bb.iter()).map(|(a, b)| f(*a, *b)));
+    }
     let mut r = image.clone();
     r.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(result_name, data, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            result_name,
+            data,
+            nc,
+        )));
     r
 }
 
@@ -68,13 +75,15 @@ pub fn invert_values(image: &ImageData, array_name: &str) -> ImageData {
         Some(a) => a,
         None => return image.clone(),
     };
-    let mut buf = [0.0f64];
+    let mut buf = vec![0.0f64; arr.num_components()];
     let mut min_v = f64::MAX;
     let mut max_v = f64::MIN;
     for i in 0..arr.num_tuples() {
         arr.tuple_as_f64(i, &mut buf);
-        min_v = min_v.min(buf[0]);
-        max_v = max_v.max(buf[0]);
+        for value in &buf {
+            min_v = min_v.min(*value);
+            max_v = max_v.max(*value);
+        }
     }
     pixel_map(image, array_name, move |v| max_v - v + min_v)
 }
@@ -86,12 +95,12 @@ pub fn abs_values(image: &ImageData, array_name: &str) -> ImageData {
 
 /// Square root.
 pub fn sqrt_values(image: &ImageData, array_name: &str) -> ImageData {
-    pixel_map(image, array_name, |v| v.max(0.0).sqrt())
+    pixel_map(image, array_name, |v| v.sqrt())
 }
 
 /// Power: v^exponent.
 pub fn pow_values(image: &ImageData, array_name: &str, exponent: f64) -> ImageData {
-    pixel_map(image, array_name, move |v| v.max(0.0).powf(exponent))
+    pixel_map(image, array_name, move |v| v.powf(exponent))
 }
 
 #[cfg(test)]
@@ -157,5 +166,19 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert!((buf[0] - 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn map_preserves_components() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0],
+                2,
+            )));
+        let result = abs_values(&img, "v");
+        let arr = result.point_data().get_array("v").unwrap();
+        assert_eq!(arr.num_components(), 2);
     }
 }

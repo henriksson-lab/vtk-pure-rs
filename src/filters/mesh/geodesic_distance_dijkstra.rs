@@ -17,8 +17,30 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
     for cell in input.polys.iter() {
         let len: usize = cell.len();
         for j in 0..len {
-            let a: usize = cell[j] as usize;
-            let b: usize = cell[(j + 1) % len] as usize;
+            let Some(a) = valid_point_id(cell[j], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(j + 1) % len], n) else {
+                continue;
+            };
+            let pa = input.points.get(a);
+            let pb = input.points.get(b);
+            let dx: f64 = pa[0] - pb[0];
+            let dy: f64 = pa[1] - pb[1];
+            let dz: f64 = pa[2] - pb[2];
+            let dist: f64 = (dx * dx + dy * dy + dz * dz).sqrt();
+            adj[a].push((b, dist));
+            adj[b].push((a, dist));
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            let Some(a) = valid_point_id(edge[0], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(edge[1], n) else {
+                continue;
+            };
             let pa = input.points.get(a);
             let pb = input.points.get(b);
             let dx: f64 = pa[0] - pb[0];
@@ -69,6 +91,15 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
             1,
         )));
     output
+        .point_data_mut()
+        .set_active_scalars("GeodesicDistance");
+    output
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[derive(Debug, Clone)]

@@ -67,7 +67,7 @@ pub fn sample_along_line(
         )));
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "ArcLength",
+            "arc_length",
             arc_length,
             1,
         )));
@@ -95,7 +95,7 @@ mod tests {
         assert_eq!(result.points.len(), 5);
         assert_eq!(result.lines.num_cells(), 1);
         assert!(result.point_data().get_array("temp").is_some());
-        assert!(result.point_data().get_array("ArcLength").is_some());
+        assert!(result.point_data().get_array("arc_length").is_some());
     }
 
     #[test]

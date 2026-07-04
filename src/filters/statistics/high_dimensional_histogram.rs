@@ -57,6 +57,7 @@ impl NdHistogram {
 /// Each column becomes one dimension. `bins` specifies the number of bins
 /// per dimension (same for all if single value).
 pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
+    let bins = bins.max(1);
     let mut cols: Vec<(String, Vec<f64>)> = Vec::new();
     for col in table.columns() {
         if col.num_components() != 1 {
@@ -84,14 +85,14 @@ pub fn nd_histogram(table: &Table, bins: usize) -> Option<NdHistogram> {
     let mut mins = Vec::with_capacity(ndims);
     let mut maxs = Vec::with_capacity(ndims);
     for (_, vals) in &cols {
-        let mn = vals.iter().cloned().fold(f64::MAX, f64::min);
-        let mx = vals.iter().cloned().fold(f64::MIN, f64::max);
+        let mut mn = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+        let mut mx = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        if mn == mx {
+            mn -= 0.5;
+            mx += 0.5;
+        }
         mins.push(mn);
-        maxs.push(if (mx - mn).abs() < 1e-15 {
-            mn + 1.0
-        } else {
-            mx
-        });
+        maxs.push(mx);
     }
 
     let bin_widths: Vec<f64> = (0..ndims)

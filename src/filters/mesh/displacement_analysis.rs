@@ -4,13 +4,17 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute per-vertex displacement vectors and magnitudes between two meshes.
 pub fn displacement_analysis(original: &PolyData, deformed: &PolyData) -> PolyData {
-    let n = original.points.len().min(deformed.points.len());
+    let n = deformed.points.len();
     let mut disp = Vec::with_capacity(n * 3);
     let mut mag = Vec::with_capacity(n);
     for i in 0..n {
-        let a = original.points.get(i);
-        let b = deformed.points.get(i);
-        let d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let d = if i < original.points.len() {
+            let a = original.points.get(i);
+            let b = deformed.points.get(i);
+            [b[0] - a[0], b[1] - a[1], b[2] - a[2]]
+        } else {
+            [0.0, 0.0, 0.0]
+        };
         disp.extend_from_slice(&d);
         mag.push((d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt());
     }
@@ -34,12 +38,16 @@ pub fn displacement_analysis(original: &PolyData, deformed: &PolyData) -> PolyDa
 
 /// Compute strain (normalized displacement relative to original edge lengths).
 pub fn strain_analysis(original: &PolyData, deformed: &PolyData) -> PolyData {
-    let n = original.polys.num_cells().min(deformed.polys.num_cells());
+    let n = deformed.polys.num_cells();
     let orig_cells: Vec<Vec<i64>> = original.polys.iter().map(|c| c.to_vec()).collect();
     let def_cells: Vec<Vec<i64>> = deformed.polys.iter().map(|c| c.to_vec()).collect();
 
     let mut strain_data = Vec::with_capacity(n);
     for ci in 0..n {
+        if ci >= orig_cells.len() {
+            strain_data.push(0.0);
+            continue;
+        }
         let oc = &orig_cells[ci];
         let dc = &def_cells[ci];
         if oc.len() < 3 || dc.len() < 3 {
@@ -48,14 +56,23 @@ pub fn strain_analysis(original: &PolyData, deformed: &PolyData) -> PolyData {
         }
         let mut total_strain = 0.0;
         let mut count = 0;
-        let nc = oc.len();
+        let nc = oc.len().min(dc.len());
         for i in 0..nc {
             let a = oc[i] as usize;
             let b = oc[(i + 1) % nc] as usize;
+            let da_idx = dc[i] as usize;
+            let db_idx = dc[(i + 1) % nc] as usize;
+            if a >= original.points.len()
+                || b >= original.points.len()
+                || da_idx >= deformed.points.len()
+                || db_idx >= deformed.points.len()
+            {
+                continue;
+            }
             let pa = original.points.get(a);
             let pb = original.points.get(b);
-            let da = deformed.points.get(a);
-            let db = deformed.points.get(b);
+            let da = deformed.points.get(da_idx);
+            let db = deformed.points.get(db_idx);
             let orig_len =
                 ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
                     .sqrt();

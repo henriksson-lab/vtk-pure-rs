@@ -52,9 +52,30 @@ pub fn scene_to_json<W: Write>(w: &mut W, scene: &Scene) -> std::io::Result<()> 
         };
         write!(
             w,
-            "    {{\"type\": \"{lt}\", \"intensity\": {}, \"color\": [{}, {}, {}]}}",
-            light.intensity, light.color[0], light.color[1], light.color[2]
+            "    {{\"type\": \"{lt}\", \"enabled\": {}, \"intensity\": {}, \"color\": [{}, {}, {}], \"position\": [{}, {}, {}], \"direction\": [{}, {}, {}]",
+            light.enabled,
+            light.intensity,
+            light.color[0],
+            light.color[1],
+            light.color[2],
+            light.position[0],
+            light.position[1],
+            light.position[2],
+            light.direction[0],
+            light.direction[1],
+            light.direction[2],
         )?;
+        if let crate::render::LightType::Spot {
+            cone_angle,
+            exponent,
+        } = light.light_type
+        {
+            write!(
+                w,
+                ", \"cone_angle\": {cone_angle}, \"exponent\": {exponent}"
+            )?;
+        }
+        write!(w, "}}")?;
         if i < scene.lights.len() - 1 {
             write!(w, ",")?;
         }
@@ -115,6 +136,24 @@ mod tests {
         assert!(json.contains("\"num_actors\": 1"));
         assert!(json.contains("\"fog\""));
         assert!(json.contains("\"enabled\": true"));
+    }
+
+    #[test]
+    fn json_exports_light_state() {
+        let mut scene = Scene::new();
+        scene.clear_lights();
+        scene.add_light(crate::render::Light::spot(
+            [1.0, 2.0, 3.0],
+            [0.0, -1.0, 0.0],
+            [0.8, 0.7, 0.6],
+            1.5,
+            45.0,
+        ));
+
+        let json = scene_to_json_string(&scene);
+        assert!(json.contains("\"position\": [1, 2, 3]"));
+        assert!(json.contains("\"direction\": [0, -1, 0]"));
+        assert!(json.contains("\"cone_angle\": 45"));
     }
 
     #[test]

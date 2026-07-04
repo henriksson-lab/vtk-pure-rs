@@ -5,20 +5,28 @@ use crate::data::{Points, PolyData};
 /// For each point in `input`, finds the closest point on any triangle
 /// in `surface` and moves the point there.
 pub fn project_to_surface(input: &PolyData, surface: &PolyData) -> PolyData {
-    let tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = surface
-        .polys
-        .iter()
-        .flat_map(|cell| {
-            let p0 = surface.points.get(cell[0] as usize);
-            (1..cell.len() - 1).map(move |i| {
-                (
-                    p0,
-                    surface.points.get(cell[i] as usize),
-                    surface.points.get(cell[i + 1] as usize),
-                )
-            })
-        })
-        .collect();
+    let mut tris: Vec<([f64; 3], [f64; 3], [f64; 3])> = Vec::new();
+
+    for cell in surface.polys.iter().filter(|cell| cell.len() >= 3) {
+        let p0 = surface.points.get(cell[0] as usize);
+        for i in 1..cell.len() - 1 {
+            tris.push((
+                p0,
+                surface.points.get(cell[i] as usize),
+                surface.points.get(cell[i + 1] as usize),
+            ));
+        }
+    }
+
+    for cell in surface.strips.iter().filter(|cell| cell.len() >= 3) {
+        for i in 0..cell.len() - 2 {
+            tris.push((
+                surface.points.get(cell[i] as usize),
+                surface.points.get(cell[i + 1] as usize),
+                surface.points.get(cell[i + 2] as usize),
+            ));
+        }
+    }
 
     let mut out_points = Points::<f64>::new();
 
@@ -145,5 +153,21 @@ mod tests {
         let p = result.points.get(0);
         // Should project onto the edge from (0,0,0) to (0,1,0)
         assert!(p[0].abs() < 1e-10);
+    }
+
+    #[test]
+    fn project_onto_triangle_strip() {
+        let mut surface = PolyData::new();
+        surface.points.push([0.0, 0.0, 0.0]);
+        surface.points.push([1.0, 0.0, 0.0]);
+        surface.points.push([0.0, 1.0, 0.0]);
+        surface.strips.push_cell(&[0, 1, 2]);
+
+        let mut input = PolyData::new();
+        input.points.push([0.25, 0.25, 2.0]);
+
+        let result = project_to_surface(&input, &surface);
+        let p = result.points.get(0);
+        assert!(p[2].abs() < 1e-10);
     }
 }

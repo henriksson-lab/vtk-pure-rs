@@ -15,9 +15,19 @@ pub fn heat_kernel_signature(input: &PolyData, time: usize) -> PolyData {
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
+        let cn = cell.len();
+        if cn < 2 {
+            continue;
+        }
+        for i in 0..cn {
+            if cell[i] < 0 || cell[(i + 1) % cn] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let b = cell[(i + 1) % cn] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -52,6 +62,7 @@ pub fn heat_kernel_signature(input: &PolyData, time: usize) -> PolyData {
     let mut pd = input.clone();
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("HKS", hks, 1)));
+    pd.point_data_mut().set_active_scalars("HKS");
     pd
 }
 
@@ -95,5 +106,18 @@ mod tests {
         let pd = PolyData::new();
         let result = heat_kernel_signature(&pd, 5);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn ignores_empty_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[]);
+
+        let result = heat_kernel_signature(&pd, 1);
+        let arr = result.point_data().get_array("HKS").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

@@ -25,8 +25,12 @@ pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -
     for cell in input.polys.iter() {
         let len = cell.len();
         for j in 0..len {
-            let a = cell[j] as usize;
-            let b = cell[(j + 1) % len] as usize;
+            let Some(a) = valid_point_id(cell[j], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(j + 1) % len], n) else {
+                continue;
+            };
             neighbors[a].insert(b);
             neighbors[b].insert(a);
         }
@@ -96,9 +100,18 @@ pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -
             face_grad.push([0.0, 0.0, 0.0]);
             continue;
         }
-        let i0 = cell[0] as usize;
-        let i1 = cell[1] as usize;
-        let i2 = cell[2] as usize;
+        let Some(i0) = valid_point_id(cell[0], n) else {
+            face_grad.push([0.0, 0.0, 0.0]);
+            continue;
+        };
+        let Some(i1) = valid_point_id(cell[1], n) else {
+            face_grad.push([0.0, 0.0, 0.0]);
+            continue;
+        };
+        let Some(i2) = valid_point_id(cell[2], n) else {
+            face_grad.push([0.0, 0.0, 0.0]);
+            continue;
+        };
 
         let p0 = input.points.get(i0);
         let p1 = input.points.get(i1);
@@ -139,7 +152,7 @@ pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -
         let c1 = cross(&normal, &e20);
         let c2 = cross(&normal, &e01);
 
-        let inv_2a: f64 = 1.0 / (area2 * area2); // 1/(2A) where area2 = 2A already
+        let inv_2a: f64 = 1.0 / area2; // 1/(2A) where area2 = 2A already
         let grad = [
             inv_2a * (heat[i0] * c0[0] + heat[i1] * c1[0] + heat[i2] * c2[0]),
             inv_2a * (heat[i0] * c0[1] + heat[i1] * c1[1] + heat[i2] * c2[1]),
@@ -162,7 +175,16 @@ pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -
         if cell.len() < 3 {
             continue;
         }
-        let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+        let Some(id0) = valid_point_id(cell[0], n) else {
+            continue;
+        };
+        let Some(id1) = valid_point_id(cell[1], n) else {
+            continue;
+        };
+        let Some(id2) = valid_point_id(cell[2], n) else {
+            continue;
+        };
+        let ids = [id0, id1, id2];
         let pts: Vec<[f64; 3]> = ids.iter().map(|&idx| input.points.get(idx)).collect();
         let x = &face_grad[fi];
 
@@ -233,6 +255,12 @@ pub fn geodesic_distance_heat(input: &PolyData, source: usize, heat_time: f64) -
         )));
 
     output
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

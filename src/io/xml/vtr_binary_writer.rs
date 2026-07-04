@@ -2,6 +2,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::data::{AnyDataArray, DataArray, DataSetAttributes, RectilinearGrid};
+use crate::types::ScalarType;
 use crate::types::VtkError;
 
 use crate::io::xml::binary;
@@ -23,23 +24,19 @@ impl VtrBinaryWriter {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
         writeln!(
             w,
-            "<VTKFile type=\"RectilinearGrid\" version=\"1.0\" byte_order=\"LittleEndian\">"
+            "<VTKFile type=\"RectilinearGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt32\">"
         )?;
         writeln!(w, "  <RectilinearGrid WholeExtent=\"{ext}\">")?;
         writeln!(w, "    <Piece Extent=\"{ext}\">")?;
+
+        write_binary_attrs(w, "PointData", grid.point_data())?;
+        write_binary_attrs(w, "CellData", grid.cell_data())?;
 
         writeln!(w, "      <Coordinates>")?;
         write_coord_binary(w, "x", grid.x_coords())?;
         write_coord_binary(w, "y", grid.y_coords())?;
         write_coord_binary(w, "z", grid.z_coords())?;
         writeln!(w, "      </Coordinates>")?;
-
-        if grid.point_data().num_arrays() > 0 {
-            write_binary_attrs(w, "PointData", grid.point_data())?;
-        }
-        if grid.cell_data().num_arrays() > 0 {
-            write_binary_attrs(w, "CellData", grid.cell_data())?;
-        }
 
         writeln!(w, "    </Piece>")?;
         writeln!(w, "  </RectilinearGrid>")?;
@@ -60,30 +57,60 @@ fn write_binary_attrs<W: Write>(
     section: &str,
     attrs: &DataSetAttributes,
 ) -> Result<(), VtkError> {
-    writeln!(w, "      <{section}>")?;
+    let attrs_str = data_attribute_string(attrs);
+    writeln!(w, "      <{section}{attrs_str}>")?;
     for i in 0..attrs.num_arrays() {
         if let Some(arr) = attrs.get_array_by_index(i) {
-            let type_name = match arr.scalar_type() {
-                crate::types::ScalarType::F32 => "Float32",
-                crate::types::ScalarType::F64 => "Float64",
-                crate::types::ScalarType::I32 => "Int32",
-                crate::types::ScalarType::I64 => "Int64",
-                crate::types::ScalarType::U8 => "UInt8",
-                _ => "Float64",
-            };
             let encoded = binary::encode_data_array_binary(arr);
             writeln!(w, "        <DataArray type=\"{type_name}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"binary\">{encoded}</DataArray>",
-                arr.name(), arr.num_components())?;
+                xml_escape_attr(arr.name()), arr.num_components(), type_name = xml_scalar_type(arr.scalar_type()))?;
         }
     }
     writeln!(w, "      </{section}>")?;
     Ok(())
 }
 
+fn data_attribute_string(attrs: &DataSetAttributes) -> String {
+    let mut attrs_str = String::new();
+    if let Some(arr) = attrs.scalars() {
+        attrs_str.push_str(&format!(" Scalars=\"{}\"", xml_escape_attr(arr.name())));
+    }
+    if let Some(arr) = attrs.normals() {
+        attrs_str.push_str(&format!(" Normals=\"{}\"", xml_escape_attr(arr.name())));
+    }
+    if let Some(arr) = attrs.vectors() {
+        attrs_str.push_str(&format!(" Vectors=\"{}\"", xml_escape_attr(arr.name())));
+    }
+    attrs_str
+}
+
+fn xml_scalar_type(scalar_type: ScalarType) -> &'static str {
+    match scalar_type {
+        ScalarType::F32 => "Float32",
+        ScalarType::F64 => "Float64",
+        ScalarType::I8 => "Int8",
+        ScalarType::I16 => "Int16",
+        ScalarType::I32 => "Int32",
+        ScalarType::I64 => "Int64",
+        ScalarType::U8 => "UInt8",
+        ScalarType::U16 => "UInt16",
+        ScalarType::U32 => "UInt32",
+        ScalarType::U64 => "UInt64",
+    }
+}
+
+fn xml_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::RectilinearGrid;
+    use crate::data::{DataArray, RectilinearGrid};
 
     #[test]
     fn roundtrip_vtr_binary() {
@@ -97,5 +124,20 @@ mod tests {
         let reader = std::io::BufReader::new(&buf[..]);
         let result = crate::io::xml::VtrReader::read_from(reader).unwrap();
         assert_eq!(result.dimensions(), grid.dimensions());
+    }
+
+    #[test]
+    fn binary_vtr_writes_attribute_hints_and_integer_types() {
+        let mut grid = RectilinearGrid::from_coords(vec![0.0, 1.0], vec![0.0, 1.0], vec![0.0, 1.0]);
+        let ids = DataArray::from_vec("id&tag", vec![1u16, 2, 3, 4, 5, 6, 7, 8], 1);
+        grid.point_data_mut().add_array(ids.into());
+        grid.point_data_mut().set_active_scalars("id&tag");
+
+        let mut buf = Vec::new();
+        VtrBinaryWriter::write_to(&mut buf, &grid).unwrap();
+        let xml = String::from_utf8(buf).unwrap();
+
+        assert!(xml.contains("<PointData Scalars=\"id&amp;tag\">"));
+        assert!(xml.contains("type=\"UInt16\" Name=\"id&amp;tag\""));
     }
 }

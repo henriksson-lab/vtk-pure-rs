@@ -10,8 +10,12 @@ pub fn mean_value_parameterize(mesh: &PolyData, iterations: usize) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let (Ok(a), Ok(b)) = (
+                usize::try_from(cell[i]),
+                usize::try_from(cell[(i + 1) % nc]),
+            ) else {
+                continue;
+            };
             if a < n && b < n {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
@@ -68,6 +72,8 @@ pub fn mean_value_parameterize(mesh: &PolyData, iterations: usize) -> PolyData {
         uv[vi] = [a.cos(), a.sin()];
     }
     let is_boundary: std::collections::HashSet<usize> = boundary.iter().copied().collect();
+    let weights = mean_value_weights(mesh, &nb);
+
     // Mean value weight iteration
     for _ in 0..iterations {
         let prev = uv.clone();
@@ -75,16 +81,9 @@ pub fn mean_value_parameterize(mesh: &PolyData, iterations: usize) -> PolyData {
             if is_boundary.contains(&i) || nb[i].is_empty() {
                 continue;
             }
-            // Mean value weights based on angles
-            let p = mesh.points.get(i);
             let mut wsum = [0.0, 0.0];
             let mut wtotal = 0.0;
-            for &j in &nb[i] {
-                let pj = mesh.points.get(j);
-                let d = ((p[0] - pj[0]).powi(2) + (p[1] - pj[1]).powi(2) + (p[2] - pj[2]).powi(2))
-                    .sqrt()
-                    .max(1e-15);
-                let w = 1.0 / d; // simplified mean value weight
+            for &(j, w) in &weights[i] {
                 wsum[0] += w * prev[j][0];
                 wsum[1] += w * prev[j][1];
                 wtotal += w;
@@ -100,6 +99,81 @@ pub fn mean_value_parameterize(mesh: &PolyData, iterations: usize) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("MVC_UV", data, 2)));
     r.point_data_mut().set_active_tcoords("MVC_UV");
     r
+}
+
+fn mean_value_weights(mesh: &PolyData, nb: &[Vec<usize>]) -> Vec<Vec<(usize, f64)>> {
+    let n = mesh.points.len();
+    let mut weights = vec![std::collections::HashMap::<usize, f64>::new(); n];
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3
+            || !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < n))
+        {
+            continue;
+        }
+        for a in 1..cell.len() - 1 {
+            let tri = [cell[0] as usize, cell[a] as usize, cell[a + 1] as usize];
+            for local in 0..3 {
+                let i = tri[local];
+                let j = tri[(local + 1) % 3];
+                let k = tri[(local + 2) % 3];
+                let pi = mesh.points.get(i);
+                let pj = mesh.points.get(j);
+                let pk = mesh.points.get(k);
+                let theta = angle_between(sub(pj, pi), sub(pk, pi));
+                let tan_half = (0.5 * theta).tan();
+                let dij = distance(pi, pj).max(1e-15);
+                let dik = distance(pi, pk).max(1e-15);
+                *weights[i].entry(j).or_insert(0.0) += tan_half / dij;
+                *weights[i].entry(k).or_insert(0.0) += tan_half / dik;
+            }
+        }
+    }
+
+    weights
+        .into_iter()
+        .enumerate()
+        .map(|(i, row)| {
+            if row.is_empty() {
+                nb[i]
+                    .iter()
+                    .map(|&j| {
+                        let pi = mesh.points.get(i);
+                        let pj = mesh.points.get(j);
+                        (j, 1.0 / distance(pi, pj).max(1e-15))
+                    })
+                    .collect()
+            } else {
+                row.into_iter().collect()
+            }
+        })
+        .collect()
+}
+
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn norm(a: [f64; 3]) -> f64 {
+    dot(a, a).sqrt()
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    norm(sub(a, b))
+}
+
+fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let denom = norm(a) * norm(b);
+    if denom <= 1e-15 {
+        0.0
+    } else {
+        (dot(a, b) / denom).clamp(-1.0, 1.0).acos()
+    }
 }
 #[cfg(test)]
 mod tests {

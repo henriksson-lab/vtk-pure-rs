@@ -2,43 +2,24 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 pub fn normal_cluster(mesh: &PolyData, k: usize) -> PolyData {
-    let n = mesh.points.len();
-    let tris: Vec<[usize; 3]> = mesh
-        .polys
-        .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-        .collect();
-    let nt = tris.len();
-    if nt == 0 {
-        return mesh.clone();
+    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let nc = cells.len();
+    if nc == 0 {
+        let mut result = mesh.clone();
+        result
+            .cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "NormalCluster",
+                Vec::new(),
+                1,
+            )));
+        return result;
     }
-    let normals: Vec<[f64; 3]> = tris
-        .iter()
-        .map(|&[a, b, c]| {
-            if a >= n || b >= n || c >= n {
-                return [0.0, 0.0, 1.0];
-            }
-            let pa = mesh.points.get(a);
-            let pb = mesh.points.get(b);
-            let pc = mesh.points.get(c);
-            let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
-            let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
-            let nx = u[1] * v[2] - u[2] * v[1];
-            let ny = u[2] * v[0] - u[0] * v[2];
-            let nz = u[0] * v[1] - u[1] * v[0];
-            let len = (nx * nx + ny * ny + nz * nz).sqrt();
-            if len > 1e-15 {
-                [nx / len, ny / len, nz / len]
-            } else {
-                [0.0, 0.0, 1.0]
-            }
-        })
-        .collect();
-    let k = k.max(1).min(nt);
+    let normals: Vec<[f64; 3]> = cells.iter().map(|cell| face_normal(mesh, cell)).collect();
+    let k = k.max(1).min(nc);
     // Initialize centroids from evenly spaced faces
-    let mut centroids: Vec<[f64; 3]> = (0..k).map(|i| normals[i * nt / k]).collect();
-    let mut labels = vec![0usize; nt];
+    let mut centroids: Vec<[f64; 3]> = (0..k).map(|i| normals[i * nc / k]).collect();
+    let mut labels = vec![0usize; nc];
     for _ in 0..20 {
         // Assign
         for (fi, nn) in normals.iter().enumerate() {
@@ -85,6 +66,43 @@ pub fn normal_cluster(mesh: &PolyData, k: usize) -> PolyData {
     result
 }
 
+fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
+    if cell.len() < 3 {
+        return [0.0, 0.0, 1.0];
+    }
+    let Some(a) = valid_point_id(cell[0], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(b) = valid_point_id(cell[1], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(c) = valid_point_id(cell[2], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    let pc = mesh.points.get(c);
+    let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+    let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+    let nx = u[1] * v[2] - u[2] * v[1];
+    let ny = u[2] * v[0] - u[0] * v[2];
+    let nz = u[0] * v[1] - u[1] * v[0];
+    let len = (nx * nx + ny * ny + nz * nz).sqrt();
+    if len > 1e-15 {
+        [nx / len, ny / len, nz / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +119,13 @@ mod tests {
         );
         let r = normal_cluster(&mesh, 2);
         assert!(r.cell_data().get_array("NormalCluster").is_some());
+    }
+
+    #[test]
+    fn empty_input_adds_empty_cluster_array() {
+        let mesh = PolyData::new();
+        let r = normal_cluster(&mesh, 2);
+        let arr = r.cell_data().get_array("NormalCluster").unwrap();
+        assert_eq!(arr.num_tuples(), 0);
     }
 }

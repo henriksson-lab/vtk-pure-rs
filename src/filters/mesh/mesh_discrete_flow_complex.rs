@@ -12,6 +12,9 @@ fn flow_manifold(mesh: &PolyData, array_name: &str, ascending: bool) -> PolyData
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -23,15 +26,17 @@ fn flow_manifold(mesh: &PolyData, array_name: &str, ascending: bool) -> PolyData
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -86,6 +91,11 @@ fn flow_manifold(mesh: &PolyData, array_name: &str, ascending: bool) -> PolyData
     r.point_data_mut().set_active_scalars(name);
     r
 }
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

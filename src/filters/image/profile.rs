@@ -3,19 +3,28 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Extract a 1D profile along a row (fixed j, k) from ImageData.
 pub fn image_profile_row(input: &ImageData, scalars: &str, row: usize, slice: usize) -> Vec<f64> {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return vec![],
+        _ => return vec![],
     };
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
-    let j = row.min(ny - 1);
-    let k = slice.min(dims[2] as usize - 1);
+    let nz = dims[2] as usize;
+    if nx == 0 || ny == 0 || nz == 0 || row >= ny || slice >= nz {
+        return vec![];
+    }
+    let j = row;
+    let k = slice;
     let mut buf = [0.0f64];
     (0..nx)
-        .map(|i| {
-            arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
-            buf[0]
+        .filter_map(|i| {
+            let idx = k * ny * nx + j * nx + i;
+            if idx >= arr.num_tuples() {
+                return None;
+            }
+            arr.tuple_as_f64(idx, &mut buf);
+            Some(buf[0])
         })
         .collect()
 }
@@ -28,19 +37,28 @@ pub fn image_profile_column(
     slice: usize,
 ) -> Vec<f64> {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return vec![],
+        _ => return vec![],
     };
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
-    let i = col.min(nx - 1);
-    let k = slice.min(dims[2] as usize - 1);
+    let nz = dims[2] as usize;
+    if nx == 0 || ny == 0 || nz == 0 || col >= nx || slice >= nz {
+        return vec![];
+    }
+    let i = col;
+    let k = slice;
     let mut buf = [0.0f64];
     (0..ny)
-        .map(|j| {
-            arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
-            buf[0]
+        .filter_map(|j| {
+            let idx = k * ny * nx + j * nx + i;
+            if idx >= arr.num_tuples() {
+                return None;
+            }
+            arr.tuple_as_f64(idx, &mut buf);
+            Some(buf[0])
         })
         .collect()
 }
@@ -48,20 +66,28 @@ pub fn image_profile_column(
 /// Extract a diagonal profile from corner to corner.
 pub fn image_profile_diagonal(input: &ImageData, scalars: &str) -> Vec<f64> {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return vec![],
+        _ => return vec![],
     };
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
+    if nx == 0 || ny == 0 || dims[2] == 0 {
+        return vec![];
+    }
     let n = nx.min(ny);
     let mut buf = [0.0f64];
     (0..n)
-        .map(|i| {
+        .filter_map(|i| {
             let j = i * (ny - 1) / (n - 1).max(1);
             let ii = i * (nx - 1) / (n - 1).max(1);
-            arr.tuple_as_f64(j * nx + ii, &mut buf);
-            buf[0]
+            let idx = j * nx + ii;
+            if idx >= arr.num_tuples() {
+                return None;
+            }
+            arr.tuple_as_f64(idx, &mut buf);
+            Some(buf[0])
         })
         .collect()
 }

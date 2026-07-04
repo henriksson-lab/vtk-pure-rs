@@ -6,8 +6,11 @@ pub fn hodge_decompose(mesh: &PolyData, vector_array: &str, iterations: usize) -
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64; 3];
-    let vecs: Vec<[f64; 3]> = (0..arr.num_tuples())
+    let vecs: Vec<[f64; 3]> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             [buf[0], buf[1], buf[2]]
@@ -17,15 +20,17 @@ pub fn hodge_decompose(mesh: &PolyData, vector_array: &str, iterations: usize) -
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -110,6 +115,13 @@ pub fn hodge_decompose(mesh: &PolyData, vector_array: &str, iterations: usize) -
         )));
     r
 }
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

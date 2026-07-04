@@ -16,20 +16,24 @@ pub fn dual_contour_mesh(input: &PolyData) -> PolyData {
     // Face centroids become vertices
     let mut out_pts = Points::<f64>::new();
     for c in &cells {
-        if c.is_empty() {
+        let valid_ids: Vec<usize> = c
+            .iter()
+            .filter_map(|&id| usize::try_from(id).ok().filter(|&id| id < n))
+            .collect();
+        if valid_ids.is_empty() {
             out_pts.push([0.0; 3]);
             continue;
         }
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
-        for &id in c {
-            let p = input.points.get(id as usize);
+        for id in &valid_ids {
+            let p = input.points.get(*id);
             cx += p[0];
             cy += p[1];
             cz += p[2];
         }
-        let n_v = c.len() as f64;
+        let n_v = valid_ids.len() as f64;
         out_pts.push([cx / n_v, cy / n_v, cz / n_v]);
     }
 
@@ -37,7 +41,11 @@ pub fn dual_contour_mesh(input: &PolyData) -> PolyData {
     let mut pt_faces: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (fi, c) in cells.iter().enumerate() {
         for &v in c {
-            pt_faces[v as usize].push(fi);
+            if let Ok(v) = usize::try_from(v) {
+                if v < n {
+                    pt_faces[v].push(fi);
+                }
+            }
         }
     }
 

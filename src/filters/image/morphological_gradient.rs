@@ -15,36 +15,63 @@ pub fn image_morphological_gradient(input: &ImageData, scalars: &str, radius: us
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
-    let r = radius.max(1) as i64;
+    let nc = arr.num_components();
+    if n == 0 || nc == 0 || arr.num_tuples() < n {
+        return input.clone();
+    }
+    let r = radius as i64;
 
-    let mut buf = [0.0f64];
-    let values: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0]
-        })
-        .collect();
+    let mut values = vec![0.0f64; n * nc];
+    let mut buf = vec![0.0f64; nc];
+    for idx in 0..n {
+        arr.tuple_as_f64(idx, &mut buf);
+        let offset = idx * nc;
+        values[offset..offset + nc].copy_from_slice(&buf);
+    }
 
-    let mut result = vec![0.0f64; n];
+    let mut result = vec![0.0f64; n * nc];
+    let radius = r as f64 + 0.5;
+    let radius2 = radius * radius;
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                let mut lo = f64::MAX;
-                let mut hi = f64::MIN;
-                for dk in -r..=r {
-                    for dj in -r..=r {
-                        for di in -r..=r {
-                            let ii = (i as i64 + di).clamp(0, nx as i64 - 1) as usize;
-                            let jj = (j as i64 + dj).clamp(0, ny as i64 - 1) as usize;
-                            let kk = (k as i64 + dk).clamp(0, nz as i64 - 1) as usize;
-                            let v = values[kk * ny * nx + jj * nx + ii];
-                            lo = lo.min(v);
-                            hi = hi.max(v);
+                let tuple_idx = k * ny * nx + j * nx + i;
+                for c in 0..nc {
+                    let mut lo = f64::MAX;
+                    let mut hi = f64::MIN;
+                    for dk in -r..=r {
+                        let kk = k as i64 + dk;
+                        if kk < 0 || kk >= nz as i64 {
+                            continue;
+                        }
+                        for dj in -r..=r {
+                            let jj = j as i64 + dj;
+                            if jj < 0 || jj >= ny as i64 {
+                                continue;
+                            }
+                            for di in -r..=r {
+                                let ii = i as i64 + di;
+                                if ii < 0 || ii >= nx as i64 {
+                                    continue;
+                                }
+                                let d2 =
+                                    (di as f64).powi(2) + (dj as f64).powi(2) + (dk as f64).powi(2);
+                                if d2 > radius2 {
+                                    continue;
+                                }
+                                let v = values[(kk as usize * ny * nx
+                                    + jj as usize * nx
+                                    + ii as usize)
+                                    * nc
+                                    + c];
+                                lo = lo.min(v);
+                                hi = hi.max(v);
+                            }
                         }
                     }
+                    result[tuple_idx * nc + c] = hi - lo;
                 }
-                result[k * ny * nx + j * nx + i] = hi - lo;
             }
         }
     }
@@ -54,7 +81,7 @@ pub fn image_morphological_gradient(input: &ImageData, scalars: &str, radius: us
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "MorphGradient",
             result,
-            1,
+            nc,
         )));
     img
 }
@@ -108,12 +135,12 @@ mod tests {
     }
 
     #[test]
-    fn opening_removes_noise() {
+    fn opening_removes_binary_noise() {
         let mut img = ImageData::with_dimensions(5, 1, 1);
         img.point_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec(
                 "v",
-                vec![0.0, 0.0, 100.0, 0.0, 0.0],
+                vec![0.0, 0.0, 1.0, 0.0, 0.0],
                 1,
             )));
         let result = image_morphological_opening(&img, "v", 1);
@@ -128,5 +155,43 @@ mod tests {
         let img = ImageData::with_dimensions(3, 1, 1);
         let r = image_morphological_gradient(&img, "nope", 1);
         assert!(r.point_data().get_array("MorphGradient").is_none());
+    }
+
+    #[test]
+    fn zero_radius_has_zero_gradient() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 100.0],
+                1,
+            )));
+        let result = image_morphological_gradient(&img, "v", 0);
+        let arr = result.point_data().get_array("MorphGradient").unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..2 {
+            arr.tuple_as_f64(i, &mut buf);
+            assert_eq!(buf[0], 0.0);
+        }
+    }
+
+    #[test]
+    fn gradient_processes_all_components() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 10.0, 100.0, 30.0],
+                2,
+            )));
+
+        let result = image_morphological_gradient(&img, "v", 1);
+        let arr = result.point_data().get_array("MorphGradient").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64, 0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [100.0, 20.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [100.0, 20.0]);
     }
 }

@@ -63,8 +63,9 @@ impl ShadowConfig {
             center[2] - ld[2] * s * 2.0,
         ];
 
-        // Simple orthographic view-projection
-        let view = look_at(light_pos, center, [0.0, 1.0, 0.0]);
+        // VTK builds a light camera from perpendicular axes so lights aligned
+        // with world-up still produce a valid view matrix.
+        let view = look_at(light_pos, center, perpendicular_up(ld));
         let proj = ortho(-s, s, -s, s, 0.1, s * 4.0);
         mat4_mul(proj, view)
     }
@@ -76,6 +77,15 @@ fn normalize3(v: [f64; 3]) -> [f64; 3] {
         return [0.0, -1.0, 0.0];
     }
     [v[0] / len, v[1] / len, v[2] / len]
+}
+
+fn perpendicular_up(dir: [f64; 3]) -> [f64; 3] {
+    let reference = if dir[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
+    normalize3(cross3(dir, reference))
 }
 
 fn look_at(eye: [f64; 3], target: [f64; 3], up: [f64; 3]) -> [[f64; 4]; 4] {
@@ -153,6 +163,8 @@ mod tests {
         let vp = sc.light_vp_matrix([0.0, -1.0, 0.0], [0.0, 0.0, 0.0]);
         // Should produce a valid 4x4 matrix
         assert!(vp[3][3].abs() > 0.0);
+        assert!(vp.iter().flatten().all(|v| v.is_finite()));
+        assert!(vp[0][0].abs() + vp[1][0].abs() + vp[2][0].abs() > 0.0);
     }
 
     #[test]

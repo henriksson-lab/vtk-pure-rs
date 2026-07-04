@@ -6,24 +6,7 @@ pub fn marching_front_distance(mesh: &PolyData, sources: &[usize]) -> PolyData {
         return mesh.clone();
     }
     let mut nb: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                if !nb[a].iter().any(|&(x, _)| x == b) {
-                    nb[a].push((b, d));
-                    nb[b].push((a, d));
-                }
-            }
-        }
-    }
+    build_adjacency(mesh, &mut nb, n);
     let mut dist = vec![f64::INFINITY; n];
     let mut visited = vec![false; n];
     for &s in sources {
@@ -73,14 +56,7 @@ pub fn marching_front_distance(mesh: &PolyData, sources: &[usize]) -> PolyData {
 pub fn marching_front_from_boundary(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
-        }
-    }
+    build_edge_counts(mesh, &mut ec, n);
     let sources: Vec<usize> = ec
         .iter()
         .filter(|(_, &c)| c == 1)
@@ -89,6 +65,115 @@ pub fn marching_front_from_boundary(mesh: &PolyData) -> PolyData {
         .into_iter()
         .collect();
     marching_front_distance(mesh, &sources)
+}
+
+fn build_adjacency(mesh: &PolyData, nb: &mut [Vec<(usize, f64)>], n: usize) {
+    for cell in mesh.polys.iter() {
+        for i in 0..cell.len() {
+            add_weighted_edge(mesh, nb, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_weighted_edge(mesh, nb, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_weighted_edge(mesh, nb, n, tri[0], tri[1]);
+            add_weighted_edge(mesh, nb, n, tri[1], tri[2]);
+            add_weighted_edge(mesh, nb, n, tri[2], tri[0]);
+        }
+    }
+}
+
+fn build_edge_counts(
+    mesh: &PolyData,
+    ec: &mut std::collections::HashMap<(usize, usize), usize>,
+    n: usize,
+) {
+    for cell in mesh.polys.iter() {
+        for i in 0..cell.len() {
+            add_edge_count(ec, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge_count(ec, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_edge_count(ec, n, tri[0], tri[1]);
+            add_edge_count(ec, n, tri[1], tri[2]);
+            add_edge_count(ec, n, tri[2], tri[0]);
+        }
+    }
+}
+
+fn add_weighted_edge(
+    mesh: &PolyData,
+    nb: &mut [Vec<(usize, f64)>],
+    n: usize,
+    a_id: i64,
+    b_id: i64,
+) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+    if !nb[a].iter().any(|&(x, _)| x == b) {
+        nb[a].push((b, d));
+        nb[b].push((a, d));
+    }
+}
+
+fn add_edge_count(
+    ec: &mut std::collections::HashMap<(usize, usize), usize>,
+    n: usize,
+    a_id: i64,
+    b_id: i64,
+) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 #[cfg(test)]
 mod tests {

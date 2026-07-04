@@ -9,23 +9,16 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                if !nb[a].iter().any(|&(x, _)| x == b) {
-                    nb[a].push((b, d));
-                    nb[b].push((a, d));
-                }
-            }
+            add_edge(mesh, cell[i], cell[(i + 1) % nc], &mut nb);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(mesh, edge[0], edge[1], &mut nb);
         }
     }
     let mut dist = vec![f64::INFINITY; n];
-    let mut label = vec![0usize; n];
+    let mut label = vec![usize::MAX; n];
     let mut visited = vec![false; n];
     for (si, &seed) in seeds.iter().enumerate() {
         if seed < n {
@@ -57,7 +50,10 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
             }
         }
     }
-    let data: Vec<f64> = label.iter().map(|&l| l as f64).collect();
+    let data: Vec<f64> = label
+        .iter()
+        .map(|&l| if l == usize::MAX { -1.0 } else { l as f64 })
+        .collect();
     let dist_data: Vec<f64> = dist
         .iter()
         .map(|&d| if d.is_finite() { d } else { 0.0 })
@@ -79,13 +75,22 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
     r
 }
 pub fn geodesic_voronoi_boundaries(mesh: &PolyData, seeds: &[usize]) -> PolyData {
+    if seeds.is_empty() {
+        return PolyData::new();
+    }
     let labeled = geodesic_voronoi(mesh, seeds);
-    let arr = labeled.point_data().get_array("VoronoiRegion").unwrap();
+    let Some(arr) = labeled.point_data().get_array("VoronoiRegion") else {
+        return PolyData::new();
+    };
     let mut buf = [0.0f64];
     let labels: Vec<usize> = (0..arr.num_tuples())
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] as usize
+            if buf[0] < 0.0 {
+                usize::MAX
+            } else {
+                buf[0] as usize
+            }
         })
         .collect();
     let mut pts = crate::data::Points::<f64>::new();
@@ -94,9 +99,13 @@ pub fn geodesic_voronoi_boundaries(mesh: &PolyData, seeds: &[usize]) -> PolyData
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < labels.len() && b < labels.len() && labels[a] != labels[b] {
+            let Some(a) = valid_point_id(cell[i], labels.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], labels.len()) else {
+                continue;
+            };
+            if labels[a] != labels[b] {
                 let ia = *pm.entry(a).or_insert_with(|| {
                     let i = pts.len();
                     pts.push(mesh.points.get(a));
@@ -116,6 +125,32 @@ pub fn geodesic_voronoi_boundaries(mesh: &PolyData, seeds: &[usize]) -> PolyData
     r.lines = lines;
     r
 }
+
+fn add_edge(mesh: &PolyData, a: i64, b: i64, nb: &mut [Vec<(usize, f64)>]) {
+    let n = nb.len();
+    let Some(a) = valid_point_id(a, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b, n) else {
+        return;
+    };
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+    if !nb[a].iter().any(|&(x, _)| x == b) {
+        nb[a].push((b, d));
+    }
+    if !nb[b].iter().any(|&(x, _)| x == a) {
+        nb[b].push((a, d));
+    }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

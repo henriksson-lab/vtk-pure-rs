@@ -4,13 +4,18 @@ pub fn label_coplanar_groups(mesh: &PolyData, angle_tolerance: f64) -> PolyData 
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
     let cos_t = angle_tolerance.to_radians().cos();
+    let normals: Vec<[f64; 3]> = cells.iter().map(|cell| fnorm(cell, mesh)).collect();
     let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % n], mesh.points.len()) else {
+                continue;
+            };
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -21,7 +26,6 @@ pub fn label_coplanar_groups(mesh: &PolyData, angle_tolerance: f64) -> PolyData 
         if visited[start] {
             continue;
         }
-        let n0 = fnorm(&cells[start], mesh);
         visited[start] = true;
         labels[start] = next_label;
         let mut queue = std::collections::VecDeque::new();
@@ -30,16 +34,21 @@ pub fn label_coplanar_groups(mesh: &PolyData, angle_tolerance: f64) -> PolyData 
             let cell = &cells[ci];
             let n_c = cell.len();
             for i in 0..n_c {
-                let a = cell[i] as usize;
-                let b = cell[(i + 1) % n_c] as usize;
+                let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                    continue;
+                };
+                let Some(b) = valid_point_id(cell[(i + 1) % n_c], mesh.points.len()) else {
+                    continue;
+                };
                 if let Some(nbs) = ef.get(&(a.min(b), a.max(b))) {
                     for &ni in nbs {
                         if visited[ni] {
                             continue;
                         }
-                        let nn = fnorm(&cells[ni], mesh);
-                        let dot = n0[0] * nn[0] + n0[1] * nn[1] + n0[2] * nn[2];
-                        if dot > cos_t {
+                        let dot = normals[ci][0] * normals[ni][0]
+                            + normals[ci][1] * normals[ni][1]
+                            + normals[ci][2] * normals[ni][2];
+                        if dot.abs() >= cos_t {
                             visited[ni] = true;
                             labels[ni] = next_label;
                             queue.push_back(ni);
@@ -64,9 +73,18 @@ fn fnorm(cell: &[i64], mesh: &PolyData) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
+    let Some(ai) = valid_point_id(cell[0], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(bi) = valid_point_id(cell[1], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(ci) = valid_point_id(cell[2], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let a = mesh.points.get(ai);
+    let b = mesh.points.get(bi);
+    let c = mesh.points.get(ci);
     let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     let n = [
@@ -80,6 +98,9 @@ fn fnorm(cell: &[i64], mesh: &PolyData) -> [f64; 3] {
     } else {
         [n[0] / l, n[1] / l, n[2] / l]
     }
+}
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 #[cfg(test)]
 mod tests {

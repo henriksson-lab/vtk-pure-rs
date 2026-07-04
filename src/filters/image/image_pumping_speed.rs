@@ -10,14 +10,17 @@ pub fn image_pumping_speed(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 100.0 / (buf[0] + 100.0)
+            let speed = buf[0].max(0.0);
+            speed * 100.0 / (speed + 100.0)
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -33,5 +36,18 @@ mod tests {
         );
         let r = image_pumping_speed(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn clamps_negative_speed_before_parallel_speed_formula() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-100.0, 0.0, 100.0], 1),
+        ));
+
+        let r = image_pumping_speed(&img, "v");
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+
+        assert_eq!(values, vec![0.0, 0.0, 50.0]);
+        assert!(values.iter().all(|v| v.is_finite()));
     }
 }

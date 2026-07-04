@@ -25,25 +25,29 @@ pub fn aspect_ratio(mesh: &PolyData) -> PolyData {
             ((pc[0] - pb[0]).powi(2) + (pc[1] - pb[1]).powi(2) + (pc[2] - pb[2]).powi(2)).sqrt();
         let ca =
             ((pa[0] - pc[0]).powi(2) + (pa[1] - pc[1]).powi(2) + (pa[2] - pc[2]).powi(2)).sqrt();
-        let s = (ab + bc + ca) / 2.0;
-        let area = (s * (s - ab).max(0.0) * (s - bc).max(0.0) * (s - ca).max(0.0)).sqrt();
+        let e1 = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+        let e2 = [pc[0] - pb[0], pc[1] - pb[1], pc[2] - pb[2]];
+        let denominator = ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
+            + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
+            + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
+        .sqrt();
         let longest = ab.max(bc).max(ca);
-        let ideal_area = longest * longest * 3.0f64.sqrt() / 4.0;
-        let ratio = if ideal_area > 1e-15 {
-            area / ideal_area
+        let ratio = if denominator >= 2.2204460492503131e-15 {
+            (3.0f64.sqrt() / 6.0) * longest * (ab + bc + ca) / denominator
         } else {
-            0.0
-        };
+            1.0e30
+        }
+        .clamp(-1.0e30, 1.0e30);
         ratios.push(ratio);
     }
     let mut result = mesh.clone();
-    result
-        .cell_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "AspectRatio",
-            ratios,
-            1,
-        )));
+    let cell_data = result.cell_data_mut();
+    cell_data.add_array(AnyDataArray::F64(DataArray::from_vec(
+        "AspectRatio",
+        ratios,
+        1,
+    )));
+    cell_data.set_active_scalars("AspectRatio");
     result
 }
 

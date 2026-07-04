@@ -22,10 +22,11 @@ pub fn length(v: [f64; 3]) -> f64 {
 /// Normalize a vector to unit length.
 pub fn normalize(v: [f64; 3]) -> [f64; 3] {
     let len = length(v);
-    if len < 1e-15 {
-        return [0.0, 0.0, 0.0];
+    if len != 0.0 {
+        [v[0] / len, v[1] / len, v[2] / len]
+    } else {
+        v
     }
-    [v[0] / len, v[1] / len, v[2] / len]
 }
 
 /// Distance between two points.
@@ -59,13 +60,8 @@ pub fn lerp(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
 
 /// Angle between two vectors in radians.
 pub fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
-    let d = dot(a, b);
-    let la = length(a);
-    let lb = length(b);
-    if la < 1e-15 || lb < 1e-15 {
-        return 0.0;
-    }
-    (d / (la * lb)).clamp(-1.0, 1.0).acos()
+    let c = cross(a, b);
+    length(c).atan2(dot(a, b))
 }
 
 /// Project vector a onto vector b.

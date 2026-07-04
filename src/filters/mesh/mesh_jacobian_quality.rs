@@ -32,8 +32,8 @@ pub fn jacobian_quality(mesh: &PolyData) -> PolyData {
         let e2 = [pc[0] - pb[0], pc[1] - pb[1], pc[2] - pb[2]];
         let l2 = (e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2]).sqrt();
         let max_l = l0.max(l1).max(l2).max(1e-15);
-        // Scaled Jacobian: 2*area / (max_edge^2 * sqrt(3))
-        let q = area2 / (max_l * max_l * 3.0f64.sqrt());
+        // Scaled Jacobian: 4*area / (max_edge^2 * sqrt(3)).
+        let q = 2.0 * area2 / (max_l * max_l * 3.0f64.sqrt());
         qualities.push(q.clamp(0.0, 1.0));
     }
     let mut result = mesh.clone();

@@ -15,20 +15,25 @@ pub fn image_apply_mask(
         Some(a) => a,
         None => return input.clone(),
     };
-    let n = arr.num_tuples().min(mask.num_tuples());
-    let mut ba = [0.0f64];
+    if arr.num_tuples() != mask.num_tuples() {
+        return input.clone();
+    }
+    let n = arr.num_tuples();
+    let nc = arr.num_components();
+    let mut ba = vec![0.0f64; nc];
     let mut bm = [0.0f64];
-    let values: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut ba);
-            mask.tuple_as_f64(i, &mut bm);
-            if bm[0] >= threshold {
-                ba[0]
-            } else {
-                0.0
+    let mut values = Vec::with_capacity(n * nc);
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut ba);
+        mask.tuple_as_f64(i, &mut bm);
+        if bm[0] >= threshold {
+            values.extend_from_slice(&ba);
+        } else {
+            for _ in 0..nc {
+                values.push(0.0);
             }
-        })
-        .collect();
+        }
+    }
 
     let mut img = input.clone();
     let mut attrs = crate::data::DataSetAttributes::new();
@@ -38,7 +43,7 @@ pub fn image_apply_mask(
             attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
                 scalars,
                 values.clone(),
-                1,
+                nc,
             )));
         } else {
             attrs.add_array(a.clone());

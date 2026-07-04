@@ -8,18 +8,28 @@ pub fn laplacian_eigenmaps(mesh: &PolyData, n_dims: usize, iterations: usize) ->
     }
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-            }
+        for i in 0..cell.len() {
+            add_neighbor_pair(&mut adj, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut adj, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut adj, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut adj, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut adj, n, tri[2], tri[0]);
         }
     }
     let dims = n_dims.min(3).max(1);
@@ -81,6 +91,23 @@ pub fn laplacian_eigenmaps(mesh: &PolyData, n_dims: usize, iterations: usize) ->
         result.point_data_mut().set_active_scalars("Embed_0");
     }
     result
+}
+
+fn add_neighbor_pair(adj: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
 }
 
 #[cfg(test)]

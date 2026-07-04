@@ -85,6 +85,10 @@ pub fn image_stats(image: &ImageData) -> ImageStats {
                     nonzero += 1;
                 }
             }
+            if nt == 0 {
+                min_v = 0.0;
+                max_v = 0.0;
+            }
             let mean = if nt > 0 { sum / nt as f64 } else { 0.0 };
             let std = if nt > 0 {
                 ((sum2 / nt as f64) - mean * mean).max(0.0).sqrt()

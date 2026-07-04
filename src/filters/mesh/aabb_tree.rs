@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, DataSet, PolyData};
+use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute the depth of each cell in a BVH-like AABB tree.
 ///
@@ -6,14 +6,30 @@ use crate::data::{AnyDataArray, DataArray, DataSet, PolyData};
 /// bounding box. Adds "BvhDepth" cell data indicating the subdivision
 /// level each cell ends up at.
 pub fn bvh_depth(input: &PolyData, max_depth: usize) -> PolyData {
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let n_points = input.points.len();
+    let cells: Vec<Vec<usize>> = input
+        .polys
+        .iter()
+        .map(|c| {
+            c.iter()
+                .copied()
+                .filter_map(|id| {
+                    if id >= 0 && (id as usize) < n_points {
+                        Some(id as usize)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .collect();
     let n_cells = cells.len();
     if n_cells == 0 {
         return input.clone();
     }
 
     let mut depths = vec![0.0f64; n_cells];
-    let indices: Vec<usize> = (0..n_cells).collect();
+    let indices: Vec<usize> = (0..n_cells).filter(|&i| !cells[i].is_empty()).collect();
 
     assign_depths(input, &cells, &indices, 0, max_depth, &mut depths);
 
@@ -27,12 +43,15 @@ pub fn bvh_depth(input: &PolyData, max_depth: usize) -> PolyData {
 
 fn assign_depths(
     input: &PolyData,
-    cells: &[Vec<i64>],
+    cells: &[Vec<usize>],
     indices: &[usize],
     depth: usize,
     max_depth: usize,
     depths: &mut [f64],
 ) {
+    if indices.is_empty() {
+        return;
+    }
     if indices.len() <= 1 || depth >= max_depth {
         for &i in indices {
             depths[i] = depth as f64;
@@ -41,8 +60,8 @@ fn assign_depths(
     }
 
     // Compute bounding box of cell centroids
-    let mut min = [f64::MAX; 3];
-    let mut max = [f64::MIN; 3];
+    let mut min = [f64::INFINITY; 3];
+    let mut max = [f64::NEG_INFINITY; 3];
     let centroids: Vec<[f64; 3]> = indices
         .iter()
         .map(|&ci| {
@@ -51,7 +70,7 @@ fn assign_depths(
             let mut cy = 0.0;
             let mut cz = 0.0;
             for &id in c {
-                let p = input.points.get(id as usize);
+                let p = input.points.get(id);
                 cx += p[0];
                 cy += p[1];
                 cz += p[2];

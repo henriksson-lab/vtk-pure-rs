@@ -24,18 +24,7 @@ pub fn compute_quantiles(table: &Table, column_name: &str, quantiles: &[f64]) ->
     Some(
         quantiles
             .iter()
-            .map(|&q| {
-                let q = q.clamp(0.0, 1.0);
-                let idx = q * (n - 1) as f64;
-                let lo = idx.floor() as usize;
-                let hi = idx.ceil() as usize;
-                let frac = idx - lo as f64;
-                if lo == hi {
-                    values[lo]
-                } else {
-                    values[lo] * (1.0 - frac) + values[hi] * frac
-                }
-            })
+            .map(|&q| averaged_inverse_cdf_quantile(&values, q))
             .collect(),
     )
 }
@@ -117,6 +106,30 @@ pub fn iqr_outliers(table: &Table, column_name: &str, k: f64) -> Option<Vec<usiz
         }
     }
     Some(outliers)
+}
+
+fn averaged_inverse_cdf_quantile(values: &[f64], q: f64) -> f64 {
+    let n = values.len();
+    if n == 0 {
+        return f64::NAN;
+    }
+
+    let q = q.clamp(0.0, 1.0);
+    if q <= 0.0 {
+        return values[0];
+    }
+    if q >= 1.0 {
+        return values[n - 1];
+    }
+
+    let np = q * n as f64;
+    let idx1 = rank_to_index(np.round() as usize, n);
+    let idx2 = rank_to_index((np + 1.0).floor() as usize, n);
+    0.5 * (values[idx1] + values[idx2])
+}
+
+fn rank_to_index(rank: usize, n: usize) -> usize {
+    rank.saturating_sub(1).min(n - 1)
 }
 
 #[cfg(test)]

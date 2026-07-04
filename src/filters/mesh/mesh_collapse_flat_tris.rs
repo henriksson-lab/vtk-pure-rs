@@ -9,8 +9,12 @@ pub fn merge_coplanar_tris(mesh: &PolyData, angle_threshold: f64) -> PolyData {
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % n], mesh.points.len()) else {
+                continue;
+            };
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -26,18 +30,12 @@ pub fn merge_coplanar_tris(mesh: &PolyData, angle_threshold: f64) -> PolyData {
         let n0 = fnorm(&cells[faces[0]], mesh);
         let n1 = fnorm(&cells[faces[1]], mesh);
         let dot = n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2];
-        if dot > cos_t {
-            let va: usize = cells[faces[0]]
-                .iter()
-                .find(|&&v| v as usize != ea && v as usize != eb)
-                .map(|&v| v as usize)
-                .unwrap();
-            let vb: usize = cells[faces[1]]
-                .iter()
-                .find(|&&v| v as usize != ea && v as usize != eb)
-                .map(|&v| v as usize)
-                .unwrap();
-            new_polys.push_cell(&[va as i64, ea as i64, vb as i64, eb as i64]);
+        if dot.abs() > cos_t {
+            if let Some(quad) = merged_quad(&cells[faces[0]], &cells[faces[1]], ea, eb) {
+                new_polys.push_cell(&quad);
+            } else {
+                continue;
+            }
             merged[faces[0]] = true;
             merged[faces[1]] = true;
         }
@@ -51,7 +49,34 @@ pub fn merge_coplanar_tris(mesh: &PolyData, angle_threshold: f64) -> PolyData {
     r.polys = new_polys;
     r
 }
+fn merged_quad(c0: &[i64], c1: &[i64], ea: usize, eb: usize) -> Option<[i64; 4]> {
+    let vb = c1
+        .iter()
+        .copied()
+        .find_map(|v| valid_point_id(v, usize::MAX).filter(|&id| id != ea && id != eb))?;
+    for i in 0..3 {
+        let a = valid_point_id(c0[i], usize::MAX)?;
+        let b = valid_point_id(c0[(i + 1) % 3], usize::MAX)?;
+        if a == ea && b == eb {
+            let va = valid_point_id(c0[(i + 2) % 3], usize::MAX)?;
+            return Some([va as i64, ea as i64, vb as i64, eb as i64]);
+        }
+        if a == eb && b == ea {
+            let va = valid_point_id(c0[(i + 2) % 3], usize::MAX)?;
+            return Some([va as i64, eb as i64, vb as i64, ea as i64]);
+        }
+    }
+    None
+}
 fn fnorm(cell: &[i64], mesh: &PolyData) -> [f64; 3] {
+    if cell.len() < 3
+        || cell
+            .iter()
+            .take(3)
+            .any(|&v| valid_point_id(v, mesh.points.len()).is_none())
+    {
+        return [0.0, 0.0, 1.0];
+    }
     let a = mesh.points.get(cell[0] as usize);
     let b = mesh.points.get(cell[1] as usize);
     let c = mesh.points.get(cell[2] as usize);
@@ -68,6 +93,9 @@ fn fnorm(cell: &[i64], mesh: &PolyData) -> [f64; 3] {
     } else {
         [n[0] / l, n[1] / l, n[2] / l]
     }
+}
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 #[cfg(test)]
 mod tests {

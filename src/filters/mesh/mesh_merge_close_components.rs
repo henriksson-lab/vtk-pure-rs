@@ -1,20 +1,44 @@
 //! Merge connected components that are close to each other.
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 pub fn merge_close_components(mesh: &PolyData, max_gap: f64) -> PolyData {
     let n = mesh.points.len();
     if n == 0 {
         return mesh.clone();
     }
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     // Find connected components
     let mut parent: Vec<usize> = (0..n).collect();
-    for c in &cells {
+    for c in mesh.polys.iter().chain(mesh.lines.iter()) {
         if c.len() < 2 {
             continue;
         }
-        let first = c[0] as usize;
+        let Ok(first) = usize::try_from(c[0]) else {
+            continue;
+        };
+        if first >= n {
+            continue;
+        }
         for i in 1..c.len() {
-            union(&mut parent, first, c[i] as usize);
+            let Ok(idx) = usize::try_from(c[i]) else {
+                continue;
+            };
+            if idx < n {
+                union(&mut parent, first, idx);
+            }
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            union_valid_edge(&mut parent, n, tri[0], tri[1]);
+            union_valid_edge(&mut parent, n, tri[1], tri[2]);
+            union_valid_edge(&mut parent, n, tri[2], tri[0]);
         }
     }
     // Group vertices by component
@@ -51,7 +75,7 @@ pub fn merge_close_components(mesh: &PolyData, max_gap: f64) -> PolyData {
                 + (centroids[i][1] - centroids[j][1]).powi(2)
                 + (centroids[i][2] - centroids[j][2]).powi(2))
             .sqrt();
-            if d < max_gap {
+            if d <= max_gap {
                 union2(&mut comp_parent, i, j);
             }
         }
@@ -85,8 +109,12 @@ pub fn merge_close_components(mesh: &PolyData, max_gap: f64) -> PolyData {
     }
     let mut r = mesh.clone();
     // Add bridge lines
+    let added_lines = new_lines.num_cells();
     for cell in new_lines.iter() {
         r.lines.push_cell(cell);
+    }
+    if added_lines > 0 {
+        r.cell_data_mut().clear();
     }
     r
 }
@@ -104,6 +132,15 @@ fn union(p: &mut [usize], a: usize, b: usize) {
         p[rb] = ra;
     }
 }
+fn union_valid_edge(p: &mut [usize], n: usize, a_id: i64, b_id: i64) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    union(p, a, b);
+}
 fn find2(p: &mut [usize], mut i: usize) -> usize {
     while p[i] != i {
         p[i] = p[p[i]];
@@ -117,6 +154,11 @@ fn union2(p: &mut [usize], a: usize, b: usize) {
     if ra != rb {
         p[rb] = ra;
     }
+}
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 #[cfg(test)]
 mod tests {

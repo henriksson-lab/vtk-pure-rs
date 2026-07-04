@@ -16,8 +16,8 @@ pub fn delaunay_2d_from_points(points: &[[f64; 2]]) -> PolyData {
     // Find bounding box
     let mut min_x: f64 = f64::MAX;
     let mut min_y: f64 = f64::MAX;
-    let mut max_x: f64 = f64::MIN;
-    let mut max_y: f64 = f64::MIN;
+    let mut max_x: f64 = f64::NEG_INFINITY;
+    let mut max_y: f64 = f64::NEG_INFINITY;
     for p in points {
         if p[0] < min_x { min_x = p[0]; }
         if p[1] < min_y { min_y = p[1]; }
@@ -189,6 +189,19 @@ mod tests {
             [1.0, 0.0],
             [1.0, 1.0],
             [0.0, 1.0],
+        ];
+        let result = delaunay_2d_from_points(&pts);
+        assert_eq!(result.points.len(), 4);
+        assert_eq!(result.polys.num_cells(), 2);
+    }
+
+    #[test]
+    fn all_negative_points_compute_bounds() {
+        let pts: Vec<[f64; 2]> = vec![
+            [-4.0, -4.0],
+            [-2.0, -4.0],
+            [-2.0, -2.0],
+            [-4.0, -2.0],
         ];
         let result = delaunay_2d_from_points(&pts);
         assert_eq!(result.points.len(), 4);

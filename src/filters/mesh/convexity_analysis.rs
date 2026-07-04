@@ -13,8 +13,12 @@ pub fn edge_convexity(mesh: &PolyData) -> PolyData {
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -30,27 +34,13 @@ pub fn edge_convexity(mesh: &PolyData) -> PolyData {
         let n0 = normals[faces[0]];
         let n1 = normals[faces[1]];
         // Check if edge is convex or concave
-        let mid_a = mesh.points.get(a);
-        let mid_b = mesh.points.get(b);
-        let c0 = cell_centroid(mesh, &all_cells[faces[0]]);
-        let c1 = cell_centroid(mesh, &all_cells[faces[1]]);
-        let edge_mid = [
-            (mid_a[0] + mid_b[0]) / 2.0,
-            (mid_a[1] + mid_b[1]) / 2.0,
-            (mid_a[2] + mid_b[2]) / 2.0,
-        ];
-        let to_c0 = [
-            c0[0] - edge_mid[0],
-            c0[1] - edge_mid[1],
-            c0[2] - edge_mid[2],
-        ];
-        let avg_n = [
-            (n0[0] + n1[0]) / 2.0,
-            (n0[1] + n1[1]) / 2.0,
-            (n0[2] + n1[2]) / 2.0,
-        ];
-        let dot = to_c0[0] * avg_n[0] + to_c0[1] * avg_n[1] + to_c0[2] * avg_n[2];
-        let sign = if dot < 0.0 { 1.0 } else { -1.0 }; // convex if centers are "below" normal
+        let Some(c0) = cell_centroid(mesh, &all_cells[faces[0]]) else {
+            continue;
+        };
+        let Some(c1) = cell_centroid(mesh, &all_cells[faces[1]]) else {
+            continue;
+        };
+        let sign = edge_convexity_sign(n0, n1, c0, c1);
 
         convexity[a] += sign;
         counts[a] += 1;
@@ -84,8 +74,12 @@ pub fn convexity_ratio(mesh: &PolyData) -> f64 {
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -96,13 +90,16 @@ pub fn convexity_ratio(mesh: &PolyData) -> f64 {
         if faces.len() != 2 {
             continue;
         }
+        let Some(c0) = cell_centroid(mesh, &all_cells[faces[0]]) else {
+            continue;
+        };
+        let Some(c1) = cell_centroid(mesh, &all_cells[faces[1]]) else {
+            continue;
+        };
         total += 1;
-        let dot = normals[faces[0]][0] * normals[faces[1]][0]
-            + normals[faces[0]][1] * normals[faces[1]][1]
-            + normals[faces[0]][2] * normals[faces[1]][2];
-        if dot > 0.0 {
+        if edge_convexity_sign(normals[faces[0]], normals[faces[1]], c0, c1) > 0.0 {
             convex_count += 1;
-        } // roughly convex if normals agree
+        }
     }
     if total > 0 {
         convex_count as f64 / total as f64
@@ -115,9 +112,18 @@ fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
+    let Some(ai) = valid_point_id(cell[0], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(bi) = valid_point_id(cell[1], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(ci) = valid_point_id(cell[2], mesh.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let a = mesh.points.get(ai);
+    let b = mesh.points.get(bi);
+    let c = mesh.points.get(ci);
     let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     let n = [
@@ -133,16 +139,37 @@ fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
     }
 }
 
-fn cell_centroid(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
+fn edge_convexity_sign(n0: [f64; 3], n1: [f64; 3], c0: [f64; 3], c1: [f64; 3]) -> f64 {
+    let c0_to_c1 = [c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]];
+    let c1_to_c0 = [-c0_to_c1[0], -c0_to_c1[1], -c0_to_c1[2]];
+    let d0 = n0[0] * c0_to_c1[0] + n0[1] * c0_to_c1[1] + n0[2] * c0_to_c1[2];
+    let d1 = n1[0] * c1_to_c0[0] + n1[1] * c1_to_c0[1] + n1[2] * c1_to_c0[2];
+    if d0.abs() < 1e-12 && d1.abs() < 1e-12 {
+        0.0
+    } else if d0 <= 1e-12 && d1 <= 1e-12 {
+        1.0
+    } else {
+        -1.0
+    }
+}
+
+fn cell_centroid(mesh: &PolyData, cell: &[i64]) -> Option<[f64; 3]> {
+    if cell.is_empty() {
+        return None;
+    }
     let mut c = [0.0; 3];
     for &pid in cell {
-        let p = mesh.points.get(pid as usize);
+        let p = mesh.points.get(valid_point_id(pid, mesh.points.len())?);
         for j in 0..3 {
             c[j] += p[j];
         }
     }
     let k = cell.len() as f64;
-    [c[0] / k, c[1] / k, c[2] / k]
+    Some([c[0] / k, c[1] / k, c[2] / k])
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 
 #[cfg(test)]
@@ -197,5 +224,17 @@ mod tests {
         );
         let result = edge_convexity(&mesh);
         assert!(result.point_data().get_array("Convexity").is_some());
+    }
+
+    #[test]
+    fn invalid_point_ids_do_not_panic() {
+        let mesh = PolyData::from_polygons(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![vec![0, 1, 2], vec![-1, 99, 2]],
+        );
+
+        let result = edge_convexity(&mesh);
+        assert!(result.point_data().get_array("Convexity").is_some());
+        assert_eq!(convexity_ratio(&mesh), 1.0);
     }
 }

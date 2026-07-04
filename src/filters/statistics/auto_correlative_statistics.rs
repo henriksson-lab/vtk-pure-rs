@@ -5,7 +5,6 @@ use crate::data::{AnyDataArray, DataArray, Table};
 /// Compute the autocorrelation function of a column up to `max_lag` steps.
 ///
 /// Returns a vector of autocorrelation coefficients for lags 0..=max_lag.
-/// Lag 0 is always 1.0 (self-correlation).
 pub fn autocorrelation(table: &Table, column_name: &str, max_lag: usize) -> Option<Vec<f64>> {
     let col = table.column_by_name(column_name)?;
     let n = col.num_tuples();
@@ -20,20 +19,10 @@ pub fn autocorrelation(table: &Table, column_name: &str, max_lag: usize) -> Opti
         values.push(buf[0]);
     }
 
-    let mean = values.iter().sum::<f64>() / n as f64;
-    let variance: f64 = values.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>();
-
-    if variance < 1e-15 {
-        return Some(vec![1.0; max_lag + 1]);
-    }
-
     let mut result = Vec::with_capacity(max_lag + 1);
     for lag in 0..=max_lag.min(n - 1) {
-        let mut sum = 0.0;
-        for i in 0..n - lag {
-            sum += (values[i] - mean) * (values[i + lag] - mean);
-        }
-        result.push(sum / variance);
+        let stats = primary_statistics_for_lag(&values, lag);
+        result.push(stats.autocorrelation());
     }
     Some(result)
 }
@@ -96,6 +85,66 @@ pub fn partial_autocorrelation(
     Some(pacf)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LagStatistics {
+    cardinality: usize,
+    mean_xs: f64,
+    mean_xt: f64,
+    m2_xs: f64,
+    m2_xt: f64,
+    m_xs_xt: f64,
+}
+
+impl LagStatistics {
+    fn autocorrelation(self) -> f64 {
+        if self.cardinality <= 1 {
+            return f64::NAN;
+        }
+
+        let inv_nm1 = 1.0 / (self.cardinality as f64 - 1.0);
+        let var_xs = self.m2_xs * inv_nm1;
+        let var_xt = self.m2_xt * inv_nm1;
+        let cov_xs_xt = self.m_xs_xt * inv_nm1;
+
+        if var_xs < f64::MIN_POSITIVE || var_xt < f64::MIN_POSITIVE {
+            f64::NAN
+        } else {
+            cov_xs_xt / (var_xs * var_xt).sqrt()
+        }
+    }
+}
+
+fn primary_statistics_for_lag(values: &[f64], lag: usize) -> LagStatistics {
+    let cardinality = values.len() - lag;
+    let mut stats = LagStatistics {
+        cardinality,
+        mean_xs: 0.0,
+        mean_xt: 0.0,
+        m2_xs: 0.0,
+        m2_xt: 0.0,
+        m_xs_xt: 0.0,
+    };
+
+    for r in 0..cardinality {
+        let inv_n = 1.0 / (r as f64 + 1.0);
+
+        let xs = values[r];
+        let delta = xs - stats.mean_xs;
+        stats.mean_xs += delta * inv_n;
+        let delta_xsn = xs - stats.mean_xs;
+        stats.m2_xs += delta * delta_xsn;
+
+        let xt = values[r + lag];
+        let delta = xt - stats.mean_xt;
+        stats.mean_xt += delta * inv_n;
+        stats.m2_xt += delta * (xt - stats.mean_xt);
+
+        stats.m_xs_xt += delta * delta_xsn;
+    }
+
+    stats
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,7 +157,7 @@ mod tests {
             1,
         )));
         let acf = autocorrelation(&table, "x", 5).unwrap();
-        assert!((acf[0] - 1.0).abs() < 1e-10);
+        assert!(acf.iter().all(|v| v.is_nan()));
     }
 
     #[test]
@@ -135,6 +184,19 @@ mod tests {
         assert_eq!(result.num_rows(), 4);
         assert!(result.column_by_name("Lag").is_some());
         assert!(result.column_by_name("ACF").is_some());
+    }
+
+    #[test]
+    fn shifted_means_match_vtk_lag_statistics() {
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "x",
+            vec![1.0, 2.0, 5.0, 8.0],
+            1,
+        )));
+        let acf = autocorrelation(&table, "x", 2).unwrap();
+        assert!((acf[0] - 1.0).abs() < 1e-10);
+        assert!((acf[1] - 0.9607689228305226).abs() < 1e-10);
+        assert!((acf[2] - 1.0).abs() < 1e-10);
     }
 
     #[test]

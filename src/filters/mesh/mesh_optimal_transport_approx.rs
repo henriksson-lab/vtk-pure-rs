@@ -1,6 +1,9 @@
 //! Approximate optimal transport (Earth Mover's Distance) between point distributions.
 use crate::data::PolyData;
 pub fn earth_mover_distance_1d(mesh_a: &PolyData, mesh_b: &PolyData, axis: usize) -> f64 {
+    if axis >= 3 {
+        return 0.0;
+    }
     let mut va: Vec<f64> = (0..mesh_a.points.len())
         .map(|i| mesh_a.points.get(i)[axis])
         .collect();

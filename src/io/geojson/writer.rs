@@ -1,85 +1,135 @@
-use crate::data::PolyData;
+use crate::data::{CellArray, PolyData};
 use std::io::Write;
 
-/// Write a PolyData as GeoJSON FeatureCollection.
+/// Write a PolyData as GeoJSON Feature with GeometryCollection.
 ///
-/// Polygons become Polygon features, lines become LineString features,
-/// and lone vertices become Point features.
+/// Polygons become MultiPolygon geometries, lines become MultiLineString
+/// geometries, and vertices become MultiPoint geometries.
 pub fn write_geojson<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
     writeln!(w, "{{")?;
-    writeln!(w, "  \"type\": \"FeatureCollection\",")?;
-    writeln!(w, "  \"features\": [")?;
+    writeln!(w, "\"type\": \"Feature\",")?;
+    writeln!(w, "\"properties\": {{\"ScalarFormat\": \"none\"}},")?;
+    writeln!(w, "\"geometry\":")?;
+    writeln!(w, "{{")?;
+    writeln!(w, "\"type\": \"GeometryCollection\",")?;
+    writeln!(w, "\"geometries\":")?;
+    writeln!(w, "[")?;
 
     let mut first = true;
 
-    // Write polygon features
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if !first {
-            writeln!(w, ",")?;
-        } else {
-            first = false;
-        }
-        write!(
-            w,
-            "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"Polygon\",\"coordinates\":[["
-        )?;
-        for (i, &pid) in cell.iter().enumerate() {
-            let p = mesh.points.get(pid as usize);
-            if i > 0 {
-                write!(w, ",")?;
+    if has_cells(&mesh.verts, 1) {
+        write_comma_if_needed(w, &mut first)?;
+        writeln!(w, "{{")?;
+        writeln!(w, "\"type\": \"MultiPoint\",")?;
+        writeln!(w, "\"coordinates\":")?;
+        writeln!(w, "[")?;
+        let mut first_point = true;
+        for cell in mesh.verts.iter() {
+            for &pid in cell {
+                if !first_point {
+                    writeln!(w, ",")?;
+                } else {
+                    first_point = false;
+                }
+                write_position(w, mesh, pid)?;
             }
-            write!(w, "[{},{}]", p[0], p[1])?;
         }
-        // Close the ring
-        let p0 = mesh.points.get(cell[0] as usize);
-        write!(w, ",[{},{}]", p0[0], p0[1])?;
-        write!(w, "]]}},\"properties\":{{}}}}")?;
+        writeln!(w)?;
+        writeln!(w, "]")?;
+        write!(w, "}}")?;
     }
 
-    // Write line features
-    for cell in mesh.lines.iter() {
-        if cell.len() < 2 {
-            continue;
-        }
-        if !first {
-            writeln!(w, ",")?;
-        } else {
-            first = false;
-        }
-        write!(
-            w,
-            "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"LineString\",\"coordinates\":["
-        )?;
-        for (i, &pid) in cell.iter().enumerate() {
-            let p = mesh.points.get(pid as usize);
-            if i > 0 {
-                write!(w, ",")?;
-            }
-            write!(w, "[{},{}]", p[0], p[1])?;
-        }
-        write!(w, "]}},\"properties\":{{}}}}")?;
-    }
-
-    // Write vertex features as points
-    for cell in mesh.verts.iter() {
-        for &pid in cell {
-            if !first {
+    if has_cells(&mesh.lines, 2) {
+        write_comma_if_needed(w, &mut first)?;
+        writeln!(w, "{{")?;
+        writeln!(w, "\"type\": \"MultiLineString\",")?;
+        writeln!(w, "\"coordinates\":")?;
+        writeln!(w, "[")?;
+        let mut first_cell = true;
+        for cell in mesh.lines.iter().filter(|cell| cell.len() >= 2) {
+            if !first_cell {
                 writeln!(w, ",")?;
             } else {
-                first = false;
+                first_cell = false;
             }
-            let p = mesh.points.get(pid as usize);
-            write!(w, "    {{\"type\":\"Feature\",\"geometry\":{{\"type\":\"Point\",\"coordinates\":[{},{}]}},\"properties\":{{}}}}", p[0], p[1])?;
+            write!(w, "[ ")?;
+            for (i, &pid) in cell.iter().enumerate() {
+                if i > 0 {
+                    write!(w, ",")?;
+                }
+                write_position(w, mesh, pid)?;
+            }
+            write!(w, "]")?;
         }
+        writeln!(w)?;
+        writeln!(w, "]")?;
+        write!(w, "}}")?;
+    }
+
+    if has_cells(&mesh.polys, 3) {
+        write_comma_if_needed(w, &mut first)?;
+        writeln!(w, "{{")?;
+        writeln!(w, "\"type\": \"MultiPolygon\",")?;
+        writeln!(w, "\"coordinates\":")?;
+        writeln!(w, "[")?;
+        let mut first_cell = true;
+        for cell in mesh.polys.iter().filter(|cell| cell.len() >= 3) {
+            if !first_cell {
+                writeln!(w, ",")?;
+            } else {
+                first_cell = false;
+            }
+            write!(w, "[[ ")?;
+            for (i, &pid) in cell.iter().enumerate() {
+                if i > 0 {
+                    write!(w, ",")?;
+                }
+                write_position(w, mesh, pid)?;
+            }
+            write!(w, " ]]")?;
+        }
+        writeln!(w)?;
+        writeln!(w, "]")?;
+        write!(w, "}}")?;
     }
 
     writeln!(w)?;
-    writeln!(w, "  ]")?;
+    writeln!(w, "]")?;
+    writeln!(w, "}}")?;
     writeln!(w, "}}")?;
     Ok(())
+}
+
+fn has_cells(cells: &CellArray, min_len: usize) -> bool {
+    cells.iter().any(|cell| cell.len() >= min_len)
+}
+
+fn write_comma_if_needed<W: Write>(w: &mut W, first: &mut bool) -> std::io::Result<()> {
+    if !*first {
+        writeln!(w, ",")?;
+    } else {
+        *first = false;
+    }
+    Ok(())
+}
+
+fn write_position<W: Write>(w: &mut W, mesh: &PolyData, pid: i64) -> std::io::Result<()> {
+    let p = mesh.points.get(pid as usize);
+    write!(w, "[")?;
+    write_coordinate(w, p[0])?;
+    write!(w, ",")?;
+    write_coordinate(w, p[1])?;
+    write!(w, ",")?;
+    write_coordinate(w, p[2])?;
+    write!(w, "]")
+}
+
+fn write_coordinate<W: Write>(w: &mut W, value: f64) -> std::io::Result<()> {
+    if value.is_nan() {
+        write!(w, "null")
+    } else {
+        write!(w, "{value}")
+    }
 }
 
 /// Write GeoJSON to a file path.
@@ -103,8 +153,9 @@ mod tests {
         let mut buf = Vec::new();
         write_geojson(&mut buf, &mesh).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.contains("FeatureCollection"));
-        assert!(s.contains("Polygon"));
+        assert!(s.contains("\"type\": \"Feature\""));
+        assert!(s.contains("GeometryCollection"));
+        assert!(s.contains("MultiPolygon"));
     }
 
     #[test]
@@ -113,6 +164,19 @@ mod tests {
         let mut buf = Vec::new();
         write_geojson(&mut buf, &mesh).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.contains("LineString"));
+        assert!(s.contains("MultiLineString"));
+    }
+
+    #[test]
+    fn write_nan_coordinate_as_null() {
+        let mesh = PolyData::from_triangles(
+            vec![[f64::NAN, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let mut buf = Vec::new();
+        write_geojson(&mut buf, &mesh).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.contains("[null,0,0]"));
+        assert!(!s.contains("NaN"));
     }
 }

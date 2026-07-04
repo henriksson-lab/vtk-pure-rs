@@ -8,19 +8,28 @@ pub fn smooth_boundary_slide(mesh: &PolyData, iterations: usize, lambda: f64) ->
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-                *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
-            }
+        for i in 0..cell.len() {
+            add_edge(&mut nb, &mut ec, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(&mut nb, &mut ec, n, edge[0], edge[1]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_edge(&mut nb, &mut ec, n, tri[0], tri[1]);
+            add_edge(&mut nb, &mut ec, n, tri[1], tri[2]);
+            add_edge(&mut nb, &mut ec, n, tri[2], tri[0]);
         }
     }
     let mut boundary_edges: std::collections::HashMap<usize, Vec<usize>> =
@@ -71,6 +80,29 @@ pub fn smooth_boundary_slide(mesh: &PolyData, iterations: usize, lambda: f64) ->
         r.points.set(i, pos[i]);
     }
     r
+}
+fn add_edge(
+    nb: &mut [Vec<usize>],
+    ec: &mut std::collections::HashMap<(usize, usize), usize>,
+    n: usize,
+    a_id: i64,
+    b_id: i64,
+) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+    *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
 }
 #[cfg(test)]
 mod tests {

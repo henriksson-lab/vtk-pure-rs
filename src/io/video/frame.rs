@@ -24,13 +24,14 @@ impl FrameSequence {
 
     /// Set the frame rate.
     pub fn with_fps(mut self, fps: u32) -> Self {
+        assert!(fps > 0, "fps must be greater than zero");
         self.fps = fps;
         self
     }
 
     /// Add an RGBA frame. Panics if the frame size doesn't match.
     pub fn add_frame(&mut self, rgba: Vec<u8>) {
-        let expected = (self.width * self.height * 4) as usize;
+        let expected = self.expected_rgba_len();
         assert_eq!(
             rgba.len(),
             expected,
@@ -47,9 +48,6 @@ impl FrameSequence {
 
     /// Duration in seconds.
     pub fn duration_secs(&self) -> f64 {
-        if self.fps == 0 {
-            return 0.0;
-        }
         self.frames.len() as f64 / self.fps as f64
     }
 
@@ -63,6 +61,13 @@ impl FrameSequence {
             rgb.push(pixel[2]);
         }
         rgb
+    }
+
+    pub(crate) fn expected_rgba_len(&self) -> usize {
+        (self.width as usize)
+            .checked_mul(self.height as usize)
+            .and_then(|n| n.checked_mul(4))
+            .expect("frame dimensions are too large")
     }
 }
 

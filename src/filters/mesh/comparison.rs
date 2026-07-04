@@ -51,8 +51,8 @@ pub fn compare_meshes(mesh_a: &PolyData, mesh_b: &PolyData) -> (PolyData, MeshCo
                 hausdorff_distance: 0.0,
                 point_count_a: na,
                 point_count_b: nb,
-                cell_count_a: mesh_a.polys.num_cells(),
-                cell_count_b: mesh_b.polys.num_cells(),
+                cell_count_a: mesh_a.total_cells(),
+                cell_count_b: mesh_b.total_cells(),
             },
         );
     }
@@ -108,8 +108,8 @@ pub fn compare_meshes(mesh_a: &PolyData, mesh_b: &PolyData) -> (PolyData, MeshCo
         hausdorff_distance: hausdorff,
         point_count_a: na,
         point_count_b: nb,
-        cell_count_a: mesh_a.polys.num_cells(),
-        cell_count_b: mesh_b.polys.num_cells(),
+        cell_count_a: mesh_a.total_cells(),
+        cell_count_b: mesh_b.total_cells(),
     };
 
     (result, stats)
@@ -137,24 +137,39 @@ pub fn bounding_box_overlap_ratio(a: &PolyData, b: &PolyData) -> f64 {
     let (min_a, max_a) = bb(a);
     let (min_b, max_b) = bb(b);
 
-    let mut overlap_vol = 1.0;
-    let mut vol_a = 1.0;
-    let mut vol_b = 1.0;
+    let mut overlap_measure = 1.0;
+    let mut measure_a = 1.0;
+    let mut measure_b = 1.0;
+    let mut active_dims = 0;
 
     for i in 0..3 {
         let o_min = min_a[i].max(min_b[i]);
         let o_max = max_a[i].min(max_b[i]);
-        if o_min >= o_max {
+        let extent_a = max_a[i] - min_a[i];
+        let extent_b = max_b[i] - min_b[i];
+        let union_min = min_a[i].min(min_b[i]);
+        let union_max = max_a[i].max(max_b[i]);
+        let union_extent = union_max - union_min;
+
+        if union_extent <= 1e-15 {
+            continue;
+        }
+        if o_min > o_max || (o_max - o_min) <= 1e-15 {
             return 0.0;
         }
-        overlap_vol *= o_max - o_min;
-        vol_a *= max_a[i] - min_a[i];
-        vol_b *= max_b[i] - min_b[i];
+        overlap_measure *= o_max - o_min;
+        measure_a *= extent_a.max(1e-15);
+        measure_b *= extent_b.max(1e-15);
+        active_dims += 1;
     }
 
-    let union_vol = vol_a + vol_b - overlap_vol;
-    if union_vol > 1e-15 {
-        overlap_vol / union_vol
+    if active_dims == 0 {
+        return 1.0;
+    }
+
+    let union_measure = measure_a + measure_b - overlap_measure;
+    if union_measure > 1e-15 {
+        overlap_measure / union_measure
     } else {
         0.0
     }
@@ -205,5 +220,17 @@ mod tests {
         let (_, stats) = compare_meshes(&mesh, &mesh);
         let s = format!("{stats}");
         assert!(s.contains("MeshComparison"));
+    }
+
+    #[test]
+    fn stats_count_all_polydata_cell_arrays() {
+        let mut a = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        a.verts.push_cell(&[0]);
+        a.lines.push_cell(&[0, 1]);
+
+        let b = a.clone();
+        let (_, stats) = compare_meshes(&a, &b);
+        assert_eq!(stats.cell_count_a, 2);
+        assert_eq!(stats.cell_count_b, 2);
     }
 }

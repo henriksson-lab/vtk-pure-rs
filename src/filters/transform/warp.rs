@@ -3,14 +3,14 @@ use crate::data::{DataSet, PolyData};
 /// Warp mesh vertices along the surface normal by the active scalar value.
 ///
 /// Each vertex is displaced as: `p_new = p + normal * scalar * scale_factor`.
-/// Requires both normals and scalars in point data.
+/// If active point normals are absent, uses VTK's default normal `(0, 0, 1)`.
 pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
     let mut output = input.clone();
 
-    let normals = match input.point_data().normals() {
-        Some(n) if n.num_components() == 3 => n,
-        _ => return output,
-    };
+    let normals = input
+        .point_data()
+        .normals()
+        .filter(|n| n.num_components() == 3);
     let scalars = match input.point_data().scalars() {
         Some(s) => s,
         None => return output,
@@ -22,7 +22,11 @@ pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
     let pts = output.points.as_flat_slice_mut();
 
     for i in 0..n {
-        normals.tuple_as_f64(i, &mut nbuf);
+        if let Some(normals) = normals {
+            normals.tuple_as_f64(i, &mut nbuf);
+        } else {
+            nbuf = [0.0, 0.0, 1.0];
+        }
         scalars.tuple_as_f64(i, &mut sbuf);
         let d = sbuf[0] * scale_factor;
         let b = i * 3;
@@ -107,5 +111,17 @@ mod tests {
         );
         let result = warp_by_scalar(&pd, 1.0);
         assert_eq!(result.points.get(0), [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn warp_by_scalar_uses_default_z_normal_without_normals() {
+        let mut pd = PolyData::from_points(vec![[1.0, 2.0, 3.0]]);
+        let scalars = DataArray::from_vec("Height", vec![2.0f64], 1);
+        pd.point_data_mut().add_array(scalars.into());
+        pd.point_data_mut().set_active_scalars("Height");
+
+        let result = warp_by_scalar(&pd, 0.5);
+
+        assert_eq!(result.points.get(0), [1.0, 2.0, 4.0]);
     }
 }

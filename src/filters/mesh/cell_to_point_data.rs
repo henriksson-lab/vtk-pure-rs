@@ -20,14 +20,24 @@ pub fn cell_to_point_average(input: &PolyData, array_name: &str) -> PolyData {
 
     let mut cell_val: Vec<f64> = vec![0.0; num_components];
 
-    for (cell_idx, cell) in input.polys.iter().enumerate() {
-        arr.tuple_as_f64(cell_idx, &mut cell_val);
-        for &pt_id in cell {
-            let pid: usize = pt_id as usize;
-            counts[pid] += 1;
-            for c in 0..num_components {
-                accum[pid * num_components + c] += cell_val[c];
+    let mut cell_idx = 0;
+    for cells in [&input.verts, &input.lines, &input.polys, &input.strips] {
+        for cell in cells.iter() {
+            if cell_idx >= arr.num_tuples() {
+                break;
             }
+            arr.tuple_as_f64(cell_idx, &mut cell_val);
+            for &pt_id in cell {
+                if pt_id < 0 || pt_id as usize >= num_points {
+                    continue;
+                }
+                let pid: usize = pt_id as usize;
+                counts[pid] += 1;
+                for c in 0..num_components {
+                    accum[pid * num_components + c] += cell_val[c];
+                }
+            }
+            cell_idx += 1;
         }
     }
 

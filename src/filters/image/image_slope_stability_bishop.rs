@@ -10,15 +10,17 @@ pub fn image_slope_stability_bishop(input: &ImageData, scalars: &str) -> ImageDa
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * (30.0f64 * std::f64::consts::PI / 180.0).tan()
-                / (buf[0] * 9.81 * (45.0f64 * std::f64::consts::PI / 180.0).sin())
+            buf[0].abs().max(0.01) * (30.0f64 * std::f64::consts::PI / 180.0).tan()
+                / (buf[0].abs().max(0.01) * 9.81 * (45.0f64 * std::f64::consts::PI / 180.0).sin())
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

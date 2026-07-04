@@ -1,6 +1,7 @@
 //! Compute per-edge length statistics.
 
 use crate::data::PolyData;
+use std::collections::HashSet;
 
 /// Edge length statistics for a mesh.
 pub struct EdgeLengthStats {
@@ -13,15 +14,7 @@ pub struct EdgeLengthStats {
 
 /// Compute edge length statistics.
 pub fn edge_length_stats(mesh: &PolyData) -> EdgeLengthStats {
-    let mut edges: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            edges.insert((a.min(b), a.max(b)));
-        }
-    }
+    let edges = collect_edges(mesh);
     if edges.is_empty() {
         return EdgeLengthStats {
             min: 0.0,
@@ -56,23 +49,13 @@ pub fn edge_length_stats(mesh: &PolyData) -> EdgeLengthStats {
 /// Get shortest edge.
 pub fn shortest_edge(mesh: &PolyData) -> (usize, usize, f64) {
     let mut best = (0, 0, f64::INFINITY);
-    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            let key = (a.min(b), a.max(b));
-            if seen.insert(key) {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                if d < best.2 {
-                    best = (a, b, d);
-                }
-            }
+    for (a, b) in collect_edges(mesh) {
+        let pa = mesh.points.get(a);
+        let pb = mesh.points.get(b);
+        let d =
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+        if d < best.2 {
+            best = (a, b, d);
         }
     }
     best
@@ -81,26 +64,56 @@ pub fn shortest_edge(mesh: &PolyData) -> (usize, usize, f64) {
 /// Get longest edge.
 pub fn longest_edge(mesh: &PolyData) -> (usize, usize, f64) {
     let mut best = (0, 0, 0.0f64);
-    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            let key = (a.min(b), a.max(b));
-            if seen.insert(key) {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                if d > best.2 {
-                    best = (a, b, d);
-                }
-            }
+    for (a, b) in collect_edges(mesh) {
+        let pa = mesh.points.get(a);
+        let pb = mesh.points.get(b);
+        let d =
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+        if d > best.2 {
+            best = (a, b, d);
         }
     }
     best
+}
+
+fn collect_edges(mesh: &PolyData) -> HashSet<(usize, usize)> {
+    let mut edges = HashSet::new();
+    for cell in mesh.lines.iter() {
+        for pair in cell.windows(2) {
+            insert_valid_edge(&mut edges, mesh.points.len(), pair[0], pair[1]);
+        }
+    }
+    for cell in mesh.polys.iter() {
+        insert_closed_cell_edges(&mut edges, mesh.points.len(), cell);
+    }
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_valid_edge(&mut edges, mesh.points.len(), tri[0], tri[1]);
+            insert_valid_edge(&mut edges, mesh.points.len(), tri[1], tri[2]);
+            insert_valid_edge(&mut edges, mesh.points.len(), tri[2], tri[0]);
+        }
+    }
+    edges
+}
+
+fn insert_closed_cell_edges(edges: &mut HashSet<(usize, usize)>, num_points: usize, cell: &[i64]) {
+    let nc = cell.len();
+    for i in 0..nc {
+        insert_valid_edge(edges, num_points, cell[i], cell[(i + 1) % nc]);
+    }
+}
+
+fn insert_valid_edge(edges: &mut HashSet<(usize, usize)>, num_points: usize, a: i64, b: i64) {
+    if a < 0 || b < 0 {
+        return;
+    }
+    let (a, b) = (a as usize, b as usize);
+    if a >= num_points || b >= num_points {
+        return;
+    }
+    if a != b {
+        edges.insert((a.min(b), a.max(b)));
+    }
 }
 
 #[cfg(test)]
@@ -127,5 +140,19 @@ mod tests {
         let (_, _, long) = longest_edge(&mesh);
         assert!((short - 1.0).abs() < 1e-10);
         assert!((long - (9.0f64 + 1.0).sqrt()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn skips_invalid_edge_point_ids() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 99]);
+        mesh.lines.push_cell(&[-1, 0]);
+
+        let stats = edge_length_stats(&mesh);
+        assert_eq!(stats.total_edges, 1);
+        assert_eq!(stats.min, 1.0);
+        assert_eq!(stats.max, 1.0);
     }
 }

@@ -1,34 +1,16 @@
 use crate::data::{CellArray, Points, PolyData};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// Extract all boundary loops as separate polyline cells.
 ///
 /// Each boundary loop is a closed polyline of edges that belong to
 /// exactly one triangle. Returns a PolyData with line cells.
 pub fn extract_boundary_loops(input: &PolyData) -> PolyData {
-    let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
-    let mut boundary_next: HashMap<i64, Vec<i64>> = HashMap::new();
-
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(key).or_insert(0) += 1;
-        }
-    }
-
-    // Build directed boundary edges
-    for (&(a, b), &count) in &edge_count {
-        if count == 1 {
-            boundary_next.entry(a).or_default().push(b);
-            boundary_next.entry(b).or_default().push(a);
-        }
-    }
+    let boundary_next = boundary_adjacency(input);
 
     let mut out_points = Points::<f64>::new();
     let mut out_lines = CellArray::new();
-    let mut visited = std::collections::HashSet::new();
+    let mut visited_edges = HashSet::new();
     let mut pt_map: HashMap<i64, i64> = HashMap::new();
 
     let map_pt =
@@ -41,39 +23,53 @@ pub fn extract_boundary_loops(input: &PolyData) -> PolyData {
         };
 
     for &start in boundary_next.keys() {
-        if visited.contains(&start) {
-            continue;
-        }
+        while let Some(&first_next) = boundary_next.get(&start).and_then(|nexts| {
+            nexts
+                .iter()
+                .find(|&&n| !visited_edges.contains(&edge_key(start, n)))
+        }) {
+            let mut ids = vec![start];
+            let mut cur = start;
+            let mut next = first_next;
 
-        let mut loop_ids = Vec::new();
-        let mut cur = start;
+            loop {
+                visited_edges.insert(edge_key(cur, next));
+                ids.push(next);
 
-        loop {
-            if visited.contains(&cur) && !loop_ids.is_empty() {
-                break;
-            }
-            visited.insert(cur);
-            let mapped = map_pt(cur, input, &mut out_points, &mut pt_map);
-            loop_ids.push(mapped);
-
-            let nexts = match boundary_next.get(&cur) {
-                Some(v) => v,
-                None => break,
-            };
-            match nexts.iter().find(|&&n| !visited.contains(&n)) {
-                Some(&n) => cur = n,
-                None => {
-                    // Close loop if possible
-                    if nexts.contains(&start) && loop_ids.len() >= 3 {
-                        loop_ids.push(loop_ids[0]); // close
-                    }
+                let prev = cur;
+                cur = next;
+                if cur == start {
                     break;
                 }
-            }
-        }
 
-        if loop_ids.len() >= 3 {
-            out_lines.push_cell(&loop_ids);
+                let Some(nexts) = boundary_next.get(&cur) else {
+                    break;
+                };
+                let candidate = nexts
+                    .iter()
+                    .copied()
+                    .filter(|&n| n != prev)
+                    .find(|&n| !visited_edges.contains(&edge_key(cur, n)))
+                    .or_else(|| {
+                        nexts
+                            .iter()
+                            .copied()
+                            .find(|&n| !visited_edges.contains(&edge_key(cur, n)))
+                    });
+
+                match candidate {
+                    Some(n) => next = n,
+                    None => break,
+                }
+            }
+
+            if ids.len() >= 2 {
+                let line_ids: Vec<i64> = ids
+                    .into_iter()
+                    .map(|id| map_pt(id, input, &mut out_points, &mut pt_map))
+                    .collect();
+                out_lines.push_cell(&line_ids);
+            }
         }
     }
 
@@ -87,6 +83,42 @@ pub fn extract_boundary_loops(input: &PolyData) -> PolyData {
 pub fn num_boundary_loops(input: &PolyData) -> usize {
     let loops = extract_boundary_loops(input);
     loops.lines.num_cells()
+}
+
+fn boundary_adjacency(input: &PolyData) -> BTreeMap<i64, BTreeSet<i64>> {
+    let mut edge_count: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+    let num_points = input.points.len() as i64;
+
+    for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
+            if a < 0 || b < 0 || a >= num_points || b >= num_points || a == b {
+                continue;
+            }
+            *edge_count.entry(edge_key(a, b)).or_insert(0) += 1;
+        }
+    }
+
+    let mut adjacency = BTreeMap::new();
+    for ((a, b), count) in edge_count {
+        if count == 1 {
+            adjacency.entry(a).or_insert_with(BTreeSet::new).insert(b);
+            adjacency.entry(b).or_insert_with(BTreeSet::new).insert(a);
+        }
+    }
+    adjacency
+}
+
+fn edge_key(a: i64, b: i64) -> (i64, i64) {
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 #[cfg(test)]
@@ -132,6 +164,21 @@ mod tests {
         pd.polys.push_cell(&[0, 2, 3]);
 
         assert_eq!(num_boundary_loops(&pd), 1);
+    }
+
+    #[test]
+    fn disjoint_triangles_with_shared_point_extract_two_boundary_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([-1.0, 0.0, 0.0]);
+        pd.points.push([0.0, -1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 3, 4]);
+
+        let loops = extract_boundary_loops(&pd);
+        assert_eq!(loops.lines.num_cells(), 2);
     }
 
     #[test]

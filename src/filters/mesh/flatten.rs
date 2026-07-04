@@ -1,4 +1,4 @@
-use crate::data::{DataSet, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Flatten a mesh onto the XY plane by discarding Z.
 pub fn flatten_z(input: &PolyData) -> PolyData {
@@ -26,9 +26,17 @@ pub fn project_to_plane(input: &PolyData, normal: [f64; 3]) -> PolyData {
     }
     let nn = [normal[0] / nlen, normal[1] / nlen, normal[2] / nlen];
 
-    // Compute centroid
-    let bb = input.bounds();
-    let c = bb.center();
+    let mut c = [0.0; 3];
+    for i in 0..n {
+        let p = input.points.get(i);
+        c[0] += p[0];
+        c[1] += p[1];
+        c[2] += p[2];
+    }
+    let inv_n = 1.0 / n as f64;
+    c[0] *= inv_n;
+    c[1] *= inv_n;
+    c[2] *= inv_n;
 
     let mut points = Points::<f64>::new();
     for i in 0..n {

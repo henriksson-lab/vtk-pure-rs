@@ -10,14 +10,17 @@ pub fn image_standing_wave_ratio(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (1.0 + buf[0].abs().min(1.0)) / (1.0 - buf[0].abs().min(0.99))
+            let reflection_coefficient = buf[0].abs().clamp(0.0, 0.99);
+            (1.0 + reflection_coefficient) / (1.0 - reflection_coefficient)
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

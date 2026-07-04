@@ -6,6 +6,9 @@ pub fn ridge_direction_field(mesh: &PolyData, array_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -74,6 +77,9 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
     let mut nm = vec![[0.0f64; 3]; n];
     for cell in mesh.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if cell.iter().take(3).any(|&v| v < 0 || v as usize >= n) {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);

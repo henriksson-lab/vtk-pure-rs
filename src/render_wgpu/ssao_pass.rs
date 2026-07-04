@@ -16,22 +16,23 @@ struct SsaoUniforms {
     bias: f32,
     intensity: f32,
     num_samples: f32,
+    blur: f32,
     texel_size: [f32; 2],
     near: f32,
     far: f32,
-    // 16 sample kernel positions (hemisphere)
+    _padding: [f32; 2],
+    // 32 sample kernel positions (hemisphere)
     samples: [[f32; 4]; 32],
 }
 
 pub struct SsaoPass {
     ao_pipeline: wgpu::RenderPipeline,
-    blur_pipeline: wgpu::RenderPipeline,
     composite_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     uniform_buffer: wgpu::Buffer,
     sampler: wgpu::Sampler,
+    dummy_ao_view: wgpu::TextureView,
     ao_texture: Option<(wgpu::Texture, wgpu::TextureView)>,
-    blur_texture: Option<(wgpu::Texture, wgpu::TextureView)>,
     tex_width: u32,
     tex_height: u32,
 }
@@ -58,6 +59,22 @@ impl SsaoPass {
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             ..Default::default()
         });
+
+        let dummy_ao_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ssao dummy ao"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::R8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let dummy_ao_view = dummy_ao_texture.create_view(&Default::default());
 
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("ssao bgl"),
@@ -141,10 +158,8 @@ impl SsaoPass {
             })
         };
 
-        // AO and blur write to R8 textures
+        // AO writes to an R8 texture.
         let ao_pipeline = make_pipeline("ssao ao", "fs_ssao", wgpu::TextureFormat::R8Unorm, None);
-        let blur_pipeline =
-            make_pipeline("ssao blur", "fs_blur", wgpu::TextureFormat::R8Unorm, None);
         // Composite multiplies onto the color target
         let composite_pipeline = make_pipeline(
             "ssao composite",
@@ -162,13 +177,12 @@ impl SsaoPass {
 
         Self {
             ao_pipeline,
-            blur_pipeline,
             composite_pipeline,
             bind_group_layout,
             uniform_buffer,
             sampler,
+            dummy_ao_view,
             ao_texture: None,
-            blur_texture: None,
             tex_width: 0,
             tex_height: 0,
         }
@@ -198,30 +212,36 @@ impl SsaoPass {
             (tex, view)
         };
         self.ao_texture = Some(make_tex("ssao ao tex"));
-        self.blur_texture = Some(make_tex("ssao blur tex"));
         self.tex_width = width;
         self.tex_height = height;
     }
 
-    /// Generate hemisphere sample kernel (Hammersley quasi-random).
+    /// Generate VTK-style hemisphere sample kernel.
     fn generate_kernel(num_samples: u32) -> [[f32; 4]; 32] {
         let mut samples = [[0.0f32; 4]; 32];
         let n = num_samples.min(32) as usize;
-        for i in 0..n {
-            let fi = i as f32;
-            let fn_ = n as f32;
-            // Hammersley point on hemisphere
-            let xi1 = fi / fn_;
-            let xi2 = radical_inverse(i as u32);
-            let phi = 2.0 * std::f32::consts::PI * xi2;
-            let cos_theta = (1.0 - xi1).sqrt();
-            let sin_theta = xi1.sqrt();
-            let x = sin_theta * phi.cos();
-            let y = sin_theta * phi.sin();
-            let z = cos_theta;
-            // Scale: samples closer to center are weighted more
-            let scale = (fi / fn_).powi(2) * 0.9 + 0.1;
-            samples[i] = [x * scale, y * scale, z * scale, 0.0];
+        let mut rng = VtkSsaoRng::new();
+        let mut i = 0;
+        while i < n {
+            let mut sample = [
+                rng.next_f32() * 2.0 - 1.0,
+                rng.next_f32() * 2.0 - 1.0,
+                rng.next_f32(),
+            ];
+
+            let norm =
+                (sample[0] * sample[0] + sample[1] * sample[1] + sample[2] * sample[2]).sqrt();
+            if norm > 1.0 {
+                continue;
+            }
+
+            let scale = i as f32 / n as f32;
+            let scale = 0.1 + 0.9 * scale * scale;
+            sample[0] *= scale;
+            sample[1] *= scale;
+            sample[2] *= scale;
+            samples[i] = [sample[0], sample[1], sample[2], 0.0];
+            i += 1;
         }
         samples
     }
@@ -246,7 +266,6 @@ impl SsaoPass {
 
         self.ensure_textures(device, width, height);
         let ao_view = &self.ao_texture.as_ref().unwrap().1;
-        let blur_view = &self.blur_texture.as_ref().unwrap().1;
 
         let inv_proj = projection.inverse();
         let samples = Self::generate_kernel(config.num_samples);
@@ -258,9 +277,11 @@ impl SsaoPass {
             bias: config.bias,
             intensity: config.intensity,
             num_samples: config.num_samples as f32,
+            blur: if config.blur { 1.0 } else { 0.0 },
             texel_size: [1.0 / width as f32, 1.0 / height as f32],
             near,
             far,
+            _padding: [0.0; 2],
             samples,
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
@@ -285,8 +306,8 @@ impl SsaoPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
-                        resource: wgpu::BindingResource::TextureView(ao_view),
-                    }, // dummy, not used in AO pass
+                        resource: wgpu::BindingResource::TextureView(&self.dummy_ao_view),
+                    },
                 ],
             });
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -307,49 +328,7 @@ impl SsaoPass {
             pass.draw(0..3, 0..1);
         }
 
-        // Pass 2: Blur AO
-        {
-            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("ssao blur bg"),
-                layout: &self.bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: self.uniform_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(depth_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&self.sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 3,
-                        resource: wgpu::BindingResource::TextureView(ao_view),
-                    },
-                ],
-            });
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ssao blur pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: blur_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::WHITE),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                ..Default::default()
-            });
-            pass.set_pipeline(&self.blur_pipeline);
-            pass.set_bind_group(0, &bg, &[]);
-            pass.draw(0..3, 0..1);
-        }
-
-        // Pass 3: Composite (multiply AO onto color target)
+        // Pass 2: Composite (multiply AO onto color target)
         {
             let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("ssao composite bg"),
@@ -369,7 +348,7 @@ impl SsaoPass {
                     },
                     wgpu::BindGroupEntry {
                         binding: 3,
-                        resource: wgpu::BindingResource::TextureView(blur_view),
+                        resource: wgpu::BindingResource::TextureView(ao_view),
                     },
                 ],
             });
@@ -393,13 +372,22 @@ impl SsaoPass {
     }
 }
 
-fn radical_inverse(mut bits: u32) -> f32 {
-    bits = (bits << 16) | (bits >> 16);
-    bits = ((bits & 0x55555555) << 1) | ((bits & 0xAAAAAAAA) >> 1);
-    bits = ((bits & 0x33333333) << 2) | ((bits & 0xCCCCCCCC) >> 2);
-    bits = ((bits & 0x0F0F0F0F) << 4) | ((bits & 0xF0F0F0F0) >> 4);
-    bits = ((bits & 0x00FF00FF) << 8) | ((bits & 0xFF00FF00) >> 8);
-    bits as f32 * 2.3283064365386963e-10 // / 0x100000000
+struct VtkSsaoRng {
+    state: u32,
+}
+
+impl VtkSsaoRng {
+    fn new() -> Self {
+        Self { state: 1 }
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        self.state = self
+            .state
+            .wrapping_mul(1_664_525)
+            .wrapping_add(1_013_904_223);
+        ((self.state >> 8) as f32) * (1.0 / 16_777_216.0)
+    }
 }
 
 #[cfg(test)]
@@ -420,9 +408,10 @@ mod tests {
     }
 
     #[test]
-    fn radical_inverse_range() {
-        for i in 0..100 {
-            let v = radical_inverse(i);
+    fn vtk_ssao_rng_range() {
+        let mut rng = VtkSsaoRng::new();
+        for _ in 0..100 {
+            let v = rng.next_f32();
             assert!(v >= 0.0 && v < 1.0);
         }
     }
@@ -431,6 +420,6 @@ mod tests {
     fn config_defaults() {
         let c = SsaoConfig::default();
         assert!(!c.enabled);
-        assert_eq!(c.num_samples, 16);
+        assert_eq!(c.num_samples, 32);
     }
 }

@@ -1,5 +1,6 @@
 //! Approximate conformal map to unit disk (for disk-like meshes).
 use crate::data::{AnyDataArray, DataArray, PolyData};
+
 pub fn conformal_to_disk(mesh: &PolyData, iterations: usize) -> PolyData {
     let n = mesh.points.len();
     if n < 3 {
@@ -10,17 +11,13 @@ pub fn conformal_to_disk(mesh: &PolyData, iterations: usize) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-                *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
-            }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            add_edge(a, b, &mut nb, &mut ec);
         }
     }
     // Find boundary
@@ -96,6 +93,26 @@ pub fn conformal_to_disk(mesh: &PolyData, iterations: usize) -> PolyData {
     r.point_data_mut().set_active_tcoords("ConformalUV");
     r
 }
+
+fn add_edge(
+    a: usize,
+    b: usize,
+    nb: &mut [Vec<usize>],
+    ec: &mut std::collections::HashMap<(usize, usize), usize>,
+) {
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+    *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -9,13 +9,18 @@ pub fn conformal_factor(mesh: &PolyData) -> PolyData {
             factors.push(1.0);
             continue;
         }
-        let a = cell[0] as usize;
-        let b = cell[1] as usize;
-        let c = cell[2] as usize;
-        if a >= n || b >= n || c >= n {
+        let Some(a) = valid_point_id(cell[0], n) else {
             factors.push(1.0);
             continue;
-        }
+        };
+        let Some(b) = valid_point_id(cell[1], n) else {
+            factors.push(1.0);
+            continue;
+        };
+        let Some(c) = valid_point_id(cell[2], n) else {
+            factors.push(1.0);
+            continue;
+        };
         let pa = mesh.points.get(a);
         let pb = mesh.points.get(b);
         let pc = mesh.points.get(c);
@@ -42,6 +47,10 @@ pub fn conformal_factor(mesh: &PolyData) -> PolyData {
             1,
         )));
     result
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 #[cfg(test)]

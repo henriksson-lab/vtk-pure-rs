@@ -1,8 +1,8 @@
 //! Intrinsic Delaunay triangulation (edge flipping to maximize min angle).
 use crate::data::{CellArray, PolyData};
 pub fn intrinsic_delaunay(mesh: &PolyData, max_iterations: usize) -> PolyData {
+    let npts = mesh.points.len();
     let mut cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let nc = cells.len();
     for _ in 0..max_iterations {
         let mut flipped = false;
         let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
@@ -10,8 +10,12 @@ pub fn intrinsic_delaunay(mesh: &PolyData, max_iterations: usize) -> PolyData {
         for (ci, c) in cells.iter().enumerate() {
             let n = c.len();
             for i in 0..n {
-                let a = c[i] as usize;
-                let b = c[(i + 1) % n] as usize;
+                let Some(a) = valid_point_id(c[i], npts) else {
+                    continue;
+                };
+                let Some(b) = valid_point_id(c[(i + 1) % n], npts) else {
+                    continue;
+                };
                 ef.entry((a.min(b), a.max(b))).or_default().push(ci);
             }
         }
@@ -24,13 +28,16 @@ pub fn intrinsic_delaunay(mesh: &PolyData, max_iterations: usize) -> PolyData {
             }
             let va = cells[faces[0]]
                 .iter()
-                .find(|&&v| v as usize != ea && v as usize != eb)
-                .map(|&v| v as usize);
+                .filter_map(|&v| valid_point_id(v, npts))
+                .find(|&v| v != ea && v != eb);
             let vb = cells[faces[1]]
                 .iter()
-                .find(|&&v| v as usize != ea && v as usize != eb)
-                .map(|&v| v as usize);
+                .filter_map(|&v| valid_point_id(v, npts))
+                .find(|&v| v != ea && v != eb);
             if let (Some(va), Some(vb)) = (va, vb) {
+                if va == vb {
+                    continue;
+                }
                 let old_min = min_angle_pair(&cells[faces[0]], &cells[faces[1]], mesh);
                 let new_t1 = vec![va as i64, ea as i64, vb as i64];
                 let new_t2 = vec![va as i64, vb as i64, eb as i64];
@@ -56,8 +63,12 @@ pub fn intrinsic_delaunay(mesh: &PolyData, max_iterations: usize) -> PolyData {
 }
 fn min_angle_pair(a: &[i64], b: &[i64], mesh: &PolyData) -> f64 {
     let mut mn = 180.0f64;
+    let npts = mesh.points.len();
     for cell in [a, b] {
         if cell.len() != 3 {
+            continue;
+        }
+        if cell.iter().any(|&v| v < 0 || v as usize >= npts) {
             continue;
         }
         let p = [
@@ -86,6 +97,13 @@ fn min_angle_pair(a: &[i64], b: &[i64], mesh: &PolyData) -> f64 {
     }
     mn
 }
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

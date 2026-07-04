@@ -1,6 +1,7 @@
 //! Per-face angle statistics (min/max/avg interior angle).
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn face_min_angle_array(mesh: &PolyData) -> PolyData {
+    let num_points = mesh.points.len();
     let data: Vec<f64> = mesh
         .polys
         .iter()
@@ -8,11 +9,20 @@ pub fn face_min_angle_array(mesh: &PolyData) -> PolyData {
             if cell.len() != 3 {
                 return 0.0;
             }
+            if !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < num_points))
+            {
+                return 0.0;
+            }
             let p = [
                 mesh.points.get(cell[0] as usize),
                 mesh.points.get(cell[1] as usize),
                 mesh.points.get(cell[2] as usize),
             ];
+            if has_degenerate_edge(p) {
+                return 0.0;
+            }
             let mut mn = 180.0f64;
             for i in 0..3 {
                 let v1 = [
@@ -41,6 +51,7 @@ pub fn face_min_angle_array(mesh: &PolyData) -> PolyData {
     r
 }
 pub fn face_max_angle_array(mesh: &PolyData) -> PolyData {
+    let num_points = mesh.points.len();
     let data: Vec<f64> = mesh
         .polys
         .iter()
@@ -48,11 +59,20 @@ pub fn face_max_angle_array(mesh: &PolyData) -> PolyData {
             if cell.len() != 3 {
                 return 0.0;
             }
+            if !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < num_points))
+            {
+                return 0.0;
+            }
             let p = [
                 mesh.points.get(cell[0] as usize),
                 mesh.points.get(cell[1] as usize),
                 mesh.points.get(cell[2] as usize),
             ];
+            if has_degenerate_edge(p) {
+                return 0.0;
+            }
             let mut mx = 0.0f64;
             for i in 0..3 {
                 let v1 = [
@@ -80,6 +100,18 @@ pub fn face_max_angle_array(mesh: &PolyData) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("MaxAngle", data, 1)));
     r
 }
+
+fn has_degenerate_edge(p: [[f64; 3]; 3]) -> bool {
+    (0..3).any(|i| {
+        let a = p[i];
+        let b = p[(i + 1) % 3];
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        let dz = b[2] - a[2];
+        dx * dx + dy * dy + dz * dz <= 0.0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

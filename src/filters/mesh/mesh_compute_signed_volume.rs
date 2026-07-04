@@ -3,7 +3,11 @@ use crate::data::PolyData;
 pub fn signed_volume(mesh: &PolyData) -> f64 {
     let mut vol = 0.0;
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3
+            || cell
+                .iter()
+                .any(|&v| valid_point_id(v, mesh.points.len()).is_none())
+        {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);
@@ -26,7 +30,11 @@ pub fn is_volume_positive(mesh: &PolyData) -> bool {
 pub fn surface_area(mesh: &PolyData) -> f64 {
     let mut area = 0.0;
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3
+            || cell
+                .iter()
+                .any(|&v| valid_point_id(v, mesh.points.len()).is_none())
+        {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);
@@ -42,6 +50,9 @@ pub fn surface_area(mesh: &PolyData) -> f64 {
         }
     }
     area
+}
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 pub fn compactness(mesh: &PolyData) -> f64 {
     let v = unsigned_volume(mesh);

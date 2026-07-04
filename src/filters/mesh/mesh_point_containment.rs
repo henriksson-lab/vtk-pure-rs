@@ -3,16 +3,25 @@ use crate::data::PolyData;
 
 pub fn point_inside_mesh(mesh: &PolyData, point: [f64; 3]) -> bool {
     let n = mesh.points.len();
-    let tris: Vec<[usize; 3]> = mesh
-        .polys
-        .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-        .collect();
-    // Cast ray in +X direction, count intersections
+    let mut tris = Vec::new();
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        let Ok(a) = usize::try_from(cell[0]) else {
+            continue;
+        };
+        for i in 1..cell.len() - 1 {
+            let (Ok(b), Ok(c)) = (usize::try_from(cell[i]), usize::try_from(cell[i + 1])) else {
+                continue;
+            };
+            tris.push([a, b, c]);
+        }
+    }
+
     let dir = [1.0, 0.0, 0.0];
-    let origin = [point[0] + 1e-7, point[1] + 1e-7, point[2]]; // small jitter
-    let mut crossings = 0;
+    let origin = point;
+    let mut intersections: Vec<f64> = Vec::new();
     for &[a, b, c] in &tris {
         if a >= n || b >= n || c >= n {
             continue;
@@ -34,7 +43,7 @@ pub fn point_inside_mesh(mesh: &PolyData, point: [f64; 3]) -> bool {
         let inv = 1.0 / det;
         let s = [origin[0] - pa[0], origin[1] - pa[1], origin[2] - pa[2]];
         let u = inv * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
-        if u < 0.0 || u > 1.0 {
+        if !(-1e-12..=1.0 + 1e-12).contains(&u) {
             continue;
         }
         let q = [
@@ -43,15 +52,15 @@ pub fn point_inside_mesh(mesh: &PolyData, point: [f64; 3]) -> bool {
             s[0] * e1[1] - s[1] * e1[0],
         ];
         let v = inv * (dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]);
-        if v < 0.0 || u + v > 1.0 {
+        if v < -1e-12 || u + v > 1.0 + 1e-12 {
             continue;
         }
         let t = inv * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
-        if t > 1e-8 {
-            crossings += 1;
+        if t > 1e-8 && !intersections.iter().any(|&old| (old - t).abs() <= 1e-9) {
+            intersections.push(t);
         }
     }
-    crossings % 2 == 1
+    intersections.len() % 2 == 1
 }
 
 pub fn classify_points(mesh: &PolyData, points: &[[f64; 3]]) -> Vec<bool> {

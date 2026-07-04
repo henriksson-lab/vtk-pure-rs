@@ -2,14 +2,15 @@ use crate::data::{AnyDataArray, CellArray, ImageData, Points, PolyData};
 
 /// Smooth 2D contour extraction from ImageData using Surface Nets.
 ///
-/// Similar to marching squares but produces smoother contours by placing
-/// vertices at cell centers adjusted by scalar interpolation.
+/// Similar to marching squares but produces a surface-net dual contour by
+/// placing vertices at active cell centers.
 /// Input: 2D ImageData (nz == 1) with a named scalar array and an isovalue.
 /// Output: PolyData with line segments forming the contour.
 pub fn surface_nets_2d(input: &ImageData, scalars: &str, isovalue: f64) -> PolyData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return PolyData::new(),
+        _ => return PolyData::new(),
     };
 
     let dims = input.dimensions();
@@ -24,6 +25,9 @@ pub fn surface_nets_2d(input: &ImageData, scalars: &str, isovalue: f64) -> PolyD
 
     // Read all scalar values
     let n = nx * ny;
+    if arr.num_tuples() < n {
+        return PolyData::new();
+    }
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
         .map(|i| {
@@ -56,44 +60,11 @@ pub fn surface_nets_2d(input: &ImageData, scalars: &str, isovalue: f64) -> PolyD
                 continue; // No crossing
             }
 
-            // Place vertex at cell center, adjusted by interpolation
-            let mut cx = 0.5;
-            let mut cy = 0.5;
-            let mut count = 0;
-
-            // Check each edge for crossing and accumulate interpolated positions
-            // Bottom edge (v00 - v10)
-            if s00 != s10 {
-                let t = (isovalue - v00) / (v10 - v00);
-                cx += t - 0.5;
-                count += 1;
-            }
-            // Top edge (v01 - v11)
-            if s01 != s11 {
-                let t = (isovalue - v01) / (v11 - v01);
-                cx += t - 0.5;
-                count += 1;
-            }
-            // Left edge (v00 - v01)
-            if s00 != s01 {
-                let t = (isovalue - v00) / (v01 - v00);
-                cy += t - 0.5;
-                count += 1;
-            }
-            // Right edge (v10 - v11)
-            if s10 != s11 {
-                let t = (isovalue - v10) / (v11 - v10);
-                cy += t - 0.5;
-                count += 1;
-            }
-
-            if count > 0 {
-                cx = (cx / count as f64) + (ci as f64);
-                cy = (cy / count as f64) + (cj as f64);
-            } else {
-                cx += ci as f64;
-                cy += cj as f64;
-            }
+            // VTK's unsmoothed SurfaceNets2D generates one point at the
+            // center of each active square, then connects active neighboring
+            // square centers along split shared edges.
+            let cx = ci as f64 + 0.5;
+            let cy = cj as f64 + 0.5;
 
             // Transform to world coordinates
             let wx = origin[0] + cx * spacing[0];
@@ -112,16 +83,24 @@ pub fn surface_nets_2d(input: &ImageData, scalars: &str, isovalue: f64) -> PolyD
     for cj in 0..cell_ny {
         for ci in 0..cell_nx {
             if let Some(v0) = cell_vertex[cj * cell_nx + ci] {
-                // Connect to right neighbor
+                // Connect to right neighbor only when the shared vertical edge is crossed.
                 if ci + 1 < cell_nx {
-                    if let Some(v1) = cell_vertex[cj * cell_nx + ci + 1] {
-                        lines.push_cell(&[v0 as i64, v1 as i64]);
+                    let v10 = values[cj * nx + ci + 1];
+                    let v11 = values[(cj + 1) * nx + ci + 1];
+                    if (v10 >= isovalue) != (v11 >= isovalue) {
+                        if let Some(v1) = cell_vertex[cj * cell_nx + ci + 1] {
+                            lines.push_cell(&[v0 as i64, v1 as i64]);
+                        }
                     }
                 }
-                // Connect to top neighbor
+                // Connect to top neighbor only when the shared horizontal edge is crossed.
                 if cj + 1 < cell_ny {
-                    if let Some(v1) = cell_vertex[(cj + 1) * cell_nx + ci] {
-                        lines.push_cell(&[v0 as i64, v1 as i64]);
+                    let v01 = values[(cj + 1) * nx + ci];
+                    let v11 = values[(cj + 1) * nx + ci + 1];
+                    if (v01 >= isovalue) != (v11 >= isovalue) {
+                        if let Some(v1) = cell_vertex[(cj + 1) * cell_nx + ci] {
+                            lines.push_cell(&[v0 as i64, v1 as i64]);
+                        }
                     }
                 }
             }

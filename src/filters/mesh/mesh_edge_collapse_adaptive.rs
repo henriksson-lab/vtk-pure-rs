@@ -6,11 +6,11 @@ pub fn adaptive_edge_collapse(
     curvature_weight: f64,
 ) -> PolyData {
     let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
-    let mut tris: Vec<[usize; 3]> = mesh
+    let tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| valid_triangle(c, pts.len()))
         .collect();
     let npts = pts.len();
     let mut remap: Vec<usize> = (0..npts).collect();
@@ -100,6 +100,13 @@ pub fn adaptive_edge_collapse(
     r.points = np;
     r.polys = polys;
     r
+}
+fn valid_triangle(cell: &[i64], n_points: usize) -> Option<[usize; 3]> {
+    let a = usize::try_from(cell[0]).ok()?;
+    let b = usize::try_from(cell[1]).ok()?;
+    let c = usize::try_from(cell[2]).ok()?;
+    (a < n_points && b < n_points && c < n_points && a != b && b != c && c != a)
+        .then_some([a, b, c])
 }
 fn res(mut v: usize, r: &[usize]) -> usize {
     while r[v] != v {

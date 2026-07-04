@@ -13,6 +13,20 @@ pub struct ContingencyTable {
     pub counts: Vec<Vec<usize>>,
     /// Total count.
     pub total: usize,
+    /// Joint probability matrix P(x,y).
+    pub p: Vec<Vec<f64>>,
+    /// Conditional probability matrix P(y|x).
+    pub p_y_given_x: Vec<Vec<f64>>,
+    /// Conditional probability matrix P(x|y).
+    pub p_x_given_y: Vec<Vec<f64>>,
+    /// Pointwise mutual information matrix.
+    pub pmi: Vec<Vec<f64>>,
+    /// Joint entropy H(X,Y).
+    pub h_xy: f64,
+    /// Conditional entropy H(Y|X).
+    pub h_y_given_x: f64,
+    /// Conditional entropy H(X|Y).
+    pub h_x_given_y: f64,
 }
 
 impl ContingencyTable {
@@ -45,6 +59,22 @@ impl ContingencyTable {
         }
         (chi2 / (self.total as f64 * (k - 1) as f64)).sqrt()
     }
+
+    pub fn probability(&self, row: usize, col: usize) -> Option<f64> {
+        self.p.get(row).and_then(|r| r.get(col)).copied()
+    }
+
+    pub fn y_given_x(&self, row: usize, col: usize) -> Option<f64> {
+        self.p_y_given_x.get(row).and_then(|r| r.get(col)).copied()
+    }
+
+    pub fn x_given_y(&self, row: usize, col: usize) -> Option<f64> {
+        self.p_x_given_y.get(row).and_then(|r| r.get(col)).copied()
+    }
+
+    pub fn pointwise_mutual_information(&self, row: usize, col: usize) -> Option<f64> {
+        self.pmi.get(row).and_then(|r| r.get(col)).copied()
+    }
 }
 
 impl std::fmt::Display for ContingencyTable {
@@ -63,11 +93,14 @@ impl std::fmt::Display for ContingencyTable {
 
 /// Compute a contingency table from two columns of a Table.
 ///
-/// Values are binned by equality (within tolerance for floats).
+/// Values are binned by exact equality after conversion to `f64`.
 pub fn contingency_table(table: &Table, col_a: &str, col_b: &str) -> Option<ContingencyTable> {
     let a = table.column_by_name(col_a)?;
     let b = table.column_by_name(col_b)?;
-    let n = a.num_tuples().min(b.num_tuples());
+    if a.num_tuples() != b.num_tuples() {
+        return None;
+    }
+    let n = a.num_tuples();
     if n == 0 {
         return None;
     }
@@ -82,10 +115,10 @@ pub fn contingency_table(table: &Table, col_a: &str, col_b: &str) -> Option<Cont
     for i in 0..n {
         a.tuple_as_f64(i, &mut buf_a);
         b.tuple_as_f64(i, &mut buf_b);
-        if !vals_a.iter().any(|v| (*v - buf_a[0]).abs() < 1e-10) {
+        if !vals_a.contains(&buf_a[0]) {
             vals_a.push(buf_a[0]);
         }
-        if !vals_b.iter().any(|v| (*v - buf_b[0]).abs() < 1e-10) {
+        if !vals_b.contains(&buf_b[0]) {
             vals_b.push(buf_b[0]);
         }
     }
@@ -100,15 +133,39 @@ pub fn contingency_table(table: &Table, col_a: &str, col_b: &str) -> Option<Cont
     for i in 0..n {
         a.tuple_as_f64(i, &mut buf_a);
         b.tuple_as_f64(i, &mut buf_b);
-        let ri = vals_a
-            .iter()
-            .position(|v| (*v - buf_a[0]).abs() < 1e-10)
-            .unwrap();
-        let ci = vals_b
-            .iter()
-            .position(|v| (*v - buf_b[0]).abs() < 1e-10)
-            .unwrap();
+        let ri = vals_a.iter().position(|v| *v == buf_a[0]).unwrap();
+        let ci = vals_b.iter().position(|v| *v == buf_b[0]).unwrap();
         counts[ri][ci] += 1;
+    }
+
+    let row_totals: Vec<usize> = counts.iter().map(|row| row.iter().sum()).collect();
+    let col_totals: Vec<usize> = (0..nc)
+        .map(|j| counts.iter().map(|row| row[j]).sum())
+        .collect();
+    let inv_n = 1.0 / n as f64;
+    let mut p = vec![vec![0.0; nc]; nr];
+    let mut p_y_given_x = vec![vec![0.0; nc]; nr];
+    let mut p_x_given_y = vec![vec![0.0; nc]; nr];
+    let mut pmi = vec![vec![0.0; nc]; nr];
+    let mut h_xy = 0.0;
+    let mut h_y_given_x = 0.0;
+    let mut h_x_given_y = 0.0;
+
+    for i in 0..nr {
+        for (j, col_total) in col_totals.iter().enumerate() {
+            if counts[i][j] == 0 {
+                continue;
+            }
+            p[i][j] = inv_n * counts[i][j] as f64;
+            let px = row_totals[i] as f64 * inv_n;
+            let py = *col_total as f64 * inv_n;
+            p_y_given_x[i][j] = p[i][j] / px;
+            p_x_given_y[i][j] = p[i][j] / py;
+            pmi[i][j] = (p[i][j] / (px * py)).ln();
+            h_xy -= p[i][j] * p[i][j].ln();
+            h_y_given_x -= p[i][j] * p_y_given_x[i][j].ln();
+            h_x_given_y -= p[i][j] * p_x_given_y[i][j].ln();
+        }
     }
 
     Some(ContingencyTable {
@@ -116,6 +173,13 @@ pub fn contingency_table(table: &Table, col_a: &str, col_b: &str) -> Option<Cont
         col_labels: vals_b,
         counts,
         total: n,
+        p,
+        p_y_given_x,
+        p_x_given_y,
+        pmi,
+        h_xy,
+        h_y_given_x,
+        h_x_given_y,
     })
 }
 
@@ -155,6 +219,9 @@ mod tests {
         assert_eq!(ct.row_labels.len(), 2);
         assert_eq!(ct.col_labels.len(), 2);
         assert_eq!(ct.total, 6);
+        assert!((ct.probability(0, 0).unwrap() - 2.0 / 6.0).abs() < 1e-12);
+        assert!((ct.y_given_x(0, 0).unwrap() - 2.0 / 3.0).abs() < 1e-12);
+        assert!((ct.x_given_y(0, 0).unwrap() - 2.0 / 3.0).abs() < 1e-12);
     }
 
     #[test]

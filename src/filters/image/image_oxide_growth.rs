@@ -10,7 +10,7 @@ pub fn image_oxide_growth(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (buf[0] * 1e-16).sqrt()
+            (buf[0].max(0.0) * 1e-16).sqrt()
         })
         .collect();
     let dims = input.dimensions();

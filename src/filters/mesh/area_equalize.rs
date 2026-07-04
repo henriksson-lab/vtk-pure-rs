@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Equalize triangle areas by moving vertices.
 ///
@@ -10,12 +10,7 @@ pub fn equalize_areas(input: &PolyData, iterations: usize) -> PolyData {
         return input.clone();
     }
 
-    let tris: Vec<[usize; 3]> = input
-        .polys
-        .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-        .collect();
+    let tris = valid_triangles(input);
 
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
@@ -28,6 +23,8 @@ pub fn equalize_areas(input: &PolyData, iterations: usize) -> PolyData {
     }
 
     for _ in 0..iterations {
+        let old_pts = pts.clone();
+        let mut new_pts = old_pts.clone();
         for i in 0..n {
             if v_tris[i].len() < 2 {
                 continue;
@@ -38,7 +35,7 @@ pub fn equalize_areas(input: &PolyData, iterations: usize) -> PolyData {
                 .iter()
                 .map(|&ti| {
                     let t = &tris[ti];
-                    tri_area(pts[t[0]], pts[t[1]], pts[t[2]])
+                    tri_area(old_pts[t[0]], old_pts[t[1]], old_pts[t[2]])
                 })
                 .collect();
 
@@ -53,19 +50,20 @@ pub fn equalize_areas(input: &PolyData, iterations: usize) -> PolyData {
             let mut dz = 0.0;
             for (ai, &ti) in v_tris[i].iter().enumerate() {
                 let t = &tris[ti];
-                let cx = (pts[t[0]][0] + pts[t[1]][0] + pts[t[2]][0]) / 3.0;
-                let cy = (pts[t[0]][1] + pts[t[1]][1] + pts[t[2]][1]) / 3.0;
-                let cz = (pts[t[0]][2] + pts[t[1]][2] + pts[t[2]][2]) / 3.0;
+                let cx = (old_pts[t[0]][0] + old_pts[t[1]][0] + old_pts[t[2]][0]) / 3.0;
+                let cy = (old_pts[t[0]][1] + old_pts[t[1]][1] + old_pts[t[2]][1]) / 3.0;
+                let cz = (old_pts[t[0]][2] + old_pts[t[1]][2] + old_pts[t[2]][2]) / 3.0;
                 let weight = (areas[ai] - mean_area) / mean_area * 0.1;
-                dx += weight * (cx - pts[i][0]);
-                dy += weight * (cy - pts[i][1]);
-                dz += weight * (cz - pts[i][2]);
+                dx += weight * (cx - old_pts[i][0]);
+                dy += weight * (cy - old_pts[i][1]);
+                dz += weight * (cz - old_pts[i][2]);
             }
             let cnt = v_tris[i].len() as f64;
-            pts[i][0] += dx / cnt;
-            pts[i][1] += dy / cnt;
-            pts[i][2] += dz / cnt;
+            new_pts[i][0] += dx / cnt;
+            new_pts[i][1] += dy / cnt;
+            new_pts[i][2] += dz / cnt;
         }
+        pts = new_pts;
     }
 
     let mut points = Points::<f64>::new();
@@ -81,7 +79,11 @@ pub fn equalize_areas(input: &PolyData, iterations: usize) -> PolyData {
 pub fn area_variance(input: &PolyData) -> f64 {
     let mut areas = Vec::new();
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3
+            || !cell
+                .iter()
+                .all(|&pid| valid_point_id(pid, input.points.len()).is_some())
+        {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -98,6 +100,26 @@ pub fn area_variance(input: &PolyData) -> f64 {
     }
     let mean: f64 = areas.iter().sum::<f64>() / areas.len() as f64;
     areas.iter().map(|a| (a - mean).powi(2)).sum::<f64>() / areas.len() as f64
+}
+
+fn valid_triangles(input: &PolyData) -> Vec<[usize; 3]> {
+    let n = input.points.len();
+    input
+        .polys
+        .iter()
+        .filter(|cell| cell.len() == 3)
+        .filter_map(|cell| {
+            Some([
+                valid_point_id(cell[0], n)?,
+                valid_point_id(cell[1], n)?,
+                valid_point_id(cell[2], n)?,
+            ])
+        })
+        .collect()
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&idx| idx < n_points)
 }
 
 fn tri_area(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {

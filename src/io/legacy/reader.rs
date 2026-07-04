@@ -66,10 +66,24 @@ impl<R: BufRead> Parser<R> {
                 }
                 "POINT_DATA" => {
                     let n: usize = parse_token(tokens.get(1), "POINT_DATA count")?;
+                    if n != pd.points.len() {
+                        return Err(VtkError::Parse(format!(
+                            "Number of points don't match number data values: {} != {}",
+                            n,
+                            pd.points.len()
+                        )));
+                    }
                     self.parse_data_attributes(pd.point_data_mut(), n)?;
                 }
                 "CELL_DATA" => {
                     let n: usize = parse_token(tokens.get(1), "CELL_DATA count")?;
+                    if n != pd.total_cells() {
+                        return Err(VtkError::Parse(format!(
+                            "Number of cells don't match number data values: {} != {}",
+                            n,
+                            pd.total_cells()
+                        )));
+                    }
                     self.parse_data_attributes(pd.cell_data_mut(), n)?;
                 }
                 _ => {
@@ -132,7 +146,7 @@ impl<R: BufRead> Parser<R> {
         let type_name = header_tokens
             .get(2)
             .ok_or_else(|| VtkError::Parse("missing POINTS type".into()))?;
-        let scalar_type = ScalarType::from_vtk_name(type_name)
+        let scalar_type = parse_legacy_scalar_type(type_name)
             .ok_or_else(|| VtkError::Parse(format!("unknown scalar type: {}", type_name)))?;
 
         if self.is_binary {
@@ -169,34 +183,66 @@ impl<R: BufRead> Parser<R> {
         scalar_type: ScalarType,
     ) -> Result<Points<f64>, VtkError> {
         let mut pts = Points::new();
+        let total = n * 3;
+        let byte_size = scalar_type.size();
+        let mut buf = vec![0u8; total * byte_size];
+        self.reader.read_exact(&mut buf)?;
+
+        macro_rules! push_points {
+            ($iter:expr) => {{
+                let values: Vec<f64> = $iter.collect();
+                for i in 0..n {
+                    pts.push([values[i * 3], values[i * 3 + 1], values[i * 3 + 2]]);
+                }
+            }};
+        }
+
         match scalar_type {
             ScalarType::F32 => {
-                let mut buf = vec![0u8; n * 3 * 4];
-                self.reader.read_exact(&mut buf)?;
-                for i in 0..n {
-                    let base = i * 3 * 4;
-                    let x = f32::from_be_bytes(buf[base..base + 4].try_into().unwrap()) as f64;
-                    let y = f32::from_be_bytes(buf[base + 4..base + 8].try_into().unwrap()) as f64;
-                    let z = f32::from_be_bytes(buf[base + 8..base + 12].try_into().unwrap()) as f64;
-                    pts.push([x, y, z]);
-                }
+                push_points!(buf
+                    .chunks_exact(4)
+                    .map(|c| f32::from_be_bytes(c.try_into().unwrap()) as f64));
             }
             ScalarType::F64 => {
-                let mut buf = vec![0u8; n * 3 * 8];
-                self.reader.read_exact(&mut buf)?;
-                for i in 0..n {
-                    let base = i * 3 * 8;
-                    let x = f64::from_be_bytes(buf[base..base + 8].try_into().unwrap());
-                    let y = f64::from_be_bytes(buf[base + 8..base + 16].try_into().unwrap());
-                    let z = f64::from_be_bytes(buf[base + 16..base + 24].try_into().unwrap());
-                    pts.push([x, y, z]);
-                }
+                push_points!(buf
+                    .chunks_exact(8)
+                    .map(|c| f64::from_be_bytes(c.try_into().unwrap())));
             }
-            _ => {
-                return Err(VtkError::Unsupported(format!(
-                    "binary points type: {:?}",
-                    scalar_type
-                )))
+            ScalarType::I8 => {
+                push_points!(buf.iter().map(|&b| b as i8 as f64));
+            }
+            ScalarType::U8 => {
+                push_points!(buf.iter().map(|&b| b as f64));
+            }
+            ScalarType::I16 => {
+                push_points!(buf
+                    .chunks_exact(2)
+                    .map(|c| i16::from_be_bytes(c.try_into().unwrap()) as f64));
+            }
+            ScalarType::U16 => {
+                push_points!(buf
+                    .chunks_exact(2)
+                    .map(|c| u16::from_be_bytes(c.try_into().unwrap()) as f64));
+            }
+            ScalarType::I32 => {
+                push_points!(buf
+                    .chunks_exact(4)
+                    .map(|c| i32::from_be_bytes(c.try_into().unwrap()) as f64));
+            }
+            ScalarType::U32 => {
+                push_points!(buf
+                    .chunks_exact(4)
+                    .map(|c| u32::from_be_bytes(c.try_into().unwrap()) as f64));
+            }
+            ScalarType::I64 => {
+                push_points!(buf
+                    .chunks_exact(8)
+                    .map(|c| i64::from_be_bytes(c.try_into().unwrap()) as f64));
+            }
+            ScalarType::U64 => {
+                push_points!(buf
+                    .chunks_exact(8)
+                    .map(|c| u64::from_be_bytes(c.try_into().unwrap()) as f64));
             }
         }
         // Skip trailing newline
@@ -292,6 +338,15 @@ impl<R: BufRead> Parser<R> {
                         attrs.set_active_scalars(&name);
                     }
                 }
+                "COLOR_SCALARS" => {
+                    let _ = self.read_nonempty_line()?;
+                    let arr = self.parse_color_scalars(&tokens, _n)?;
+                    let name = arr.name().to_string();
+                    attrs.add_array(arr);
+                    if attrs.scalars().is_none() {
+                        attrs.set_active_scalars(&name);
+                    }
+                }
                 "VECTORS" | "NORMALS" => {
                     let _ = self.read_nonempty_line()?;
                     let arr = self.parse_vectors(&tokens, _n)?;
@@ -335,7 +390,7 @@ impl<R: BufRead> Parser<R> {
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
 
-        let scalar_type = ScalarType::from_vtk_name(type_name)
+        let scalar_type = parse_legacy_scalar_type(type_name)
             .ok_or_else(|| VtkError::Parse(format!("unknown scalar type: {}", type_name)))?;
 
         // Read LOOKUP_TABLE line
@@ -362,10 +417,33 @@ impl<R: BufRead> Parser<R> {
         let type_name = header_tokens
             .get(2)
             .ok_or_else(|| VtkError::Parse("missing type".into()))?;
-        let scalar_type = ScalarType::from_vtk_name(type_name)
+        let scalar_type = parse_legacy_scalar_type(type_name)
             .ok_or_else(|| VtkError::Parse(format!("unknown scalar type: {}", type_name)))?;
 
         self.read_typed_array(name, scalar_type, n, 3)
+    }
+
+    fn parse_color_scalars(
+        &mut self,
+        header_tokens: &[&str],
+        n: usize,
+    ) -> Result<AnyDataArray, VtkError> {
+        // COLOR_SCALARS <name> <numComp>
+        let name = header_tokens
+            .get(1)
+            .ok_or_else(|| VtkError::Parse("missing COLOR_SCALARS name".into()))?;
+        let num_comp: usize = parse_token(header_tokens.get(2), "COLOR_SCALARS component count")?;
+
+        if self.is_binary {
+            self.read_typed_array_binary(name, ScalarType::U8, n, num_comp)
+        } else {
+            let values = self.read_f64_values(n * num_comp)?;
+            let data: Vec<u8> = values
+                .iter()
+                .map(|&v| (255.0 * v + 0.5).clamp(0.0, 255.0) as u8)
+                .collect();
+            Ok(AnyDataArray::U8(DataArray::from_vec(*name, data, num_comp)))
+        }
     }
 
     fn read_typed_array(
@@ -564,6 +642,16 @@ fn parse_token<T: std::str::FromStr>(token: Option<&&str>, context: &str) -> Res
         .map_err(|_| VtkError::Parse(format!("invalid {}", context)))
 }
 
+fn parse_legacy_scalar_type(name: &str) -> Option<ScalarType> {
+    let lower = name.to_ascii_lowercase();
+    match lower.as_str() {
+        "signed_char" => Some(ScalarType::I8),
+        "vtkidtype" | "vtktypeint64" => Some(ScalarType::I64),
+        "vtktypeuint64" => Some(ScalarType::U64),
+        _ => ScalarType::from_vtk_name(&lower),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -642,6 +730,60 @@ mod tests {
     }
 
     #[test]
+    fn reads_binary_integer_points() {
+        let mut input = b"# vtk DataFile Version 4.2
+integer points
+BINARY
+DATASET POLYDATA
+POINTS 2 int
+"
+        .to_vec();
+        for value in [0i32, 1, 2, 3, 4, 5] {
+            input.extend_from_slice(&value.to_be_bytes());
+        }
+        input.extend_from_slice(b"\nVERTICES 2 4\n");
+        for value in [1i32, 0, 1, 1] {
+            input.extend_from_slice(&value.to_be_bytes());
+        }
+        input.push(b'\n');
+
+        let reader_buf = std::io::BufReader::new(&input[..]);
+        let pd = LegacyReader::read_poly_data_from(reader_buf).unwrap();
+
+        assert_eq!(pd.points.len(), 2);
+        assert_eq!(pd.points.get(0), [0.0, 1.0, 2.0]);
+        assert_eq!(pd.points.get(1), [3.0, 4.0, 5.0]);
+        assert_eq!(pd.verts.num_cells(), 2);
+    }
+
+    #[test]
+    fn reads_color_scalars_ascii() {
+        let input = b"# vtk DataFile Version 4.2
+color scalars
+ASCII
+DATASET POLYDATA
+POINTS 2 double
+0 0 0 1 0 0
+VERTICES 2 4
+1 0
+1 1
+POINT_DATA 2
+COLOR_SCALARS rgb 3
+1 0 0
+0 1 0
+";
+
+        let reader_buf = std::io::BufReader::new(&input[..]);
+        let pd = LegacyReader::read_poly_data_from(reader_buf).unwrap();
+        let colors = pd.point_data().scalars().unwrap();
+        assert_eq!(colors.name(), "rgb");
+        assert_eq!(colors.num_components(), 3);
+        let mut tuple = [0.0; 3];
+        colors.tuple_as_f64(0, &mut tuple);
+        assert_eq!(tuple, [255.0, 0.0, 0.0]);
+    }
+
+    #[test]
     fn reads_ascii_cells_split_across_lines() {
         let vtk = b"# vtk DataFile Version 4.2
 split cells
@@ -661,5 +803,30 @@ POLYGONS 2 8
         assert_eq!(pd.polys.num_cells(), 2);
         assert_eq!(pd.polys.cell(0), &[0, 1, 2]);
         assert_eq!(pd.polys.cell(1), &[0, 2, 3]);
+    }
+
+    #[test]
+    fn reads_case_insensitive_and_alias_scalar_types() {
+        let input = b"# vtk DataFile Version 4.2
+scalar aliases
+ASCII
+DATASET POLYDATA
+POINTS 2 DOUBLE
+0 0 0 1 0 0
+POINT_DATA 2
+SCALARS ids vtkTypeInt64
+LOOKUP_TABLE default
+7 9
+";
+
+        let reader_buf = std::io::BufReader::new(&input[..]);
+        let pd = LegacyReader::read_poly_data_from(reader_buf).unwrap();
+        assert_eq!(pd.points.len(), 2);
+
+        let scalars = pd.point_data().scalars().unwrap();
+        assert_eq!(scalars.name(), "ids");
+        let mut value = [0.0];
+        scalars.tuple_as_f64(1, &mut value);
+        assert_eq!(value[0], 9.0);
     }
 }

@@ -11,8 +11,12 @@ pub fn image_thin_plate_spline(input: &ImageData, scalars: &str) -> ImageData {
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             {
-                let r = buf[0].abs().max(1e-30);
-                r * r * r.ln()
+                let r = buf[0].abs();
+                if r != 0.0 {
+                    r * r * r.ln()
+                } else {
+                    0.0
+                }
             }
         })
         .collect();

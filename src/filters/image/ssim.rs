@@ -1,6 +1,6 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
-/// Compute Structural Similarity Index (SSIM) between two 2D ImageData.
+/// Compute Structural Similarity Index (SSIM) between two ImageData objects.
 ///
 /// Returns a per-pixel SSIM map and the mean SSIM value.
 /// SSIM combines luminance, contrast, and structure comparison.
@@ -14,75 +14,167 @@ pub fn image_ssim(a: &ImageData, b: &ImageData, scalars: &str, radius: usize) ->
         None => return (a.clone(), 0.0),
     };
 
+    if a.extent() != b.extent() || aa.num_components() != ba.num_components() {
+        return (a.clone(), 0.0);
+    }
+
     let dims = a.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
-    let n = nx * ny;
-    let r = radius.max(1) as i64;
+    let nz = dims[2] as usize;
+    let n = nx * ny * nz;
+    let num_components = aa.num_components();
+    if n == 0 || num_components == 0 || aa.num_tuples() < n || ba.num_tuples() < n {
+        return (a.clone(), 0.0);
+    }
+    let patch_radius = radius;
+    let r = patch_radius as i64;
 
-    let mut buf_a = [0.0f64];
-    let mut buf_b = [0.0f64];
-    let va: Vec<f64> = (0..n)
-        .map(|i| {
-            aa.tuple_as_f64(i, &mut buf_a);
-            buf_a[0]
-        })
-        .collect();
-    let vb: Vec<f64> = (0..n)
-        .map(|i| {
-            ba.tuple_as_f64(i, &mut buf_b);
-            buf_b[0]
-        })
-        .collect();
-
-    let c1 = 0.01 * 0.01 * 255.0 * 255.0;
-    let c2 = 0.03 * 0.03 * 255.0 * 255.0;
-
-    let get_a = |i: i64, j: i64| -> f64 {
-        va[(j.clamp(0, ny as i64 - 1) as usize) * nx + (i.clamp(0, nx as i64 - 1) as usize)]
-    };
-    let get_b = |i: i64, j: i64| -> f64 {
-        vb[(j.clamp(0, ny as i64 - 1) as usize) * nx + (i.clamp(0, nx as i64 - 1) as usize)]
-    };
-
-    let mut ssim_map = vec![0.0f64; n];
-
-    for j in 0..ny {
-        for i in 0..nx {
-            let mut ma = 0.0;
-            let mut mb = 0.0;
-            let mut sa2 = 0.0;
-            let mut sb2 = 0.0;
-            let mut sab = 0.0;
-            let mut cnt = 0.0;
-            for dj in -r..=r {
-                for di in -r..=r {
-                    let a_v = get_a(i as i64 + di, j as i64 + dj);
-                    let b_v = get_b(i as i64 + di, j as i64 + dj);
-                    ma += a_v;
-                    mb += b_v;
-                    sa2 += a_v * a_v;
-                    sb2 += b_v * b_v;
-                    sab += a_v * b_v;
-                    cnt += 1.0;
-                }
-            }
-            ma /= cnt;
-            mb /= cnt;
-            let var_a = sa2 / cnt - ma * ma;
-            let var_b = sb2 / cnt - mb * mb;
-            let cov_ab = sab / cnt - ma * mb;
-
-            ssim_map[j * nx + i] = (2.0 * ma * mb + c1) * (2.0 * cov_ab + c2)
-                / ((ma * ma + mb * mb + c1) * (var_a + var_b + c2));
+    let mut buf_a = vec![0.0f64; num_components];
+    let mut buf_b = vec![0.0f64; num_components];
+    let mut va = vec![0.0f64; n * num_components];
+    let mut vb = vec![0.0f64; n * num_components];
+    for i in 0..n {
+        aa.tuple_as_f64(i, &mut buf_a);
+        ba.tuple_as_f64(i, &mut buf_b);
+        for c in 0..num_components {
+            va[i * num_components + c] = buf_a[c];
+            vb[i * num_components + c] = buf_b[c];
         }
     }
 
-    let mean_ssim = ssim_map.iter().sum::<f64>() / n as f64;
+    let mut constants = vec![[0.0f64; 2]; num_components];
+    for c in 0..num_components {
+        let mut min_a = f64::INFINITY;
+        let mut max_a = f64::NEG_INFINITY;
+        let mut min_b = f64::INFINITY;
+        let mut max_b = f64::NEG_INFINITY;
+
+        for i in 0..n {
+            let av = va[i * num_components + c];
+            let bv = vb[i * num_components + c];
+            min_a = min_a.min(av);
+            max_a = max_a.max(av);
+            min_b = min_b.min(bv);
+            max_b = max_b.max(bv);
+        }
+
+        let range = (max_a - min_a).max(max_b - min_b);
+        constants[c][0] = 0.0001 * range * range;
+        constants[c][1] = 0.0009 * range * range;
+    }
+
+    let index = |i: usize, j: usize, k: usize| -> usize { k * ny * nx + j * nx + i };
+    let get_a =
+        |i: usize, j: usize, k: usize, c: usize| -> f64 { va[index(i, j, k) * num_components + c] };
+    let get_b =
+        |i: usize, j: usize, k: usize, c: usize| -> f64 { vb[index(i, j, k) * num_components + c] };
+
+    let mut ssim_map = vec![0.0f64; n * num_components];
+    let squared_radius = r * r;
+    let has_x_thickness = nx > 1;
+    let has_y_thickness = ny > 1;
+    let has_z_thickness = nz > 1;
+
+    for k in 0..nz {
+        for j in 0..ny {
+            for i in 0..nx {
+                let imin = if has_x_thickness {
+                    i.saturating_sub(patch_radius)
+                } else {
+                    0
+                };
+                let imax = if has_x_thickness {
+                    i.saturating_add(patch_radius).min(nx - 1)
+                } else {
+                    0
+                };
+                let jmin = if has_y_thickness {
+                    j.saturating_sub(patch_radius)
+                } else {
+                    0
+                };
+                let jmax = if has_y_thickness {
+                    j.saturating_add(patch_radius).min(ny - 1)
+                } else {
+                    0
+                };
+                let kmin = if has_z_thickness {
+                    k.saturating_sub(patch_radius)
+                } else {
+                    0
+                };
+                let kmax = if has_z_thickness {
+                    k.saturating_add(patch_radius).min(nz - 1)
+                } else {
+                    0
+                };
+
+                for c in 0..num_components {
+                    let mut mean_a = 0.0;
+                    let mut mean_b = 0.0;
+                    let mut total_weights = 0.0;
+
+                    for dz in kmin..=kmax {
+                        for dy in jmin..=jmax {
+                            for dx in imin..=imax {
+                                let ddx = i as i64 - dx as i64;
+                                let ddy = j as i64 - dy as i64;
+                                let ddz = k as i64 - dz as i64;
+                                if ddx * ddx + ddy * ddy + ddz * ddz <= squared_radius {
+                                    mean_a += get_a(dx, dy, dz, c);
+                                    mean_b += get_b(dx, dy, dz, c);
+                                    total_weights += 1.0;
+                                }
+                            }
+                        }
+                    }
+
+                    mean_a /= total_weights;
+                    mean_b /= total_weights;
+
+                    let mut var_a = 0.0;
+                    let mut var_b = 0.0;
+                    let mut cov_ab = 0.0;
+                    for dz in kmin..=kmax {
+                        for dy in jmin..=jmax {
+                            for dx in imin..=imax {
+                                let ddx = i as i64 - dx as i64;
+                                let ddy = j as i64 - dy as i64;
+                                let ddz = k as i64 - dz as i64;
+                                if ddx * ddx + ddy * ddy + ddz * ddz <= squared_radius {
+                                    let av = get_a(dx, dy, dz, c);
+                                    let bv = get_b(dx, dy, dz, c);
+                                    var_a += (av - mean_a) * (av - mean_a);
+                                    var_b += (bv - mean_b) * (bv - mean_b);
+                                    cov_ab += (av - mean_a) * (bv - mean_b);
+                                }
+                            }
+                        }
+                    }
+                    var_a /= total_weights;
+                    var_b /= total_weights;
+                    cov_ab /= total_weights;
+
+                    let c1 = constants[c][0];
+                    let c2 = constants[c][1];
+                    ssim_map[index(i, j, k) * num_components + c] = (2.0 * (mean_a * mean_b) + c1)
+                        * (2.0 * cov_ab + c2)
+                        / ((mean_a * mean_a + mean_b * mean_b + c1) * (var_a + var_b + c2));
+                }
+            }
+        }
+    }
+
+    let mean_ssim = ssim_map.iter().sum::<f64>() / (n * num_components) as f64;
 
     let mut img = a.clone();
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("SSIM", ssim_map, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "SSIM",
+            ssim_map,
+            num_components,
+        )));
     (img, mean_ssim)
 }
 

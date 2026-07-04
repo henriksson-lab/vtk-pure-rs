@@ -10,7 +10,7 @@ pub fn image_peclet_microfluidic(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * buf[0].abs().max(1e-6) / 1e-9
+            buf[0] * 1e-6 / 1e-9
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,17 @@ mod tests {
         );
         let r = image_peclet_microfluidic(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn uses_microchannel_length_and_diffusivity() {
+        let img = ImageData::with_dimensions(3, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![0.0, 0.5, 2.0], 1),
+        ));
+
+        let r = image_peclet_microfluidic(&img, "v");
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+
+        assert_eq!(values, vec![0.0, 500.0, 2000.0]);
     }
 }

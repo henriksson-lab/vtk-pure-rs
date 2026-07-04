@@ -36,18 +36,34 @@ impl SparseMatrix {
         sorted.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
         let mut row_ptr = vec![0usize; rows + 1];
-        let mut col_idx = Vec::with_capacity(sorted.len());
-        let mut values = Vec::with_capacity(sorted.len());
+        let mut entries: Vec<(usize, usize, f64)> = Vec::with_capacity(sorted.len());
 
         for &(r, c, v) in &sorted {
+            assert!(r < rows, "row index {r} out of bounds for {rows} rows");
+            assert!(
+                c < cols,
+                "column index {c} out of bounds for {cols} columns"
+            );
+            if let Some(last) = entries.last_mut() {
+                if last.0 == r && last.1 == c {
+                    last.2 += v;
+                    continue;
+                }
+            }
+            entries.push((r, c, v));
             row_ptr[r + 1] += 1;
-            col_idx.push(c);
-            values.push(v);
         }
 
         // Cumulative sum
         for i in 0..rows {
             row_ptr[i + 1] += row_ptr[i];
+        }
+
+        let mut col_idx = Vec::with_capacity(entries.len());
+        let mut values = Vec::with_capacity(entries.len());
+        for (_, c, v) in entries {
+            col_idx.push(c);
+            values.push(v);
         }
 
         Self {
@@ -66,6 +82,16 @@ impl SparseMatrix {
 
     /// Get value at (row, col). Returns 0 if not stored.
     pub fn get(&self, row: usize, col: usize) -> f64 {
+        assert!(
+            row < self.rows,
+            "row index {row} out of bounds for {} rows",
+            self.rows
+        );
+        assert!(
+            col < self.cols,
+            "column index {col} out of bounds for {} columns",
+            self.cols
+        );
         let start = self.row_ptr[row];
         let end = self.row_ptr[row + 1];
         for i in start..end {
@@ -141,6 +167,24 @@ mod tests {
         assert_eq!(m.get(0, 0), 2.0);
         assert_eq!(m.get(1, 1), 3.0);
         assert_eq!(m.get(2, 0), 0.0);
+    }
+
+    #[test]
+    fn from_triplets_coalesces_duplicates() {
+        let m = SparseMatrix::from_triplets(
+            2,
+            2,
+            &[(0, 1, 2.0), (0, 1, 3.0), (1, 0, 4.0), (0, 1, -1.0)],
+        );
+        assert_eq!(m.nnz(), 2);
+        assert_eq!(m.get(0, 1), 4.0);
+        assert_eq!(m.get(1, 0), 4.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "row index 2 out of bounds")]
+    fn from_triplets_rejects_bad_row() {
+        SparseMatrix::from_triplets(2, 2, &[(2, 0, 1.0)]);
     }
 
     #[test]

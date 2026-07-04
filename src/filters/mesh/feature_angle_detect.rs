@@ -22,6 +22,12 @@ pub fn detect_feature_edges_by_angle(input: &PolyData, threshold_deg: f64) -> Po
         for i in 0..n {
             let a: i64 = cell[i];
             let b: i64 = cell[(i + 1) % n];
+            if a == b
+                || valid_point_id(a, input.points.len()).is_none()
+                || valid_point_id(b, input.points.len()).is_none()
+            {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(face_idx);
         }
@@ -42,7 +48,7 @@ pub fn detect_feature_edges_by_angle(input: &PolyData, threshold_deg: f64) -> Po
             let n2 = face_normals[faces[1]];
             let d: f64 = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
             // Dihedral angle is large when dot product is small (normals diverge)
-            d < cos_threshold
+            d <= cos_threshold
         } else {
             // Non-manifold edge: include
             true
@@ -69,7 +75,8 @@ fn map_point(
 ) -> i64 {
     *pm.entry(id).or_insert_with(|| {
         let idx: usize = out_pts.len();
-        out_pts.push(pts.get(id as usize));
+        let point_id = valid_point_id(id, pts.len()).expect("edge map contains validated ids");
+        out_pts.push(pts.get(point_id));
         idx
     }) as i64
 }
@@ -82,8 +89,14 @@ fn polygon_normal(points: &Points<f64>, cell: &[i64]) -> [f64; 3] {
     let n: usize = cell.len();
 
     for i in 0..n {
-        let pi = points.get(cell[i] as usize);
-        let pj = points.get(cell[(i + 1) % n] as usize);
+        let Some(pi_id) = valid_point_id(cell[i], points.len()) else {
+            return [0.0, 0.0, 1.0];
+        };
+        let Some(pj_id) = valid_point_id(cell[(i + 1) % n], points.len()) else {
+            return [0.0, 0.0, 1.0];
+        };
+        let pi = points.get(pi_id);
+        let pj = points.get(pj_id);
         nx += (pi[1] - pj[1]) * (pi[2] + pj[2]);
         ny += (pi[2] - pj[2]) * (pi[0] + pj[0]);
         nz += (pi[0] - pj[0]) * (pi[1] + pj[1]);
@@ -95,6 +108,12 @@ fn polygon_normal(points: &Points<f64>, cell: &[i64]) -> [f64; 3] {
     } else {
         [0.0, 0.0, 1.0]
     }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

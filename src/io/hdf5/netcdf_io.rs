@@ -4,7 +4,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 use crate::types::VtkError;
 use std::path::Path;
 
-use crate::types::NetcdfVarInfo;
+use super::types::NetcdfVarInfo;
 
 /// Read a NetCDF file as ImageData (for gridded data) with variable metadata.
 ///

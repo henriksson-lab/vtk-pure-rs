@@ -3,13 +3,18 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn label_face_components(mesh: &PolyData) -> PolyData {
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
+    let num_points = mesh.points.len();
     let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, c) in cells.iter().enumerate() {
         let n = c.len();
         for i in 0..n {
-            let a = c[i] as usize;
-            let b = c[(i + 1) % n] as usize;
+            let Some(a) = valid_point_id(c[i], num_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(c[(i + 1) % n], num_points) else {
+                continue;
+            };
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -43,6 +48,9 @@ pub fn label_face_components(mesh: &PolyData) -> PolyData {
 pub fn num_face_components(mesh: &PolyData) -> usize {
     let r = label_face_components(mesh);
     let arr = r.cell_data().get_array("Component").unwrap();
+    if arr.num_tuples() == 0 {
+        return 0;
+    }
     let mut buf = [0.0f64];
     let mut mx = 0.0f64;
     for i in 0..arr.num_tuples() {
@@ -50,6 +58,9 @@ pub fn num_face_components(mesh: &PolyData) -> usize {
         mx = mx.max(buf[0]);
     }
     mx as usize + 1
+}
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 fn find(p: &mut [usize], mut i: usize) -> usize {
     while p[i] != i {

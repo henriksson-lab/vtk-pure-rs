@@ -32,11 +32,19 @@ pub fn face_colors_by_connectivity(mesh: &PolyData) -> PolyData {
     let nc = cells.len();
     let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
+    let n_points = mesh.points.len();
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % n]) else {
+                continue;
+            };
+            if a >= n_points || b >= n_points {
+                continue;
+            }
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }

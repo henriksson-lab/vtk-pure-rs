@@ -7,6 +7,9 @@ pub fn hodge_star_0_form(mesh: &PolyData, array_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -16,12 +19,15 @@ pub fn hodge_star_0_form(mesh: &PolyData, array_name: &str) -> PolyData {
         .collect();
     let mut area = vec![0.0f64; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let Some(ids) = triangle_point_ids(cell, n) else {
+            continue;
+        };
+        let a = mesh.points.get(ids[0]);
+        let b = mesh.points.get(ids[1]);
+        let c = mesh.points.get(ids[2]);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let ta = 0.5
@@ -29,8 +35,8 @@ pub fn hodge_star_0_form(mesh: &PolyData, array_name: &str) -> PolyData {
                 + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
                 + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
             .sqrt();
-        for &v in cell {
-            area[v as usize] += ta / 3.0;
+        for &v in &ids {
+            area[v] += ta / 3.0;
         }
     }
     let data: Vec<f64> = (0..n).map(|i| vals[i] * area[i]).collect();
@@ -49,6 +55,9 @@ pub fn inverse_hodge_star_0(mesh: &PolyData, array_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -58,12 +67,15 @@ pub fn inverse_hodge_star_0(mesh: &PolyData, array_name: &str) -> PolyData {
         .collect();
     let mut area = vec![0.0f64; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let Some(ids) = triangle_point_ids(cell, n) else {
+            continue;
+        };
+        let a = mesh.points.get(ids[0]);
+        let b = mesh.points.get(ids[1]);
+        let c = mesh.points.get(ids[2]);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let ta = 0.5
@@ -71,8 +83,8 @@ pub fn inverse_hodge_star_0(mesh: &PolyData, array_name: &str) -> PolyData {
                 + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
                 + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
             .sqrt();
-        for &v in cell {
-            area[v as usize] += ta / 3.0;
+        for &v in &ids {
+            area[v] += ta / 3.0;
         }
     }
     let data: Vec<f64> = (0..n)
@@ -89,6 +101,19 @@ pub fn inverse_hodge_star_0(mesh: &PolyData, array_name: &str) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("InvHodge0", data, 1)));
     r
 }
+
+fn triangle_point_ids(cell: &[i64], num_points: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], num_points)?,
+        valid_point_id(cell[1], num_points)?,
+        valid_point_id(cell[2], num_points)?,
+    ])
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

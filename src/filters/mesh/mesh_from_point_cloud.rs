@@ -27,9 +27,10 @@ pub fn mesh_from_point_cloud(cloud: &PolyData, k: usize) -> PolyData {
         // Create triangles with pairs of nearest neighbors
         for ni in 0..neighbors.len() {
             for nj in (ni + 1)..neighbors.len() {
-                let mut tri = [i, neighbors[ni], neighbors[nj]];
-                tri.sort();
-                if created.insert((tri[0], tri[1], tri[2])) {
+                let tri = [i, neighbors[ni], neighbors[nj]];
+                let mut key = tri;
+                key.sort();
+                if created.insert((key[0], key[1], key[2])) {
                     polys.push_cell(&[tri[0] as i64, tri[1] as i64, tri[2] as i64]);
                 }
                 if created.len() > n * 3 {

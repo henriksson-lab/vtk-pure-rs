@@ -117,6 +117,9 @@ fn find_boundary_loops(mesh: &PolyData) -> Vec<Vec<usize>> {
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
+            if a >= mesh.points.len() || b >= mesh.points.len() {
+                continue;
+            }
             *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
@@ -133,29 +136,28 @@ fn find_boundary_loops(mesh: &PolyData) -> Vec<Vec<usize>> {
         adj.entry(a).or_default().push(b);
         adj.entry(b).or_default().push(a);
     }
-    let mut visited: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    for nbs in adj.values_mut() {
+        nbs.sort_unstable();
+        nbs.dedup();
+    }
+
+    let mut visited_edges: std::collections::HashSet<(usize, usize)> =
+        std::collections::HashSet::new();
     let mut loops = Vec::new();
-    for &(start, _) in &bnd {
-        if visited.contains(&start) {
+    for &(a, b) in &bnd {
+        let key = edge_key(a, b);
+        if visited_edges.contains(&key) {
             continue;
         }
-        let mut lv = Vec::new();
-        let mut cur = start;
-        loop {
-            if !visited.insert(cur) {
-                break;
-            }
-            lv.push(cur);
-            let next = adj
-                .get(&cur)
-                .and_then(|nbs| nbs.iter().find(|&&n| !visited.contains(&n)).cloned());
-            match next {
-                Some(n) => cur = n,
-                None => break,
-            }
+        let mut path = vec![a, b];
+        visited_edges.insert(key);
+        extend_boundary_path(&adj, &mut visited_edges, &mut path, false);
+        extend_boundary_path(&adj, &mut visited_edges, &mut path, true);
+        if path.len() > 1 && path[0] == *path.last().unwrap() {
+            path.pop();
         }
-        if lv.len() >= 3 {
-            loops.push(lv);
+        if path.len() >= 3 {
+            loops.push(path);
         }
     }
     loops
@@ -175,6 +177,41 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn extend_boundary_path(
+    adj: &std::collections::HashMap<usize, Vec<usize>>,
+    visited_edges: &mut std::collections::HashSet<(usize, usize)>,
+    path: &mut Vec<usize>,
+    prepend: bool,
+) {
+    loop {
+        let (prev, cur) = if prepend {
+            (path[1], path[0])
+        } else {
+            (path[path.len() - 2], path[path.len() - 1])
+        };
+        let Some(nbs) = adj.get(&cur) else {
+            break;
+        };
+        let next = nbs
+            .iter()
+            .copied()
+            .find(|&nb| nb != prev && !visited_edges.contains(&edge_key(cur, nb)));
+        let Some(nb) = next else {
+            break;
+        };
+        visited_edges.insert(edge_key(cur, nb));
+        if prepend {
+            path.insert(0, nb);
+        } else {
+            path.push(nb);
+        }
+    }
+}
+
+fn edge_key(a: usize, b: usize) -> (usize, usize) {
+    (a.min(b), a.max(b))
 }
 
 #[cfg(test)]

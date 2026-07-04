@@ -36,7 +36,7 @@ fn rnd(s: &mut u64) -> f64 {
     *s = s
         .wrapping_mul(6364136223846793005)
         .wrapping_add(1442695040888963407);
-    ((*s >> 33) as f64 / u32::MAX as f64) * 2.0 - 1.0
+    ((*s >> 33) as f64 / ((1u64 << 31) - 1) as f64) * 2.0 - 1.0
 }
 fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
     let n = mesh.points.len();
@@ -45,22 +45,32 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let fn_ = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-        for &v in cell {
-            let vi = v as usize;
-            if vi < n {
-                nm[vi][0] += fn_[0];
-                nm[vi][1] += fn_[1];
-                nm[vi][2] += fn_[2];
+        let Some(ia) = valid_point_id(cell[0], n) else {
+            continue;
+        };
+        let a = mesh.points.get(ia);
+        for i in 1..cell.len() - 1 {
+            let Some(ib) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(ic) = valid_point_id(cell[i + 1], n) else {
+                continue;
+            };
+            let b = mesh.points.get(ib);
+            let c = mesh.points.get(ic);
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let fn_ = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            for v in [cell[0], cell[i], cell[i + 1]] {
+                if let Some(vi) = valid_point_id(v, n) {
+                    nm[vi][0] += fn_[0];
+                    nm[vi][1] += fn_[1];
+                    nm[vi][2] += fn_[2];
+                }
             }
         }
     }
@@ -74,6 +84,13 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
     }
     nm
 }
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,6 +103,18 @@ mod tests {
         let r = perturb_vertices(&m, 0.01, 42);
         let p = r.points.get(0);
         assert!(p[0].abs() < 0.02);
+    }
+    #[test]
+    fn test_rnd_spans_both_sides() {
+        let mut s = 42;
+        let mut saw_negative = false;
+        let mut saw_positive = false;
+        for _ in 0..100 {
+            let v = rnd(&mut s);
+            saw_negative |= v < 0.0;
+            saw_positive |= v > 0.0;
+        }
+        assert!(saw_negative && saw_positive);
     }
     #[test]
     fn test_normal_perturb() {

@@ -7,20 +7,8 @@ pub fn connected_components(mesh: &PolyData) -> (usize, PolyData) {
         return (0, mesh.clone());
     }
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-            }
-        }
+    for cells in [&mesh.verts, &mesh.lines, &mesh.polys, &mesh.strips] {
+        add_cell_adjacencies(cells, n, &mut adj);
     }
     let mut labels = vec![-1i32; n];
     let mut component = 0i32;
@@ -51,6 +39,34 @@ pub fn connected_components(mesh: &PolyData) -> (usize, PolyData) {
         )));
     result.point_data_mut().set_active_scalars("Component");
     (component as usize, result)
+}
+
+fn add_cell_adjacencies(cells: &crate::data::CellArray, n: usize, adj: &mut [Vec<usize>]) {
+    for cell in cells.iter() {
+        let nc = cell.len();
+        for i in 0..nc {
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            add_edge(adj, a, b);
+        }
+    }
+}
+
+fn add_edge(adj: &mut [Vec<usize>], a: usize, b: usize) {
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 #[cfg(test)]

@@ -1,5 +1,4 @@
 use crate::data::{CellArray, KdTree, Points, PolyData};
-use std::collections::HashMap;
 
 /// Coarsen a mesh by merging clusters of nearby vertices.
 ///
@@ -68,12 +67,18 @@ pub fn coarsen(input: &PolyData, target_points: usize) -> PolyData {
 
     let mut out_polys = CellArray::new();
     for cell in input.polys.iter() {
+        if cell.iter().any(|&id| id < 0 || id as usize >= remap.len()) {
+            continue;
+        }
         let mapped: Vec<i64> = cell.iter().map(|&id| remap[id as usize] as i64).collect();
-        let mut unique = mapped.clone();
-        unique.sort();
-        unique.dedup();
+        let mut unique = Vec::new();
+        for &id in &mapped {
+            if !unique.contains(&id) {
+                unique.push(id);
+            }
+        }
         if unique.len() >= 3 {
-            out_polys.push_cell(&mapped);
+            out_polys.push_cell(&unique);
         }
     }
 
@@ -125,5 +130,24 @@ mod tests {
         let pd = PolyData::new();
         let result = coarsen(&pd, 5);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn removes_collapsed_vertices_from_output_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let result = coarsen(&pd, 3);
+        let cells: Vec<Vec<i64>> = result.polys.iter().map(|cell| cell.to_vec()).collect();
+        assert!(cells.iter().all(|cell| {
+            let mut unique = cell.clone();
+            unique.sort();
+            unique.dedup();
+            unique.len() == cell.len()
+        }));
     }
 }

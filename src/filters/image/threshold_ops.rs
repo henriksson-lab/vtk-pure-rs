@@ -117,6 +117,9 @@ pub fn percentile_threshold(image: &ImageData, array_name: &str, percentile: f64
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut vals: Vec<f64> = (0..n)
         .map(|i| {

@@ -26,16 +26,17 @@ pub fn apply_stencil(
         None => return input.clone(),
     };
 
-    let mut result_data = Vec::with_capacity(n);
+    let num_components = scalars.num_components();
+    let mut result_data = Vec::with_capacity(n * num_components);
+    let mut sv = [0.0f64];
+    let mut v = vec![0.0f64; num_components];
     for i in 0..n {
-        let mut sv = [0.0f64];
         stencil.tuple_as_f64(i, &mut sv);
         if sv[0].abs() > 1e-30 {
-            let mut v = [0.0f64];
             scalars.tuple_as_f64(i, &mut v);
-            result_data.push(v[0]);
+            result_data.extend_from_slice(&v);
         } else {
-            result_data.push(fill_value);
+            result_data.extend(std::iter::repeat(fill_value).take(num_components));
         }
     }
 
@@ -45,7 +46,7 @@ pub fn apply_stencil(
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             array_name,
             result_data,
-            1,
+            num_components,
         )));
     output
 }
@@ -215,7 +216,7 @@ mod tests {
     use super::*;
 
     fn make_grid() -> ImageData {
-        let mut grid = ImageData::new([4, 4, 1], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]);
+        let mut grid = ImageData::with_dimensions(4, 4, 1);
         let vals: Vec<f64> = (0..16).map(|i| i as f64).collect();
         grid.point_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("scalar", vals, 1)));

@@ -15,7 +15,7 @@ pub fn mean_shift_filter(
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
     let mut vals: Vec<f64> = (0..n)
@@ -29,22 +29,34 @@ pub fn mean_shift_filter(
     for _ in 0..iterations {
         let prev = vals.clone();
         for idx in 0..n {
-            let iy = idx / nx;
-            let ix = idx % nx;
+            let plane = nx * ny;
+            let iz = idx / plane;
+            let rem = idx % plane;
+            let iy = rem / nx;
+            let ix = rem % nx;
             let center = prev[idx];
             let mut sum = 0.0;
             let mut count = 0.0;
-            for dy in -sr..=sr {
-                for dx in -sr..=sr {
-                    let sx = ix as isize + dx;
-                    let sy = iy as isize + dy;
-                    if sx < 0 || sx >= nx as isize || sy < 0 || sy >= ny as isize {
-                        continue;
-                    }
-                    let v = prev[sx as usize + sy as usize * nx];
-                    if (v - center).abs() <= range_radius {
-                        sum += v;
-                        count += 1.0;
+            for dz in -sr..=sr {
+                for dy in -sr..=sr {
+                    for dx in -sr..=sr {
+                        let sx = ix as isize + dx;
+                        let sy = iy as isize + dy;
+                        let sz = iz as isize + dz;
+                        if sx < 0
+                            || sx >= nx as isize
+                            || sy < 0
+                            || sy >= ny as isize
+                            || sz < 0
+                            || sz >= nz as isize
+                        {
+                            continue;
+                        }
+                        let v = prev[sz as usize * plane + sy as usize * nx + sx as usize];
+                        if (v - center).abs() <= range_radius {
+                            sum += v;
+                            count += 1.0;
+                        }
                     }
                 }
             }
@@ -52,7 +64,7 @@ pub fn mean_shift_filter(
         }
     }
 
-    ImageData::with_dimensions(nx, ny, dims[2])
+    ImageData::with_dimensions(nx, ny, nz)
         .with_spacing(input.spacing())
         .with_origin(input.origin())
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, vals, 1)))
@@ -72,5 +84,24 @@ mod tests {
         );
         let r = mean_shift_filter(&img, "v", 2, 20.0, 3);
         assert_eq!(r.dimensions(), [10, 10, 1]);
+    }
+
+    #[test]
+    fn filters_across_z() {
+        let mut img = ImageData::with_dimensions(1, 1, 2);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 10.0],
+                1,
+            )));
+
+        let r = mean_shift_filter(&img, "v", 1, 20.0, 1);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 5.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 5.0);
     }
 }

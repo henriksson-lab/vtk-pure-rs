@@ -1,5 +1,10 @@
 //! Izhikevich neuron model
 use crate::data::{AnyDataArray, DataArray, ImageData};
+
+fn membrane_potential_derivative(v: f64) -> f64 {
+    0.04 * v * v + 5.0 * v + 140.0
+}
+
 pub fn image_izhikevich_model(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
@@ -10,14 +15,16 @@ pub fn image_izhikevich_model(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.04 * buf[0] * buf[0] + 5.0 * buf[0] + 140.0
+            membrane_potential_derivative(buf[0])
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -33,5 +40,20 @@ mod tests {
         );
         let r = image_izhikevich_model(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut out = [0.0f64];
+        arr.tuple_as_f64(0, &mut out);
+        assert!((out[0] - membrane_potential_derivative(1.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn preserves_input_extent() {
+        let mut img = ImageData::with_dimensions(3, 3, 1);
+        img.set_extent([5, 7, 10, 12, 2, 2]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0; 9], 1)));
+
+        let r = image_izhikevich_model(&img, "v");
+        assert_eq!(r.extent(), [5, 7, 10, 12, 2, 2]);
     }
 }

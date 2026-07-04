@@ -19,58 +19,68 @@ pub fn extract_slice_along_axis(
     let nz = dims[2] as usize;
     let sp = input.spacing();
     let origin = input.origin();
+    if nx == 0 || ny == 0 || nz == 0 {
+        return input.clone();
+    }
 
-    let mut buf = [0.0f64];
+    let ncomp = arr.num_components();
+    let mut buf = vec![0.0f64; ncomp];
     match axis.min(2) {
         0 => {
             // YZ slice at fixed X=index
             let ix = index.min(nx - 1);
-            let mut values = Vec::with_capacity(ny * nz);
+            let mut values = Vec::with_capacity(ny * nz * ncomp);
             for k in 0..nz {
                 for j in 0..ny {
                     arr.tuple_as_f64(k * ny * nx + j * nx + ix, &mut buf);
-                    values.push(buf[0]);
+                    values.extend_from_slice(&buf);
                 }
             }
             let mut img = ImageData::with_dimensions(ny, nz, 1);
             img.set_origin([origin[1], origin[2], origin[0] + ix as f64 * sp[0]]);
             img.set_spacing([sp[1], sp[2], 1.0]);
             img.point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    scalars, values, ncomp,
+                )));
             img
         }
         1 => {
             // XZ slice at fixed Y=index
             let iy = index.min(ny - 1);
-            let mut values = Vec::with_capacity(nx * nz);
+            let mut values = Vec::with_capacity(nx * nz * ncomp);
             for k in 0..nz {
                 for i in 0..nx {
                     arr.tuple_as_f64(k * ny * nx + iy * nx + i, &mut buf);
-                    values.push(buf[0]);
+                    values.extend_from_slice(&buf);
                 }
             }
             let mut img = ImageData::with_dimensions(nx, nz, 1);
             img.set_origin([origin[0], origin[2], origin[1] + iy as f64 * sp[1]]);
             img.set_spacing([sp[0], sp[2], 1.0]);
             img.point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    scalars, values, ncomp,
+                )));
             img
         }
         _ => {
             // XY slice at fixed Z=index
             let iz = index.min(nz.max(1) - 1);
-            let mut values = Vec::with_capacity(nx * ny);
+            let mut values = Vec::with_capacity(nx * ny * ncomp);
             for j in 0..ny {
                 for i in 0..nx {
                     arr.tuple_as_f64(iz * ny * nx + j * nx + i, &mut buf);
-                    values.push(buf[0]);
+                    values.extend_from_slice(&buf);
                 }
             }
             let mut img = ImageData::with_dimensions(nx, ny, 1);
             img.set_origin([origin[0], origin[1], origin[2] + iz as f64 * sp[2]]);
             img.set_spacing([sp[0], sp[1], 1.0]);
             img.point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    scalars, values, ncomp,
+                )));
             img
         }
     }
@@ -88,61 +98,95 @@ pub fn max_intensity_projection(input: &ImageData, scalars: &str, axis: usize) -
     let nz = dims[2] as usize;
     let sp = input.spacing();
     let origin = input.origin();
-    let mut buf = [0.0f64];
+    if nx == 0 || ny == 0 || nz == 0 {
+        return input.clone();
+    }
+    let ncomp = arr.num_components();
+    let mut buf = vec![0.0f64; ncomp];
 
     match axis.min(2) {
         0 => {
             // project along X
-            let mut values = vec![f64::MIN; ny * nz];
+            let mut values = vec![f64::NEG_INFINITY; ny * nz * ncomp];
             for k in 0..nz {
                 for j in 0..ny {
                     for i in 0..nx {
                         arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
                         let idx = k * ny + j;
-                        values[idx] = values[idx].max(buf[0]);
+                        let dst = idx * ncomp;
+                        for c in 0..ncomp {
+                            values[dst + c] = values[dst + c].max(buf[c]);
+                        }
                     }
                 }
             }
             let mut img = ImageData::with_dimensions(ny, nz, 1);
+            img.set_origin([
+                origin[1],
+                origin[2],
+                origin[0] + 0.5 * sp[0] * nx.saturating_sub(1) as f64,
+            ]);
             img.set_spacing([sp[1], sp[2], 1.0]);
             img.point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    scalars, values, ncomp,
+                )));
             img
         }
         1 => {
             // project along Y
-            let mut values = vec![f64::MIN; nx * nz];
+            let mut values = vec![f64::NEG_INFINITY; nx * nz * ncomp];
             for k in 0..nz {
                 for j in 0..ny {
                     for i in 0..nx {
                         arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
                         let idx = k * nx + i;
-                        values[idx] = values[idx].max(buf[0]);
+                        let dst = idx * ncomp;
+                        for c in 0..ncomp {
+                            values[dst + c] = values[dst + c].max(buf[c]);
+                        }
                     }
                 }
             }
             let mut img = ImageData::with_dimensions(nx, nz, 1);
+            img.set_origin([
+                origin[0],
+                origin[2],
+                origin[1] + 0.5 * sp[1] * ny.saturating_sub(1) as f64,
+            ]);
             img.set_spacing([sp[0], sp[2], 1.0]);
             img.point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    scalars, values, ncomp,
+                )));
             img
         }
         _ => {
             // project along Z
-            let mut values = vec![f64::MIN; nx * ny];
+            let mut values = vec![f64::NEG_INFINITY; nx * ny * ncomp];
             for k in 0..nz {
                 for j in 0..ny {
                     for i in 0..nx {
                         arr.tuple_as_f64(k * ny * nx + j * nx + i, &mut buf);
                         let idx = j * nx + i;
-                        values[idx] = values[idx].max(buf[0]);
+                        let dst = idx * ncomp;
+                        for c in 0..ncomp {
+                            values[dst + c] = values[dst + c].max(buf[c]);
+                        }
                     }
                 }
             }
             let mut img = ImageData::with_dimensions(nx, ny, 1);
+            img.set_origin([
+                origin[0],
+                origin[1],
+                origin[2] + 0.5 * sp[2] * nz.saturating_sub(1) as f64,
+            ]);
             img.set_spacing([sp[0], sp[1], 1.0]);
             img.point_data_mut()
-                .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+                .add_array(AnyDataArray::F64(DataArray::from_vec(
+                    scalars, values, ncomp,
+                )));
             img
         }
     }

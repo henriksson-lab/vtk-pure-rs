@@ -1,5 +1,15 @@
 //! Isotropic hardening
 use crate::data::{AnyDataArray, DataArray, ImageData};
+
+const INITIAL_YIELD_STRESS: f64 = 500.0;
+const SATURATION_STRESS_DELTA: f64 = 200.0;
+const HARDENING_RATE: f64 = 10.0;
+
+fn saturation_hardening(plastic_strain: f64) -> f64 {
+    INITIAL_YIELD_STRESS
+        + SATURATION_STRESS_DELTA * (1.0 - (-plastic_strain * HARDENING_RATE).exp())
+}
+
 pub fn image_isotropic_hardening(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
@@ -10,14 +20,16 @@ pub fn image_isotropic_hardening(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            500.0 + 200.0 * (1.0 - (-buf[0] * 10.0).exp())
+            saturation_hardening(buf[0])
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -33,5 +45,20 @@ mod tests {
         );
         let r = image_isotropic_hardening(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut out = [0.0f64];
+        arr.tuple_as_f64(0, &mut out);
+        assert!((out[0] - saturation_hardening(1.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn preserves_input_extent() {
+        let mut img = ImageData::with_dimensions(3, 3, 1);
+        img.set_extent([5, 7, 10, 12, 2, 2]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![1.0; 9], 1)));
+
+        let r = image_isotropic_hardening(&img, "v");
+        assert_eq!(r.extent(), [5, 7, 10, 12, 2, 2]);
     }
 }

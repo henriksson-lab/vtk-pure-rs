@@ -1,6 +1,6 @@
-//! Minimal CityGML reader that extracts building footprint polygons.
+//! Minimal CityGML reader that extracts polygon rings.
 //!
-//! Parses `<gml:posList>` and `<gml:LinearRing>` elements using simple
+//! Parses `<gml:posList>` / `<gml:pos>` inside `<gml:LinearRing>` elements using simple
 //! string matching (no XML library dependency).
 
 use std::fs;
@@ -9,10 +9,9 @@ use std::path::Path;
 use crate::data::{CellArray, Points, PolyData};
 use crate::types::VtkError;
 
-/// Read building footprints from a CityGML file as polygon `PolyData`.
+/// Read CityGML linear rings from a file as polygon `PolyData`.
 ///
-/// Extracts `<gml:posList>` coordinate lists found inside
-/// `<gml:LinearRing>` elements (typically inside `<bldg:Building>` blocks).
+/// Extracts coordinate lists found inside `<gml:LinearRing>` elements.
 ///
 /// Coordinates are expected as space-separated `x y z` triples.
 pub fn read_citygml(path: &Path) -> Result<PolyData, VtkError> {
@@ -25,45 +24,22 @@ pub fn parse_citygml_string(xml: &str) -> Result<PolyData, VtkError> {
     let mut points = Points::<f64>::new();
     let mut polys = CellArray::new();
 
-    // Find all <gml:posList>...</gml:posList> blocks
-    let pos_list_start = "gml:posList";
-    let pos_list_end_tag = "</gml:posList>";
-
     let mut search_from = 0;
-    while let Some(tag_start) = xml[search_from..].find(&format!("<{pos_list_start}")) {
+    while let Some(tag_start) = xml[search_from..].find("<gml:LinearRing") {
         let abs_start = search_from + tag_start;
-        // Find the end of the opening tag (handle attributes)
-        let content_start = match xml[abs_start..].find('>') {
+        let ring_start = match xml[abs_start..].find('>') {
             Some(i) => abs_start + i + 1,
             None => break,
         };
-        let content_end = match xml[content_start..].find(pos_list_end_tag) {
-            Some(i) => content_start + i,
+        let ring_end = match xml[ring_start..].find("</gml:LinearRing>") {
+            Some(i) => ring_start + i,
             None => break,
         };
 
-        let text = xml[content_start..content_end].trim();
-        let coords = parse_pos_list(text);
+        let ring_xml = &xml[ring_start..ring_end];
+        insert_ring(ring_xml, &mut points, &mut polys);
 
-        if coords.len() >= 3 {
-            let _base = points.len() as i64;
-            let mut cell_ids = Vec::new();
-            for pt in &coords {
-                cell_ids.push(points.len() as i64);
-                points.push(*pt);
-            }
-            // Remove duplicate closing vertex if present (GML convention)
-            if coords.len() > 1 && coords.first() == coords.last() {
-                cell_ids.pop();
-                // The duplicate point was already pushed; that's fine, just
-                // don't include it in the cell.
-            }
-            if cell_ids.len() >= 3 {
-                polys.push_cell(&cell_ids);
-            }
-        }
-
-        search_from = content_end + pos_list_end_tag.len();
+        search_from = ring_end + "</gml:LinearRing>".len();
     }
 
     let mut pd = PolyData::new();
@@ -72,13 +48,83 @@ pub fn parse_citygml_string(xml: &str) -> Result<PolyData, VtkError> {
     Ok(pd)
 }
 
+fn insert_ring(ring_xml: &str, points: &mut Points<f64>, polys: &mut CellArray) {
+    let coords = if let Some(pos_list) = first_tag_text(ring_xml, "gml:posList") {
+        parse_pos_list(pos_list)
+    } else {
+        parse_pos_elements(ring_xml)
+    };
+
+    if coords.len() < 3 {
+        return;
+    }
+
+    let mut unique_coords = coords.as_slice();
+    if coords.len() > 1 && coords.first() == coords.last() {
+        unique_coords = &coords[..coords.len() - 1];
+    }
+    if unique_coords.len() < 3 {
+        return;
+    }
+
+    let mut cell_ids = Vec::with_capacity(unique_coords.len());
+    for pt in unique_coords {
+        cell_ids.push(points.len() as i64);
+        points.push(*pt);
+    }
+    polys.push_cell(&cell_ids);
+}
+
+fn first_tag_text<'a>(xml: &'a str, tag_name: &str) -> Option<&'a str> {
+    let open = format!("<{tag_name}");
+    let close = format!("</{tag_name}>");
+    let tag_start = xml.find(&open)?;
+    let content_start = tag_start + xml[tag_start..].find('>')? + 1;
+    let content_end = content_start + xml[content_start..].find(&close)?;
+    Some(xml[content_start..content_end].trim())
+}
+
+fn parse_pos_elements(xml: &str) -> Vec<[f64; 3]> {
+    let mut coords = Vec::new();
+    let mut search_from = 0;
+    while let Some(text) = first_tag_text(&xml[search_from..], "gml:pos") {
+        if let Some(pt) = parse_pos(text) {
+            coords.push(pt);
+        }
+        let rel_end = match xml[search_from..].find("</gml:pos>") {
+            Some(i) => i + "</gml:pos>".len(),
+            None => break,
+        };
+        search_from += rel_end;
+    }
+    coords
+}
+
+fn parse_pos(text: &str) -> Option<[f64; 3]> {
+    let nums: Vec<f64> = text
+        .split_whitespace()
+        .filter_map(|s| s.parse::<f64>().ok())
+        .collect();
+    match nums.as_slice() {
+        [x, y] => Some([*x, *y, 0.0]),
+        [x, y, z, ..] => Some([*x, *y, *z]),
+        _ => None,
+    }
+}
+
 /// Parse a space-separated coordinate list into `[x, y, z]` triples.
 fn parse_pos_list(text: &str) -> Vec<[f64; 3]> {
     let nums: Vec<f64> = text
         .split_whitespace()
         .filter_map(|s| s.parse::<f64>().ok())
         .collect();
-    nums.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect()
+    if nums.len().is_multiple_of(3) {
+        nums.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect()
+    } else if nums.len().is_multiple_of(2) {
+        nums.chunks_exact(2).map(|c| [c[0], c[1], 0.0]).collect()
+    } else {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]
@@ -127,12 +173,22 @@ mod tests {
 </CityModel>"#;
 
         let pd = parse_citygml_string(xml).unwrap();
-        // Two polygons (floor and roof), each with 4 unique vertices
-        // (5th closing vertex is stripped from cell but point still exists)
         assert_eq!(pd.polys.num_cells(), 2);
-        assert!(pd.points.len() >= 8);
-        // Each polygon cell should have 4 vertices
+        assert_eq!(pd.points.len(), 8);
         assert_eq!(pd.polys.cell(0).len(), 4);
         assert_eq!(pd.polys.cell(1).len(), 4);
+    }
+
+    #[test]
+    fn parse_pos_elements() {
+        let xml = r#"<CityModel xmlns:gml="http://www.opengis.net/gml">
+  <gml:LinearRing>
+    <gml:pos>0 0 0</gml:pos><gml:pos>1 0 0</gml:pos>
+    <gml:pos>1 1 0</gml:pos><gml:pos>0 0 0</gml:pos>
+  </gml:LinearRing>
+</CityModel>"#;
+        let pd = parse_citygml_string(xml).unwrap();
+        assert_eq!(pd.points.len(), 3);
+        assert_eq!(pd.polys.num_cells(), 1);
     }
 }

@@ -1,4 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extrude a surface along its vertex normals.
 ///
@@ -11,6 +12,8 @@ pub fn extrude_along_normals(input: &PolyData, distance: f64, capping: bool) -> 
 
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
+    let mut out_lines = CellArray::new();
+    let mut out_strips = CellArray::new();
 
     // Original points
     for i in 0..n {
@@ -28,13 +31,17 @@ pub fn extrude_along_normals(input: &PolyData, distance: f64, capping: bool) -> 
 
     let offset = n as i64;
 
-    // Side quads
-    for cell in input.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
+    for cell in input.verts.iter() {
+        for &pt_id in cell {
+            out_lines.push_cell(&[pt_id, pt_id + offset]);
+        }
+    }
+
+    for cell in input.lines.iter() {
+        for i in 0..cell.len().saturating_sub(1) {
             let a = cell[i];
-            let b = cell[(i + 1) % nc];
-            out_polys.push_cell(&[a, b, b + offset, a + offset]);
+            let b = cell[i + 1];
+            out_strips.push_cell(&[a, b, a + offset, b + offset]);
         }
     }
 
@@ -43,14 +50,20 @@ pub fn extrude_along_normals(input: &PolyData, distance: f64, capping: bool) -> 
             out_polys.push_cell(cell);
         }
         for cell in input.polys.iter() {
-            let reversed: Vec<i64> = cell.iter().rev().map(|&id| id + offset).collect();
-            out_polys.push_cell(&reversed);
+            let extruded: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
+            out_polys.push_cell(&extruded);
         }
+    }
+
+    for (a, b) in boundary_edges(input) {
+        out_strips.push_cell(&[a, b, a + offset, b + offset]);
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
+    pd.lines = out_lines;
     pd.polys = out_polys;
+    pd.strips = out_strips;
     pd
 }
 
@@ -67,38 +80,33 @@ fn extract_normals(input: &PolyData) -> Vec<[f64; 3]> {
             return result;
         }
     }
-    // Fallback: compute face normals averaged at vertices
-    let mut normals = vec![[0.0f64; 3]; n];
-    for cell in input.polys.iter() {
-        if cell.len() < 3 {
+    vec![[0.0, 0.0, 1.0]; n]
+}
+
+fn boundary_edges(input: &PolyData) -> Vec<(i64, i64)> {
+    let mut edge_counts: HashMap<(i64, i64), usize> = HashMap::new();
+    let mut ordered_edges = Vec::new();
+
+    for cell in input.polys.iter().chain(input.strips.iter()) {
+        if cell.len() < 2 {
             continue;
         }
-        let p0 = input.points.get(cell[0] as usize);
-        let p1 = input.points.get(cell[1] as usize);
-        let p2 = input.points.get(cell[2] as usize);
-        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-        let fn_ = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-        for &id in cell {
-            let nm = &mut normals[id as usize];
-            nm[0] += fn_[0];
-            nm[1] += fn_[1];
-            nm[2] += fn_[2];
+        for i in 0..cell.len() {
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
+            let key = if a < b { (a, b) } else { (b, a) };
+            edge_counts
+                .entry(key)
+                .and_modify(|count| *count += 1)
+                .or_insert(1);
+            ordered_edges.push((a, b, key));
         }
     }
-    for nm in &mut normals {
-        let len = (nm[0] * nm[0] + nm[1] * nm[1] + nm[2] * nm[2]).sqrt();
-        if len > 1e-20 {
-            nm[0] /= len;
-            nm[1] /= len;
-            nm[2] /= len;
-        }
-    }
-    normals
+
+    ordered_edges
+        .into_iter()
+        .filter_map(|(a, b, key)| (edge_counts[&key] == 1).then_some((a, b)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -125,6 +133,6 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let result = extrude_along_normals(&pd, 2.0, false);
-        assert_eq!(result.polys.num_cells(), 3); // just side quads
+        assert_eq!(result.strips.num_cells(), 3); // just side strips
     }
 }

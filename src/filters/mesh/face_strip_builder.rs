@@ -27,7 +27,7 @@ pub fn build_triangle_strips(mesh: &PolyData) -> PolyData {
     }
 
     let mut used = vec![false; num_cells];
-    let mut strips = CellArray::new();
+    let mut strips = mesh.strips.clone();
     let mut remaining_polys = CellArray::new();
 
     for start in 0..num_cells {
@@ -35,7 +35,25 @@ pub fn build_triangle_strips(mesh: &PolyData) -> PolyData {
             continue;
         }
         used[start] = true;
-        let mut strip: Vec<i64> = cells[start].clone();
+        let start_cell = &cells[start];
+        let mut strip: Vec<i64> = start_cell.clone();
+
+        for i in 0..3 {
+            let a = start_cell[i] as usize;
+            let b = start_cell[(i + 1) % 3] as usize;
+            let key = (a.min(b), a.max(b));
+            let has_neighbor = edge_to_tris
+                .get(&key)
+                .is_some_and(|tris| tris.iter().any(|&t| !used[t] && cells[t].len() == 3));
+            if has_neighbor {
+                strip = vec![
+                    start_cell[(i + 2) % 3],
+                    start_cell[i],
+                    start_cell[(i + 1) % 3],
+                ];
+                break;
+            }
+        }
 
         // Try to extend forward
         loop {
@@ -84,8 +102,7 @@ pub fn build_triangle_strips(mesh: &PolyData) -> PolyData {
         }
     }
 
-    let mut result = PolyData::new();
-    result.points = mesh.points.clone();
+    let mut result = mesh.clone();
     result.strips = strips;
     result.polys = remaining_polys;
     result
@@ -126,5 +143,27 @@ mod tests {
         );
         let result = build_triangle_strips(&mesh);
         assert_eq!(count_strip_triangles(&result), 1);
+    }
+
+    #[test]
+    fn preserves_non_polygon_topology() {
+        let mut mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ],
+            vec![[0, 1, 2]],
+        );
+        mesh.lines.push_cell(&[0, 3]);
+        mesh.verts.push_cell(&[3]);
+        mesh.strips.push_cell(&[0, 1, 2]);
+
+        let result = build_triangle_strips(&mesh);
+
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.verts.num_cells(), 1);
+        assert_eq!(count_strip_triangles(&result), 2);
     }
 }

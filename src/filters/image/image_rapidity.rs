@@ -10,16 +10,17 @@ pub fn image_rapidity(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.5 * ((1.0 + buf[0] / 3e8) / (1.0 - buf[0] / 3e8).max(1e-10))
-                .abs()
-                .ln()
+            let beta = (buf[0] / 3e8).clamp(-1.0 + 1e-10, 1.0 - 1e-10);
+            0.5 * ((1.0 + beta) / (1.0 - beta)).ln()
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

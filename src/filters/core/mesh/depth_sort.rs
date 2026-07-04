@@ -1,12 +1,12 @@
 use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 use std::cmp::Ordering;
 
-/// Sort faces by depth along a specified vector.
+/// Sort cells by depth along a specified vector.
 ///
-/// Reorders cells so that faces farther along the vector come first,
+/// Reorders cells so that cells farther along the vector come first,
 /// matching vtkDepthSortPolyData's specified-vector back-to-front mode.
 pub fn depth_sort(input: &PolyData, vector: [f64; 3]) -> PolyData {
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let cells = collect_cells(input);
     let mut indexed = indexed_depths(input, &cells, vector);
 
     // Sort far to near (for back-to-front rendering).
@@ -15,9 +15,9 @@ pub fn depth_sort(input: &PolyData, vector: [f64; 3]) -> PolyData {
     rebuild_sorted_poly_data(input, &cells, &indexed, true)
 }
 
-/// Sort faces front-to-back (for occlusion culling).
+/// Sort cells front-to-back (for occlusion culling).
 pub fn depth_sort_front_to_back(input: &PolyData, vector: [f64; 3]) -> PolyData {
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let cells = collect_cells(input);
     let mut indexed = indexed_depths(input, &cells, vector);
 
     indexed.sort_by(|a, b| compare_depth_asc(a.0, b.0).then_with(|| a.1.cmp(&b.1)));
@@ -25,11 +25,46 @@ pub fn depth_sort_front_to_back(input: &PolyData, vector: [f64; 3]) -> PolyData 
     rebuild_sorted_poly_data(input, &cells, &indexed, false)
 }
 
-fn indexed_depths(input: &PolyData, cells: &[Vec<i64>], vector: [f64; 3]) -> Vec<(f64, usize)> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CellKind {
+    Vert,
+    Line,
+    Poly,
+    Strip,
+}
+
+#[derive(Debug, Clone)]
+struct SortCell {
+    kind: CellKind,
+    point_ids: Vec<i64>,
+    input_cell_id: usize,
+}
+
+fn collect_cells(input: &PolyData) -> Vec<SortCell> {
+    let mut cells = Vec::with_capacity(input.total_cells());
+    append_cells(&mut cells, CellKind::Vert, &input.verts);
+    append_cells(&mut cells, CellKind::Line, &input.lines);
+    append_cells(&mut cells, CellKind::Poly, &input.polys);
+    append_cells(&mut cells, CellKind::Strip, &input.strips);
+    cells
+}
+
+fn append_cells(cells: &mut Vec<SortCell>, kind: CellKind, cell_array: &CellArray) {
+    for cell in cell_array.iter() {
+        let input_cell_id = cells.len();
+        cells.push(SortCell {
+            kind,
+            point_ids: cell.to_vec(),
+            input_cell_id,
+        });
+    }
+}
+
+fn indexed_depths(input: &PolyData, cells: &[SortCell], vector: [f64; 3]) -> Vec<(f64, usize)> {
     cells
         .iter()
         .enumerate()
-        .map(|(fi, cell)| (cell_depth(input, cell, vector), fi))
+        .map(|(fi, cell)| (cell_depth(input, &cell.point_ids, vector), fi))
         .collect()
 }
 
@@ -58,20 +93,57 @@ fn compare_depth_asc(a: f64, b: f64) -> Ordering {
 
 fn rebuild_sorted_poly_data(
     input: &PolyData,
-    cells: &[Vec<i64>],
+    cells: &[SortCell],
     indexed: &[(f64, usize)],
     add_depth_array: bool,
 ) -> PolyData {
-    let mut out_polys = CellArray::new();
-    let mut depth_values = Vec::with_capacity(indexed.len());
+    let mut sorted_cells = Vec::with_capacity(indexed.len());
     for &(depth, cell_id) in indexed {
-        out_polys.push_cell(&cells[cell_id]);
-        depth_values.push(depth);
+        sorted_cells.push((depth, &cells[cell_id]));
     }
 
+    let mut out_verts = CellArray::new();
+    let mut out_lines = CellArray::new();
+    let mut out_polys = CellArray::new();
+    let mut out_strips = CellArray::new();
+    let mut output_order = Vec::with_capacity(indexed.len());
+    let mut depth_values = Vec::with_capacity(indexed.len());
+
+    append_sorted_kind(
+        &sorted_cells,
+        CellKind::Vert,
+        &mut out_verts,
+        &mut output_order,
+        &mut depth_values,
+    );
+    append_sorted_kind(
+        &sorted_cells,
+        CellKind::Line,
+        &mut out_lines,
+        &mut output_order,
+        &mut depth_values,
+    );
+    append_sorted_kind(
+        &sorted_cells,
+        CellKind::Poly,
+        &mut out_polys,
+        &mut output_order,
+        &mut depth_values,
+    );
+    append_sorted_kind(
+        &sorted_cells,
+        CellKind::Strip,
+        &mut out_strips,
+        &mut output_order,
+        &mut depth_values,
+    );
+
     let mut pd = input.clone();
+    pd.verts = out_verts;
+    pd.lines = out_lines;
     pd.polys = out_polys;
-    reorder_cell_data(input, &mut pd, indexed);
+    pd.strips = out_strips;
+    reorder_cell_data(input, &mut pd, &output_order);
     if add_depth_array {
         pd.cell_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -83,23 +155,40 @@ fn rebuild_sorted_poly_data(
     pd
 }
 
-fn reorder_cell_data(input: &PolyData, output: &mut PolyData, indexed: &[(f64, usize)]) {
+fn append_sorted_kind(
+    sorted_cells: &[(f64, &SortCell)],
+    kind: CellKind,
+    output: &mut CellArray,
+    output_order: &mut Vec<usize>,
+    depth_values: &mut Vec<f64>,
+) {
+    for &(depth, cell) in sorted_cells {
+        if cell.kind != kind {
+            continue;
+        }
+        output.push_cell(&cell.point_ids);
+        output_order.push(cell.input_cell_id);
+        depth_values.push(depth);
+    }
+}
+
+fn reorder_cell_data(input: &PolyData, output: &mut PolyData, output_order: &[usize]) {
     for array in input.cell_data().field_data().iter() {
-        if array.num_tuples() != indexed.len() {
+        if array.num_tuples() != output_order.len() {
             continue;
         }
         output
             .cell_data_mut()
-            .add_array(reorder_array(array, indexed));
+            .add_array(reorder_array(array, output_order));
     }
 }
 
-fn reorder_array(array: &AnyDataArray, indexed: &[(f64, usize)]) -> AnyDataArray {
+fn reorder_array(array: &AnyDataArray, output_order: &[usize]) -> AnyDataArray {
     macro_rules! reorder {
         ($array:expr, $variant:ident) => {{
             let num_components = $array.num_components();
-            let mut values = Vec::with_capacity(indexed.len() * num_components);
-            for &(_, cell_id) in indexed {
+            let mut values = Vec::with_capacity(output_order.len() * num_components);
+            for &cell_id in output_order {
                 values.extend_from_slice($array.tuple(cell_id));
             }
             AnyDataArray::$variant(DataArray::from_vec($array.name(), values, num_components))
@@ -202,6 +291,44 @@ mod tests {
         assert_eq!(buf[0], 9.0);
         ids.tuple_as_f64(1, &mut buf);
         assert_eq!(buf[0], 7.0);
+    }
+
+    #[test]
+    fn sorts_non_polygon_cells_and_cell_data() {
+        let mut pd = PolyData::new();
+        for z in [
+            0.0, 10.0, 1.0, 1.0, 11.0, 11.0, 2.0, 2.0, 2.0, 12.0, 12.0, 12.0,
+        ] {
+            pd.points.push([0.0, 0.0, z]);
+        }
+        pd.verts.push_cell(&[0]);
+        pd.verts.push_cell(&[1]);
+        pd.lines.push_cell(&[2, 3]);
+        pd.lines.push_cell(&[4, 5]);
+        pd.strips.push_cell(&[6, 7, 8]);
+        pd.strips.push_cell(&[9, 10, 11]);
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::I32(DataArray::from_vec(
+                "id",
+                vec![1, 2, 3, 4, 5, 6],
+                1,
+            )));
+
+        let result = depth_sort(&pd, [0.0, 0.0, 1.0]);
+
+        assert_eq!(result.verts.cell(0), &[1]);
+        assert_eq!(result.verts.cell(1), &[0]);
+        assert_eq!(result.lines.cell(0), &[4, 5]);
+        assert_eq!(result.lines.cell(1), &[2, 3]);
+        assert_eq!(result.strips.cell(0), &[9, 10, 11]);
+        assert_eq!(result.strips.cell(1), &[6, 7, 8]);
+
+        let ids = result.cell_data().get_array("id").unwrap();
+        let mut buf = [0.0f64];
+        for (tuple, expected) in [2.0, 1.0, 4.0, 3.0, 6.0, 5.0].into_iter().enumerate() {
+            ids.tuple_as_f64(tuple, &mut buf);
+            assert_eq!(buf[0], expected);
+        }
     }
 
     #[test]

@@ -1,70 +1,114 @@
 //! Extract silhouette edges from a viewpoint.
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 pub fn extract_silhouette(mesh: &PolyData, view_point: [f64; 3]) -> PolyData {
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
+    let mut ef: std::collections::HashMap<(usize, usize), TwoNormals> =
         std::collections::HashMap::new();
-    for (ci, cell) in cells.iter().enumerate() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            ef.entry((a.min(b), a.max(b))).or_default().push(ci);
-        }
+    for cell in mesh.polys.iter() {
+        insert_polygon_edges(&mut ef, mesh, cell, mesh.points.len());
     }
-    let face_facing: Vec<bool> = cells
-        .iter()
-        .map(|cell| {
-            if cell.len() < 3 {
-                return false;
-            }
-            let a = mesh.points.get(cell[0] as usize);
-            let b = mesh.points.get(cell[1] as usize);
-            let c = mesh.points.get(cell[2] as usize);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let to_view = [
-                view_point[0] - a[0],
-                view_point[1] - a[1],
-                view_point[2] - a[2],
-            ];
-            n[0] * to_view[0] + n[1] * to_view[1] + n[2] * to_view[2] > 0.0
-        })
-        .collect();
-    let mut pts = Points::<f64>::new();
     let mut lines = CellArray::new();
-    let mut pm: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-    for (&(a, b), faces) in &ef {
-        let is_silhouette = if faces.len() == 1 {
-            true
-        } else if faces.len() == 2 {
-            face_facing[faces[0]] != face_facing[faces[1]]
-        } else {
-            false
-        };
+    let feature_angle_cos = 60.0_f64.to_radians().cos();
+    for (&(a, b), normals) in &ef {
+        let winged = norm(normals.left) > 0.5 && norm(normals.right) > 0.5;
+        let pa = mesh.points.get(a);
+        let pb = mesh.points.get(b);
+        let view = [
+            view_point[0] - 0.5 * (pa[0] + pb[0]),
+            view_point[1] - 0.5 * (pa[1] + pb[1]),
+            view_point[2] - 0.5 * (pa[2] + pb[2]),
+        ];
+        let d1 = dot(view, normals.left);
+        let d2 = dot(view, normals.right);
+        let edge_angle_cos = dot(normals.left, normals.right);
+        let is_silhouette = (winged && d1 * d2 < 0.0) || edge_angle_cos < feature_angle_cos;
         if is_silhouette {
-            let ia = *pm.entry(a).or_insert_with(|| {
-                let i = pts.len();
-                pts.push(mesh.points.get(a));
-                i
-            });
-            let ib = *pm.entry(b).or_insert_with(|| {
-                let i = pts.len();
-                pts.push(mesh.points.get(b));
-                i
-            });
-            lines.push_cell(&[ia as i64, ib as i64]);
+            lines.push_cell(&[a as i64, b as i64]);
         }
     }
     let mut r = PolyData::new();
-    r.points = pts;
+    r.points = mesh.points.clone();
     r.lines = lines;
+    *r.field_data_mut() = mesh.field_data().clone();
     r
+}
+
+#[derive(Clone, Copy, Default)]
+struct TwoNormals {
+    left: [f64; 3],
+    right: [f64; 3],
+}
+
+fn insert_polygon_edges(
+    ef: &mut std::collections::HashMap<(usize, usize), TwoNormals>,
+    mesh: &PolyData,
+    cell: &[i64],
+    n_points: usize,
+) {
+    if cell.len() < 3 {
+        return;
+    }
+    let normal = polygon_normal(mesh, cell);
+    for i in 0..cell.len() {
+        insert_edge(ef, cell[i], cell[(i + 1) % cell.len()], normal, n_points);
+    }
+}
+
+fn insert_edge(
+    ef: &mut std::collections::HashMap<(usize, usize), TwoNormals>,
+    a: i64,
+    b: i64,
+    normal: [f64; 3],
+    n_points: usize,
+) {
+    let (Some(a), Some(b)) = (
+        valid_point_index(a, n_points),
+        valid_point_index(b, n_points),
+    ) else {
+        return;
+    };
+    if a != b {
+        let entry = ef.entry((a.min(b), a.max(b))).or_default();
+        if a < b {
+            entry.left = normal;
+        } else {
+            entry.right = normal;
+        }
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
+fn polygon_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
+    let mut normal = [0.0; 3];
+    for i in 0..cell.len() {
+        let Some(a) = valid_point_index(cell[i], mesh.points.len()) else {
+            return [0.0; 3];
+        };
+        let Some(b) = valid_point_index(cell[(i + 1) % cell.len()], mesh.points.len()) else {
+            return [0.0; 3];
+        };
+        let p = mesh.points.get(a);
+        let q = mesh.points.get(b);
+        normal[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        normal[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        normal[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let length = norm(normal);
+    if length > 0.0 {
+        [normal[0] / length, normal[1] / length, normal[2] / length]
+    } else {
+        [0.0; 3]
+    }
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn norm(a: [f64; 3]) -> f64 {
+    dot(a, a).sqrt()
 }
 #[cfg(test)]
 mod tests {

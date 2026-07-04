@@ -7,17 +7,24 @@ pub fn image_rank_transform(input: &ImageData, scalars: &str) -> ImageData {
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let data: Vec<f64> = (0..n)
+    let mut values: Vec<(f64, usize)> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0]
+            (buf[0], i)
         })
         .collect();
+    values.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut data = vec![0.0f64; n];
+    for (rank, &(_, idx)) in values.iter().enumerate() {
+        data[idx] = rank as f64 / (n - 1).max(1) as f64;
+    }
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

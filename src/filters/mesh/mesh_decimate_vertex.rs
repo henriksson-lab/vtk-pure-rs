@@ -5,7 +5,12 @@ use crate::data::{CellArray, Points, PolyData};
 /// Decimate by removing vertices whose removal doesn't exceed error threshold.
 pub fn decimate_vertex_removal(mesh: &PolyData, max_error: f64, target_ratio: f64) -> PolyData {
     let n = mesh.points.len();
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .filter(|c| c.iter().all(|&v| valid_point_id(v, n).is_some()))
+        .map(|c| c.to_vec())
+        .collect();
     let target_remove = ((n as f64) * target_ratio.clamp(0.0, 0.95)) as usize;
 
     // Build vertex-face adjacency
@@ -118,6 +123,10 @@ pub fn decimate_vertex_removal(mesh: &PolyData, max_error: f64, target_ratio: f6
     result.points = pts;
     result.polys = polys;
     result
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 #[cfg(test)]

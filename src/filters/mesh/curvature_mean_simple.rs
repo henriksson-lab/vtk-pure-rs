@@ -1,5 +1,4 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
-use std::collections::HashMap;
 
 /// Estimate mean curvature at each vertex using the cotangent Laplacian.
 ///
@@ -19,6 +18,9 @@ pub fn compute_mean_curvature(input: &PolyData) -> PolyData {
         let ia: usize = cell[0] as usize;
         let ib: usize = cell[1] as usize;
         let ic: usize = cell[2] as usize;
+        if ia >= n || ib >= n || ic >= n || cell[0] < 0 || cell[1] < 0 || cell[2] < 0 {
+            continue;
+        }
 
         let a = input.points.get(ia);
         let b = input.points.get(ib);
@@ -196,5 +198,20 @@ mod tests {
         let (min_v, max_v, avg) = mean_curvature_stats(&pd);
         assert!(min_v <= avg);
         assert!(avg <= max_v);
+    }
+
+    #[test]
+    fn skips_cells_with_invalid_point_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, -1]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let result = compute_mean_curvature(&pd);
+        let arr = result.point_data().get_array("MeanCurvature").unwrap();
+        assert_eq!(arr.num_tuples(), 3);
     }
 }

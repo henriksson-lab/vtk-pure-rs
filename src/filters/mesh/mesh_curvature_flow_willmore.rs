@@ -9,9 +9,10 @@ pub fn willmore_flow(mesh: &PolyData, steps: usize, dt: f64) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[i], n),
+                valid_point_id(cell[(i + 1) % nc], n),
+            ) {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }
@@ -30,9 +31,18 @@ pub fn willmore_flow(mesh: &PolyData, steps: usize, dt: f64) -> PolyData {
             if cell.len() < 3 {
                 continue;
             }
-            let a = prev[cell[0] as usize];
-            let b = prev[cell[1] as usize];
-            let c = prev[cell[2] as usize];
+            let Some(a_id) = valid_point_id(cell[0], n) else {
+                continue;
+            };
+            let Some(b_id) = valid_point_id(cell[1], n) else {
+                continue;
+            };
+            let Some(c_id) = valid_point_id(cell[2], n) else {
+                continue;
+            };
+            let a = prev[a_id];
+            let b = prev[b_id];
+            let c = prev[c_id];
             let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
             let fn_ = [
@@ -41,8 +51,7 @@ pub fn willmore_flow(mesh: &PolyData, steps: usize, dt: f64) -> PolyData {
                 e1[0] * e2[1] - e1[1] * e2[0],
             ];
             for &v in cell {
-                let vi = v as usize;
-                if vi < n {
+                if let Some(vi) = valid_point_id(v, n) {
                     nm[vi][0] += fn_[0];
                     nm[vi][1] += fn_[1];
                     nm[vi][2] += fn_[2];
@@ -101,6 +110,14 @@ pub fn willmore_flow(mesh: &PolyData, steps: usize, dt: f64) -> PolyData {
         r.points.set(i, pos[i]);
     }
     r
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 #[cfg(test)]
 mod tests {

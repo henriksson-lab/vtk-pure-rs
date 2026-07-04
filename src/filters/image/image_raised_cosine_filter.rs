@@ -13,17 +13,19 @@ pub fn image_raised_cosine_filter(input: &ImageData, scalars: &str) -> ImageData
             if buf[0].abs() <= 0.5 {
                 1.0
             } else if buf[0].abs() <= 1.0 {
-                0.5 * (1.0 + (buf[0].abs() * std::f64::consts::PI).cos())
+                0.5 * (1.0 + ((2.0 * buf[0].abs() - 1.0) * std::f64::consts::PI).cos())
             } else {
                 0.0
             }
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {

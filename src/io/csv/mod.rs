@@ -37,7 +37,8 @@ pub fn read_csv<R: BufRead>(reader: R, delimiter: Delimiter) -> Result<Table, St
         .next()
         .ok_or("empty CSV")?
         .map_err(|e| e.to_string())?;
-    let col_names: Vec<String> = split_csv_line(&header, delim);
+    let header = header.strip_prefix('\u{feff}').unwrap_or(&header);
+    let col_names: Vec<String> = split_csv_line(header, delim);
     let ncols = col_names.len();
     let mut columns: Vec<Vec<f64>> = vec![Vec::new(); ncols];
 
@@ -48,8 +49,9 @@ pub fn read_csv<R: BufRead>(reader: R, delimiter: Delimiter) -> Result<Table, St
             continue;
         }
         let values = split_csv_line(trimmed, delim);
-        for (i, val) in values.iter().enumerate().take(ncols) {
-            columns[i].push(val.parse().unwrap_or(f64::NAN));
+        for i in 0..ncols {
+            let value = values.get(i).map(|v| v.as_str()).unwrap_or("");
+            columns[i].push(value.parse().unwrap_or(f64::NAN));
         }
     }
 
@@ -71,21 +73,26 @@ pub fn write_csv<W: Write>(
     delimiter: Delimiter,
 ) -> std::io::Result<()> {
     let delim = delimiter.char();
-    let names: Vec<&str> = table.columns().iter().map(|c| c.name()).collect();
+    let mut names = Vec::new();
+    for col in table.columns() {
+        if col.num_components() == 1 {
+            names.push(escape_csv_field(col.name(), delim));
+        } else {
+            for comp in 0..col.num_components() {
+                names.push(escape_csv_field(&format!("{}:{comp}", col.name()), delim));
+            }
+        }
+    }
     writeln!(writer, "{}", names.join(&delim.to_string()))?;
 
     for row in 0..table.num_rows() {
-        let mut vals = Vec::with_capacity(table.num_columns());
+        let total_components: usize = table.columns().iter().map(|c| c.num_components()).sum();
+        let mut vals = Vec::with_capacity(total_components);
         for col in table.columns() {
             let nc = col.num_components();
             let mut buf = vec![0.0f64; nc];
             col.tuple_as_f64(row, &mut buf);
-            if nc == 1 {
-                vals.push(format_f64(buf[0]));
-            } else {
-                let parts: Vec<String> = buf.iter().map(|v| format_f64(*v)).collect();
-                vals.push(parts.join(";"));
-            }
+            vals.extend(buf.iter().map(|v| format_f64(*v)));
         }
         writeln!(writer, "{}", vals.join(&delim.to_string()))?;
     }
@@ -182,10 +189,16 @@ fn split_csv_line(line: &str, delim: char) -> Vec<String> {
     let mut fields = Vec::new();
     let mut current = String::new();
     let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
 
-    for ch in line.chars() {
+    while let Some(ch) = chars.next() {
         if ch == '"' {
-            in_quotes = !in_quotes;
+            if in_quotes && chars.peek() == Some(&'"') {
+                current.push('"');
+                chars.next();
+            } else {
+                in_quotes = !in_quotes;
+            }
         } else if ch == delim && !in_quotes {
             fields.push(current.trim().to_string());
             current = String::new();
@@ -195,6 +208,15 @@ fn split_csv_line(line: &str, delim: char) -> Vec<String> {
     }
     fields.push(current.trim().to_string());
     fields
+}
+
+fn escape_csv_field(field: &str, delim: char) -> String {
+    if field.contains(delim) || field.contains('"') || field.contains('\n') || field.contains('\r')
+    {
+        format!("\"{}\"", field.replace('"', "\"\""))
+    } else {
+        field.to_string()
+    }
 }
 
 fn format_f64(v: f64) -> String {
@@ -261,9 +283,39 @@ mod tests {
     }
 
     #[test]
+    fn quoted_escaped_quote() {
+        let data = "name,val\n\"a \"\"quote\"\"\",42\n";
+        let table = read_csv(data.as_bytes(), Delimiter::Comma).unwrap();
+        assert_eq!(table.num_rows(), 1);
+        assert_eq!(table.value_f64(0, "val"), Some(42.0));
+    }
+
+    #[test]
     fn skip_comments() {
         let data = "x\n#comment\n1\n2\n";
         let table = read_csv(data.as_bytes(), Delimiter::Comma).unwrap();
         assert_eq!(table.num_rows(), 2);
+    }
+
+    #[test]
+    fn missing_values_keep_columns_rectangular() {
+        let data = "x,y,z\n1,2\n3,4,5\n";
+        let table = read_csv(data.as_bytes(), Delimiter::Comma).unwrap();
+        assert_eq!(table.num_columns(), 3);
+        assert_eq!(table.num_rows(), 2);
+        assert!(table.value_f64(0, "z").unwrap().is_nan());
+    }
+
+    #[test]
+    fn write_multicomponent_columns_like_vtk() {
+        let table = Table::new().with_column(AnyDataArray::F64(DataArray::from_vec(
+            "vec",
+            vec![1.0, 2.0, 3.0],
+            3,
+        )));
+        let mut buf = Vec::new();
+        write_csv(&mut buf, &table, Delimiter::Comma).unwrap();
+        let csv = String::from_utf8(buf).unwrap();
+        assert_eq!(csv, "vec:0,vec:1,vec:2\n1,2,3\n");
     }
 }

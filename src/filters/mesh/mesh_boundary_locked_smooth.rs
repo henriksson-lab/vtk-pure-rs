@@ -10,21 +10,10 @@ pub fn boundary_locked_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -
     let mut edge_count: std::collections::HashMap<(usize, usize), u32> =
         std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-                let e = if a < b { (a, b) } else { (b, a) };
-                *edge_count.entry(e).or_insert(0) += 1;
-            }
-        }
+        add_polygon_edges(cell, n, &mut adj, &mut edge_count);
+    }
+    for strip in mesh.strips.iter() {
+        add_triangle_strip_edges(strip, n, &mut adj, &mut edge_count);
     }
     let mut boundary = vec![false; n];
     for (&(a, b), &c) in &edge_count {
@@ -57,10 +46,73 @@ pub fn boundary_locked_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -
     for p in &positions {
         pts.push(*p);
     }
-    let mut result = PolyData::new();
+    let mut result = mesh.clone();
     result.points = pts;
-    result.polys = mesh.polys.clone();
     result
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
+}
+
+fn add_polygon_edges(
+    cell: &[i64],
+    npoints: usize,
+    adj: &mut [Vec<usize>],
+    edge_count: &mut std::collections::HashMap<(usize, usize), u32>,
+) {
+    let nc = cell.len();
+    if nc < 2 || !valid_cell(cell, npoints) {
+        return;
+    }
+    for i in 0..nc {
+        add_edge(
+            cell[i] as usize,
+            cell[(i + 1) % nc] as usize,
+            adj,
+            edge_count,
+        );
+    }
+}
+
+fn add_triangle_strip_edges(
+    strip: &[i64],
+    npoints: usize,
+    adj: &mut [Vec<usize>],
+    edge_count: &mut std::collections::HashMap<(usize, usize), u32>,
+) {
+    if strip.len() < 3 || !valid_cell(strip, npoints) {
+        return;
+    }
+    for i in 0..strip.len() - 2 {
+        let tri = if i % 2 == 0 {
+            [strip[i], strip[i + 1], strip[i + 2]]
+        } else {
+            [strip[i + 1], strip[i], strip[i + 2]]
+        };
+        add_edge(tri[0] as usize, tri[1] as usize, adj, edge_count);
+        add_edge(tri[1] as usize, tri[2] as usize, adj, edge_count);
+        add_edge(tri[2] as usize, tri[0] as usize, adj, edge_count);
+    }
+}
+
+fn add_edge(
+    a: usize,
+    b: usize,
+    adj: &mut [Vec<usize>],
+    edge_count: &mut std::collections::HashMap<(usize, usize), u32>,
+) {
+    if a == b {
+        return;
+    }
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
+    let e = if a < b { (a, b) } else { (b, a) };
+    *edge_count.entry(e).or_insert(0) += 1;
 }
 
 #[cfg(test)]
@@ -81,5 +133,21 @@ mod tests {
         // Boundary vertices should not move
         let p0 = r.points.get(0);
         assert_eq!(p0, [0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn triangle_strip_boundary_vertices_are_locked() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.points.push([1.0, 1.0, 0.0]);
+        mesh.strips.push_cell(&[0, 1, 2, 3]);
+
+        let r = boundary_locked_smooth(&mesh, 3, 1.0);
+
+        for i in 0..4 {
+            assert_eq!(r.points.get(i), mesh.points.get(i));
+        }
     }
 }

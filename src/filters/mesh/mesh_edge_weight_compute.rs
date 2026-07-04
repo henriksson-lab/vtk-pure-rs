@@ -8,7 +8,9 @@ pub fn attach_cotangent_weights(mesh: &PolyData) -> PolyData {
         if c.len() != 3 {
             continue;
         }
-        let ids = [c[0] as usize, c[1] as usize, c[2] as usize];
+        let Some(ids) = valid_triangle_ids(c, n) else {
+            continue;
+        };
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),
@@ -42,19 +44,37 @@ pub fn attach_cotangent_weights(mesh: &PolyData) -> PolyData {
         )));
     r
 }
+fn valid_triangle_ids(cell: &[i64], n_points: usize) -> Option<[usize; 3]> {
+    let a = usize::try_from(cell[0]).ok()?;
+    let b = usize::try_from(cell[1]).ok()?;
+    let c = usize::try_from(cell[2]).ok()?;
+    if a >= n_points || b >= n_points || c >= n_points || a == b || b == c || c == a {
+        return None;
+    }
+    Some([a, b, c])
+}
 pub fn attach_degree_weight(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let mut deg = vec![0.0f64; n];
     let mut seen: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    for cell in mesh.lines.iter() {
+        for pair in cell.windows(2) {
+            insert_degree_edge(n, &mut seen, pair[0], pair[1]);
+        }
+    }
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                seen[a].insert(b);
-                seen[b].insert(a);
-            }
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_degree_edge(n, &mut seen, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_degree_edge(n, &mut seen, tri[0], tri[1]);
+            insert_degree_edge(n, &mut seen, tri[1], tri[2]);
+            insert_degree_edge(n, &mut seen, tri[2], tri[0]);
         }
     }
     for i in 0..n {
@@ -64,6 +84,16 @@ pub fn attach_degree_weight(mesh: &PolyData) -> PolyData {
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("Degree", deg, 1)));
     r
+}
+fn insert_degree_edge(n: usize, seen: &mut [std::collections::HashSet<usize>], a: i64, b: i64) {
+    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
+        return;
+    };
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    seen[a].insert(b);
+    seen[b].insert(a);
 }
 #[cfg(test)]
 mod tests {

@@ -60,6 +60,16 @@ impl Fog {
         }
     }
 
+    /// Create squared exponential fog.
+    pub fn exponential_squared(density: f64) -> Self {
+        Self {
+            density,
+            mode: FogMode::ExponentialSquared,
+            enabled: true,
+            ..Default::default()
+        }
+    }
+
     /// Set fog color.
     pub fn with_color(mut self, r: f32, g: f32, b: f32) -> Self {
         self.color = [r, g, b];
@@ -72,11 +82,23 @@ impl Fog {
             return 0.0;
         }
         match self.mode {
-            FogMode::Linear => ((distance - self.near) / (self.far - self.near)).clamp(0.0, 1.0),
-            FogMode::Exponential => 1.0 - (-self.density * distance).exp(),
+            FogMode::Linear => {
+                if self.far <= self.near {
+                    if distance >= self.far {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                } else {
+                    ((distance - self.near) / (self.far - self.near)).clamp(0.0, 1.0)
+                }
+            }
+            FogMode::Exponential => {
+                (1.0 - (-self.density * distance.max(0.0)).exp()).clamp(0.0, 1.0)
+            }
             FogMode::ExponentialSquared => {
-                let d = self.density * distance;
-                1.0 - (-d * d).exp()
+                let d = self.density * distance.max(0.0);
+                (1.0 - (-d * d).exp()).clamp(0.0, 1.0)
             }
         }
     }
@@ -114,5 +136,19 @@ mod tests {
     fn with_color() {
         let fog = Fog::linear(1.0, 10.0).with_color(1.0, 0.0, 0.0);
         assert_eq!(fog.color, [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn degenerate_linear_fog_is_finite() {
+        let fog = Fog::linear(10.0, 10.0);
+        assert_eq!(fog.factor(9.0), 0.0);
+        assert_eq!(fog.factor(10.0), 1.0);
+        assert!(fog.factor(10.0).is_finite());
+    }
+
+    #[test]
+    fn exponential_modes_are_clamped() {
+        assert_eq!(Fog::exponential(0.1).factor(-10.0), 0.0);
+        assert_eq!(Fog::exponential_squared(0.1).factor(-10.0), 0.0);
     }
 }

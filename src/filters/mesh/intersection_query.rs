@@ -18,14 +18,50 @@ pub fn closest_point_on_surface(
         if cell.len() < 3 {
             continue;
         }
+        if cell
+            .iter()
+            .any(|&id| id < 0 || id as usize >= mesh.points.len())
+        {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let (cp, d2) = closest_point_on_triangle(query, a, b, c);
-        if d2 < best_dist2 {
-            best_dist2 = d2;
-            best_point = cp;
-            best_cell = ci;
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            let (cp, d2) = closest_point_on_triangle(query, a, b, c);
+            if d2 < best_dist2 {
+                best_dist2 = d2;
+                best_point = cp;
+                best_cell = ci;
+            }
+        }
+    }
+    let base_cell = mesh.polys.num_cells();
+    for (si, strip) in mesh.strips.iter().enumerate() {
+        if strip.len() < 3 {
+            continue;
+        }
+        if strip
+            .iter()
+            .any(|&id| id < 0 || id as usize >= mesh.points.len())
+        {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            let a = mesh.points.get(tri[0] as usize);
+            let b = mesh.points.get(tri[1] as usize);
+            let c = mesh.points.get(tri[2] as usize);
+            let (cp, d2) = closest_point_on_triangle(query, a, b, c);
+            if d2 < best_dist2 {
+                best_dist2 = d2;
+                best_point = cp;
+                best_cell = base_cell + si;
+            }
         }
     }
 
@@ -182,5 +218,22 @@ mod tests {
         let probe = PolyData::from_points(vec![[1.0, 0.5, 3.0]]);
         let result = project_onto_surface(&mesh, &probe);
         assert!((result.points.get(0)[2] - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn closest_on_quad_uses_all_polygon_triangles() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 1.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2, 3]);
+
+        let (cp, d, cell_id) = closest_point_on_surface(&mesh, [0.25, 0.75, 1.0]).unwrap();
+        assert_eq!(cell_id, 0);
+        assert!((cp[0] - 0.25).abs() < 1e-12, "cp={:?}", cp);
+        assert!((cp[1] - 0.75).abs() < 1e-12, "cp={:?}", cp);
+        assert!((cp[2] - 0.0).abs() < 1e-12, "cp={:?}", cp);
+        assert!((d - 1.0).abs() < 1e-12, "d={}", d);
     }
 }

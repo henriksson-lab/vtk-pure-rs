@@ -1,4 +1,4 @@
-use crate::data::PolyData;
+use crate::data::{CellArray, PolyData};
 use std::collections::HashMap;
 
 /// Optimize mesh quality by swapping interior edges where the swap improves
@@ -12,11 +12,30 @@ use std::collections::HashMap;
 pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
     // Collect all triangles as index triples
     let mut triangles: Vec<[usize; 3]> = Vec::new();
+    let mut poly_cells: Vec<Vec<i64>> = Vec::new();
+    let mut triangle_for_poly: Vec<Option<usize>> = Vec::new();
+    let n_points = input.points.len();
+
     for cell in input.polys.iter() {
+        poly_cells.push(cell.to_vec());
         if cell.len() == 3 {
-            triangles.push([cell[0] as usize, cell[1] as usize, cell[2] as usize]);
+            let tri = [cell[0], cell[1], cell[2]];
+            if let (Some(a), Some(b), Some(c)) = (
+                valid_point_index(tri[0], n_points),
+                valid_point_index(tri[1], n_points),
+                valid_point_index(tri[2], n_points),
+            ) {
+                if a != b && b != c && a != c {
+                    triangle_for_poly.push(Some(triangles.len()));
+                    triangles.push([a, b, c]);
+                } else {
+                    triangle_for_poly.push(None);
+                }
+            } else {
+                triangle_for_poly.push(None);
+            }
         } else {
-            // Non-triangle cells: skip (cannot swap edges)
+            triangle_for_poly.push(None);
         }
     }
 
@@ -57,16 +76,22 @@ pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
         // Find the opposite vertices (not on the shared edge)
         let opp0: usize = find_opposite(&t0, ea, eb);
         let opp1: usize = find_opposite(&t1, ea, eb);
+        if opp0 == opp1 {
+            continue;
+        }
 
         // Current minimum angle across both triangles
         let current_min: f64 = min_angle_of_tri(input, &t0).min(min_angle_of_tri(input, &t1));
 
         // Proposed swap: replace edge (ea, eb) with edge (opp0, opp1)
         // New triangles: (opp0, opp1, ea) and (opp0, opp1, eb)
-        let new_t0: [usize; 3] = [opp0, opp1, ea];
-        let new_t1: [usize; 3] = [opp0, opp1, eb];
+        let new_t0: [usize; 3] = orient_like(input, [opp0, opp1, ea], &t0);
+        let new_t1: [usize; 3] = orient_like(input, [opp0, eb, opp1], &t1);
 
         // Check that the new triangles are valid (non-degenerate, correct winding)
+        if !has_positive_area(input, &new_t0) || !has_positive_area(input, &new_t1) {
+            continue;
+        }
         let new_min: f64 = min_angle_of_tri(input, &new_t0).min(min_angle_of_tri(input, &new_t1));
 
         if new_min > current_min + 1e-10 {
@@ -77,16 +102,19 @@ pub fn optimize_by_edge_swap(input: &PolyData) -> PolyData {
         }
     }
 
-    // Rebuild PolyData
-    let tri_i64: Vec<[i64; 3]> = triangles
-        .iter()
-        .map(|t| [t[0] as i64, t[1] as i64, t[2] as i64])
-        .collect();
-    let points_vec: Vec<[f64; 3]> = (0..input.points.len())
-        .map(|i| input.points.get(i))
-        .collect();
+    let mut out_polys = CellArray::new();
+    for (poly_id, cell) in poly_cells.iter().enumerate() {
+        if let Some(tri_id) = triangle_for_poly[poly_id] {
+            let tri = triangles[tri_id];
+            out_polys.push_cell(&[tri[0] as i64, tri[1] as i64, tri[2] as i64]);
+        } else {
+            out_polys.push_cell(cell);
+        }
+    }
 
-    PolyData::from_triangles(points_vec, tri_i64)
+    let mut output = input.clone();
+    output.polys = out_polys;
+    output
 }
 
 /// Find the vertex in the triangle that is NOT ea or eb.
@@ -128,6 +156,38 @@ fn angle_at_vertex(v: &[f64; 3], a: &[f64; 3], b: &[f64; 3]) -> f64 {
 
     let cos_val: f64 = (dot / denom).clamp(-1.0, 1.0);
     cos_val.acos()
+}
+
+fn orient_like(pd: &PolyData, mut tri: [usize; 3], reference: &[usize; 3]) -> [usize; 3] {
+    let n = triangle_normal(pd, &tri);
+    let ref_n = triangle_normal(pd, reference);
+    let dot = n[0] * ref_n[0] + n[1] * ref_n[1] + n[2] * ref_n[2];
+    if dot < 0.0 {
+        tri.swap(1, 2);
+    }
+    tri
+}
+
+fn triangle_normal(pd: &PolyData, tri: &[usize; 3]) -> [f64; 3] {
+    let p0 = pd.points.get(tri[0]);
+    let p1 = pd.points.get(tri[1]);
+    let p2 = pd.points.get(tri[2]);
+    let a = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+    let b = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn has_positive_area(pd: &PolyData, tri: &[usize; 3]) -> bool {
+    let n = triangle_normal(pd, tri);
+    n[0] * n[0] + n[1] * n[1] + n[2] * n[2] > 1e-30
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]
@@ -177,5 +237,21 @@ mod tests {
         let pd = PolyData::default();
         let result = optimize_by_edge_swap(&pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn invalid_and_degenerate_triangles_are_preserved() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, 1, 1]);
+
+        let result = optimize_by_edge_swap(&pd);
+        assert_eq!(result.polys.num_cells(), 3);
+        assert_eq!(result.polys.cell(1), &[0, 1, 99]);
+        assert_eq!(result.polys.cell(2), &[0, 1, 1]);
     }
 }

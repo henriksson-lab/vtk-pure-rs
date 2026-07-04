@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 use std::collections::HashSet;
 
 /// Extract the edge graph of a mesh as a PolyData with line cells.
@@ -7,12 +7,31 @@ use std::collections::HashSet;
 pub fn edge_graph(input: &PolyData) -> PolyData {
     let mut edges: HashSet<(i64, i64)> = HashSet::new();
 
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut edges, input.points.len(), edge[0], edge[1]);
+        }
+    }
+
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            edges.insert(key);
+            insert_edge(
+                &mut edges,
+                input.points.len(),
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edges, input.points.len(), tri[0], tri[1]);
+            insert_edge(&mut edges, input.points.len(), tri[1], tri[2]);
+            insert_edge(&mut edges, input.points.len(), tri[2], tri[0]);
         }
     }
 
@@ -34,15 +53,32 @@ pub fn vertex_degree(input: &PolyData) -> PolyData {
     let mut degree = vec![0.0f64; n];
     let mut counted: HashSet<(usize, usize)> = HashSet::new();
 
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_index_edge(&mut counted, &mut degree, n, edge[0], edge[1]);
+        }
+    }
+
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            let key = if a < b { (a, b) } else { (b, a) };
-            if counted.insert(key) {
-                degree[a] += 1.0;
-                degree[b] += 1.0;
-            }
+            insert_index_edge(
+                &mut counted,
+                &mut degree,
+                n,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_index_edge(&mut counted, &mut degree, n, tri[0], tri[1]);
+            insert_index_edge(&mut counted, &mut degree, n, tri[1], tri[2]);
+            insert_index_edge(&mut counted, &mut degree, n, tri[2], tri[0]);
         }
     }
 
@@ -55,14 +91,70 @@ pub fn vertex_degree(input: &PolyData) -> PolyData {
 /// Count total number of unique edges.
 pub fn edge_count(input: &PolyData) -> usize {
     let mut edges: HashSet<(i64, i64)> = HashSet::new();
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut edges, input.points.len(), edge[0], edge[1]);
+        }
+    }
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            edges.insert(if a < b { (a, b) } else { (b, a) });
+            insert_edge(
+                &mut edges,
+                input.points.len(),
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edges, input.points.len(), tri[0], tri[1]);
+            insert_edge(&mut edges, input.points.len(), tri[1], tri[2]);
+            insert_edge(&mut edges, input.points.len(), tri[2], tri[0]);
         }
     }
     edges.len()
+}
+
+fn insert_edge(edges: &mut HashSet<(i64, i64)>, n_points: usize, a: i64, b: i64) {
+    if a == b || !valid_point_id(a, n_points) || !valid_point_id(b, n_points) {
+        return;
+    }
+    edges.insert(if a < b { (a, b) } else { (b, a) });
+}
+
+fn insert_index_edge(
+    edges: &mut HashSet<(usize, usize)>,
+    degree: &mut [f64],
+    n_points: usize,
+    a: i64,
+    b: i64,
+) {
+    let (Some(a), Some(b)) = (
+        valid_point_index(a, n_points),
+        valid_point_index(b, n_points),
+    ) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    let key = if a < b { (a, b) } else { (b, a) };
+    if edges.insert(key) {
+        degree[a] += 1.0;
+        degree[b] += 1.0;
+    }
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> bool {
+    usize::try_from(id).is_ok_and(|id| id < n_points)
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::data::{CellArray, Points, PolyData, UnstructuredGrid};
+use crate::data::{Points, PolyData, UnstructuredGrid};
 use crate::types::{CellType, VtkError};
 
 /// Reader for LS-DYNA keyword input files (.k, .key, .dyn).
@@ -30,23 +30,22 @@ impl LsDynaReader {
 }
 
 fn parse_keyword_poly_data(content: &str) -> Result<PolyData, VtkError> {
-    let (nodes, shell_elements) = parse_keyword_content(content)?;
+    let parsed = parse_keyword_content(content)?;
 
     let mut pd = PolyData::new();
 
     // Build node ID to index mapping
     let mut id_to_idx = std::collections::HashMap::new();
-    for (i, (nid, pos)) in nodes.iter().enumerate() {
+    for (i, (nid, pos)) in parsed.nodes.iter().enumerate() {
         id_to_idx.insert(*nid, i);
         pd.points.push(*pos);
     }
 
     // Build polys from shell elements
-    for (_eid, node_ids) in &shell_elements {
-        let indices: Vec<i64> = node_ids
-            .iter()
-            .filter_map(|nid| id_to_idx.get(nid).map(|&idx| idx as i64))
-            .collect();
+    for (_eid, node_ids) in &parsed.shell_elements {
+        let Some(indices) = map_node_ids(node_ids, &id_to_idx) else {
+            continue;
+        };
         if indices.len() >= 3 {
             // Check for degenerate quads (repeated last node)
             if indices.len() == 4 && indices[2] == indices[3] {
@@ -61,47 +60,54 @@ fn parse_keyword_poly_data(content: &str) -> Result<PolyData, VtkError> {
 }
 
 fn parse_keyword_unstructured(content: &str) -> Result<UnstructuredGrid, VtkError> {
-    let (nodes, shell_elements) = parse_keyword_content(content)?;
+    let parsed = parse_keyword_content(content)?;
 
     let mut points = Points::new();
-    let mut cells = CellArray::new();
-    let mut cell_types = Vec::new();
 
     let mut id_to_idx = std::collections::HashMap::new();
-    for (i, (nid, pos)) in nodes.iter().enumerate() {
+    for (i, (nid, pos)) in parsed.nodes.iter().enumerate() {
         id_to_idx.insert(*nid, i);
         points.push(*pos);
     }
 
-    for (_eid, node_ids) in &shell_elements {
-        let indices: Vec<i64> = node_ids
-            .iter()
-            .filter_map(|nid| id_to_idx.get(nid).map(|&idx| idx as i64))
-            .collect();
+    let mut ug = UnstructuredGrid::new();
+    ug.points = points;
+
+    for (_eid, node_ids) in &parsed.shell_elements {
+        let Some(indices) = map_node_ids(node_ids, &id_to_idx) else {
+            continue;
+        };
         if indices.len() == 4 && indices[2] != indices[3] {
-            cells.push_cell(&indices);
-            cell_types.push(CellType::Quad);
+            ug.push_cell(CellType::Quad, &indices);
         } else if indices.len() >= 3 {
-            cells.push_cell(&indices[..3]);
-            cell_types.push(CellType::Triangle);
+            ug.push_cell(CellType::Triangle, &indices[..3]);
         }
     }
 
-    let mut ug = UnstructuredGrid::new();
-    ug.points = points;
-    for (i, cell) in cells.iter().enumerate() {
-        ug.push_cell(cell_types[i], cell);
+    for (_eid, node_ids) in &parsed.solid_elements {
+        let Some(indices) = map_node_ids(node_ids, &id_to_idx) else {
+            continue;
+        };
+        if indices.len() >= 8 {
+            let (cell_type, npts) = classify_solid(&indices);
+            ug.push_cell(cell_type, &indices[..npts]);
+        }
     }
+
     Ok(ug)
 }
 
-/// Parse *NODE and *ELEMENT_SHELL sections from keyword content.
-/// Returns (nodes: [(id, [x,y,z])], elements: [(id, [n1,n2,n3,n4])]).
-fn parse_keyword_content(
-    content: &str,
-) -> Result<(Vec<(i64, [f64; 3])>, Vec<(i64, Vec<i64>)>), VtkError> {
+struct KeywordMesh {
+    nodes: Vec<(i64, [f64; 3])>,
+    shell_elements: Vec<(i64, Vec<i64>)>,
+    solid_elements: Vec<(i64, Vec<i64>)>,
+}
+
+/// Parse *NODE, *ELEMENT_SHELL, and *ELEMENT_SOLID sections from keyword content.
+fn parse_keyword_content(content: &str) -> Result<KeywordMesh, VtkError> {
     let mut nodes = Vec::new();
-    let mut elements = Vec::new();
+    let mut shell_elements = Vec::new();
+    let mut solid_elements = Vec::new();
     let mut section = Section::None;
 
     for line in content.lines() {
@@ -135,20 +141,23 @@ fn parse_keyword_content(
             }
             Section::ElementShell => {
                 if let Some(elem) = parse_element_shell_line(trimmed) {
-                    elements.push(elem);
+                    shell_elements.push(elem);
                 }
             }
             Section::ElementSolid => {
-                // Solid elements have 8 nodes - skip for PolyData but include for unstructured
                 if let Some(elem) = parse_element_solid_line(trimmed) {
-                    elements.push(elem);
+                    solid_elements.push(elem);
                 }
             }
             Section::None => {}
         }
     }
 
-    Ok((nodes, elements))
+    Ok(KeywordMesh {
+        nodes,
+        shell_elements,
+        solid_elements,
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -222,6 +231,28 @@ fn parse_element_solid_line(line: &str) -> Option<(i64, Vec<i64>)> {
     parse_element_shell_line(line)
 }
 
+fn map_node_ids(
+    node_ids: &[i64],
+    id_to_idx: &std::collections::HashMap<i64, usize>,
+) -> Option<Vec<i64>> {
+    node_ids
+        .iter()
+        .map(|nid| id_to_idx.get(nid).map(|&idx| idx as i64))
+        .collect()
+}
+
+fn classify_solid(indices: &[i64]) -> (CellType, usize) {
+    if indices[3] == indices[7] {
+        (CellType::Tetra, 4)
+    } else if indices[4] == indices[7] {
+        (CellType::Pyramid, 5)
+    } else if indices[5] == indices[7] {
+        (CellType::Wedge, 6)
+    } else {
+        (CellType::Hexahedron, 8)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -260,5 +291,44 @@ $# LS-DYNA keyword file
         assert_eq!(pd.points.len(), 4);
         assert_eq!(pd.polys.num_cells(), 1);
         assert_eq!(pd.polys.cell(0).len(), 4);
+    }
+
+    #[test]
+    fn parse_solid_hexahedron_unstructured() {
+        let content = "*NODE
+1 0 0 0
+2 1 0 0
+3 1 1 0
+4 0 1 0
+5 0 0 1
+6 1 0 1
+7 1 1 1
+8 0 1 1
+*ELEMENT_SOLID
+1 1 1 2 3 4 5 6 7 8
+*END
+";
+        let ug = parse_keyword_unstructured(content).unwrap();
+        assert_eq!(ug.cell_types(), &[CellType::Hexahedron]);
+        assert_eq!(ug.cell_points(0).len(), 8);
+    }
+
+    #[test]
+    fn solids_do_not_become_poly_data_faces() {
+        let content = "*NODE
+1 0 0 0
+2 1 0 0
+3 1 1 0
+4 0 1 0
+5 0 0 1
+6 1 0 1
+7 1 1 1
+8 0 1 1
+*ELEMENT_SOLID
+1 1 1 2 3 4 5 6 7 8
+*END
+";
+        let pd = LsDynaReader::read_poly_data_from_str(content).unwrap();
+        assert_eq!(pd.polys.num_cells(), 0);
     }
 }

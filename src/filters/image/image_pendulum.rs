@@ -10,7 +10,7 @@ pub fn image_pendulum(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            (buf[0] * 3.13).sin()
+            (buf[0] * 9.81f64.sqrt()).sin()
         })
         .collect();
     let dims = input.dimensions();

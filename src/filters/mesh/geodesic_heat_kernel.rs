@@ -17,6 +17,24 @@ pub fn heat_trace_descriptor(input: &PolyData, num_scales: usize) -> PolyData {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            let a = edge[0] as usize;
+            let b = edge[1] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }

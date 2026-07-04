@@ -15,8 +15,19 @@ pub fn arap_deform(input: &PolyData, handles: &[(usize, [f64; 3])], iterations: 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            if cell.len() < 2 {
+                continue;
+            }
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % cell.len()];
+            if a_id < 0 || b_id < 0 {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
+            if a >= n || b >= n || a == b {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -26,7 +37,7 @@ pub fn arap_deform(input: &PolyData, handles: &[(usize, [f64; 3])], iterations: 
         }
     }
 
-    let fixed: HashMap<usize, [f64; 3]> = handles.iter().cloned().collect();
+    let fixed: HashMap<usize, [f64; 3]> = handles.iter().cloned().filter(|(i, _)| *i < n).collect();
     let orig: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
     let mut pts = orig.clone();
 

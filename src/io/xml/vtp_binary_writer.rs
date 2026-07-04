@@ -2,6 +2,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, PolyData};
+use crate::types::ScalarType;
 use crate::types::VtkError;
 
 use crate::io::xml::binary;
@@ -22,18 +23,24 @@ impl VtpBinaryWriter {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
         writeln!(
             w,
-            "<VTKFile type=\"PolyData\" version=\"1.0\" byte_order=\"LittleEndian\">"
+            "<VTKFile type=\"PolyData\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt32\">"
         )?;
         writeln!(w, "  <PolyData>")?;
 
         let n_points = data.points.len();
+        let n_verts = data.verts.num_cells();
+        let n_lines = data.lines.num_cells();
         let n_polys = data.polys.num_cells();
+        let n_strips = data.strips.num_cells();
 
         writeln!(
             w,
-            "    <Piece NumberOfPoints=\"{}\" NumberOfVerts=\"0\" NumberOfLines=\"0\" NumberOfPolys=\"{}\" NumberOfStrips=\"0\">",
-            n_points, n_polys
+            "    <Piece NumberOfPoints=\"{}\" NumberOfVerts=\"{}\" NumberOfLines=\"{}\" NumberOfStrips=\"{}\" NumberOfPolys=\"{}\">",
+            n_points, n_verts, n_lines, n_strips, n_polys
         )?;
+
+        write_binary_data_section(w, "PointData", data.point_data())?;
+        write_binary_data_section(w, "CellData", data.cell_data())?;
 
         // Points (Float64, 3 components, binary)
         writeln!(w, "      <Points>")?;
@@ -46,22 +53,19 @@ impl VtpBinaryWriter {
         )?;
         writeln!(w, "      </Points>")?;
 
-        // Polys
-        if n_polys > 0 {
-            writeln!(w, "      <Polys>")?;
-            write_binary_cell_section(w, &data.polys)?;
-            writeln!(w, "      </Polys>")?;
-        }
-
-        // PointData
-        if data.point_data().num_arrays() > 0 {
-            write_binary_data_section(w, "PointData", data.point_data())?;
-        }
-
-        // CellData
-        if data.cell_data().num_arrays() > 0 {
-            write_binary_data_section(w, "CellData", data.cell_data())?;
-        }
+        // Cells
+        writeln!(w, "      <Verts>")?;
+        write_binary_cell_section(w, &data.verts)?;
+        writeln!(w, "      </Verts>")?;
+        writeln!(w, "      <Lines>")?;
+        write_binary_cell_section(w, &data.lines)?;
+        writeln!(w, "      </Lines>")?;
+        writeln!(w, "      <Strips>")?;
+        write_binary_cell_section(w, &data.strips)?;
+        writeln!(w, "      </Strips>")?;
+        writeln!(w, "      <Polys>")?;
+        write_binary_cell_section(w, &data.polys)?;
+        writeln!(w, "      </Polys>")?;
 
         writeln!(w, "    </Piece>")?;
         writeln!(w, "  </PolyData>")?;
@@ -120,27 +124,60 @@ fn write_binary_data_section<W: Write>(
     section: &str,
     attrs: &DataSetAttributes,
 ) -> Result<(), VtkError> {
-    writeln!(w, "      <{}>", section)?;
+    let attrs_str = data_attribute_string(attrs);
+    writeln!(w, "      <{}{}>", section, attrs_str)?;
     for i in 0..attrs.num_arrays() {
         if let Some(arr) = attrs.get_array_by_index(i) {
-            let type_name = match arr.scalar_type() {
-                crate::types::ScalarType::F32 => "Float32",
-                crate::types::ScalarType::F64 => "Float64",
-                crate::types::ScalarType::I32 => "Int32",
-                crate::types::ScalarType::I64 => "Int64",
-                crate::types::ScalarType::U8 => "UInt8",
-                _ => "Float64",
-            };
             let encoded = binary::encode_data_array_binary(arr);
             writeln!(
                 w,
                 "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"binary\">{}</DataArray>",
-                type_name, arr.name(), arr.num_components(), encoded
+                xml_scalar_type(arr.scalar_type()),
+                xml_escape_attr(arr.name()),
+                arr.num_components(),
+                encoded
             )?;
         }
     }
     writeln!(w, "      </{}>", section)?;
     Ok(())
+}
+
+fn data_attribute_string(attrs: &DataSetAttributes) -> String {
+    let mut attrs_str = String::new();
+    if let Some(arr) = attrs.scalars() {
+        attrs_str.push_str(&format!(" Scalars=\"{}\"", xml_escape_attr(arr.name())));
+    }
+    if let Some(arr) = attrs.normals() {
+        attrs_str.push_str(&format!(" Normals=\"{}\"", xml_escape_attr(arr.name())));
+    }
+    if let Some(arr) = attrs.vectors() {
+        attrs_str.push_str(&format!(" Vectors=\"{}\"", xml_escape_attr(arr.name())));
+    }
+    attrs_str
+}
+
+fn xml_scalar_type(scalar_type: ScalarType) -> &'static str {
+    match scalar_type {
+        ScalarType::F32 => "Float32",
+        ScalarType::F64 => "Float64",
+        ScalarType::I8 => "Int8",
+        ScalarType::I16 => "Int16",
+        ScalarType::I32 => "Int32",
+        ScalarType::I64 => "Int64",
+        ScalarType::U8 => "UInt8",
+        ScalarType::U16 => "UInt16",
+        ScalarType::U32 => "UInt32",
+        ScalarType::U64 => "UInt64",
+    }
+}
+
+fn xml_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -189,5 +226,36 @@ mod tests {
         let mut v = [0.0f64];
         arr.tuple_as_f64(1, &mut v);
         assert!((v[0] - 20.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn binary_vtp_roundtrip_lines() {
+        let pd = PolyData::from_lines(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]],
+            vec![[0, 1], [1, 2]],
+        );
+
+        let mut buf = Vec::new();
+        VtpBinaryWriter::write_to(&mut buf, &pd).unwrap();
+
+        let reader = std::io::BufReader::new(&buf[..]);
+        let result = VtpReader::read_from(reader).unwrap();
+        assert_eq!(result.lines.num_cells(), 2);
+        assert_eq!(result.lines.cell(1), &[1, 2]);
+    }
+
+    #[test]
+    fn binary_vtp_writes_attribute_hints_and_integer_types() {
+        let mut pd = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let ids = DataArray::from_vec("id&tag", vec![7u16], 1);
+        pd.point_data_mut().add_array(ids.into());
+        pd.point_data_mut().set_active_scalars("id&tag");
+
+        let mut buf = Vec::new();
+        VtpBinaryWriter::write_to(&mut buf, &pd).unwrap();
+        let xml = String::from_utf8(buf).unwrap();
+
+        assert!(xml.contains("<PointData Scalars=\"id&amp;tag\">"));
+        assert!(xml.contains("type=\"UInt16\" Name=\"id&amp;tag\""));
     }
 }

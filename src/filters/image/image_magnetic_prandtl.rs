@@ -10,7 +10,7 @@ pub fn image_magnetic_prandtl(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].abs().max(0.01) / buf[0].abs().max(0.01)
+            1.0e-6 * 4e-7 * std::f64::consts::PI * buf[0].abs().max(0.01)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,11 @@ mod tests {
         );
         let r = image_magnetic_prandtl(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+        let out = r.point_data().get_array("v").unwrap();
+        let mut a = [0.0f64];
+        let mut b = [0.0f64];
+        out.tuple_as_f64(0, &mut a);
+        out.tuple_as_f64(1, &mut b);
+        assert!(b[0] > a[0]);
     }
 }

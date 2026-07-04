@@ -1,34 +1,11 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 use std::collections::HashMap;
 
 /// Compute mean and max dihedral angle for the entire mesh.
 pub fn dihedral_angle_stats(input: &PolyData) -> (f64, f64, f64) {
     // (min,max,mean)
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
-    let normals: Vec<[f64; 3]> = cells
-        .iter()
-        .map(|c| {
-            if c.len() < 3 {
-                return [0.0; 3];
-            }
-            let v0 = input.points.get(c[0] as usize);
-            let v1 = input.points.get(c[1] as usize);
-            let v2 = input.points.get(c[2] as usize);
-            let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-            let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            if l > 1e-15 {
-                [n[0] / l, n[1] / l, n[2] / l]
-            } else {
-                [0.0; 3]
-            }
-        })
-        .collect();
+    let normals: Vec<[f64; 3]> = cells.iter().map(|c| polygon_normal(input, c)).collect();
 
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, c) in cells.iter().enumerate() {
@@ -69,30 +46,7 @@ pub fn smoothness_index(input: &PolyData) -> f64 {
 /// Compute the flatness score: fraction of edges with dihedral < threshold.
 pub fn flatness_score(input: &PolyData, threshold_deg: f64) -> f64 {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
-    let normals: Vec<[f64; 3]> = cells
-        .iter()
-        .map(|c| {
-            if c.len() < 3 {
-                return [0.0; 3];
-            }
-            let v0 = input.points.get(c[0] as usize);
-            let v1 = input.points.get(c[1] as usize);
-            let v2 = input.points.get(c[2] as usize);
-            let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-            let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            if l > 1e-15 {
-                [n[0] / l, n[1] / l, n[2] / l]
-            } else {
-                [0.0; 3]
-            }
-        })
-        .collect();
+    let normals: Vec<[f64; 3]> = cells.iter().map(|c| polygon_normal(input, c)).collect();
 
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, c) in cells.iter().enumerate() {
@@ -123,6 +77,62 @@ pub fn flatness_score(input: &PolyData, threshold_deg: f64) -> f64 {
     } else {
         1.0
     }
+}
+
+fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
+    if cell.len() < 3 {
+        return [0.0; 3];
+    }
+
+    let mut common = None;
+    let mut point_id = 0;
+    let mut v1 = [0.0; 3];
+    while point_id < cell.len() - 2 {
+        let p0 = input.points.get(cell[point_id] as usize);
+        let p1 = input.points.get(cell[point_id + 1] as usize);
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        if squared_norm(v1) > 0.0 {
+            common = Some(point_id);
+            point_id += 2;
+            break;
+        }
+        point_id += 1;
+    }
+
+    let Some(common_id) = common else {
+        return [0.0; 3];
+    };
+    if point_id >= cell.len() {
+        return [0.0; 3];
+    }
+
+    let p0 = input.points.get(cell[common_id] as usize);
+    let mut n = [0.0; 3];
+    while point_id < cell.len() {
+        let p = input.points.get(cell[point_id] as usize);
+        let v2 = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
+        let cross = [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+        n[0] += cross[0];
+        n[1] += cross[1];
+        n[2] += cross[2];
+        v1 = v2;
+        point_id += 1;
+    }
+
+    let len = squared_norm(n).sqrt();
+    if len > 0.0 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0; 3]
+    }
+}
+
+fn squared_norm(v: [f64; 3]) -> f64 {
+    v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
 }
 
 #[cfg(test)]
@@ -164,5 +174,22 @@ mod tests {
         let pd = PolyData::new();
         let (min, max, mean) = dihedral_angle_stats(&pd);
         assert_eq!(min + max + mean, 0.0);
+    }
+
+    #[test]
+    fn polygon_normals_skip_initial_collinear_vertices() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.points.push([2.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([2.0, 1.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3, 4]);
+        pd.polys.push_cell(&[2, 5, 3]);
+
+        let (_, max, _) = dihedral_angle_stats(&pd);
+        assert!(max > 30.0);
+        assert!(flatness_score(&pd, 10.0) < 1.0);
     }
 }

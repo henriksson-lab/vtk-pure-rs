@@ -15,6 +15,9 @@ pub fn discrete_mean_curvature(input: &PolyData) -> PolyData {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -69,6 +72,9 @@ pub fn curvature_classification(input: &PolyData) -> PolyData {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -82,6 +88,9 @@ pub fn curvature_classification(input: &PolyData) -> PolyData {
     let mut vnormals = vec![[0.0f64; 3]; n];
     for cell in input.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if cell.iter().any(|&id| id < 0 || id as usize >= n) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -197,5 +206,32 @@ mod tests {
         let pd = PolyData::new();
         let result = discrete_mean_curvature(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn skips_cells_with_invalid_point_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let mean = discrete_mean_curvature(&pd);
+        assert_eq!(
+            mean.point_data()
+                .get_array("MeanCurvature")
+                .unwrap()
+                .num_tuples(),
+            2
+        );
+
+        let classed = curvature_classification(&pd);
+        assert_eq!(
+            classed
+                .point_data()
+                .get_array("CurvatureType")
+                .unwrap()
+                .num_tuples(),
+            2
+        );
     }
 }

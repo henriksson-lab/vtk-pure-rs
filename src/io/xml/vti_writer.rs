@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::data::{AnyDataArray, DataSetAttributes, ImageData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, ImageData};
 use crate::types::VtkError;
 
 /// Writer for VTK XML ImageData format (.vti).
@@ -22,11 +22,11 @@ impl VtiWriter {
         writeln!(w, "<?xml version=\"1.0\"?>")?;
         writeln!(
             w,
-            "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\">"
+            "<VTKFile type=\"ImageData\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt32\">"
         )?;
         writeln!(
             w,
-            "  <ImageData WholeExtent=\"{} {} {} {} {} {}\" Origin=\"{} {} {}\" Spacing=\"{} {} {}\">",
+            "  <ImageData WholeExtent=\"{} {} {} {} {} {}\" Origin=\"{} {} {}\" Spacing=\"{} {} {}\" Direction=\"1 0 0 0 1 0 0 0 1\">",
             ext[0], ext[1], ext[2], ext[3], ext[4], ext[5],
             origin[0], origin[1], origin[2],
             spacing[0], spacing[1], spacing[2],
@@ -37,15 +37,8 @@ impl VtiWriter {
             ext[0], ext[1], ext[2], ext[3], ext[4], ext[5],
         )?;
 
-        // Point data
-        if data.point_data().num_arrays() > 0 {
-            write_data_section(w, "PointData", data.point_data())?;
-        }
-
-        // Cell data
-        if data.cell_data().num_arrays() > 0 {
-            write_data_section(w, "CellData", data.cell_data())?;
-        }
+        write_data_section(w, "PointData", data.point_data())?;
+        write_data_section(w, "CellData", data.cell_data())?;
 
         writeln!(w, "    </Piece>")?;
         writeln!(w, "  </ImageData>")?;
@@ -61,9 +54,17 @@ fn write_data_section<W: Write>(
     attrs: &DataSetAttributes,
 ) -> Result<(), VtkError> {
     let scalars_name = attrs.scalars().map(|a| a.name().to_string());
+    let normals_name = attrs.normals().map(|a| a.name().to_string());
+    let vectors_name = attrs.vectors().map(|a| a.name().to_string());
     let mut attrs_str = String::new();
     if let Some(ref name) = scalars_name {
-        attrs_str.push_str(&format!(" Scalars=\"{}\"", name));
+        attrs_str.push_str(&format!(" Scalars=\"{}\"", xml_escape_attr(name)));
+    }
+    if let Some(ref name) = normals_name {
+        attrs_str.push_str(&format!(" Normals=\"{}\"", xml_escape_attr(name)));
+    }
+    if let Some(ref name) = vectors_name {
+        attrs_str.push_str(&format!(" Vectors=\"{}\"", xml_escape_attr(name)));
     }
 
     writeln!(w, "      <{}{}>", section, attrs_str)?;
@@ -94,28 +95,53 @@ fn write_any_data_array<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), V
         w,
         "        <DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"ascii\">",
         type_name,
-        arr.name(),
+        xml_escape_attr(arr.name()),
         arr.num_components()
     )?;
     write!(w, "          ")?;
-    let nt = arr.num_tuples();
-    let nc = arr.num_components();
-    let mut buf = vec![0.0f64; nc];
-    for i in 0..nt {
-        arr.tuple_as_f64(i, &mut buf);
-        for v in &buf {
-            write!(w, "{} ", v)?;
-        }
-    }
+    write_array_values_ascii(w, arr)?;
     writeln!(w)?;
     writeln!(w, "        </DataArray>")?;
     Ok(())
 }
 
+fn write_array_values_ascii<W: Write>(w: &mut W, arr: &AnyDataArray) -> Result<(), VtkError> {
+    match arr {
+        AnyDataArray::F32(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::F64(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I8(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I16(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I32(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::I64(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U8(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U16(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U32(a) => write_typed_array_values_ascii(w, a),
+        AnyDataArray::U64(a) => write_typed_array_values_ascii(w, a),
+    }
+}
+
+fn write_typed_array_values_ascii<W: Write, T: crate::types::Scalar>(
+    w: &mut W,
+    arr: &DataArray<T>,
+) -> Result<(), VtkError> {
+    for value in arr.as_slice() {
+        write!(w, "{} ", value)?;
+    }
+    Ok(())
+}
+
+fn xml_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{DataArray, DataSet, ImageData};
+    use crate::data::{DataArray, ImageData};
 
     #[test]
     fn write_simple_vti() {
@@ -134,9 +160,37 @@ mod tests {
         let output = String::from_utf8(buf).unwrap();
 
         assert!(output.contains("<VTKFile type=\"ImageData\""));
+        assert!(output.contains("header_type=\"UInt32\""));
         assert!(output.contains("WholeExtent=\"0 2 0 3 0 4\""));
         assert!(output.contains("Origin=\"1 2 3\""));
         assert!(output.contains("Spacing=\"0.5 0.5 0.5\""));
         assert!(output.contains("Name=\"density\""));
+    }
+
+    #[test]
+    fn writes_empty_data_sections_like_vtk_xml_writer() {
+        let img = ImageData::with_dimensions(2, 2, 2);
+        let mut buf = Vec::new();
+        VtiWriter::write_to(&mut buf, &img).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("<PointData>"));
+        assert!(output.contains("</PointData>"));
+        assert!(output.contains("<CellData>"));
+        assert!(output.contains("</CellData>"));
+    }
+
+    #[test]
+    fn writes_integer_arrays_without_float_conversion() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        let ids = DataArray::from_vec("ids", vec![9_007_199_254_740_993u64; 3], 1);
+        img.point_data_mut().add_array(ids.into());
+
+        let mut buf = Vec::new();
+        VtiWriter::write_to(&mut buf, &img).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+
+        assert!(output.contains("9007199254740993 "));
+        assert!(!output.contains("9007199254740992 "));
     }
 }

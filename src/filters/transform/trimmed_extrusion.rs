@@ -1,4 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extrude a 2D mesh along a direction, trimming the extrusion where it
 /// would exceed the given axis-aligned bounding box.
@@ -51,25 +52,26 @@ pub fn trimmed_extrusion(
 
     let offset = n as i64;
 
-    // Side wall triangles for each polygon edge
+    let boundary_edges = polygon_edge_counts(input);
+
+    // Side wall quads for each boundary polygon edge
     for cell in input.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i];
             let b = cell[(i + 1) % nc];
-            // Two triangles per quad: (a, b, b+offset) and (a, b+offset, a+offset)
-            out_polys.push_cell(&[a, b, b + offset]);
-            out_polys.push_cell(&[a, b + offset, a + offset]);
+            if boundary_edges.get(&edge_key(a, b)) == Some(&1) {
+                out_polys.push_cell(&[a, b, b + offset, a + offset]);
+            }
         }
     }
 
-    // Also handle line cells
+    // Also handle line cells.
     for cell in input.lines.iter() {
         for i in 0..cell.len().saturating_sub(1) {
             let a = cell[i];
             let b = cell[i + 1];
-            out_polys.push_cell(&[a, b, b + offset]);
-            out_polys.push_cell(&[a, b + offset, a + offset]);
+            out_polys.push_cell(&[a, b, b + offset, a + offset]);
         }
     }
 
@@ -78,16 +80,37 @@ pub fn trimmed_extrusion(
         out_polys.push_cell(cell);
     }
 
-    // Top cap (extruded polygons, reversed winding)
+    // Top cap (extruded polygons)
     for cell in input.polys.iter() {
-        let reversed: Vec<i64> = cell.iter().rev().map(|&id| id + offset).collect();
-        out_polys.push_cell(&reversed);
+        let top: Vec<i64> = cell.iter().map(|&id| id + offset).collect();
+        out_polys.push_cell(&top);
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
     pd.polys = out_polys;
     pd
+}
+
+fn polygon_edge_counts(input: &PolyData) -> HashMap<(i64, i64), usize> {
+    let mut counts = HashMap::new();
+    for cell in input.polys.iter() {
+        let nc = cell.len();
+        for i in 0..nc {
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            *counts.entry(edge_key(a, b)).or_insert(0) += 1;
+        }
+    }
+    counts
+}
+
+fn edge_key(a: i64, b: i64) -> (i64, i64) {
+    if a <= b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 /// Compute the maximum extrusion distance for a point such that the
@@ -160,7 +183,30 @@ mod tests {
             assert!((p[2] - 2.0).abs() < 1e-10, "expected z=2.0, got z={}", p[2]);
         }
 
-        // Side wall triangles: 3 edges * 2 tris = 6, plus 1 bottom + 1 top cap = 8
+        // Side wall quads: 3 edges, plus 1 bottom + 1 top cap = 5
+        assert_eq!(result.polys.num_cells(), 5);
+    }
+
+    #[test]
+    fn trimmed_extrusion_uses_boundary_edges_only() {
+        let pd = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [0, 2, 3]],
+        );
+
+        let result = trimmed_extrusion(
+            &pd,
+            [0.0, 0.0, 1.0],
+            1.0,
+            [-10.0, 10.0, -10.0, 10.0, -1.0, 1.0],
+        );
+
+        // Four boundary quads, two bottom triangles, two top triangles.
         assert_eq!(result.polys.num_cells(), 8);
     }
 }

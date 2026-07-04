@@ -1,5 +1,5 @@
 //! Discrete Gauss map (map mesh to unit sphere via normals).
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, Points, PolyData};
 pub fn gauss_map(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let nm = calc_nm(mesh);
@@ -22,10 +22,22 @@ pub fn gauss_map_area_ratio(mesh: &PolyData) -> PolyData {
             data.push(0.0);
             continue;
         }
+        let Some(ai) = valid_point_id(c[0], mesh.points.len()) else {
+            data.push(0.0);
+            continue;
+        };
+        let Some(bi) = valid_point_id(c[1], mesh.points.len()) else {
+            data.push(0.0);
+            continue;
+        };
+        let Some(ci) = valid_point_id(c[2], mesh.points.len()) else {
+            data.push(0.0);
+            continue;
+        };
         // Original triangle area
-        let a = mesh.points.get(c[0] as usize);
-        let b = mesh.points.get(c[1] as usize);
-        let cc2 = mesh.points.get(c[2] as usize);
+        let a = mesh.points.get(ai);
+        let b = mesh.points.get(bi);
+        let cc2 = mesh.points.get(ci);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [cc2[0] - a[0], cc2[1] - a[1], cc2[2] - a[2]];
         let orig_area = 0.5
@@ -34,9 +46,9 @@ pub fn gauss_map_area_ratio(mesh: &PolyData) -> PolyData {
                 + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
             .sqrt();
         // Gauss map triangle area
-        let na = nm[c[0] as usize];
-        let nb2 = nm[c[1] as usize];
-        let nc2 = nm[c[2] as usize];
+        let na = nm[ai];
+        let nb2 = nm[bi];
+        let nc2 = nm[ci];
         let ge1 = [nb2[0] - na[0], nb2[1] - na[1], nb2[2] - na[2]];
         let ge2 = [nc2[0] - na[0], nc2[1] - na[1], nc2[2] - na[2]];
         let gauss_area = 0.5
@@ -66,9 +78,18 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let Some(ai) = valid_point_id(cell[0], n) else {
+            continue;
+        };
+        let Some(bi) = valid_point_id(cell[1], n) else {
+            continue;
+        };
+        let Some(ci) = valid_point_id(cell[2], n) else {
+            continue;
+        };
+        let a = mesh.points.get(ai);
+        let b = mesh.points.get(bi);
+        let c = mesh.points.get(ci);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let fn_ = [
@@ -77,12 +98,12 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
             e1[0] * e2[1] - e1[1] * e2[0],
         ];
         for &v in cell {
-            let vi = v as usize;
-            if vi < n {
-                nm[vi][0] += fn_[0];
-                nm[vi][1] += fn_[1];
-                nm[vi][2] += fn_[2];
-            }
+            let Some(vi) = valid_point_id(v, n) else {
+                continue;
+            };
+            nm[vi][0] += fn_[0];
+            nm[vi][1] += fn_[1];
+            nm[vi][2] += fn_[2];
         }
     }
     for v in &mut nm {
@@ -95,6 +116,11 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
     }
     nm
 }
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

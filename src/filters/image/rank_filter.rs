@@ -5,16 +5,17 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Apply a rank filter with a given percentile (0.0 = min, 0.5 = median, 1.0 = max).
 pub fn rank_filter(input: &ImageData, scalars: &str, radius: usize, percentile: f64) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) => a,
         _ => return input.clone(),
     };
     let dims = input.dimensions();
     let n = arr.num_tuples();
-    let mut buf = [0.0f64];
+    let ncomp = arr.num_components();
+    let mut buf = vec![0.0f64; ncomp];
     let vals: Vec<f64> = (0..n)
-        .map(|i| {
+        .flat_map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0]
+            buf.clone()
         })
         .collect();
 
@@ -22,12 +23,13 @@ pub fn rank_filter(input: &ImageData, scalars: &str, radius: usize, percentile: 
     let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
     let p = percentile.clamp(0.0, 1.0);
 
-    let data: Vec<f64> = (0..n)
-        .map(|idx| {
-            let iz = idx / (nx * ny);
-            let rem = idx % (nx * ny);
-            let iy = rem / nx;
-            let ix = rem % nx;
+    let mut data = Vec::with_capacity(n * ncomp);
+    for idx in 0..n {
+        let iz = idx / (nx * ny);
+        let rem = idx % (nx * ny);
+        let iy = rem / nx;
+        let ix = rem % nx;
+        for c in 0..ncomp {
             let mut neighborhood = Vec::new();
             for dz in -r..=r {
                 for dy in -r..=r {
@@ -42,22 +44,43 @@ pub fn rank_filter(input: &ImageData, scalars: &str, radius: usize, percentile: 
                             && sz >= 0
                             && sz < nz as isize
                         {
-                            neighborhood
-                                .push(vals[sx as usize + sy as usize * nx + sz as usize * nx * ny]);
+                            let tuple = sx as usize + sy as usize * nx + sz as usize * nx * ny;
+                            neighborhood.push(vals[tuple * ncomp + c]);
                         }
                     }
                 }
             }
             neighborhood.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            let idx_p = ((neighborhood.len() - 1) as f64 * p) as usize;
-            neighborhood[idx_p]
-        })
-        .collect();
+            if neighborhood.is_empty() {
+                data.push(vals[idx * ncomp + c]);
+                continue;
+            }
+            if p == 0.5 {
+                let mid = neighborhood.len() / 2;
+                let value = if neighborhood.len().is_multiple_of(2) {
+                    let low_mid = neighborhood[..mid]
+                        .iter()
+                        .copied()
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    low_mid + (neighborhood[mid] - low_mid) / 2.0
+                } else {
+                    neighborhood[mid]
+                };
+                data.push(value);
+            } else {
+                let idx_p = ((neighborhood.len() - 1) as f64 * p) as usize;
+                data.push(neighborhood[idx_p]);
+            }
+        }
+    }
 
-    ImageData::with_dimensions(nx, ny, nz)
-        .with_spacing(input.spacing())
-        .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+    let mut output = input.clone();
+    let mut attrs = input.point_data().clone();
+    attrs.remove_array(scalars);
+    attrs.add_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, ncomp)));
+    attrs.set_active_scalars(scalars);
+    *output.point_data_mut() = attrs;
+    output
 }
 
 /// Min filter (rank 0).
@@ -103,5 +126,46 @@ mod tests {
         );
         let med = rank_filter(&img, "v", 1, 0.5);
         assert_eq!(med.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn rank_filter_preserves_other_point_arrays() {
+        let mut img = ImageData::from_function(
+            [3, 3, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |x, y, _| x + y,
+        );
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "other",
+                vec![1.0; 9],
+                1,
+            )));
+
+        let filtered = rank_filter(&img, "v", 1, 0.5);
+        assert!(filtered.point_data().get_array("other").is_some());
+        assert!(filtered.point_data().scalars().is_some());
+    }
+
+    #[test]
+    fn median_uses_vtk_even_neighborhood_rule_per_component() {
+        let mut img = ImageData::with_dimensions(2, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 10.0, 2.0, 20.0],
+                2,
+            )));
+
+        let filtered = rank_filter(&img, "v", 1, 0.5);
+        let arr = filtered.point_data().get_array("v").unwrap();
+        assert_eq!(arr.num_components(), 2);
+        let mut buf = [0.0f64; 2];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [1.0, 15.0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [1.0, 15.0]);
     }
 }

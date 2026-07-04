@@ -15,8 +15,8 @@ pub fn remap_scalar_range(
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
@@ -58,20 +58,35 @@ pub fn clamp_scalar(mesh: &PolyData, array_name: &str, min_val: f64, max_val: f6
 
 /// Quantize scalar values to N discrete levels.
 pub fn quantize_scalar(mesh: &PolyData, array_name: &str, n_levels: usize) -> PolyData {
+    if n_levels == 0 {
+        return mesh.clone();
+    }
+
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
         max_v = max_v.max(buf[0]);
     }
-    let range = (max_v - min_v).max(1e-15);
+    let range = max_v - min_v;
+    if range.abs() < 1e-15 {
+        let mut result = mesh.clone();
+        result
+            .point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                array_name,
+                vec![min_v; n],
+                1,
+            )));
+        return result;
+    }
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
@@ -98,21 +113,32 @@ pub fn apply_transfer_function(
         Some(a) if a.num_components() == 1 => a,
         _ => return mesh.clone(),
     };
+    let mut points = control_points.to_vec();
+    points.sort_by(|a, b| a.0.total_cmp(&b.0));
+    points.dedup_by(|a, b| {
+        if a.0 == b.0 {
+            b.1 = a.1;
+            true
+        } else {
+            false
+        }
+    });
+
     let mut buf = [0.0f64];
     let data: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             let x = buf[0];
-            if control_points.is_empty() {
+            if points.is_empty() {
                 return x;
             }
-            if x <= control_points[0].0 {
-                return control_points[0].1;
+            if x <= points[0].0 {
+                return points[0].1;
             }
-            if x >= control_points.last().unwrap().0 {
-                return control_points.last().unwrap().1;
+            if x >= points.last().unwrap().0 {
+                return points.last().unwrap().1;
             }
-            for w in control_points.windows(2) {
+            for w in points.windows(2) {
                 if x >= w[0].0 && x <= w[1].0 {
                     let t = (x - w[0].0) / (w[1].0 - w[0].0);
                     return w[0].1 + t * (w[1].1 - w[0].1);
@@ -177,5 +203,49 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(1, &mut buf);
         assert!((buf[0] - 1.0).abs() < 0.01); // peak at 0.5
+    }
+
+    #[test]
+    fn quantize_constant_preserves_value() {
+        let mut m = PolyData::from_points(vec![[0.0; 3]; 2]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![7.0, 7.0],
+                1,
+            )));
+        let result = quantize_scalar(&m, "v", 4);
+        let arr = result.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 7.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 7.0);
+    }
+
+    #[test]
+    fn transfer_sorts_control_points() {
+        let mut m = PolyData::from_points(vec![[0.0; 3]; 1]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![0.25], 1)));
+
+        let result = apply_transfer_function(&m, "v", &[(1.0, 1.0), (0.0, 0.0)]);
+        let arr = result.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.25).abs() < 1e-12);
+    }
+
+    #[test]
+    fn transfer_duplicate_control_point_uses_last_value() {
+        let mut m = PolyData::from_points(vec![[0.0; 3]; 1]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![0.0], 1)));
+
+        let result = apply_transfer_function(&m, "v", &[(0.0, 1.0), (0.0, 2.0), (1.0, 3.0)]);
+        let arr = result.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 2.0);
     }
 }

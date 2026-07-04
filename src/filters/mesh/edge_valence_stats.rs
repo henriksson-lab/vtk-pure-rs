@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::BTreeSet;
 
 /// Compute per-vertex edge valence (number of edges meeting at each vertex).
 ///
@@ -7,24 +8,9 @@ pub fn compute_edge_valence(input: &PolyData) -> PolyData {
     let num_pts: usize = input.points.len();
     let mut valence = vec![0i32; num_pts];
 
-    // Track unique edges so each edge is counted once per vertex endpoint.
-    let mut seen_edges: std::collections::HashSet<(usize, usize)> =
-        std::collections::HashSet::new();
-
-    for cell in input.polys.iter() {
-        let n = cell.len();
-        if n < 2 {
-            continue;
-        }
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            let edge = if a < b { (a, b) } else { (b, a) };
-            if seen_edges.insert(edge) {
-                valence[a] += 1;
-                valence[b] += 1;
-            }
-        }
+    for (a, b) in unique_edges(input) {
+        valence[a] += 1;
+        valence[b] += 1;
     }
 
     let valence_f64: Vec<f64> = valence.iter().map(|&v| v as f64).collect();
@@ -37,6 +23,52 @@ pub fn compute_edge_valence(input: &PolyData) -> PolyData {
             1,
         )));
     pd
+}
+
+fn unique_edges(input: &PolyData) -> BTreeSet<(usize, usize)> {
+    let mut edges = BTreeSet::new();
+    let n_points = input.points.len();
+
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut edges, n_points, edge[0], edge[1]);
+        }
+    }
+
+    for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_edge(&mut edges, n_points, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edges, n_points, tri[0], tri[1]);
+            insert_edge(&mut edges, n_points, tri[1], tri[2]);
+            insert_edge(&mut edges, n_points, tri[2], tri[0]);
+        }
+    }
+
+    edges
+}
+
+fn insert_edge(edges: &mut BTreeSet<(usize, usize)>, n_points: usize, a: i64, b: i64) {
+    let (Some(a), Some(b)) = (
+        valid_point_index(a, n_points),
+        valid_point_index(b, n_points),
+    ) else {
+        return;
+    };
+    if a != b {
+        edges.insert((a.min(b), a.max(b)));
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 /// Statistics about edge valence across the whole mesh.

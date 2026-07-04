@@ -10,11 +10,14 @@ pub fn image_lmtd(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            ((buf[0] - 30.0) - (buf[0] * 0.5 - 20.0))
-                / ((buf[0] - 30.0) / (buf[0] * 0.5 - 20.0).abs().max(0.01))
-                    .abs()
-                    .ln()
-                    .max(0.01)
+            let delta_t1 = buf[0] - 30.0;
+            let delta_t2 = buf[0] * 0.5 - 20.0;
+            let log_ratio = (delta_t1 / delta_t2.abs().max(0.01)).abs().max(0.01).ln();
+            if log_ratio.abs() < 0.01 {
+                delta_t1
+            } else {
+                (delta_t1 - delta_t2) / log_ratio
+            }
         })
         .collect();
     let dims = input.dimensions();
@@ -37,5 +40,21 @@ mod tests {
         );
         let r = image_lmtd(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn equal_temperature_differences_use_limit() {
+        let img = ImageData::from_function(
+            [1, 1, 1],
+            [1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0],
+            "v",
+            |_, _, _| 20.0,
+        );
+        let r = image_lmtd(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], -10.0);
     }
 }

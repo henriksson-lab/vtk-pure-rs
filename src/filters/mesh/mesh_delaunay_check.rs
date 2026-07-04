@@ -3,12 +3,23 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 pub fn delaunay_check(mesh: &PolyData) -> (f64, PolyData) {
     let n = mesh.points.len();
-    let tris: Vec<[usize; 3]> = mesh
-        .polys
-        .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-        .collect();
+    let mut tris = Vec::new();
+    let mut tri_cell_ids = Vec::new();
+    for (ci, cell) in mesh.polys.iter().enumerate() {
+        if cell.len() == 3 {
+            let Some(a) = valid_point_id(cell[0], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[1], n) else {
+                continue;
+            };
+            let Some(c) = valid_point_id(cell[2], n) else {
+                continue;
+            };
+            tris.push([a, b, c]);
+            tri_cell_ids.push(ci);
+        }
+    }
     if tris.len() < 2 {
         return (1.0, mesh.clone());
     }
@@ -22,7 +33,7 @@ pub fn delaunay_check(mesh: &PolyData) -> (f64, PolyData) {
     }
     let mut total = 0usize;
     let mut delaunay = 0usize;
-    let mut edge_ok = vec![1.0f64; tris.len()];
+    let mut edge_ok = vec![1.0f64; mesh.polys.num_cells()];
     for (_, faces) in &edge_tris {
         if faces.len() != 2 {
             continue;
@@ -30,8 +41,6 @@ pub fn delaunay_check(mesh: &PolyData) -> (f64, PolyData) {
         total += 1;
         let t0 = faces[0];
         let t1 = faces[1];
-        let [a0, b0, c0] = tris[t0];
-        let [a1, b1, c1] = tris[t1];
         // Find opposite vertices
         let shared: Vec<usize> = tris[t0]
             .iter()
@@ -44,9 +53,6 @@ pub fn delaunay_check(mesh: &PolyData) -> (f64, PolyData) {
         let opp0 = tris[t0].iter().find(|v| !shared.contains(v)).copied();
         let opp1 = tris[t1].iter().find(|v| !shared.contains(v)).copied();
         if let (Some(o0), Some(o1)) = (opp0, opp1) {
-            if o0 >= n || o1 >= n {
-                continue;
-            }
             // Delaunay condition: sum of opposite angles < pi
             let p0 = mesh.points.get(o0);
             let p1 = mesh.points.get(o1);
@@ -57,8 +63,8 @@ pub fn delaunay_check(mesh: &PolyData) -> (f64, PolyData) {
             if angle0 + angle1 <= std::f64::consts::PI + 1e-10 {
                 delaunay += 1;
             } else {
-                edge_ok[t0] = 0.0;
-                edge_ok[t1] = 0.0;
+                edge_ok[tri_cell_ids[t0]] = 0.0;
+                edge_ok[tri_cell_ids[t1]] = 0.0;
             }
         }
     }
@@ -76,6 +82,10 @@ pub fn delaunay_check(mesh: &PolyData) -> (f64, PolyData) {
             1,
         )));
     (ratio, result)
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 fn angle_at_vertex(v: [f64; 3], a: [f64; 3], b: [f64; 3]) -> f64 {

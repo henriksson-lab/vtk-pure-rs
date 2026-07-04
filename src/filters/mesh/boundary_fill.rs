@@ -1,5 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 
 /// Flood-fill a scalar value from boundary inward.
 ///
@@ -8,17 +8,32 @@ use std::collections::{HashMap, HashSet, VecDeque};
 /// Adds "BoundaryFill" scalar array.
 pub fn boundary_fill(input: &PolyData, value: f64, decay_factor: f64) -> PolyData {
     let n = input.points.len();
+    let mut pd = input.clone();
     if n == 0 {
-        return input.clone();
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "BoundaryFill",
+                Vec::new(),
+                1,
+            )));
+        return pd;
     }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
 
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % cell.len()];
+            if a_id < 0 || b_id < 0 || a_id as usize >= n || b_id as usize >= n || a_id == b_id {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
             let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
             if !neighbors[a].contains(&b) {
@@ -30,8 +45,7 @@ pub fn boundary_fill(input: &PolyData, value: f64, decay_factor: f64) -> PolyDat
         }
     }
 
-    // Find boundary vertices
-    let mut boundary: HashSet<usize> = HashSet::new();
+    let mut boundary = BTreeSet::new();
     for (&(a, b), &c) in &edge_count {
         if c == 1 {
             boundary.insert(a);
@@ -63,7 +77,6 @@ pub fn boundary_fill(input: &PolyData, value: f64, decay_factor: f64) -> PolyDat
         }
     }
 
-    let mut pd = input.clone();
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "BoundaryFill",
@@ -129,5 +142,6 @@ mod tests {
         let pd = PolyData::new();
         let result = boundary_fill(&pd, 1.0, 0.5);
         assert_eq!(result.points.len(), 0);
+        assert!(result.point_data().get_array("BoundaryFill").is_some());
     }
 }

@@ -14,7 +14,9 @@ pub fn mean_curvature_fairing(mesh: &PolyData, steps: usize, dt: f64) -> PolyDat
             if c.len() != 3 {
                 continue;
             }
-            let ids = [c[0] as usize, c[1] as usize, c[2] as usize];
+            let Some(ids) = triangle_point_ids(c, n) else {
+                continue;
+            };
             let p = [pos[ids[0]], pos[ids[1]], pos[ids[2]]];
             for i in 0..3 {
                 let j = (i + 1) % 3;
@@ -33,10 +35,13 @@ pub fn mean_curvature_fairing(mesh: &PolyData, steps: usize, dt: f64) -> PolyDat
                     lap[ids[k]][d] -= cot * ejk[d] * 0.5;
                 }
             }
+            let e01 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+            let e02 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
             let ta = 0.5
-                * ((p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
-                    - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]))
-                    .abs();
+                * ((e01[1] * e02[2] - e01[2] * e02[1]).powi(2)
+                    + (e01[2] * e02[0] - e01[0] * e02[2]).powi(2)
+                    + (e01[0] * e02[1] - e01[1] * e02[0]).powi(2))
+                .sqrt();
             for &id in &ids {
                 area[id] += ta / 3.0;
             }
@@ -56,6 +61,19 @@ pub fn mean_curvature_fairing(mesh: &PolyData, steps: usize, dt: f64) -> PolyDat
     }
     r
 }
+
+fn triangle_point_ids(cell: &[i64], num_points: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], num_points)?,
+        valid_point_id(cell[1], num_points)?,
+        valid_point_id(cell[2], num_points)?,
+    ])
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

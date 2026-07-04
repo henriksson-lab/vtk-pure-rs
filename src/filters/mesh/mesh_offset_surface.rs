@@ -2,7 +2,24 @@
 use crate::data::{CellArray, Points, PolyData};
 pub fn offset_surface(mesh: &PolyData, distance: f64) -> PolyData {
     let n = mesh.points.len();
-    let nm = calc_normals(mesh);
+    if n == 0 {
+        return mesh.clone();
+    }
+    let nm: Vec<[f64; 3]> = if let Some(arr) = mesh
+        .point_data()
+        .get_array("Normals")
+        .filter(|arr| arr.num_components() >= 3 && arr.num_tuples() == n)
+    {
+        let mut buf = [0.0f64; 3];
+        (0..n)
+            .map(|i| {
+                arr.tuple_as_f64(i, &mut buf);
+                buf
+            })
+            .collect()
+    } else {
+        calc_normals(mesh)
+    };
     let mut pts = Points::<f64>::new();
     for i in 0..n {
         let p = mesh.points.get(i);
@@ -12,9 +29,8 @@ pub fn offset_surface(mesh: &PolyData, distance: f64) -> PolyData {
             p[2] + nm[i][2] * distance,
         ]);
     }
-    let mut r = PolyData::new();
+    let mut r = mesh.clone();
     r.points = pts;
-    r.polys = mesh.polys.clone();
     r
 }
 pub fn shell(mesh: &PolyData, inner_offset: f64, outer_offset: f64) -> PolyData {
@@ -53,9 +69,16 @@ pub fn shell(mesh: &PolyData, inner_offset: f64, outer_offset: f64) -> PolyData 
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc == 0 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
             *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
@@ -76,22 +99,32 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let fn_ = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-        for &v in cell {
-            let vi = v as usize;
-            if vi < n {
-                nm[vi][0] += fn_[0];
-                nm[vi][1] += fn_[1];
-                nm[vi][2] += fn_[2];
+        let Some(ia) = valid_point_id(cell[0], n) else {
+            continue;
+        };
+        let a = mesh.points.get(ia);
+        for i in 1..cell.len() - 1 {
+            let Some(ib) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(ic) = valid_point_id(cell[i + 1], n) else {
+                continue;
+            };
+            let b = mesh.points.get(ib);
+            let c = mesh.points.get(ic);
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let fn_ = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            for v in [cell[0], cell[i], cell[i + 1]] {
+                if let Some(vi) = valid_point_id(v, n) {
+                    nm[vi][0] += fn_[0];
+                    nm[vi][1] += fn_[1];
+                    nm[vi][2] += fn_[2];
+                }
             }
         }
     }
@@ -104,6 +137,13 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     nm
+}
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 #[cfg(test)]
 mod tests {

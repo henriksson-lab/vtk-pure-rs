@@ -1,80 +1,51 @@
+use super::curvature_simple;
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute principal curvatures (k1, k2) at each vertex.
 ///
 /// Uses the shape operator approximation: for each vertex, fits a
 /// quadratic to the one-ring neighborhood projected onto the tangent plane.
-/// Adds "K1" (max curvature), "K2" (min curvature), and "ShapeIndex" arrays.
+/// Adds VTK-style maximum/minimum curvature arrays plus compatibility aliases.
 pub fn principal_curvatures(input: &PolyData) -> PolyData {
     let n = input.points.len();
     if n == 0 {
         return input.clone();
     }
 
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
-
-    let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
+    let with_curv = curvature_simple::mean_curvature(&curvature_simple::gaussian_curvature(input));
+    let Some(mean_arr) = with_curv
+        .point_data()
+        .get_array("Mean_Curvature")
+        .or_else(|| with_curv.point_data().get_array("MeanCurvature"))
+    else {
+        return input.clone();
+    };
+    let Some(gauss_arr) = with_curv
+        .point_data()
+        .get_array("Gauss_Curvature")
+        .or_else(|| with_curv.point_data().get_array("GaussianCurvature"))
+    else {
+        return input.clone();
+    };
     let mut k1 = vec![0.0f64; n];
     let mut k2 = vec![0.0f64; n];
+    let mut hb = [0.0f64];
+    let mut gb = [0.0f64];
 
     for i in 0..n {
-        if neighbors[i].len() < 3 {
-            continue;
+        mean_arr.tuple_as_f64(i, &mut hb);
+        gauss_arr.tuple_as_f64(i, &mut gb);
+        let h = hb[0];
+        let k = gb[0];
+        let tmp = h * h - k;
+        if tmp >= 0.0 {
+            let root = tmp.sqrt();
+            k1[i] = h + root;
+            k2[i] = h - root;
+        } else {
+            k1[i] = h;
+            k2[i] = h;
         }
-
-        // Estimate normal as average of edge cross products
-        let p = pts[i];
-        let nbrs = &neighbors[i];
-        let nn = nbrs.len();
-        let mut normal = [0.0; 3];
-        for j in 0..nn {
-            let a = pts[nbrs[j]];
-            let b = pts[nbrs[(j + 1) % nn]];
-            let e1 = [a[0] - p[0], a[1] - p[1], a[2] - p[2]];
-            let e2 = [b[0] - p[0], b[1] - p[1], b[2] - p[2]];
-            normal[0] += e1[1] * e2[2] - e1[2] * e2[1];
-            normal[1] += e1[2] * e2[0] - e1[0] * e2[2];
-            normal[2] += e1[0] * e2[1] - e1[1] * e2[0];
-        }
-        let nlen = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
-        if nlen < 1e-15 {
-            continue;
-        }
-        normal[0] /= nlen;
-        normal[1] /= nlen;
-        normal[2] /= nlen;
-
-        // Estimate curvatures from neighbor heights above tangent plane
-        let mut sum_h = 0.0;
-        let mut sum_h2 = 0.0;
-        let mut sum_r2 = 0.0;
-        for &j in nbrs {
-            let d = [pts[j][0] - p[0], pts[j][1] - p[1], pts[j][2] - p[2]];
-            let h = d[0] * normal[0] + d[1] * normal[1] + d[2] * normal[2]; // height
-            let r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - h * h; // tangent distance^2
-            sum_h += h;
-            sum_h2 += h * h;
-            sum_r2 += r2.max(1e-15);
-        }
-        let mean_curv = sum_h / sum_r2.max(1e-15) * 2.0;
-        let gauss_curv = (sum_h2 - sum_h * sum_h / nn as f64) / sum_r2.max(1e-15);
-
-        // k1, k2 from mean and Gaussian curvature
-        let disc = (mean_curv * mean_curv - gauss_curv).max(0.0).sqrt();
-        k1[i] = mean_curv + disc;
-        k2[i] = mean_curv - disc;
     }
 
     // Shape index: (2/π) * atan((k1+k2)/(k1-k2))
@@ -91,6 +62,18 @@ pub fn principal_curvatures(input: &PolyData) -> PolyData {
 
     let mut pd = input.clone();
     pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Maximum_Curvature",
+            k1.clone(),
+            1,
+        )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Minimum_Curvature",
+            k2.clone(),
+            1,
+        )));
+    pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("K1", k1, 1)));
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("K2", k2, 1)));
@@ -100,6 +83,7 @@ pub fn principal_curvatures(input: &PolyData) -> PolyData {
             shape_index,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("Maximum_Curvature");
     pd
 }
 

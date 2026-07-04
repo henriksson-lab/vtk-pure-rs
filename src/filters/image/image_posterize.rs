@@ -13,15 +13,17 @@ pub fn image_posterize(input: &ImageData, scalars: &str) -> ImageData {
             arr.tuple_as_f64(i, &mut buf);
             {
                 let v = buf[0];
-                (v * 4.0).floor() / 3.0
+                (v * 4.0).floor().clamp(0.0, 3.0) / 3.0
             }
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -37,5 +39,17 @@ mod tests {
         );
         let r = image_posterize(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn posterizes_normalized_values_to_four_levels() {
+        let img = ImageData::with_dimensions(6, 1, 1).with_point_array(AnyDataArray::F64(
+            DataArray::from_vec("v", vec![-0.1, 0.0, 0.25, 0.5, 0.75, 1.0], 1),
+        ));
+
+        let r = image_posterize(&img, "v");
+        let values = r.point_data().get_array("v").unwrap().to_f64_vec();
+
+        assert_eq!(values, vec![0.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0, 1.0]);
     }
 }

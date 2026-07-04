@@ -1,9 +1,9 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 
-/// Compute the first k approximate eigenvalues of the graph Laplacian.
+/// Compute the first k eigenvalues of the graph Laplacian.
 ///
-/// Uses power iteration with deflation. The eigenvalues describe the
-/// spectral shape of the mesh. Useful for shape matching and retrieval.
+/// The eigenvalues describe the spectral shape of the mesh. Useful for shape
+/// matching and retrieval.
 pub fn laplacian_eigenvalues(input: &PolyData, k: usize) -> Vec<f64> {
     let n = input.points.len();
     if n < 2 {
@@ -14,65 +14,59 @@ pub fn laplacian_eigenvalues(input: &PolyData, k: usize) -> Vec<f64> {
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !adj[a].contains(&b) {
-                adj[a].push(b);
-            }
-            if !adj[b].contains(&a) {
-                adj[b].push(a);
-            }
+            add_neighbor_pair(&mut adj, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut adj, n, edge[0], edge[1]);
+        }
+    }
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut adj, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut adj, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut adj, n, tri[2], tri[0]);
         }
     }
 
-    // Apply Laplacian: L*v = degree*v - A*v
-    let apply_lap = |v: &[f64]| -> Vec<f64> {
-        let mut lv = vec![0.0f64; n];
-        for i in 0..n {
-            lv[i] = adj[i].len() as f64 * v[i];
-            for &j in &adj[i] {
-                lv[i] -= v[j];
-            }
+    let mut lap = vec![vec![0.0f64; n]; n];
+    for i in 0..n {
+        lap[i][i] = adj[i].len() as f64;
+        for &j in &adj[i] {
+            lap[i][j] -= 1.0;
         }
-        lv
-    };
-
-    let mut eigenvalues = Vec::with_capacity(k);
-    let mut eigenvectors: Vec<Vec<f64>> = Vec::new();
-
-    for _ in 0..k {
-        // Power iteration on L
-        let s = 1.0 / (n as f64).sqrt();
-        let mut v: Vec<f64> = (0..n)
-            .map(|i| (i as f64 * 0.1 + 0.5).sin() * s + s)
-            .collect();
-
-        for _ in 0..100 {
-            let mut lv = apply_lap(&v);
-            // Orthogonalize against previous eigenvectors
-            for ev in &eigenvectors {
-                let dot: f64 = lv.iter().zip(ev).map(|(a, b)| a * b).sum();
-                for i in 0..n {
-                    lv[i] -= dot * ev[i];
-                }
-            }
-            let norm: f64 = lv.iter().map(|x| x * x).sum::<f64>().sqrt();
-            if norm > 1e-15 {
-                for x in &mut lv {
-                    *x /= norm;
-                }
-            }
-            v = lv;
-        }
-
-        let lv = apply_lap(&v);
-        let eigenvalue: f64 = v.iter().zip(lv.iter()).map(|(a, b)| a * b).sum();
-        eigenvalues.push(eigenvalue);
-        eigenvectors.push(v);
     }
 
+    let mut eigenvalues = jacobi_eigenvalues(lap);
     eigenvalues.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    eigenvalues.truncate(k);
     eigenvalues
+}
+
+fn add_neighbor_pair(adj: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
 }
 
 /// Compute the spectral gap (ratio of 2nd to 1st non-zero eigenvalue).
@@ -85,6 +79,66 @@ pub fn spectral_gap(input: &PolyData) -> f64 {
     } else {
         0.0
     }
+}
+
+fn jacobi_eigenvalues(mut a: Vec<Vec<f64>>) -> Vec<f64> {
+    let n = a.len();
+    if n == 0 {
+        return vec![];
+    }
+    let max_iter = 50 * n * n;
+    for _ in 0..max_iter {
+        let mut p = 0usize;
+        let mut q = 1usize.min(n - 1);
+        let mut max_off = 0.0f64;
+        for i in 0..n {
+            for j in i + 1..n {
+                let v = a[i][j].abs();
+                if v > max_off {
+                    max_off = v;
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if max_off < 1e-12 {
+            break;
+        }
+
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+        let tau = (aqq - app) / (2.0 * apq);
+        let t = if tau >= 0.0 {
+            1.0 / (tau + (1.0 + tau * tau).sqrt())
+        } else {
+            -1.0 / (-tau + (1.0 + tau * tau).sqrt())
+        };
+        let c = 1.0 / (1.0 + t * t).sqrt();
+        let s = t * c;
+
+        for r in 0..n {
+            if r != p && r != q {
+                let arp = a[r][p];
+                let arq = a[r][q];
+                let new_rp = c * arp - s * arq;
+                let new_rq = s * arp + c * arq;
+                a[r][p] = new_rp;
+                a[p][r] = new_rp;
+                a[r][q] = new_rq;
+                a[q][r] = new_rq;
+            }
+        }
+
+        a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
+    }
+
+    (0..n)
+        .map(|i| if a[i][i].abs() < 1e-10 { 0.0 } else { a[i][i] })
+        .collect()
 }
 
 #[cfg(test)]
@@ -110,6 +164,7 @@ mod tests {
         let evals = laplacian_eigenvalues(&pd, 3);
         assert_eq!(evals.len(), 3);
         assert!(evals[0] >= 0.0); // Laplacian eigenvalues are non-negative
+        assert!(evals[0] < 1e-10); // connected graph has one zero eigenvalue
     }
 
     #[test]

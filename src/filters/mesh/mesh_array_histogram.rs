@@ -23,7 +23,7 @@ pub fn point_data_histogram(
             buf[0]
         })
         .collect();
-    Some(build_histogram(&vals, num_bins))
+    build_histogram(&vals, num_bins)
 }
 pub fn cell_data_histogram(
     mesh: &PolyData,
@@ -42,25 +42,32 @@ pub fn cell_data_histogram(
             buf[0]
         })
         .collect();
-    Some(build_histogram(&vals, num_bins))
+    build_histogram(&vals, num_bins)
 }
-fn build_histogram(vals: &[f64], num_bins: usize) -> Histogram {
+fn build_histogram(vals: &[f64], num_bins: usize) -> Option<Histogram> {
+    if vals.is_empty() {
+        return None;
+    }
     let nb = num_bins.max(1);
-    let mn = vals.iter().cloned().fold(f64::INFINITY, f64::min);
-    let mx = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let range = (mx - mn).max(1e-15);
+    let mut mn = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+    let mut mx = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    if mn == mx {
+        mn -= 0.5;
+        mx += 0.5;
+    }
+    let range = mx - mn;
     let bw = range / nb as f64;
     let mut bins = vec![0usize; nb];
     for &v in vals {
         let bi = (((v - mn) / range * nb as f64).floor() as usize).min(nb - 1);
         bins[bi] += 1;
     }
-    Histogram {
+    Some(Histogram {
         bins,
         min: mn,
         max: mx,
         bin_width: bw,
-    }
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -80,6 +87,29 @@ mod tests {
             )));
         let h = point_data_histogram(&m, "s", 5).unwrap();
         assert_eq!(h.bins.len(), 5);
+        assert_eq!(h.bins.iter().sum::<usize>(), 3);
+    }
+
+    #[test]
+    fn empty_array_returns_none() {
+        let mut m = PolyData::from_points(Vec::new());
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", Vec::new(), 1)));
+        assert!(point_data_histogram(&m, "s", 5).is_none());
+    }
+
+    #[test]
+    fn constant_array_has_finite_range() {
+        let mut m = PolyData::from_points(vec![[0.0; 3]; 3]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![2.0, 2.0, 2.0],
+                1,
+            )));
+        let h = point_data_histogram(&m, "s", 4).unwrap();
+        assert!(h.min.is_finite());
+        assert!(h.max.is_finite());
         assert_eq!(h.bins.iter().sum::<usize>(), 3);
     }
 }

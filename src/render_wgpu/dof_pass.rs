@@ -1,20 +1,19 @@
 //! Depth-of-field post-processing pass.
 //!
-//! Three passes: CoC computation, separable blur, composite.
+//! Mirrors VTK's depth-of-field shader inputs: world/pixel texcoord scale,
+//! clipping range, focal disk, and focal distance.
 
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 struct DofUniforms {
+    world_to_tcoord: [f32; 2],
+    pixel_to_tcoord: [f32; 2],
+    near_c: f32,
+    far_c: f32,
+    focal_disk: f32,
     focal_distance: f32,
-    aperture: f32,
-    max_blur: f32,
-    texel_size_x: f32,
-    texel_size_y: f32,
-    near: f32,
-    far: f32,
-    horizontal: f32,
 }
 
 pub struct DofPass {

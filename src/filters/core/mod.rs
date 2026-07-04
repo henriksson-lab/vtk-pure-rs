@@ -12,6 +12,9 @@ pub mod generic_filters;
 pub mod marching_cubes;
 pub mod mass_properties;
 pub mod merge;
+pub mod mesh {
+    pub mod depth_sort;
+}
 pub mod mmap_data;
 pub mod parallel_pipeline;
 pub mod piece_request;

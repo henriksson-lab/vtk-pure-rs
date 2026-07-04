@@ -22,9 +22,12 @@ pub struct ColorMap {
 }
 
 impl ColorMap {
-    /// Create a color map from control points. Points must be sorted by parameter.
-    pub fn new(points: Vec<(f64, [f32; 3])>) -> Self {
+    /// Create a color map from control points.
+    ///
+    /// Like vtkColorTransferFunction, points are kept sorted by scalar position.
+    pub fn new(mut points: Vec<(f64, [f32; 3])>) -> Self {
         assert!(points.len() >= 2, "need at least 2 control points");
+        points.sort_by(|a, b| a.0.total_cmp(&b.0));
         Self { points }
     }
 
@@ -333,5 +336,12 @@ mod tests {
     #[test]
     fn available_names_count() {
         assert_eq!(ColorMap::available_names().len(), 15);
+    }
+
+    #[test]
+    fn control_points_are_sorted() {
+        let cm = ColorMap::new(vec![(1.0, [1.0, 1.0, 1.0]), (0.0, [0.0, 0.0, 0.0])]);
+        let c = cm.map(0.25);
+        assert!((c[0] - 0.25).abs() < 1e-5);
     }
 }

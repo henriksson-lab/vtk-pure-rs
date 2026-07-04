@@ -17,17 +17,20 @@ pub fn sum_projection_z(input: &ImageData, scalars: &str) -> ImageData {
     let ny: usize = dims[1] as usize;
     let nz: usize = dims[2] as usize;
 
-    let out_len: usize = nx * ny;
+    let nc = arr.num_components();
+    let out_len: usize = nx * ny * nc;
     let mut values: Vec<f64> = vec![0.0; out_len];
-    let mut buf = [0.0f64];
+    let mut buf = vec![0.0f64; nc];
 
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
                 let src_idx: usize = k * ny * nx + j * nx + i;
-                let dst_idx: usize = j * nx + i;
+                let dst_idx: usize = (j * nx + i) * nc;
                 arr.tuple_as_f64(src_idx, &mut buf);
-                values[dst_idx] += buf[0];
+                for c in 0..nc {
+                    values[dst_idx + c] += buf[c];
+                }
             }
         }
     }
@@ -38,7 +41,7 @@ pub fn sum_projection_z(input: &ImageData, scalars: &str) -> ImageData {
     let origin = input.origin();
     out.set_origin(origin);
     out.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, nc)));
     out
 }
 
@@ -110,5 +113,23 @@ mod tests {
         let img = ImageData::with_dimensions(2, 2, 2);
         let result = sum_projection_z(&img, "nonexistent");
         assert_eq!(result.dimensions(), [1, 1, 1]);
+    }
+
+    #[test]
+    fn sums_all_components() {
+        let mut img = ImageData::with_dimensions(1, 1, 2);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "vectors",
+                vec![1.0, 2.0, 3.0, 10.0, 20.0, 30.0],
+                3,
+            )));
+
+        let result = sum_projection_z(&img, "vectors");
+        let arr = result.point_data().get_array("vectors").unwrap();
+        assert_eq!(arr.num_components(), 3);
+        let mut buf = [0.0f64; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [11.0, 22.0, 33.0]);
     }
 }

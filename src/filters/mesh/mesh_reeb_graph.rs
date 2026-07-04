@@ -1,53 +1,36 @@
-//! Simplified Reeb graph from a scalar function on a mesh.
-use crate::data::{AnyDataArray, DataArray, PolyData};
+//! Reeb graph from a scalar function on a triangle mesh.
+use crate::data::PolyData;
+use crate::filters::geometry::reeb_graph_filter::poly_data_to_reeb_graph;
 
 pub fn reeb_graph(mesh: &PolyData, scalar_name: &str, n_levels: usize) -> PolyData {
-    let n = mesh.points.len();
-    if n == 0 {
-        return mesh.clone();
+    let _ = n_levels;
+    let n_points = mesh.points.len();
+    match mesh.point_data().get_array(scalar_name) {
+        Some(arr) if arr.num_components() == 1 && arr.num_tuples() == n_points => {}
+        _ => return PolyData::new(),
     }
-    let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
-        None => return mesh.clone(),
-    };
-    let mut vals: Vec<f64> = Vec::with_capacity(n);
-    let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        vals.push(buf[0]);
-    }
-    let vmin = vals.iter().cloned().fold(f64::INFINITY, f64::min);
-    let vmax = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    if (vmax - vmin).abs() < 1e-15 {
-        return mesh.clone();
-    }
-
-    let levels = n_levels.max(2);
-    // Assign each vertex to a level
-    let level_of: Vec<usize> = vals
-        .iter()
-        .map(|&v| {
-            let t = (v - vmin) / (vmax - vmin);
-            (t * (levels - 1) as f64).round() as usize
+    if mesh.points.len() == 0
+        || !mesh.verts.is_empty()
+        || !mesh.lines.is_empty()
+        || !mesh.strips.is_empty()
+        || mesh.polys.iter().any(|cell| {
+            cell.len() != 3
+                || cell
+                    .iter()
+                    .any(|&id| usize::try_from(id).map_or(true, |idx| idx >= n_points))
         })
-        .collect();
+    {
+        return PolyData::new();
+    }
 
-    let mut result = mesh.clone();
-    let level_data: Vec<f64> = level_of.iter().map(|&l| l as f64).collect();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "ReebLevel",
-            level_data,
-            1,
-        )));
-    result.point_data_mut().set_active_scalars("ReebLevel");
-    result
+    poly_data_to_reeb_graph(mesh, scalar_name).to_poly_data()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
+
     #[test]
     fn test_reeb() {
         let mut mesh = PolyData::from_triangles(
@@ -63,6 +46,7 @@ mod tests {
         mesh.point_data_mut()
             .add_array(AnyDataArray::F64(DataArray::from_vec("height", heights, 1)));
         let r = reeb_graph(&mesh, "height", 5);
-        assert!(r.point_data().get_array("ReebLevel").is_some());
+        assert!(r.points.len() >= 2);
+        assert!(r.lines.num_cells() >= 1);
     }
 }

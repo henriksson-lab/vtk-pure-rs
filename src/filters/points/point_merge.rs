@@ -9,18 +9,13 @@ pub fn point_merge(inputs: &[&PolyData], tolerance: f64) -> PolyData {
     if inputs.is_empty() {
         return PolyData::new();
     }
-    if inputs.len() == 1 {
-        return inputs[0].clone();
-    }
 
     // Collect all points
     let mut all_pts: Vec<[f64; 3]> = Vec::new();
-    let mut source_info: Vec<(usize, usize)> = Vec::new(); // (input_idx, point_idx)
 
-    for (si, pd) in inputs.iter().enumerate() {
+    for pd in inputs {
         for i in 0..pd.points.len() {
             all_pts.push(pd.points.get(i));
-            source_info.push((si, i));
         }
     }
 
@@ -40,6 +35,7 @@ pub fn point_merge(inputs: &[&PolyData], tolerance: f64) -> PolyData {
         let idx = out_points.len() as i64;
         out_points.push(all_pts[i]);
         remap[i] = idx;
+        merged[i] = true;
 
         // Find nearby points and merge them
         let nearby = tree.find_within_radius(all_pts[i], tolerance);
@@ -60,10 +56,19 @@ pub fn point_merge(inputs: &[&PolyData], tolerance: f64) -> PolyData {
     }
 
     // Merge cells
+    let mut out_verts = CellArray::new();
     let mut out_polys = CellArray::new();
     let mut out_lines = CellArray::new();
+    let mut out_strips = CellArray::new();
 
     for (si, pd) in inputs.iter().enumerate() {
+        for cell in pd.verts.iter() {
+            let mapped: Vec<i64> = cell
+                .iter()
+                .map(|&id| remap[offsets[si] + id as usize])
+                .collect();
+            out_verts.push_cell(&mapped);
+        }
         for cell in pd.polys.iter() {
             let mapped: Vec<i64> = cell
                 .iter()
@@ -78,12 +83,21 @@ pub fn point_merge(inputs: &[&PolyData], tolerance: f64) -> PolyData {
                 .collect();
             out_lines.push_cell(&mapped);
         }
+        for cell in pd.strips.iter() {
+            let mapped: Vec<i64> = cell
+                .iter()
+                .map(|&id| remap[offsets[si] + id as usize])
+                .collect();
+            out_strips.push_cell(&mapped);
+        }
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
+    pd.verts = out_verts;
     pd.polys = out_polys;
     pd.lines = out_lines;
+    pd.strips = out_strips;
     pd
 }
 

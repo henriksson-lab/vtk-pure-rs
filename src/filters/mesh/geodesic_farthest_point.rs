@@ -8,16 +8,36 @@ use std::collections::BinaryHeap;
 /// vertices, measured by edge-weighted Dijkstra distance. Returns indices.
 pub fn geodesic_farthest_point_sampling(input: &PolyData, num_samples: usize) -> Vec<usize> {
     let n = input.points.len();
-    if n == 0 {
+    if n == 0 || num_samples == 0 {
         return vec![];
     }
-    let k = num_samples.max(1).min(n);
+    let k = num_samples.min(n);
 
     let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
+            let pa = input.points.get(a);
+            let pb = input.points.get(b);
+            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                .sqrt();
+            if !adj[a].iter().any(|&(v, _)| v == b) {
+                adj[a].push((b, d));
+                adj[b].push((a, d));
+            }
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            let a = edge[0] as usize;
+            let b = edge[1] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             let pa = input.points.get(a);
             let pb = input.points.get(b);
             let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
@@ -30,18 +50,22 @@ pub fn geodesic_farthest_point_sampling(input: &PolyData, num_samples: usize) ->
     }
 
     let mut samples = Vec::with_capacity(k);
+    let mut selected = vec![false; n];
     let mut dist = vec![f64::MAX; n];
 
     // Start from vertex 0
     samples.push(0);
+    selected[0] = true;
     update_distances(&adj, 0, &mut dist);
 
     for _ in 1..k {
         // Pick farthest vertex
         let farthest = (0..n)
+            .filter(|&i| !selected[i])
             .max_by(|&a, &b| dist[a].partial_cmp(&dist[b]).unwrap_or(Ordering::Equal))
             .unwrap_or(0);
         samples.push(farthest);
+        selected[farthest] = true;
         update_distances(&adj, farthest, &mut dist);
     }
 
@@ -100,6 +124,26 @@ pub fn coverage_radius(input: &PolyData, samples: &[usize]) -> f64 {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
+            let pa = input.points.get(a);
+            let pb = input.points.get(b);
+            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
+                .sqrt();
+            if !adj[a].iter().any(|&(v, _)| v == b) {
+                adj[a].push((b, d));
+                adj[b].push((a, d));
+            }
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            let a = edge[0] as usize;
+            let b = edge[1] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             let pa = input.points.get(a);
             let pb = input.points.get(b);
             let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
@@ -113,7 +157,9 @@ pub fn coverage_radius(input: &PolyData, samples: &[usize]) -> f64 {
 
     let mut dist = vec![f64::MAX; n];
     for &s in samples {
-        update_distances(&adj, s, &mut dist);
+        if s < n {
+            update_distances(&adj, s, &mut dist);
+        }
     }
     dist.iter().copied().fold(0.0f64, f64::max)
 }
@@ -160,5 +206,21 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert!(geodesic_farthest_point_sampling(&pd, 5).is_empty());
+    }
+
+    #[test]
+    fn tied_zero_distances_do_not_repeat_vertices() {
+        let mut pd = PolyData::new();
+        for _ in 0..4 {
+            pd.points.push([0.0, 0.0, 0.0]);
+        }
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
+
+        let samples = geodesic_farthest_point_sampling(&pd, 4);
+        let mut unique = samples.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(samples.len(), unique.len());
     }
 }

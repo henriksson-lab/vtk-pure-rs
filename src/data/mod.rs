@@ -39,7 +39,7 @@ pub use cell_array::CellArray;
 pub use cell_locator::CellLocator;
 pub use data_array::{AnyDataArray, ArrayStatistics, DataArray, DataArrayTupleIter};
 pub use explicit_structured_grid::ExplicitStructuredGrid;
-pub use field_data::FieldData;
+pub use field_data::{FieldData, StringArray};
 pub use generic_dataset::AnyDataSet;
 pub use graph::{Graph, Tree};
 pub use hyper_tree_grid::HyperTreeGrid;

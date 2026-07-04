@@ -6,6 +6,9 @@ pub fn scalar_gradient_on_surface(mesh: &PolyData, array_name: &str) -> PolyData
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -19,7 +22,9 @@ pub fn scalar_gradient_on_surface(mesh: &PolyData, array_name: &str) -> PolyData
         if cell.len() != 3 {
             continue;
         }
-        let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+        let Some(ids) = valid_triangle_ids(cell, n) else {
+            continue;
+        };
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),
@@ -36,14 +41,23 @@ pub fn scalar_gradient_on_surface(mesh: &PolyData, array_name: &str) -> PolyData
         if a2 < 1e-30 {
             continue;
         }
-        // Gradient = sum of (value * rotated_edge) / (2*area)
-        let dv = [vals[ids[1]] - vals[ids[0]], vals[ids[2]] - vals[ids[0]]];
+        let e12 = [p[2][0] - p[1][0], p[2][1] - p[1][1], p[2][2] - p[1][2]];
+        let e20 = [p[0][0] - p[2][0], p[0][1] - p[2][1], p[0][2] - p[2][2]];
+        let cross = |a: [f64; 3], b: [f64; 3]| -> [f64; 3] {
+            [
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0],
+            ]
+        };
+        let c0 = cross(nm, e12);
+        let c1 = cross(nm, e20);
+        let c2 = cross(nm, e1);
         let g = [
-            dv[0] * e2[0] - dv[1] * e1[0],
-            dv[0] * e2[1] - dv[1] * e1[1],
-            dv[0] * e2[2] - dv[1] * e1[2],
+            (vals[ids[0]] * c0[0] + vals[ids[1]] * c1[0] + vals[ids[2]] * c2[0]) / a2,
+            (vals[ids[0]] * c0[1] + vals[ids[1]] * c1[1] + vals[ids[2]] * c2[1]) / a2,
+            (vals[ids[0]] * c0[2] + vals[ids[1]] * c1[2] + vals[ids[2]] * c2[2]) / a2,
         ];
-        // Project onto triangle plane
         for &vi in &ids {
             grad[vi][0] += g[0];
             grad[vi][1] += g[1];
@@ -89,6 +103,19 @@ pub fn scalar_gradient_magnitude(mesh: &PolyData, array_name: &str) -> PolyData 
     result.point_data_mut().set_active_scalars("GradMagnitude");
     result
 }
+
+fn valid_triangle_ids(cell: &[i64], num_points: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], num_points)?,
+        valid_point_id(cell[1], num_points)?,
+        valid_point_id(cell[2], num_points)?,
+    ])
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,6 +133,12 @@ mod tests {
             )));
         let r = scalar_gradient_on_surface(&m, "s");
         assert!(r.point_data().get_array("Gradient").is_some());
+        let arr = r.point_data().get_array("Gradient").unwrap();
+        let mut buf = [0.0; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
+        assert!(buf[1].abs() < 1e-10);
+        assert!(buf[2].abs() < 1e-10);
     }
     #[test]
     fn test_mag() {

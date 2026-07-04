@@ -14,6 +14,9 @@ pub fn curvature_histogram(input: &PolyData, n_bins: usize) -> (Vec<f64>, Vec<us
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -71,6 +74,9 @@ pub fn curvature_percentiles(input: &PolyData) -> [f64; 5] {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -165,5 +171,18 @@ mod tests {
         let pd = PolyData::new();
         let (c, _) = curvature_histogram(&pd, 5);
         assert!(c.is_empty());
+    }
+
+    #[test]
+    fn skips_cells_with_invalid_point_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let (_, counts) = curvature_histogram(&pd, 3);
+        assert_eq!(counts.iter().sum::<usize>(), 2);
+        let p = curvature_percentiles(&pd);
+        assert!(p[4].is_finite());
     }
 }

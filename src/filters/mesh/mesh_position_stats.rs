@@ -1,4 +1,4 @@
-//! Compute position statistics: centroid, bounding box, principal axes lengths.
+//! Compute position statistics: centroid, bounding box, and radial spread.
 use crate::data::PolyData;
 
 pub struct PositionStats {

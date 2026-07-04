@@ -10,15 +10,17 @@ pub fn cvt_relaxation(mesh: &PolyData, iterations: usize) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !adj[a].contains(&b) {
+                adj[a].push(b);
+            }
+            if !adj[b].contains(&a) {
+                adj[b].push(a);
             }
         }
     }
@@ -28,8 +30,12 @@ pub fn cvt_relaxation(mesh: &PolyData, iterations: usize) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
             let e = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(e).or_insert(0) += 1;
         }
@@ -64,10 +70,13 @@ pub fn cvt_relaxation(mesh: &PolyData, iterations: usize) -> PolyData {
     for p in &positions {
         pts.push(*p);
     }
-    let mut result = PolyData::new();
+    let mut result = mesh.clone();
     result.points = pts;
-    result.polys = mesh.polys.clone();
     result
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 
 #[cfg(test)]

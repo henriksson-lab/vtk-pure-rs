@@ -19,7 +19,7 @@ impl Default for AxesWidget {
     fn default() -> Self {
         Self {
             position: [0.1, 0.1],
-            size: 0.07,
+            size: 0.1,
             show_labels: true,
             enabled: true,
         }

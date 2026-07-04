@@ -25,9 +25,10 @@ pub fn project_to_yz(mesh: &PolyData) -> PolyData {
     r
 }
 pub fn project_to_plane(mesh: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
-    let nl = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2])
-        .sqrt()
-        .max(1e-15);
+    let nl = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if nl < 1e-20 {
+        return mesh.clone();
+    }
     let n = [normal[0] / nl, normal[1] / nl, normal[2] / nl];
     let mut r = mesh.clone();
     for i in 0..r.points.len() {

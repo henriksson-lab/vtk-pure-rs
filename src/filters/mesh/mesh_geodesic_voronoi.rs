@@ -29,21 +29,16 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                adj[a].push((b, d));
-                adj[b].push((a, d));
-            }
+            add_edge(mesh, cell[i], cell[(i + 1) % nc], &mut adj);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(mesh, edge[0], edge[1], &mut adj);
         }
     }
     let mut dist = vec![f64::INFINITY; n];
-    let mut labels = vec![0usize; n];
+    let mut labels = vec![usize::MAX; n];
     let mut heap = BinaryHeap::new();
     for (si, &seed) in seeds.iter().enumerate() {
         if seed < n {
@@ -71,7 +66,10 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
             }
         }
     }
-    let label_data: Vec<f64> = labels.iter().map(|&l| l as f64).collect();
+    let label_data: Vec<f64> = labels
+        .iter()
+        .map(|&l| if l == usize::MAX { -1.0 } else { l as f64 })
+        .collect();
     let mut result = mesh.clone();
     result
         .point_data_mut()
@@ -82,6 +80,31 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("VoronoiRegion");
     result
+}
+
+fn add_edge(mesh: &PolyData, a: i64, b: i64, adj: &mut [Vec<(usize, f64)>]) {
+    let n = adj.len();
+    let Some(a) = valid_point_id(a, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b, n) else {
+        return;
+    };
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+    if !adj[a].iter().any(|&(v, _)| v == b) {
+        adj[a].push((b, d));
+    }
+    if !adj[b].iter().any(|&(v, _)| v == a) {
+        adj[b].push((a, d));
+    }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

@@ -45,6 +45,13 @@ pub fn read_minc(path: &Path) -> Result<(ImageData, MincInfo), VtkError> {
         }
         // Read step (spacing) and start (origin) from dimension variables
         if let Some(var) = file.variable(dname) {
+            if let Some(attr) = var.attribute("spacetype") {
+                if let Ok(v) = attr.value() {
+                    if let netcdf_rs::AttrValue::Str(s) = v {
+                        info.space_type = s;
+                    }
+                }
+            }
             if let Ok(attr) = var.attribute("step").ok_or(()) {
                 if let Ok(v) = attr.value() {
                     if let netcdf_rs::AttrValue::Double(vals) = v {
@@ -84,7 +91,7 @@ pub fn read_minc(path: &Path) -> Result<(ImageData, MincInfo), VtkError> {
     }
 
     let mut img = ImageData::with_dimensions(dim_sizes[0], dim_sizes[1], dim_sizes[2]);
-    img.set_spacing([info.step[0].abs(), info.step[1].abs(), info.step[2].abs()]);
+    img.set_spacing(info.step);
     img.set_origin(info.start);
     img.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("image", data, 1)));

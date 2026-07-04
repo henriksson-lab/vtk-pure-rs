@@ -6,6 +6,9 @@ pub fn morse_segmentation(mesh: &PolyData, array_name: &str, merge_threshold: f6
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -17,8 +20,12 @@ pub fn morse_segmentation(mesh: &PolyData, array_name: &str, merge_threshold: f6
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
             if a < n && b < n {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
@@ -61,7 +68,6 @@ pub fn morse_segmentation(mesh: &PolyData, array_name: &str, merge_threshold: f6
         *counts.entry(b).or_insert(0) += 1;
     }
     let min_size = (n as f64 * merge_threshold) as usize;
-    let mut parent: Vec<usize> = (0..n).collect();
     for (&root, &count) in &counts {
         if count < min_size {
             // Find nearest larger basin

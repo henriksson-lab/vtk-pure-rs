@@ -11,8 +11,15 @@ pub fn sample_edges(mesh: &PolyData, samples_per_edge: usize) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
+            if a >= mesh.points.len() || b >= mesh.points.len() {
+                continue;
+            }
             let key = (a.min(b), a.max(b));
             if !seen.insert(key) {
                 continue;
@@ -39,7 +46,40 @@ pub fn sample_edges(mesh: &PolyData, samples_per_edge: usize) -> PolyData {
 
 /// Sample points at edge midpoints only.
 pub fn edge_midpoints(mesh: &PolyData) -> PolyData {
-    sample_edges(mesh, 1)
+    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut pts = Points::<f64>::new();
+    let mut verts = CellArray::new();
+    for cell in mesh.polys.iter() {
+        let nc = cell.len();
+        for i in 0..nc {
+            let Ok(a) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
+            if a >= mesh.points.len() || b >= mesh.points.len() {
+                continue;
+            }
+            let key = (a.min(b), a.max(b));
+            if !seen.insert(key) {
+                continue;
+            }
+            let pa = mesh.points.get(a);
+            let pb = mesh.points.get(b);
+            let idx = pts.len();
+            pts.push([
+                (pa[0] + pb[0]) * 0.5,
+                (pa[1] + pb[1]) * 0.5,
+                (pa[2] + pb[2]) * 0.5,
+            ]);
+            verts.push_cell(&[idx as i64]);
+        }
+    }
+    let mut r = PolyData::new();
+    r.points = pts;
+    r.verts = verts;
+    r
 }
 
 #[cfg(test)]
@@ -61,6 +101,9 @@ mod tests {
             vec![[0, 1, 2]],
         );
         let r = edge_midpoints(&mesh);
-        assert_eq!(r.points.len(), 6); // 3 edges * 2 points each
+        assert_eq!(r.points.len(), 3); // 3 edges
+        let p = r.points.get(0);
+        assert!((p[0] - 0.5).abs() < 1e-12);
+        assert!(p[1].abs() < 1e-12);
     }
 }

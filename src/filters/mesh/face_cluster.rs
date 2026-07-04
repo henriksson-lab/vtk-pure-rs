@@ -15,27 +15,7 @@ pub fn face_cluster_by_normal(input: &PolyData, angle_threshold_deg: f64) -> Pol
 
     let normals: Vec<[f64; 3]> = cells
         .iter()
-        .map(|c| {
-            if c.len() < 3 {
-                return [0.0; 3];
-            }
-            let v0 = input.points.get(c[0] as usize);
-            let v1 = input.points.get(c[1] as usize);
-            let v2 = input.points.get(c[2] as usize);
-            let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-            let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            if l > 1e-15 {
-                [n[0] / l, n[1] / l, n[2] / l]
-            } else {
-                [0.0; 3]
-            }
-        })
+        .map(|c| compute_polygon_normal(input, c))
         .collect();
 
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
@@ -43,6 +23,12 @@ pub fn face_cluster_by_normal(input: &PolyData, angle_threshold_deg: f64) -> Pol
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
+            if valid_point_index(a, input.points.len()).is_none()
+                || valid_point_index(b, input.points.len()).is_none()
+                || a == b
+            {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
@@ -50,9 +36,11 @@ pub fn face_cluster_by_normal(input: &PolyData, angle_threshold_deg: f64) -> Pol
 
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); nc];
     for faces in edge_faces.values() {
-        if faces.len() == 2 {
-            adj[faces[0]].push(faces[1]);
-            adj[faces[1]].push(faces[0]);
+        for i in 0..faces.len() {
+            for j in i + 1..faces.len() {
+                adj[faces[i]].push(faces[j]);
+                adj[faces[j]].push(faces[i]);
+            }
         }
     }
 
@@ -93,6 +81,39 @@ pub fn face_cluster_by_normal(input: &PolyData, angle_threshold_deg: f64) -> Pol
             1,
         )));
     pd
+}
+
+fn compute_polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
+    if cell.len() < 3 {
+        return [0.0; 3];
+    }
+
+    let mut n = [0.0; 3];
+    let Some(last) = valid_point_index(cell[cell.len() - 1], input.points.len()) else {
+        return [0.0; 3];
+    };
+    let mut prev = input.points.get(last);
+    for &pid in cell {
+        let Some(pid) = valid_point_index(pid, input.points.len()) else {
+            return [0.0; 3];
+        };
+        let cur = input.points.get(pid);
+        n[0] += (prev[1] - cur[1]) * (prev[2] + cur[2]);
+        n[1] += (prev[2] - cur[2]) * (prev[0] + cur[0]);
+        n[2] += (prev[0] - cur[0]) * (prev[1] + cur[1]);
+        prev = cur;
+    }
+
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len > 0.0 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0; 3]
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]
@@ -144,5 +165,20 @@ mod tests {
         let pd = PolyData::new();
         let result = face_cluster_by_normal(&pd, 10.0);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn invalid_polygon_ids_do_not_panic() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, -1, 2]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let result = face_cluster_by_normal(&pd, 10.0);
+        let arr = result.cell_data().get_array("FaceCluster").unwrap();
+        assert_eq!(arr.num_tuples(), 3);
     }
 }

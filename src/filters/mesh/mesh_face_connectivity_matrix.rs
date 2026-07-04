@@ -7,13 +7,18 @@ pub struct FaceAdjacency {
 pub fn face_adjacency(mesh: &PolyData) -> FaceAdjacency {
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
+    let num_points = mesh.points.len();
     let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let Some(a) = valid_point_id(cell[i], num_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % n], num_points) else {
+                continue;
+            };
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -53,6 +58,9 @@ pub fn is_face_connected(mesh: &PolyData) -> bool {
         }
     }
     visited.iter().all(|&v| v)
+}
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 #[cfg(test)]
 mod tests {

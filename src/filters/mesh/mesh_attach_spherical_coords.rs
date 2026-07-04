@@ -14,7 +14,7 @@ pub fn attach_spherical_coords(mesh: &PolyData) -> PolyData {
         } else {
             0.0
         });
-        phi.push(p[1].atan2(p[0]));
+        phi.push(vtk_azimuth(p[0], p[1]));
     }
     let mut result = mesh.clone();
     result
@@ -36,7 +36,7 @@ pub fn attach_cylindrical_coords(mesh: &PolyData) -> PolyData {
     for i in 0..n {
         let p = mesh.points.get(i);
         rho.push((p[0] * p[0] + p[1] * p[1]).sqrt());
-        phi.push(p[1].atan2(p[0]));
+        phi.push(vtk_azimuth(p[0], p[1]));
         z.push(p[2]);
     }
     let mut result = mesh.clone();
@@ -51,6 +51,16 @@ pub fn attach_cylindrical_coords(mesh: &PolyData) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec("Z", z, 1)));
     result
 }
+
+fn vtk_azimuth(x: f64, y: f64) -> f64 {
+    let rr = x * x + y * y;
+    if rr == 0.0 {
+        0.0
+    } else {
+        std::f64::consts::PI + (-y).atan2(-x)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

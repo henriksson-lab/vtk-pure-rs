@@ -12,11 +12,13 @@ pub fn tube_from_lines(mesh: &PolyData, radius: f64, sides: usize) -> PolyData {
         if line.len() < 2 {
             continue;
         }
-        let line_pts: Vec<[f64; 3]> = line
-            .iter()
-            .map(|&id| mesh.points.get(id as usize))
-            .collect();
-        if has_coincident_segment(&line_pts) {
+        let line_pts = compact_consecutive_coincident_points(
+            &line
+                .iter()
+                .map(|&id| mesh.points.get(id as usize))
+                .collect::<Vec<_>>(),
+        );
+        if line_pts.len() < 2 {
             continue;
         }
         let seg_count = line_pts.len() - 1;
@@ -70,8 +72,14 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-fn has_coincident_segment(points: &[[f64; 3]]) -> bool {
-    points.windows(2).any(|pair| pair[0] == pair[1])
+fn compact_consecutive_coincident_points(points: &[[f64; 3]]) -> Vec<[f64; 3]> {
+    let mut compacted = Vec::with_capacity(points.len());
+    for &point in points {
+        if compacted.last().copied() != Some(point) {
+            compacted.push(point);
+        }
+    }
+    compacted
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
@@ -137,7 +145,7 @@ mod tests {
         mesh.lines.push_cell(&[0, 1, 2]);
 
         let result = tube_from_lines(&mesh, 0.1, 8);
-        assert_eq!(result.points.len(), 0);
-        assert_eq!(result.strips.num_cells(), 0);
+        assert_eq!(result.points.len(), 16);
+        assert_eq!(result.strips.num_cells(), 8);
     }
 }

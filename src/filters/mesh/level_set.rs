@@ -1,4 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extract a level set (isocontour) of a scalar field on a triangle mesh.
 ///
@@ -12,6 +13,9 @@ pub fn mesh_level_set(input: &PolyData, array_name: &str, isovalue: f64) -> Poly
 
     let mut buf = [0.0f64];
     let n = input.points.len();
+    if arr.num_tuples() < n {
+        return PolyData::new();
+    }
     let values: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
@@ -21,37 +25,72 @@ pub fn mesh_level_set(input: &PolyData, array_name: &str, isovalue: f64) -> Poly
 
     let mut out_pts = Points::<f64>::new();
     let mut out_lines = CellArray::new();
+    let mut point_ids = HashMap::new();
+
+    const LINE_CASES: [[i32; 3]; 8] = [
+        [-1, -1, -1],
+        [0, 2, -1],
+        [1, 0, -1],
+        [1, 2, -1],
+        [2, 1, -1],
+        [0, 1, -1],
+        [2, 0, -1],
+        [-1, -1, -1],
+    ];
+    const EDGES: [[usize; 2]; 3] = [[0, 1], [1, 2], [2, 0]];
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
             continue;
         }
-        let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
-        let sv = [values[ids[0]], values[ids[1]], values[ids[2]]];
-
-        let mut crossing_pts: Vec<[f64; 3]> = Vec::new();
-        for k in 0..3 {
-            let a = ids[k];
-            let b = ids[(k + 1) % 3];
-            let sa = sv[k];
-            let sb = sv[(k + 1) % 3];
-            if (sa - isovalue) * (sb - isovalue) < 0.0 {
-                let t = (isovalue - sa) / (sb - sa);
-                let pa = input.points.get(a);
-                let pb = input.points.get(b);
-                crossing_pts.push([
-                    pa[0] + t * (pb[0] - pa[0]),
-                    pa[1] + t * (pb[1] - pa[1]),
-                    pa[2] + t * (pb[2] - pa[2]),
-                ]);
-            }
+        let base = cell[0] as usize;
+        if base >= n {
+            continue;
         }
+        for tri in 1..cell.len() - 1 {
+            let ids = [base, cell[tri] as usize, cell[tri + 1] as usize];
+            if ids.iter().any(|&id| id >= n) {
+                continue;
+            }
+            let sv = [values[ids[0]], values[ids[1]], values[ids[2]]];
+            let mut case_idx = 0usize;
+            for k in 0..3 {
+                if sv[k] >= isovalue {
+                    case_idx |= 1 << k;
+                }
+            }
 
-        if crossing_pts.len() == 2 {
-            let i0 = out_pts.len() as i64;
-            out_pts.push(crossing_pts[0]);
-            out_pts.push(crossing_pts[1]);
-            out_lines.push_cell(&[i0, i0 + 1]);
+            let mut edge = 0usize;
+            while LINE_CASES[case_idx][edge] >= 0 {
+                let mut line_ids = [0i64; 2];
+                for p in 0..2 {
+                    let edge_id = LINE_CASES[case_idx][edge + p] as usize;
+                    let [e0, e1] = EDGES[edge_id];
+                    let delta_scalar = sv[e1] - sv[e0];
+                    let (p0_id, p1_id, delta_scalar) = if delta_scalar > 0.0 {
+                        (e0, e1, delta_scalar)
+                    } else {
+                        (e1, e0, -delta_scalar)
+                    };
+                    let t = if delta_scalar == 0.0 {
+                        0.0
+                    } else {
+                        (isovalue - sv[p0_id]) / delta_scalar
+                    };
+                    let p0 = input.points.get(ids[p0_id]);
+                    let p1 = input.points.get(ids[p1_id]);
+                    let point = [
+                        p0[0] + t * (p1[0] - p0[0]),
+                        p0[1] + t * (p1[1] - p0[1]),
+                        p0[2] + t * (p1[2] - p0[2]),
+                    ];
+                    line_ids[p] = insert_unique_point(&mut out_pts, &mut point_ids, point);
+                }
+                if line_ids[0] != line_ids[1] {
+                    out_lines.push_cell(&line_ids);
+                }
+                edge += 2;
+            }
         }
     }
 
@@ -59,6 +98,21 @@ pub fn mesh_level_set(input: &PolyData, array_name: &str, isovalue: f64) -> Poly
     pd.points = out_pts;
     pd.lines = out_lines;
     pd
+}
+
+fn insert_unique_point(
+    points: &mut Points<f64>,
+    ids: &mut HashMap<[u64; 3], i64>,
+    point: [f64; 3],
+) -> i64 {
+    let key = [point[0].to_bits(), point[1].to_bits(), point[2].to_bits()];
+    if let Some(&id) = ids.get(&key) {
+        return id;
+    }
+    let id = points.len() as i64;
+    points.push(point);
+    ids.insert(key, id);
+    id
 }
 
 #[cfg(test)]

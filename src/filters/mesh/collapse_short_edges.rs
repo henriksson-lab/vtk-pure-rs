@@ -1,5 +1,4 @@
 use crate::data::{CellArray, Points, PolyData};
-use std::collections::HashMap;
 
 /// Collapse edges shorter than a threshold using k-d tree for efficiency.
 ///
@@ -7,7 +6,7 @@ use std::collections::HashMap;
 /// efficiently. Produces a cleaner mesh with better degenerate handling.
 pub fn collapse_short_edges_kdtree(input: &PolyData, min_length: f64) -> PolyData {
     let n = input.points.len();
-    if n == 0 {
+    if n == 0 || !min_length.is_finite() || min_length <= 0.0 {
         return input.clone();
     }
 
@@ -45,21 +44,32 @@ pub fn collapse_short_edges_kdtree(input: &PolyData, min_length: f64) -> PolyDat
         }
     }
 
-    // Remap cells
-    let mut out_polys = CellArray::new();
-    for cell in input.polys.iter() {
-        let mapped: Vec<i64> = cell.iter().map(|&id| remap[id as usize] as i64).collect();
-        let mut unique = mapped.clone();
-        unique.sort();
-        unique.dedup();
-        if unique.len() >= 3 {
-            out_polys.push_cell(&mapped);
+    let remap_cells = |cells: &CellArray, min_unique: usize| {
+        let mut out_cells = CellArray::new();
+        for cell in cells.iter() {
+            if cell.iter().any(|&id| id < 0 || id as usize >= n) {
+                continue;
+            }
+            let mapped: Vec<i64> = cell.iter().map(|&id| remap[id as usize] as i64).collect();
+            let mut unique = Vec::new();
+            for id in mapped {
+                if !unique.contains(&id) {
+                    unique.push(id);
+                }
+            }
+            if unique.len() >= min_unique {
+                out_cells.push_cell(&unique);
+            }
         }
-    }
+        out_cells
+    };
 
     let mut pd = PolyData::new();
     pd.points = out_pts;
-    pd.polys = out_polys;
+    pd.verts = remap_cells(&input.verts, 1);
+    pd.lines = remap_cells(&input.lines, 2);
+    pd.polys = remap_cells(&input.polys, 3);
+    pd.strips = remap_cells(&input.strips, 3);
     pd
 }
 
@@ -97,5 +107,48 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(collapse_short_edges_kdtree(&pd, 0.1).points.len(), 0);
+    }
+
+    #[test]
+    fn preserves_vertex_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.verts.push_cell(&[1]);
+
+        let result = collapse_short_edges_kdtree(&pd, 0.1);
+        assert_eq!(result.verts.num_cells(), 2);
+    }
+
+    #[test]
+    fn removes_collapsed_vertices_from_output_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let result = collapse_short_edges_kdtree(&pd, 0.1);
+        let cells: Vec<Vec<i64>> = result.polys.iter().map(|cell| cell.to_vec()).collect();
+        assert!(cells.iter().all(|cell| {
+            let mut unique = cell.clone();
+            unique.sort();
+            unique.dedup();
+            unique.len() == cell.len()
+        }));
+    }
+
+    #[test]
+    fn skips_cells_with_invalid_point_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let result = collapse_short_edges_kdtree(&pd, 0.1);
+        assert_eq!(result.polys.num_cells(), 0);
     }
 }

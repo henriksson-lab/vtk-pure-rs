@@ -25,9 +25,18 @@ pub fn heat_diffuse(input: &PolyData, array_name: &str, dt: f64, iterations: usi
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         let cn: usize = cell.len();
+        if cn < 2 {
+            continue;
+        }
         for i in 0..cn {
+            if cell[i] < 0 || cell[(i + 1) % cn] < 0 {
+                continue;
+            }
             let a: usize = cell[i] as usize;
             let b: usize = cell[(i + 1) % cn] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -69,6 +78,7 @@ pub fn heat_diffuse(input: &PolyData, array_name: &str, dt: f64, iterations: usi
         }
     }
     *pd.point_data_mut() = attrs;
+    pd.point_data_mut().set_active_scalars(array_name);
     pd
 }
 
@@ -139,5 +149,20 @@ mod tests {
         let pd = PolyData::new();
         let result = heat_diffuse(&pd, "missing", 0.1, 5);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn ignores_empty_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("T", vec![7.0], 1)));
+        pd.polys.push_cell(&[]);
+
+        let result = heat_diffuse(&pd, "T", 0.5, 1);
+        let out_arr = result.point_data().get_array("T").unwrap();
+        let mut buf = [0.0f64];
+        out_arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 7.0);
     }
 }

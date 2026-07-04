@@ -8,13 +8,27 @@ pub struct DistanceHistogram {
     pub mean_dist: f64,
 }
 pub fn edge_distance_histogram(mesh: &PolyData, num_bins: usize) -> DistanceHistogram {
+    let nb = num_bins.max(1);
     let mut edges: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    for cell in mesh.lines.iter() {
+        for pair in cell.windows(2) {
+            insert_valid_edge(&mut edges, pair[0], pair[1], mesh.points.len());
+        }
+    }
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            edges.insert((a.min(b), a.max(b)));
+            insert_valid_edge(&mut edges, cell[i], cell[(i + 1) % nc], mesh.points.len());
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_valid_edge(&mut edges, tri[0], tri[1], mesh.points.len());
+            insert_valid_edge(&mut edges, tri[1], tri[2], mesh.points.len());
+            insert_valid_edge(&mut edges, tri[2], tri[0], mesh.points.len());
         }
     }
     let dists: Vec<f64> = edges
@@ -27,7 +41,7 @@ pub fn edge_distance_histogram(mesh: &PolyData, num_bins: usize) -> DistanceHist
         .collect();
     if dists.is_empty() {
         return DistanceHistogram {
-            bins: vec![],
+            bins: vec![0; nb],
             min_dist: 0.0,
             max_dist: 0.0,
             bin_width: 0.0,
@@ -36,7 +50,6 @@ pub fn edge_distance_histogram(mesh: &PolyData, num_bins: usize) -> DistanceHist
     }
     let mn = dists.iter().cloned().fold(f64::INFINITY, f64::min);
     let mx = dists.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let nb = num_bins.max(1);
     let bw = (mx - mn).max(1e-15) / nb as f64;
     let mut bins = vec![0usize; nb];
     for &d in &dists {
@@ -57,9 +70,10 @@ pub fn all_pairs_distance_histogram(
     num_bins: usize,
     max_pairs: usize,
 ) -> DistanceHistogram {
+    let nb = num_bins.max(1);
     let n = mesh.points.len();
     let mut dists = Vec::new();
-    let limit = max_pairs.min(n * n);
+    let limit = max_pairs.min(n.saturating_mul(n.saturating_sub(1)) / 2);
     let mut count = 0;
     'outer: for i in 0..n {
         for j in i + 1..n {
@@ -77,7 +91,7 @@ pub fn all_pairs_distance_histogram(
     }
     if dists.is_empty() {
         return DistanceHistogram {
-            bins: vec![],
+            bins: vec![0; nb],
             min_dist: 0.0,
             max_dist: 0.0,
             bin_width: 0.0,
@@ -86,7 +100,6 @@ pub fn all_pairs_distance_histogram(
     }
     let mn = dists.iter().cloned().fold(f64::INFINITY, f64::min);
     let mx = dists.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let nb = num_bins.max(1);
     let bw = (mx - mn).max(1e-15) / nb as f64;
     let mut bins = vec![0usize; nb];
     for &d in &dists {
@@ -101,6 +114,28 @@ pub fn all_pairs_distance_histogram(
         mean_dist: dists.iter().sum::<f64>() / dists.len() as f64,
     }
 }
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
+fn insert_valid_edge(
+    edges: &mut std::collections::HashSet<(usize, usize)>,
+    a: i64,
+    b: i64,
+    num_points: usize,
+) {
+    let Some(a) = valid_point_id(a, num_points) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b, num_points) else {
+        return;
+    };
+    if a != b {
+        edges.insert((a.min(b), a.max(b)));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +156,28 @@ mod tests {
         );
         let h = all_pairs_distance_histogram(&m, 5, 100);
         assert_eq!(h.bins.iter().sum::<usize>(), 3);
+    }
+
+    #[test]
+    fn test_edge_includes_polydata_lines_and_strips() {
+        let mut m = PolyData::new();
+        m.points.push([0.0, 0.0, 0.0]);
+        m.points.push([1.0, 0.0, 0.0]);
+        m.points.push([2.0, 0.0, 0.0]);
+        m.points.push([0.0, 1.0, 0.0]);
+        m.lines.push_cell(&[0, 1, 2]);
+        m.strips.push_cell(&[0, 1, 3]);
+
+        let h = edge_distance_histogram(&m, 4);
+        assert_eq!(h.bins.iter().sum::<usize>(), 4);
+    }
+
+    #[test]
+    fn test_empty_histogram_keeps_requested_bins() {
+        let m = PolyData::new();
+        let h = edge_distance_histogram(&m, 4);
+        assert_eq!(h.bins, vec![0; 4]);
+        let h = all_pairs_distance_histogram(&m, 4, 100);
+        assert_eq!(h.bins, vec![0; 4]);
     }
 }

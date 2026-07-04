@@ -14,7 +14,9 @@ pub fn smooth_cotangent(mesh: &PolyData, iterations: usize, lambda: f64) -> Poly
             if cell.len() != 3 {
                 continue;
             }
-            let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+            let Some(ids) = triangle_point_ids(cell, n) else {
+                continue;
+            };
             let p = [pos[ids[0]], pos[ids[1]], pos[ids[2]]];
             for i in 0..3 {
                 let j = (i + 1) % 3;
@@ -51,6 +53,20 @@ pub fn smooth_cotangent(mesh: &PolyData, iterations: usize, lambda: f64) -> Poly
         r.points.set(i, pos[i]);
     }
     r
+}
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 #[cfg(test)]
 mod tests {

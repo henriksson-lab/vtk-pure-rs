@@ -1,18 +1,18 @@
 //! Voxel occupancy grid from point clouds.
 //!
 //! Converts a point cloud into an ImageData occupancy grid where each voxel
-//! stores the number of points it contains.
+//! stores 1.0 when occupied by any point and 0.0 otherwise.
 
 use crate::data::{AnyDataArray, DataArray, ImageData, PolyData};
 
 /// Create a voxel occupancy grid from a point cloud.
 ///
-/// Each voxel in the output ImageData stores the count of points that
-/// fall within it. The grid covers the bounding box of the input points
+/// Each voxel in the output ImageData stores whether any point falls within it.
+/// The grid covers the bounding box of the input points
 /// with the given spacing.
 pub fn point_occupancy(points: &PolyData, spacing: [f64; 3]) -> ImageData {
     let n = points.points.len();
-    if n == 0 {
+    if n == 0 || spacing.iter().any(|&s| s <= 0.0) {
         return ImageData::new();
     }
 
@@ -40,7 +40,7 @@ pub fn point_occupancy(points: &PolyData, spacing: [f64; 3]) -> ImageData {
     ];
 
     let total = dims[0] * dims[1] * dims[2];
-    let mut counts = vec![0.0f64; total];
+    let mut occupancy = vec![0.0f64; total];
 
     // Bin points
     for i in 0..n {
@@ -51,7 +51,7 @@ pub fn point_occupancy(points: &PolyData, spacing: [f64; 3]) -> ImageData {
 
         if ix < dims[0] && iy < dims[1] && iz < dims[2] {
             let idx = ix + iy * dims[0] + iz * dims[0] * dims[1];
-            counts[idx] += 1.0;
+            occupancy[idx] = 1.0;
         }
     }
 
@@ -60,7 +60,7 @@ pub fn point_occupancy(points: &PolyData, spacing: [f64; 3]) -> ImageData {
         .with_origin(min)
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(
             "Occupancy",
-            counts,
+            occupancy,
             1,
         )))
 }

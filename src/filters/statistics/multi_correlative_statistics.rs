@@ -56,9 +56,9 @@ pub fn multivariate_stats(table: &Table) -> Option<MultivariateStats> {
     })
 }
 
-/// Compute Mahalanobis distance of each row from the multivariate mean.
+/// Compute squared Mahalanobis distance of each row from the multivariate mean.
 ///
-/// Returns a Table with an added "MahalanobisDistance" column.
+/// Returns a Table with an added "d^2" column.
 pub fn mahalanobis_distance(table: &Table) -> Table {
     let stats = match multivariate_stats(table) {
         Some(s) => s,
@@ -73,7 +73,7 @@ pub fn mahalanobis_distance(table: &Table) -> Table {
     let p = cols.len();
     let n = cols[0].len();
 
-    let mut distances = Vec::with_capacity(n);
+    let mut distances_squared = Vec::with_capacity(n);
     for row in 0..n {
         let diff: Vec<f64> = (0..p).map(|j| cols[j][row] - stats.means[j]).collect();
         let mut d2 = 0.0;
@@ -82,13 +82,13 @@ pub fn mahalanobis_distance(table: &Table) -> Table {
                 d2 += diff[i] * inv[i][j] * diff[j];
             }
         }
-        distances.push(d2.max(0.0).sqrt());
+        distances_squared.push(d2.max(0.0));
     }
 
     let mut result = table.clone();
     result.add_column(AnyDataArray::F64(DataArray::from_vec(
-        "MahalanobisDistance",
-        distances,
+        "d^2",
+        distances_squared,
         1,
     )));
     result
@@ -97,7 +97,7 @@ pub fn mahalanobis_distance(table: &Table) -> Table {
 /// Detect multivariate outliers using Mahalanobis distance threshold.
 pub fn multivariate_outliers(table: &Table, threshold: f64) -> Vec<usize> {
     let result = mahalanobis_distance(table);
-    let arr = match result.column_by_name("MahalanobisDistance") {
+    let arr = match result.column_by_name("d^2") {
         Some(a) => a,
         None => return Vec::new(),
     };
@@ -218,10 +218,10 @@ mod tests {
                 1,
             )));
         let result = mahalanobis_distance(&t);
-        assert!(result.column_by_name("MahalanobisDistance").is_some());
+        assert!(result.column_by_name("d^2").is_some());
 
         // Last point should have largest distance
-        let arr = result.column_by_name("MahalanobisDistance").unwrap();
+        let arr = result.column_by_name("d^2").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(4, &mut buf);
         let last_d = buf[0];

@@ -6,8 +6,8 @@ use crate::types::VtkError;
 
 /// Writer for binary glTF (.glb) format.
 ///
-/// Exports PolyData triangle meshes as glTF 2.0 binary files.
-/// Supports positions, normals (if available), and per-vertex colors (if available).
+/// Exports PolyData meshes as glTF 2.0 binary files.
+/// Supports positions, normals (if available), points, lines, and triangles.
 pub struct GlbWriter;
 
 impl GlbWriter {
@@ -31,47 +31,12 @@ fn build_glb_data(pd: &PolyData) -> Result<(Vec<u8>, Vec<u8>), VtkError> {
         return Err(VtkError::InvalidData("empty PolyData".into()));
     }
 
-    // Triangulate: extract triangle indices from polys
-    let mut indices: Vec<u32> = Vec::new();
-    for cell in pd.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        for i in 1..cell.len() - 1 {
-            indices.push(cell[0] as u32);
-            indices.push(cell[i] as u32);
-            indices.push(cell[i + 1] as u32);
-        }
-    }
-
-    if indices.is_empty() {
-        return Err(VtkError::InvalidData("no triangles in PolyData".into()));
-    }
-
     // Build binary buffer
     let mut bin = Vec::new();
     let mut accessors = Vec::new();
     let mut buffer_views = Vec::new();
     let mut attributes = Vec::new();
-
-    // Indices
-    let indices_offset = bin.len();
-    for &idx in &indices {
-        bin.extend_from_slice(&idx.to_le_bytes());
-    }
-    let indices_len = bin.len() - indices_offset;
-    pad_to_4(&mut bin);
-    let idx_max = indices.iter().copied().max().unwrap_or(0);
-
-    buffer_views.push(format!(
-        r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":34963}}"#,
-        indices_offset, indices_len
-    ));
-    accessors.push(format!(
-        r#"{{"bufferView":0,"componentType":5125,"count":{},"type":"SCALAR","max":[{}],"min":[0]}}"#,
-        indices.len(),
-        idx_max
-    ));
+    let mut primitives = Vec::new();
 
     // Positions
     let pos_offset = bin.len();
@@ -80,6 +45,11 @@ fn build_glb_data(pd: &PolyData) -> Result<(Vec<u8>, Vec<u8>), VtkError> {
     for i in 0..n_points {
         let p = pd.points.get(i);
         let pos = [p[0] as f32, p[1] as f32, p[2] as f32];
+        if !pos.iter().all(|value| value.is_finite()) {
+            return Err(VtkError::InvalidData(
+                "glTF positions must be finite Float32 values".into(),
+            ));
+        }
         for k in 0..3 {
             min_pos[k] = min_pos[k].min(pos[k]);
             max_pos[k] = max_pos[k].max(pos[k]);
@@ -91,20 +61,26 @@ fn build_glb_data(pd: &PolyData) -> Result<(Vec<u8>, Vec<u8>), VtkError> {
     let pos_len = bin.len() - pos_offset;
     pad_to_4(&mut bin);
 
+    let pos_bv_idx = buffer_views.len();
     buffer_views.push(format!(
         r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"byteStride":12,"target":34962}}"#,
         pos_offset, pos_len
     ));
+    let pos_acc_idx = accessors.len();
     accessors.push(format!(
-        r#"{{"bufferView":1,"componentType":5126,"count":{},"type":"VEC3","max":[{},{},{}],"min":[{},{},{}]}}"#,
+        r#"{{"bufferView":{},"componentType":5126,"count":{},"type":"VEC3","max":[{},{},{}],"min":[{},{},{}]}}"#,
+        pos_bv_idx,
         n_points,
         max_pos[0], max_pos[1], max_pos[2],
         min_pos[0], min_pos[1], min_pos[2]
     ));
-    attributes.push(r#""POSITION":1"#.to_string());
+    attributes.push(format!(r#""POSITION":{}"#, pos_acc_idx));
 
     // Normals (if available)
-    let has_normals = pd.point_data().normals().is_some();
+    let has_normals = pd
+        .point_data()
+        .normals()
+        .is_some_and(|normals| normals.num_tuples() >= n_points);
     if has_normals {
         let normals = pd.point_data().normals().unwrap();
         let norm_bv_idx = buffer_views.len();
@@ -132,8 +108,71 @@ fn build_glb_data(pd: &PolyData) -> Result<(Vec<u8>, Vec<u8>), VtkError> {
         attributes.push(format!(r#""NORMAL":{}"#, norm_acc_idx));
     }
 
-    // Build JSON
     let attrs_str = attributes.join(",");
+
+    let mut point_indices = Vec::new();
+    for cell in pd.verts.iter() {
+        for &pid in cell {
+            push_index(&mut point_indices, pid, n_points)?;
+        }
+    }
+    if !point_indices.is_empty() {
+        let index_acc =
+            write_indices_accessor(&mut bin, &mut buffer_views, &mut accessors, &point_indices);
+        primitives.push(format!(
+            r#"{{"attributes":{{{}}},"indices":{},"mode":0}}"#,
+            attrs_str, index_acc
+        ));
+    }
+
+    let mut line_indices = Vec::new();
+    for cell in pd.lines.iter() {
+        for segment in cell.windows(2) {
+            push_index(&mut line_indices, segment[0], n_points)?;
+            push_index(&mut line_indices, segment[1], n_points)?;
+        }
+    }
+    if !line_indices.is_empty() {
+        let index_acc =
+            write_indices_accessor(&mut bin, &mut buffer_views, &mut accessors, &line_indices);
+        primitives.push(format!(
+            r#"{{"attributes":{{{}}},"indices":{},"mode":1}}"#,
+            attrs_str, index_acc
+        ));
+    }
+
+    let mut triangle_indices = Vec::new();
+    for cell in pd.polys.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        for i in 1..cell.len() - 1 {
+            push_index(&mut triangle_indices, cell[0], n_points)?;
+            push_index(&mut triangle_indices, cell[i], n_points)?;
+            push_index(&mut triangle_indices, cell[i + 1], n_points)?;
+        }
+    }
+    if !triangle_indices.is_empty() {
+        let index_acc = write_indices_accessor(
+            &mut bin,
+            &mut buffer_views,
+            &mut accessors,
+            &triangle_indices,
+        );
+        primitives.push(format!(
+            r#"{{"attributes":{{{}}},"indices":{},"mode":4}}"#,
+            attrs_str, index_acc
+        ));
+    }
+
+    if primitives.is_empty() {
+        return Err(VtkError::InvalidData(
+            "no vertices, lines, or triangles in PolyData".into(),
+        ));
+    }
+
+    // Build JSON
+    let primitives_str = primitives.join(",");
     let accessors_str = accessors.join(",");
     let buffer_views_str = buffer_views.join(",");
 
@@ -142,10 +181,10 @@ fn build_glb_data(pd: &PolyData) -> Result<(Vec<u8>, Vec<u8>), VtkError> {
             r#"{{"asset":{{"version":"2.0","generator":"vtk-rs"}},"#,
             r#""scene":0,"scenes":[{{"nodes":[0]}}],"#,
             r#""nodes":[{{"mesh":0}}],"#,
-            r#""meshes":[{{"primitives":[{{"attributes":{{{}}},"indices":0,"mode":4}}]}}],"#,
+            r#""meshes":[{{"primitives":[{}]}}],"#,
             r#""accessors":[{}],"bufferViews":[{}],"buffers":[{{"byteLength":{}}}]}}"#
         ),
-        attrs_str,
+        primitives_str,
         accessors_str,
         buffer_views_str,
         bin.len()
@@ -153,6 +192,45 @@ fn build_glb_data(pd: &PolyData) -> Result<(Vec<u8>, Vec<u8>), VtkError> {
 
     let json_bytes = json_str.into_bytes();
     Ok((json_bytes, bin))
+}
+
+fn push_index(indices: &mut Vec<u32>, pid: i64, point_count: usize) -> Result<(), VtkError> {
+    if pid < 0 || pid as usize >= point_count {
+        return Err(VtkError::InvalidData(format!(
+            "cell point id {pid} is outside point range 0..{point_count}"
+        )));
+    }
+    indices.push(pid as u32);
+    Ok(())
+}
+
+fn write_indices_accessor(
+    bin: &mut Vec<u8>,
+    buffer_views: &mut Vec<String>,
+    accessors: &mut Vec<String>,
+    indices: &[u32],
+) -> usize {
+    let indices_offset = bin.len();
+    for &idx in indices {
+        bin.extend_from_slice(&idx.to_le_bytes());
+    }
+    let indices_len = bin.len() - indices_offset;
+    pad_to_4(bin);
+    let idx_max = indices.iter().copied().max().unwrap_or(0);
+
+    let buffer_view_idx = buffer_views.len();
+    buffer_views.push(format!(
+        r#"{{"buffer":0,"byteOffset":{},"byteLength":{},"target":34963}}"#,
+        indices_offset, indices_len
+    ));
+    let accessor_idx = accessors.len();
+    accessors.push(format!(
+        r#"{{"bufferView":{},"componentType":5125,"count":{},"type":"SCALAR","max":[{}],"min":[0]}}"#,
+        buffer_view_idx,
+        indices.len(),
+        idx_max
+    ));
+    accessor_idx
 }
 
 fn write_glb<W: Write>(writer: &mut W, json: &[u8], bin: &[u8]) -> Result<(), VtkError> {
@@ -250,5 +328,25 @@ mod tests {
         assert!(json_str.contains("\"version\":\"2.0\""));
         assert!(json_str.contains("\"generator\":\"vtk-rs\""));
         assert!(json_str.contains("POSITION"));
+    }
+
+    #[test]
+    fn rejects_non_finite_positions() {
+        let pd = PolyData::from_triangles(
+            vec![[f64::NAN, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let mut buf = Vec::new();
+        assert!(GlbWriter::write_to(&mut buf, &pd).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_cell_indices() {
+        let pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 99]],
+        );
+        let mut buf = Vec::new();
+        assert!(GlbWriter::write_to(&mut buf, &pd).is_err());
     }
 }

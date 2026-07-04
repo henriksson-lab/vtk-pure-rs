@@ -15,7 +15,7 @@ pub fn otsu_threshold(input: &ImageData, scalars: &str, n_bins: usize) -> Option
     let mut buf = [0.0f64];
 
     let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);

@@ -6,6 +6,9 @@ pub fn propagate_cell_labels(mesh: &PolyData, array_name: &str, iterations: usiz
         _ => return mesh.clone(),
     };
     let nc = mesh.polys.num_cells();
+    if arr.num_tuples() < nc {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let mut labels: Vec<usize> = (0..nc)
         .map(|i| {
@@ -14,13 +17,18 @@ pub fn propagate_cell_labels(mesh: &PolyData, array_name: &str, iterations: usiz
         })
         .collect();
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let num_points = mesh.points.len();
     let mut ef: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let Some(a) = valid_point_id(cell[i], num_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % n], num_points) else {
+                continue;
+            };
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -53,6 +61,9 @@ pub fn propagate_cell_labels(mesh: &PolyData, array_name: &str, iterations: usiz
     r.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, data, 1)));
     r
+}
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 #[cfg(test)]
 mod tests {

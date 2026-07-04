@@ -25,14 +25,12 @@ impl EnSightReader {
             let var_path = case_dir.join(var_file);
             match var_type.as_str() {
                 "scalar" => {
-                    if let Ok(arr) = read_scalar_variable(&var_path, var_name, pd.points.len()) {
-                        pd.point_data_mut().add_array(arr);
-                    }
+                    let arr = read_scalar_variable(&var_path, var_name, pd.points.len())?;
+                    pd.point_data_mut().add_array(arr);
                 }
                 "vector" => {
-                    if let Ok(arr) = read_vector_variable(&var_path, var_name, pd.points.len()) {
-                        pd.point_data_mut().add_array(arr);
-                    }
+                    let arr = read_vector_variable(&var_path, var_name, pd.points.len())?;
+                    pd.point_data_mut().add_array(arr);
                 }
                 _ => {}
             }
@@ -46,9 +44,19 @@ fn parse_case_geo(content: &str) -> Result<String, VtkError> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("model:") {
-            let parts: Vec<&str> = trimmed.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                return Ok(parts[1].trim().to_string());
+            let after_colon = trimmed.split_once(':').map(|(_, rest)| rest).unwrap_or("");
+            let parts: Vec<&str> = after_colon.split_whitespace().collect();
+            match parts.as_slice() {
+                [file] => return Ok(unquote_filename(file)),
+                [time_set, file] if time_set.parse::<i32>().is_ok() => {
+                    return Ok(unquote_filename(file));
+                }
+                [time_set, file_set, file, ..]
+                    if time_set.parse::<i32>().is_ok() && file_set.parse::<i32>().is_ok() =>
+                {
+                    return Ok(unquote_filename(file));
+                }
+                _ => {}
             }
         }
     }
@@ -69,16 +77,30 @@ fn parse_case_variables(content: &str) -> Vec<(String, String, String)> {
             };
             let after_colon = trimmed.splitn(2, ':').nth(1).unwrap_or("").trim();
             let parts: Vec<&str> = after_colon.split_whitespace().collect();
-            if parts.len() >= 2 {
+            let (name_idx, file_idx) = if parts.len() >= 4
+                && parts[0].parse::<i32>().is_ok()
+                && parts[1].parse::<i32>().is_ok()
+            {
+                (2, 3)
+            } else if parts.len() >= 3 && parts[0].parse::<i32>().is_ok() {
+                (1, 2)
+            } else {
+                (0, 1)
+            };
+            if parts.len() > file_idx {
                 vars.push((
                     var_type.to_string(),
-                    parts[0].to_string(),
-                    parts[1].to_string(),
+                    parts[name_idx].to_string(),
+                    unquote_filename(parts[file_idx]),
                 ));
             }
         }
     }
     vars
+}
+
+fn unquote_filename(filename: &str) -> String {
+    filename.chars().filter(|&c| c != '"').collect()
 }
 
 fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
@@ -87,6 +109,13 @@ fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
 
     let mut pd = PolyData::new();
     let mut i = 0;
+    let node_ids_listed = lines
+        .iter()
+        .take_while(|line| !line.trim().starts_with("coordinates"))
+        .any(|line| {
+            let trimmed = line.trim();
+            trimmed == "node id given" || trimmed == "node id ignore"
+        });
 
     // Skip header lines until "coordinates"
     while i < lines.len() && !lines[i].trim().starts_with("coordinates") {
@@ -105,24 +134,27 @@ fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
         .parse()
         .map_err(|_| VtkError::Parse("invalid point count".into()))?;
     i += 1;
+    if node_ids_listed {
+        i += n_pts;
+    }
 
     // Read X, Y, Z coordinates separately
     let mut xs = Vec::with_capacity(n_pts);
     let mut ys = Vec::with_capacity(n_pts);
     let mut zs = Vec::with_capacity(n_pts);
 
-    for _ in 0..n_pts {
-        let v: f64 = lines.get(i).unwrap_or(&"0").trim().parse().unwrap_or(0.0);
+    for point in 0..n_pts {
+        let v = parse_f64_line(lines.get(i), "x coordinate", point)?;
         xs.push(v);
         i += 1;
     }
-    for _ in 0..n_pts {
-        let v: f64 = lines.get(i).unwrap_or(&"0").trim().parse().unwrap_or(0.0);
+    for point in 0..n_pts {
+        let v = parse_f64_line(lines.get(i), "y coordinate", point)?;
         ys.push(v);
         i += 1;
     }
-    for _ in 0..n_pts {
-        let v: f64 = lines.get(i).unwrap_or(&"0").trim().parse().unwrap_or(0.0);
+    for point in 0..n_pts {
+        let v = parse_f64_line(lines.get(i), "z coordinate", point)?;
         zs.push(v);
         i += 1;
     }
@@ -138,20 +170,33 @@ fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
         let line = lines[i].trim();
         if line == "tria3" {
             i += 1;
-            let n_cells: usize = lines.get(i).unwrap_or(&"0").trim().parse().unwrap_or(0);
+            let n_cells: usize = lines
+                .get(i)
+                .ok_or_else(|| VtkError::Parse("missing tria3 cell count".into()))?
+                .trim()
+                .parse()
+                .map_err(|_| VtkError::Parse("invalid tria3 cell count".into()))?;
             i += 1;
             let mut polys = CellArray::new();
-            for _ in 0..n_cells {
-                let parts: Vec<i64> = lines
-                    .get(i)
-                    .unwrap_or(&"")
-                    .split_whitespace()
-                    .filter_map(|s| s.parse::<i64>().ok())
-                    .collect();
-                if parts.len() >= 3 {
-                    // Convert from 1-based to 0-based
-                    polys.push_cell(&[parts[0] - 1, parts[1] - 1, parts[2] - 1]);
+            if let Some(line) = lines.get(i) {
+                if parse_i64_fields(line)
+                    .map(|parts| parts.len() < 3)
+                    .unwrap_or(true)
+                {
+                    i += n_cells;
                 }
+            }
+            for cell in 0..n_cells {
+                let line = lines
+                    .get(i)
+                    .ok_or_else(|| VtkError::Parse(format!("missing tria3 cell {cell}")))?;
+                let parts = parse_i64_fields(line)
+                    .map_err(|_| VtkError::Parse(format!("invalid tria3 cell: {line}")))?;
+                if parts.len() < 3 {
+                    return Err(VtkError::Parse(format!("invalid tria3 cell: {line}")));
+                }
+                // Convert from 1-based to 0-based
+                polys.push_cell(&[parts[0] - 1, parts[1] - 1, parts[2] - 1]);
                 i += 1;
             }
             pd.polys = polys;
@@ -163,6 +208,10 @@ fn read_geometry(path: &Path) -> Result<PolyData, VtkError> {
     Ok(pd)
 }
 
+fn parse_i64_fields(line: &str) -> Result<Vec<i64>, std::num::ParseIntError> {
+    line.split_whitespace().map(|s| s.parse::<i64>()).collect()
+}
+
 fn read_scalar_variable(path: &Path, name: &str, n_pts: usize) -> Result<AnyDataArray, VtkError> {
     let content = std::fs::read_to_string(path)?;
     let lines: Vec<&str> = content.lines().collect();
@@ -172,14 +221,14 @@ fn read_scalar_variable(path: &Path, name: &str, n_pts: usize) -> Result<AnyData
     while i < lines.len() && !lines[i].trim().starts_with("coordinates") {
         i += 1;
     }
+    if i >= lines.len() {
+        return Err(VtkError::Parse(
+            "no coordinates section found in scalar variable".into(),
+        ));
+    }
     i += 1;
 
-    let mut values = Vec::with_capacity(n_pts);
-    for _ in 0..n_pts {
-        let v: f64 = lines.get(i).unwrap_or(&"0").trim().parse().unwrap_or(0.0);
-        values.push(v);
-        i += 1;
-    }
+    let values = read_f64_values(&lines, i, n_pts, "scalar value")?;
 
     Ok(AnyDataArray::F64(DataArray::from_vec(name, values, 1)))
 }
@@ -192,45 +241,36 @@ fn read_vector_variable(path: &Path, name: &str, n_pts: usize) -> Result<AnyData
     while i < lines.len() && !lines[i].trim().starts_with("coordinates") {
         i += 1;
     }
+    if i >= lines.len() {
+        return Err(VtkError::Parse(
+            "no coordinates section found in vector variable".into(),
+        ));
+    }
     i += 1;
 
     let mut xs = Vec::with_capacity(n_pts);
     let mut ys = Vec::with_capacity(n_pts);
     let mut zs = Vec::with_capacity(n_pts);
 
-    for _ in 0..n_pts {
-        xs.push(
-            lines
-                .get(i)
-                .unwrap_or(&"0")
-                .trim()
-                .parse::<f64>()
-                .unwrap_or(0.0),
-        );
-        i += 1;
-    }
-    for _ in 0..n_pts {
-        ys.push(
-            lines
-                .get(i)
-                .unwrap_or(&"0")
-                .trim()
-                .parse::<f64>()
-                .unwrap_or(0.0),
-        );
-        i += 1;
-    }
-    for _ in 0..n_pts {
-        zs.push(
-            lines
-                .get(i)
-                .unwrap_or(&"0")
-                .trim()
-                .parse::<f64>()
-                .unwrap_or(0.0),
-        );
-        i += 1;
-    }
+    let mut next_line = i;
+    xs.extend(read_f64_values_from(
+        &lines,
+        &mut next_line,
+        n_pts,
+        "vector x value",
+    )?);
+    ys.extend(read_f64_values_from(
+        &lines,
+        &mut next_line,
+        n_pts,
+        "vector y value",
+    )?);
+    zs.extend(read_f64_values_from(
+        &lines,
+        &mut next_line,
+        n_pts,
+        "vector z value",
+    )?);
 
     let mut data = Vec::with_capacity(n_pts * 3);
     for j in 0..n_pts {
@@ -240,6 +280,69 @@ fn read_vector_variable(path: &Path, name: &str, n_pts: usize) -> Result<AnyData
     }
 
     Ok(AnyDataArray::F64(DataArray::from_vec(name, data, 3)))
+}
+
+fn parse_f64_line(line: Option<&&str>, what: &str, index: usize) -> Result<f64, VtkError> {
+    let line = line.ok_or_else(|| VtkError::Parse(format!("missing {what} {index}")))?;
+    line.trim()
+        .parse::<f64>()
+        .map_err(|_| VtkError::Parse(format!("invalid {what} {index}: {line}")))
+}
+
+fn read_f64_values(
+    lines: &[&str],
+    start: usize,
+    count: usize,
+    what: &str,
+) -> Result<Vec<f64>, VtkError> {
+    let mut line_index = start;
+    read_f64_values_from(lines, &mut line_index, count, what)
+}
+
+fn read_f64_values_from(
+    lines: &[&str],
+    line_index: &mut usize,
+    count: usize,
+    what: &str,
+) -> Result<Vec<f64>, VtkError> {
+    let mut values = Vec::with_capacity(count);
+    while values.len() < count {
+        let line = lines
+            .get(*line_index)
+            .ok_or_else(|| VtkError::Parse(format!("missing {what} {}", values.len())))?;
+        let fields = parse_f64_fields(line)
+            .map_err(|_| VtkError::Parse(format!("invalid {what} {}: {line}", values.len())))?;
+        if fields.is_empty() {
+            return Err(VtkError::Parse(format!(
+                "invalid {what} {}: {line}",
+                values.len()
+            )));
+        }
+        for value in fields {
+            if values.len() == count {
+                break;
+            }
+            values.push(value);
+        }
+        *line_index += 1;
+    }
+    Ok(values)
+}
+
+fn parse_f64_fields(line: &str) -> Result<Vec<f64>, std::num::ParseFloatError> {
+    let whitespace_fields: Result<Vec<f64>, _> =
+        line.split_whitespace().map(|s| s.parse::<f64>()).collect();
+    match whitespace_fields {
+        Ok(fields) if fields.len() != 1 || line.trim().len() <= 12 => Ok(fields),
+        _ => line
+            .as_bytes()
+            .chunks(12)
+            .map(|chunk| {
+                let field = std::str::from_utf8(chunk).unwrap_or("").trim();
+                field.parse::<f64>()
+            })
+            .collect(),
+    }
 }
 
 #[cfg(test)]
@@ -289,6 +392,125 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(1, &mut buf);
         assert!((buf[0] - 20.0).abs() < 0.1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_case_geo_accepts_time_and_file_sets() {
+        assert_eq!(
+            parse_case_geo("GEOMETRY\nmodel: 2 7 mesh.geo\n").unwrap(),
+            "mesh.geo"
+        );
+        assert_eq!(
+            parse_case_geo("GEOMETRY\nmodel: 2 transient.*****.geo\n").unwrap(),
+            "transient.*****.geo"
+        );
+        assert_eq!(
+            parse_case_geo("GEOMETRY\nmodel: \"mesh.geo\"\n").unwrap(),
+            "mesh.geo"
+        );
+    }
+
+    #[test]
+    fn parse_case_variables_accept_time_and_file_sets() {
+        let vars = parse_case_variables(
+            "VARIABLE\nscalar per node: 2 7 pressure \"pressure.scl\"\nvector per node: 3 velocity velocity.vec\n",
+        );
+        assert_eq!(
+            vars,
+            vec![
+                (
+                    "scalar".to_string(),
+                    "pressure".to_string(),
+                    "pressure.scl".to_string()
+                ),
+                (
+                    "vector".to_string(),
+                    "velocity".to_string(),
+                    "velocity.vec".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn tria3_skips_optional_element_ids() {
+        let dir = std::env::temp_dir().join("vtk_ensight_tria3_element_ids");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let geo = dir.join("mesh.geo");
+        std::fs::write(
+            &geo,
+            "EnSight Gold\nGenerated\npart\n1\ncoordinates\n3\n0\n1\n0\n0\n0\n1\n0\n0\n0\ntria3\n1\n42\n1 2 3\n",
+        )
+        .unwrap();
+
+        let result = read_geometry(&geo).unwrap();
+
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.polys.iter().next().unwrap(), &[0, 1, 2]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn geometry_skips_listed_node_ids() {
+        let dir = std::env::temp_dir().join("vtk_ensight_node_ids_given");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let geo = dir.join("mesh.geo");
+        std::fs::write(
+            &geo,
+            "EnSight Gold\nGenerated\nnode id given\nelement id off\npart\n1\ncoordinates\n3\n101\n102\n103\n0\n1\n0\n0\n0\n1\n0\n0\n0\ntria3\n1\n1 2 3\n",
+        )
+        .unwrap();
+
+        let result = read_geometry(&geo).unwrap();
+
+        assert_eq!(result.points.get(0), [0.0, 0.0, 0.0]);
+        assert_eq!(result.points.get(1), [1.0, 0.0, 0.0]);
+        assert_eq!(result.points.get(2), [0.0, 1.0, 0.0]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn scalar_variable_reads_packed_values() {
+        let dir = std::env::temp_dir().join("vtk_ensight_scalar_packed");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let var = dir.join("temp.scl");
+        std::fs::write(&var, "temp\npart\n1\ncoordinates\n1.0 2.0 3.0\n").unwrap();
+
+        let arr = read_scalar_variable(&var, "temp", 3).unwrap();
+
+        assert_eq!(arr.num_tuples(), 3);
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 3.0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn vector_variable_reads_fixed_width_component_blocks() {
+        let dir = std::env::temp_dir().join("vtk_ensight_vector_fixed_width");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let var = dir.join("vel.vec");
+        std::fs::write(
+            &var,
+            "vel\npart\n1\ncoordinates\n-1.00000e+00-2.00000e+00\n 3.00000e+00 4.00000e+00\n 5.00000e+00 6.00000e+00\n",
+        )
+        .unwrap();
+
+        let arr = read_vector_variable(&var, "vel", 2).unwrap();
+
+        assert_eq!(arr.num_tuples(), 2);
+        let mut buf = [0.0f64; 3];
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf, [-2.0, 4.0, 6.0]);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

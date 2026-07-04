@@ -8,16 +8,20 @@ pub fn biharmonic_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> Pol
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc == 0 {
+            continue;
+        }
+        if !valid_cell(cell, n) {
+            continue;
+        }
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -74,6 +78,10 @@ pub fn biharmonic_smooth(mesh: &PolyData, iterations: usize, lambda: f64) -> Pol
         r.points.set(i, pos[i]);
     }
     r
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 #[cfg(test)]
 mod tests {

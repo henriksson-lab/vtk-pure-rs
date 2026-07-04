@@ -19,6 +19,9 @@ pub fn region_grow_3d(
         None => return image.clone(),
     };
     let n = dims[0] * dims[1] * dims[2];
+    if arr.num_tuples() < n {
+        return image.clone();
+    }
     let mut mask = vec![0.0f64; n];
     let mut buf = [0.0f64];
 
@@ -98,14 +101,19 @@ pub fn label_statistics_3d(
     value_name: &str,
 ) -> std::collections::HashMap<i64, (f64, [f64; 3], usize)> {
     let dims = image.dimensions();
-    let spacing = image.spacing();
-    let origin = image.origin();
+    let n = dims[0] * dims[1] * dims[2];
 
     let label_arr = match image.point_data().get_array(label_name) {
-        Some(a) => a,
+        Some(a) if a.num_tuples() >= n => a,
         None => return std::collections::HashMap::new(),
+        _ => return std::collections::HashMap::new(),
     };
     let val_arr = image.point_data().get_array(value_name);
+    if let Some(va) = val_arr {
+        if va.num_tuples() < n {
+            return std::collections::HashMap::new();
+        }
+    }
 
     let mut stats: std::collections::HashMap<i64, (f64, [f64; 3], usize)> =
         std::collections::HashMap::new();
@@ -129,9 +137,7 @@ pub fn label_statistics_3d(
                     1.0
                 };
 
-                let x = origin[0] + ix as f64 * spacing[0];
-                let y = origin[1] + iy as f64 * spacing[1];
-                let z = origin[2] + iz as f64 * spacing[2];
+                let [x, y, z] = image.point_from_ijk(ix, iy, iz);
 
                 let entry = stats.entry(label).or_insert((0.0, [0.0; 3], 0));
                 entry.0 += val;

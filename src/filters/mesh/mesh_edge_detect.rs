@@ -5,14 +5,18 @@ use crate::data::{CellArray, Points, PolyData};
 /// Extract edges with dihedral angle above threshold (in degrees).
 pub fn extract_sharp_edges(mesh: &PolyData, angle_threshold: f64) -> PolyData {
     let cos_thresh = angle_threshold.to_radians().cos();
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<usize>> = mesh
+        .polys
+        .iter()
+        .filter_map(|c| valid_point_ids(c, mesh.points.len()))
+        .collect();
     let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, cell) in cells.iter().enumerate() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -26,7 +30,7 @@ pub fn extract_sharp_edges(mesh: &PolyData, angle_threshold: f64) -> PolyData {
         let n0 = face_normal(&cells[faces[0]], mesh);
         let n1 = face_normal(&cells[faces[1]], mesh);
         let dot = n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2];
-        if dot < cos_thresh {
+        if dot <= cos_thresh {
             let ia = *pm.entry(a).or_insert_with(|| {
                 let i = pts.len();
                 pts.push(mesh.points.get(a));
@@ -46,26 +50,34 @@ pub fn extract_sharp_edges(mesh: &PolyData, angle_threshold: f64) -> PolyData {
     r
 }
 
-fn face_normal(cell: &[i64], mesh: &PolyData) -> [f64; 3] {
+fn face_normal(cell: &[usize], mesh: &PolyData) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-    ];
-    let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    let mut nx = 0.0;
+    let mut ny = 0.0;
+    let mut nz = 0.0;
+    for i in 0..cell.len() {
+        let p = mesh.points.get(cell[i]);
+        let q = mesh.points.get(cell[(i + 1) % cell.len()]);
+        nx += (p[1] - q[1]) * (p[2] + q[2]);
+        ny += (p[2] - q[2]) * (p[0] + q[0]);
+        nz += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let l = (nx * nx + ny * ny + nz * nz).sqrt();
     if l < 1e-15 {
         [0.0, 0.0, 1.0]
     } else {
-        [n[0] / l, n[1] / l, n[2] / l]
+        [nx / l, ny / l, nz / l]
     }
+}
+
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    let ids: Option<Vec<usize>> = cell
+        .iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect();
+    ids.filter(|ids| ids.len() >= 3)
 }
 
 #[cfg(test)]

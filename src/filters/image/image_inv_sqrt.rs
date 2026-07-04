@@ -18,10 +18,12 @@ pub fn image_inv_sqrt(input: &ImageData, scalars: &str) -> ImageData {
         })
         .collect();
     let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
+    let mut output = ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())
         .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
+        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)));
+    output.set_extent(input.extent());
+    output
 }
 #[cfg(test)]
 mod tests {
@@ -37,5 +39,35 @@ mod tests {
         );
         let r = image_inv_sqrt(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+    #[test]
+    fn test_zero_and_negative_are_guarded() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![4.0, 0.0, -1.0],
+                1,
+            )));
+        let r = image_inv_sqrt(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.5);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 0.0);
+    }
+
+    #[test]
+    fn preserves_input_extent() {
+        let mut img = ImageData::with_dimensions(3, 3, 1);
+        img.set_extent([5, 7, 10, 12, 2, 2]);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", vec![4.0; 9], 1)));
+
+        let r = image_inv_sqrt(&img, "v");
+        assert_eq!(r.extent(), [5, 7, 10, 12, 2, 2]);
     }
 }

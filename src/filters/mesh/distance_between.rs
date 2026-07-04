@@ -1,6 +1,6 @@
 //! Compute distance between two meshes (Hausdorff and average).
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellLocator, DataArray, PolyData};
 
 /// Distance metrics between two meshes.
 pub struct MeshDistance {
@@ -12,11 +12,17 @@ pub struct MeshDistance {
 /// Compute distance from each vertex of mesh A to closest point on mesh B.
 /// Attaches "Distance" point data to mesh A.
 pub fn distance_to_mesh(mesh_a: &PolyData, mesh_b: &PolyData) -> PolyData {
+    let locator = CellLocator::build(mesh_b);
+    let use_locator = locator.num_primitives() > 0;
     let n = mesh_a.points.len();
     let distances: Vec<f64> = (0..n)
         .map(|i| {
             let p = mesh_a.points.get(i);
-            min_distance_to_surface(p, mesh_b)
+            if use_locator {
+                min_distance_to_surface(p, &locator)
+            } else {
+                min_distance_to_points(p, mesh_b)
+            }
         })
         .collect();
     let mut result = mesh_a.clone();
@@ -39,10 +45,16 @@ pub fn mesh_distance_metrics(mesh_a: &PolyData, mesh_b: &PolyData) -> MeshDistan
             rms: 0.0,
         };
     }
+    let locator = CellLocator::build(mesh_b);
+    let use_locator = locator.num_primitives() > 0;
     let distances: Vec<f64> = (0..n)
         .map(|i| {
             let p = mesh_a.points.get(i);
-            min_distance_to_surface(p, mesh_b)
+            if use_locator {
+                min_distance_to_surface(p, &locator)
+            } else {
+                min_distance_to_points(p, mesh_b)
+            }
         })
         .collect();
     let hausdorff = distances.iter().cloned().fold(0.0f64, f64::max);
@@ -55,9 +67,15 @@ pub fn mesh_distance_metrics(mesh_a: &PolyData, mesh_b: &PolyData) -> MeshDistan
     }
 }
 
-fn min_distance_to_surface(p: [f64; 3], mesh: &PolyData) -> f64 {
+fn min_distance_to_surface(p: [f64; 3], locator: &CellLocator) -> f64 {
+    locator
+        .find_closest_cell(p)
+        .map(|(_, _, d2)| d2.sqrt())
+        .unwrap_or(f64::INFINITY)
+}
+
+fn min_distance_to_points(p: [f64; 3], mesh: &PolyData) -> f64 {
     let mut best = f64::INFINITY;
-    // Quick vertex distance (approximation)
     for i in 0..mesh.points.len() {
         let q = mesh.points.get(i);
         let d = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)).sqrt();
@@ -98,5 +116,19 @@ mod tests {
         let m = mesh_distance_metrics(&a, &b);
         assert!((m.hausdorff - 3.0).abs() < 1e-10);
         assert!((m.mean - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn distance_to_triangle_interior_not_nearest_vertex() {
+        let a = PolyData::from_points(vec![[0.25, 0.25, 1.0]]);
+        let b = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let r = distance_to_mesh(&a, &b);
+        let arr = r.point_data().get_array("Distance").unwrap();
+        let mut buf = [0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
     }
 }

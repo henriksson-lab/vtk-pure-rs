@@ -9,8 +9,12 @@ pub fn skeletonize(input: &ImageData, scalars: &str) -> ImageData {
         _ => return input.clone(),
     };
     let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
-    let n = nx * ny;
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
+    if nx == 0 || ny == 0 || nz == 0 {
+        return input.clone();
+    }
+    let slice_len = nx * ny;
+    let n = slice_len * nz;
     let mut buf = [0.0f64];
     let mut img: Vec<bool> = (0..n)
         .map(|i| {
@@ -19,22 +23,23 @@ pub fn skeletonize(input: &ImageData, scalars: &str) -> ImageData {
         })
         .collect();
 
-    loop {
-        let mut changed = false;
-        // Sub-iteration 1
-        let to_remove = thinning_pass(&img, nx, ny, true);
-        for &idx in &to_remove {
-            img[idx] = false;
-            changed = true;
-        }
-        // Sub-iteration 2
-        let to_remove = thinning_pass(&img, nx, ny, false);
-        for &idx in &to_remove {
-            img[idx] = false;
-            changed = true;
-        }
-        if !changed {
-            break;
+    for iz in 0..nz {
+        let offset = iz * slice_len;
+        loop {
+            let mut changed = false;
+            let to_remove = thinning_pass(&img[offset..offset + slice_len], nx, ny, true);
+            for idx in to_remove {
+                img[offset + idx] = false;
+                changed = true;
+            }
+            let to_remove = thinning_pass(&img[offset..offset + slice_len], nx, ny, false);
+            for idx in to_remove {
+                img[offset + idx] = false;
+                changed = true;
+            }
+            if !changed {
+                break;
+            }
         }
     }
 

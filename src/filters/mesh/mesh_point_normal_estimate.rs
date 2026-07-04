@@ -5,15 +5,14 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// Estimate normals for a point cloud using K nearest neighbors.
 pub fn estimate_normals_knn(mesh: &PolyData, k: usize) -> PolyData {
     let n = mesh.points.len();
-    let k = k.max(3).min(n);
+    let k = k.max(1).min(n);
     let pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
 
     let mut normals = Vec::with_capacity(n * 3);
     for i in 0..n {
         let p = pts[i];
-        // Find K nearest neighbors (brute force)
+        // Find K nearest neighbors (brute force), including the query point.
         let mut dists: Vec<(usize, f64)> = (0..n)
-            .filter(|&j| j != i)
             .map(|j| {
                 let d2 = (pts[j][0] - p[0]).powi(2)
                     + (pts[j][1] - p[1]).powi(2)
@@ -52,16 +51,12 @@ pub fn estimate_normals_radius(mesh: &PolyData, radius: f64) -> PolyData {
                 let d2 = (pts[j][0] - p[0]).powi(2)
                     + (pts[j][1] - p[1]).powi(2)
                     + (pts[j][2] - p[2]).powi(2);
-                d2 <= r2 && j != i
+                d2 <= r2
             })
             .map(|j| pts[j])
             .collect();
 
-        let normal = if neighbors.len() >= 2 {
-            pca_normal(&neighbors)
-        } else {
-            [0.0, 0.0, 1.0]
-        };
+        let normal = pca_normal(&neighbors);
         normals.extend_from_slice(&normal);
     }
 
@@ -77,7 +72,7 @@ pub fn estimate_normals_radius(mesh: &PolyData, radius: f64) -> PolyData {
 
 fn pca_normal(points: &[[f64; 3]]) -> [f64; 3] {
     let n = points.len() as f64;
-    if n < 2.0 {
+    if n == 0.0 {
         return [0.0, 0.0, 1.0];
     }
     let mut cx = 0.0;
@@ -103,67 +98,81 @@ fn pca_normal(points: &[[f64; 3]]) -> [f64; 3] {
         }
     }
 
-    // Power iteration for smallest eigenvector
-    let mut v = [1.0, 0.0, 0.0];
-    for _ in 0..30 {
-        // Apply inverse-ish: find direction least amplified
-        let mv = mat_vec(&cov, v);
-        let len = (mv[0] * mv[0] + mv[1] * mv[1] + mv[2] * mv[2]).sqrt();
-        if len < 1e-15 {
+    smallest_eigenvector(cov)
+}
+
+fn smallest_eigenvector(mut a: [[f64; 3]; 3]) -> [f64; 3] {
+    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+    for _ in 0..50 {
+        let mut p = 0;
+        let mut q = 1;
+        let mut max_value = 0.0;
+        for row in 0..3 {
+            for col in (row + 1)..3 {
+                let value = a[row][col].abs();
+                if value > max_value {
+                    max_value = value;
+                    p = row;
+                    q = col;
+                }
+            }
+        }
+        if max_value < 1e-15 {
             break;
         }
-        v = [mv[0] / len, mv[1] / len, mv[2] / len];
-    }
-    // v is now the largest eigenvector. We want the smallest.
-    // Use cross product of two largest eigenvectors approximation
-    let v1 = v;
-    let mut v2 = if v1[0].abs() < 0.9 {
-        [1.0, 0.0, 0.0]
-    } else {
-        [0.0, 1.0, 0.0]
-    };
-    // Gram-Schmidt
-    let dot = v2[0] * v1[0] + v2[1] * v1[1] + v2[2] * v1[2];
-    v2 = [
-        v2[0] - dot * v1[0],
-        v2[1] - dot * v1[1],
-        v2[2] - dot * v1[2],
-    ];
-    let len = (v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2]).sqrt();
-    if len < 1e-15 {
-        return [0.0, 0.0, 1.0];
-    }
-    v2 = [v2[0] / len, v2[1] / len, v2[2] / len];
-    for _ in 0..30 {
-        let mv = mat_vec(&cov, v2);
-        let d1 = mv[0] * v1[0] + mv[1] * v1[1] + mv[2] * v1[2];
-        let mv2 = [mv[0] - d1 * v1[0], mv[1] - d1 * v1[1], mv[2] - d1 * v1[2]];
-        let len = (mv2[0] * mv2[0] + mv2[1] * mv2[1] + mv2[2] * mv2[2]).sqrt();
-        if len < 1e-15 {
-            break;
+
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+        let theta = if (app - aqq).abs() < 1e-20 {
+            std::f64::consts::FRAC_PI_4
+        } else {
+            0.5 * (2.0 * apq / (app - aqq)).atan()
+        };
+        let c = theta.cos();
+        let s = theta.sin();
+
+        let mut next = a;
+        next[p][p] = c * c * app + 2.0 * c * s * apq + s * s * aqq;
+        next[q][q] = s * s * app - 2.0 * c * s * apq + c * c * aqq;
+        next[p][q] = 0.0;
+        next[q][p] = 0.0;
+
+        for r in 0..3 {
+            if r != p && r != q {
+                let arp = a[r][p];
+                let arq = a[r][q];
+                next[r][p] = c * arp + s * arq;
+                next[p][r] = next[r][p];
+                next[r][q] = -s * arp + c * arq;
+                next[q][r] = next[r][q];
+            }
         }
-        v2 = [mv2[0] / len, mv2[1] / len, mv2[2] / len];
+        a = next;
+
+        for row in &mut v {
+            let vp = row[p];
+            let vq = row[q];
+            row[p] = c * vp + s * vq;
+            row[q] = -s * vp + c * vq;
+        }
     }
-    // Normal = v1 x v2
-    let normal = [
-        v1[1] * v2[2] - v1[2] * v2[1],
-        v1[2] * v2[0] - v1[0] * v2[2],
-        v1[0] * v2[1] - v1[1] * v2[0],
-    ];
+
+    let mut min_index = 0;
+    for i in 1..3 {
+        if a[i][i] < a[min_index][min_index] {
+            min_index = i;
+        }
+    }
+
+    let normal = [v[0][min_index], v[1][min_index], v[2][min_index]];
     let len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
     if len < 1e-15 {
         [0.0, 0.0, 1.0]
     } else {
         [normal[0] / len, normal[1] / len, normal[2] / len]
     }
-}
-
-fn mat_vec(m: &[[f64; 3]; 3], v: [f64; 3]) -> [f64; 3] {
-    [
-        m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
-        m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-        m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
-    ]
 }
 
 #[cfg(test)]

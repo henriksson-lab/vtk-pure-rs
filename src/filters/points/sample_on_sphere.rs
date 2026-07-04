@@ -69,6 +69,7 @@ pub fn sample_on_sphere(
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             array_name, values, 1,
         )));
+    pd.point_data_mut().set_active_scalars(array_name);
     pd
 }
 
@@ -92,6 +93,7 @@ mod tests {
         let result = sample_on_sphere(&pd, "val", [0.0, 0.0, 0.0], 2.0, 4);
         assert!(result.points.len() > 5);
         assert!(result.point_data().get_array("val").is_some());
+        assert!(result.point_data().scalars().is_some());
     }
 
     #[test]

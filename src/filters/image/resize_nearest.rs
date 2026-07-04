@@ -13,9 +13,13 @@ pub fn image_resize_nearest(input: &ImageData, scalars: &str, new_dims: [usize; 
     let onx = dims[0] as usize;
     let ony = dims[1] as usize;
     let onz = dims[2] as usize;
+    if onx == 0 || ony == 0 || onz == 0 {
+        return input.clone();
+    }
     let nnx = new_dims[0].max(1);
     let nny = new_dims[1].max(1);
     let nnz = new_dims[2].max(1);
+    let num_comp = arr.num_components();
     let spacing = input.spacing();
     let origin = input.origin();
 
@@ -37,8 +41,8 @@ pub fn image_resize_nearest(input: &ImageData, scalars: &str, new_dims: [usize; 
         },
     ];
 
-    let mut buf = [0.0f64];
-    let mut values = Vec::with_capacity(nnx * nny * nnz);
+    let mut buf = vec![0.0f64; num_comp];
+    let mut values = Vec::with_capacity(nnx * nny * nnz * num_comp);
 
     for k in 0..nnz {
         for j in 0..nny {
@@ -58,11 +62,13 @@ pub fn image_resize_nearest(input: &ImageData, scalars: &str, new_dims: [usize; 
                 } else {
                     0
                 };
-                arr.tuple_as_f64(
-                    ok.min(onz - 1) * ony * onx + oj.min(ony - 1) * onx + oi.min(onx - 1),
-                    &mut buf,
-                );
-                values.push(buf[0]);
+                let idx = ok.min(onz - 1) * ony * onx + oj.min(ony - 1) * onx + oi.min(onx - 1);
+                if idx < arr.num_tuples() {
+                    arr.tuple_as_f64(idx, &mut buf);
+                    values.extend_from_slice(&buf);
+                } else {
+                    values.extend(std::iter::repeat(0.0).take(num_comp));
+                }
             }
         }
     }
@@ -71,7 +77,10 @@ pub fn image_resize_nearest(input: &ImageData, scalars: &str, new_dims: [usize; 
     img.set_origin(origin);
     img.set_spacing(new_sp);
     img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(scalars, values, 1)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            scalars, values, num_comp,
+        )));
+    img.point_data_mut().set_active_scalars(scalars);
     img
 }
 

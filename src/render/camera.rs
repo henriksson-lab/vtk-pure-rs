@@ -33,7 +33,7 @@ impl Default for Camera {
             view_up: DVec3::Y,
             fov: 30.0,
             near_clip: 0.01,
-            far_clip: 1000.0,
+            far_clip: 1000.01,
         }
     }
 }
@@ -71,23 +71,8 @@ impl Camera {
 
     /// Orbit around the focal point by azimuth (degrees) and elevation (degrees).
     pub fn orbit(&mut self, azimuth_deg: f64, elevation_deg: f64) {
-        let offset = self.position - self.focal_point;
-        let distance = offset.length();
-
-        // Current spherical angles
-        let theta = offset.z.atan2(offset.x) + azimuth_deg.to_radians();
-        let phi = (offset.y / distance).asin() + elevation_deg.to_radians();
-        let phi = phi.clamp(
-            -std::f64::consts::FRAC_PI_2 + 0.01,
-            std::f64::consts::FRAC_PI_2 - 0.01,
-        );
-
-        self.position = self.focal_point
-            + DVec3::new(
-                distance * phi.cos() * theta.cos(),
-                distance * phi.sin(),
-                distance * phi.cos() * theta.sin(),
-            );
+        self.azimuth(azimuth_deg);
+        self.elevation(elevation_deg);
     }
 
     /// Unproject a screen coordinate to a world-space ray.
@@ -135,10 +120,29 @@ impl Camera {
 
     /// Dolly (move along view direction).
     pub fn dolly(&mut self, factor: f64) {
+        if factor <= 0.0 {
+            return;
+        }
+
         let dir = self.direction();
         let distance = (self.focal_point - self.position).length();
-        let delta = dir * distance * (1.0 - 1.0 / factor);
-        self.position += delta;
+        let d = distance / factor;
+        self.position = self.focal_point - d * dir;
+    }
+
+    /// Rotate the camera about the view-up vector centered at the focal point.
+    pub fn azimuth(&mut self, angle_deg: f64) {
+        let rotation = DMat4::from_axis_angle(self.view_up.normalize(), angle_deg.to_radians());
+        let offset = self.position - self.focal_point;
+        self.position = self.focal_point + rotation.transform_vector3(offset);
+    }
+
+    /// Rotate the camera about the negative camera-right axis centered at the focal point.
+    pub fn elevation(&mut self, angle_deg: f64) {
+        let axis = -self.right();
+        let rotation = DMat4::from_axis_angle(axis.normalize(), angle_deg.to_radians());
+        let offset = self.position - self.focal_point;
+        self.position = self.focal_point + rotation.transform_vector3(offset);
     }
 
     /// Pan the camera (translate perpendicular to view direction).
@@ -234,6 +238,8 @@ mod tests {
         assert_eq!(c.position, DVec3::new(0.0, 0.0, 1.0));
         assert_eq!(c.focal_point, DVec3::ZERO);
         assert_eq!(c.fov, 30.0);
+        assert_eq!(c.near_clip, 0.01);
+        assert_eq!(c.far_clip, 1000.01);
     }
 
     #[test]
@@ -276,6 +282,15 @@ mod tests {
         c.dolly(2.0);
         let d2 = c.distance();
         assert!(d2 < d1, "dolly in should decrease distance");
+    }
+
+    #[test]
+    fn dolly_ignores_nonpositive_factor() {
+        let mut c = Camera::default();
+        let pos = c.position;
+        c.dolly(0.0);
+        c.dolly(-1.0);
+        assert_eq!(c.position, pos);
     }
 
     #[test]

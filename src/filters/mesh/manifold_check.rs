@@ -24,6 +24,7 @@ impl std::fmt::Display for ManifoldReport {
 
 /// Perform comprehensive manifold check.
 pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
+    let n = mesh.points.len();
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
     let mut directed: std::collections::HashMap<(usize, usize), usize> =
         std::collections::HashMap::new();
@@ -36,7 +37,11 @@ pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
             continue;
         }
         // Check for duplicate vertices
-        let mut ids: Vec<usize> = cell.iter().map(|&p| p as usize).collect();
+        let ids: Vec<usize> = cell.iter().map(|&p| p as usize).collect();
+        if ids.iter().any(|&id| id >= n) {
+            degenerate += 1;
+            continue;
+        }
         let unique: std::collections::HashSet<usize> = ids.iter().cloned().collect();
         if unique.len() < 3 {
             degenerate += 1;
@@ -55,7 +60,6 @@ pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
     let non_manifold_edges = ec.values().filter(|&&c| c > 2).count();
 
     // Non-manifold vertices: vertices where the one-ring is not a single fan
-    let n = mesh.points.len();
     let mut vert_edge_count: Vec<usize> = vec![0; n];
     for (&(a, b), _) in &ec {
         vert_edge_count[a] += 1;
@@ -64,7 +68,10 @@ pub fn check_manifold(mesh: &PolyData) -> ManifoldReport {
     let mut vert_face_count: Vec<usize> = vec![0; n];
     for cell in mesh.polys.iter() {
         for &pid in cell {
-            vert_face_count[pid as usize] += 1;
+            let pid = pid as usize;
+            if pid < n {
+                vert_face_count[pid] += 1;
+            }
         }
     }
     let non_manifold_verts = (0..n)
@@ -101,7 +108,9 @@ pub fn mark_non_manifold(mesh: &PolyData) -> PolyData {
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
-            *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            if a < n && b < n {
+                *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            }
         }
     }
 

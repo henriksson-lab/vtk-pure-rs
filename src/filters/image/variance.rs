@@ -1,10 +1,10 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
-/// Compute local variance of an ImageData scalar field.
+/// Compute VTK-style local variance of an ImageData scalar field.
 ///
-/// For each voxel, computes the variance of values in a cubic
-/// neighborhood of the given radius. Adds a "Variance" array.
-/// Useful for texture analysis and edge detection.
+/// For each voxel, computes the mean squared difference between each
+/// in-bounds neighbor in an ellipsoidal footprint and the center voxel.
+/// Adds a "Variance" array.
 pub fn image_variance(input: &ImageData, scalars: &str, radius: usize) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
@@ -16,40 +16,69 @@ pub fn image_variance(input: &ImageData, scalars: &str, radius: usize) -> ImageD
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n = nx * ny * nz;
-    let r = radius.max(1) as i64;
+    let num_comps = arr.num_components();
+    if n == 0 || arr.num_tuples() < n {
+        return input.clone();
+    }
+    let r = radius as i64;
+    let kernel_radius = radius as f64 + 0.5;
 
-    let mut values = vec![0.0f64; n];
-    let mut buf = [0.0f64];
+    let mut values = vec![0.0f64; n * num_comps];
+    let mut buf = vec![0.0f64; num_comps];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
-        values[i] = buf[0];
+        values[i * num_comps..(i + 1) * num_comps].copy_from_slice(&buf);
     }
 
-    let mut variance = vec![0.0f64; n];
+    let mut variance = vec![0.0f64; n * num_comps];
 
-    for k in 0..nz {
-        for j in 0..ny {
-            for i in 0..nx {
-                let mut sum = 0.0;
-                let mut sum_sq = 0.0;
-                let mut count = 0usize;
+    for comp in 0..num_comps {
+        for k in 0..nz {
+            for j in 0..ny {
+                for i in 0..nx {
+                    let center_idx = (k * ny * nx + j * nx + i) * num_comps + comp;
+                    let center = values[center_idx];
+                    let mut sum = 0.0;
+                    let mut count = 0usize;
 
-                for dk in -r..=r {
-                    let kk = (k as i64 + dk).clamp(0, nz as i64 - 1) as usize;
-                    for dj in -r..=r {
-                        let jj = (j as i64 + dj).clamp(0, ny as i64 - 1) as usize;
-                        for di in -r..=r {
-                            let ii = (i as i64 + di).clamp(0, nx as i64 - 1) as usize;
-                            let v = values[kk * ny * nx + jj * nx + ii];
-                            sum += v;
-                            sum_sq += v * v;
-                            count += 1;
+                    for dk in -r..=r {
+                        let kk = k as i64 + dk;
+                        if kk < 0 || kk >= nz as i64 {
+                            continue;
+                        }
+                        for dj in -r..=r {
+                            let jj = j as i64 + dj;
+                            if jj < 0 || jj >= ny as i64 {
+                                continue;
+                            }
+                            for di in -r..=r {
+                                let mask = if kernel_radius > 0.0 {
+                                    let s0 = di as f64 / kernel_radius;
+                                    let s1 = dj as f64 / kernel_radius;
+                                    let s2 = dk as f64 / kernel_radius;
+                                    s0 * s0 + s1 * s1 + s2 * s2 <= 1.0
+                                } else {
+                                    di == 0 && dj == 0 && dk == 0
+                                };
+                                if !mask {
+                                    continue;
+                                }
+                                let ii = i as i64 + di;
+                                if ii < 0 || ii >= nx as i64 {
+                                    continue;
+                                }
+                                let idx = (kk as usize * ny * nx + jj as usize * nx + ii as usize)
+                                    * num_comps
+                                    + comp;
+                                let diff = values[idx] - center;
+                                sum += diff * diff;
+                                count += 1;
+                            }
                         }
                     }
-                }
 
-                let mean = sum / count as f64;
-                variance[k * ny * nx + j * nx + i] = (sum_sq / count as f64 - mean * mean).max(0.0);
+                    variance[center_idx] = if count > 0 { sum / count as f64 } else { 0.0 };
+                }
             }
         }
     }
@@ -57,7 +86,7 @@ pub fn image_variance(input: &ImageData, scalars: &str, radius: usize) -> ImageD
     let mut img = input.clone();
     img.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Variance", variance, 1,
+            "Variance", variance, num_comps,
         )));
     img
 }

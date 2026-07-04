@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 use std::collections::HashMap;
 
 /// Compute the cell adjacency matrix as a sparse list.
@@ -9,6 +9,9 @@ pub fn cell_adjacency_list(input: &PolyData) -> Vec<(usize, usize)> {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, c) in cells.iter().enumerate() {
+        if c.len() < 2 {
+            continue;
+        }
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
@@ -19,11 +22,14 @@ pub fn cell_adjacency_list(input: &PolyData) -> Vec<(usize, usize)> {
 
     let mut adj = Vec::new();
     for faces in edge_faces.values() {
-        if faces.len() == 2 {
-            adj.push((faces[0], faces[1]));
+        for i in 0..faces.len() {
+            for j in i + 1..faces.len() {
+                adj.push((faces[i].min(faces[j]), faces[i].max(faces[j])));
+            }
         }
     }
     adj.sort();
+    adj.dedup();
     adj
 }
 
@@ -56,13 +62,8 @@ pub fn face_graph_diameter(input: &PolyData) -> usize {
         graph[b].push(a);
     }
 
-    // BFS from a few sources and take max distance
     let mut max_d = 0;
-    let samples = [0, nc / 2, nc - 1];
-    for &src in &samples {
-        if src >= nc {
-            continue;
-        }
+    for src in 0..nc {
         let mut dist = vec![usize::MAX; nc];
         dist[src] = 0;
         let mut queue = std::collections::VecDeque::new();

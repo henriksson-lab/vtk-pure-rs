@@ -17,10 +17,10 @@ pub fn vertex_angle_extremes(input: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
-        let pts: Vec<[f64; 3]> = cell
-            .iter()
-            .map(|&id| input.points.get(id as usize))
-            .collect();
+        let Some(ids) = valid_point_ids(cell, n) else {
+            continue;
+        };
+        let pts: Vec<[f64; 3]> = ids.iter().map(|&id| input.points.get(id)).collect();
         let nc = pts.len();
 
         for i in 0..nc {
@@ -34,7 +34,7 @@ pub fn vertex_angle_extremes(input: &PolyData) -> PolyData {
             if l1 > 1e-15 && l2 > 1e-15 {
                 let cos_a = (e1[0] * e2[0] + e1[1] * e2[1] + e1[2] * e2[2]) / (l1 * l2);
                 let angle = cos_a.clamp(-1.0, 1.0).acos().to_degrees();
-                let vi = cell[i] as usize;
+                let vi = ids[i];
                 min_angle[vi] = min_angle[vi].min(angle);
                 max_angle[vi] = max_angle[vi].max(angle);
             }
@@ -62,6 +62,12 @@ pub fn vertex_angle_extremes(input: &PolyData) -> PolyData {
             1,
         )));
     pd
+}
+
+fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
 }
 
 /// Compute overall min and max angles across the entire mesh.

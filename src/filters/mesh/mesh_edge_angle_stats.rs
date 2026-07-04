@@ -5,19 +5,29 @@ pub fn edge_angle_stats(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let mut min_angles = Vec::new();
     let mut max_angles = Vec::new();
+    let mut mean_angles = Vec::new();
     for cell in mesh.polys.iter() {
         if cell.len() < 3 {
             min_angles.push(0.0);
             max_angles.push(0.0);
+            mean_angles.push(0.0);
             continue;
         }
         let nc = cell.len();
         let mut face_min = std::f64::consts::PI;
         let mut face_max = 0.0f64;
+        let mut face_sum = 0.0f64;
+        let mut face_count = 0usize;
         for i in 0..nc {
-            let vi = cell[i] as usize;
-            let vp = cell[(i + nc - 1) % nc] as usize;
-            let vn = cell[(i + 1) % nc] as usize;
+            let Ok(vi) = usize::try_from(cell[i]) else {
+                continue;
+            };
+            let Ok(vp) = usize::try_from(cell[(i + nc - 1) % nc]) else {
+                continue;
+            };
+            let Ok(vn) = usize::try_from(cell[(i + 1) % nc]) else {
+                continue;
+            };
             if vi >= n || vp >= n || vn >= n {
                 continue;
             }
@@ -35,9 +45,18 @@ pub fn edge_angle_stats(mesh: &PolyData) -> PolyData {
             let angle = cos_a.clamp(-1.0, 1.0).acos();
             face_min = face_min.min(angle);
             face_max = face_max.max(angle);
+            face_sum += angle;
+            face_count += 1;
         }
-        min_angles.push(face_min * 180.0 / std::f64::consts::PI);
-        max_angles.push(face_max * 180.0 / std::f64::consts::PI);
+        if face_count == 0 {
+            min_angles.push(0.0);
+            max_angles.push(0.0);
+            mean_angles.push(0.0);
+        } else {
+            min_angles.push(face_min * 180.0 / std::f64::consts::PI);
+            max_angles.push(face_max * 180.0 / std::f64::consts::PI);
+            mean_angles.push((face_sum / face_count as f64) * 180.0 / std::f64::consts::PI);
+        }
     }
     let mut result = mesh.clone();
     result
@@ -49,6 +68,13 @@ pub fn edge_angle_stats(mesh: &PolyData) -> PolyData {
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "MaxAngle", max_angles, 1,
+        )));
+    result
+        .cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "MeanAngle",
+            mean_angles,
+            1,
         )));
     result
 }

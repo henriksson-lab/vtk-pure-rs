@@ -41,22 +41,31 @@ pub fn point_sampler(input: &PolyData, num_points: usize) -> PolyData {
     let mut out_points = Points::<f64>::new();
     let mut out_verts = CellArray::new();
 
-    // Distribute points proportionally to area
-    let mut remaining = num_points;
+    // Distribute points proportionally to area, matching VTK's area-based
+    // sampling density while keeping this API's requested output count.
     let mut assigned = vec![0usize; triangles.len()];
+    let mut remainders: Vec<(usize, f64)> = Vec::with_capacity(triangles.len());
 
     for (i, area) in areas.iter().enumerate() {
-        let frac = area / total_area;
-        let n = (frac * num_points as f64).round() as usize;
-        assigned[i] = n.min(remaining);
-        remaining = remaining.saturating_sub(assigned[i]);
+        let exact = area / total_area * num_points as f64;
+        let base = exact.floor() as usize;
+        assigned[i] = base;
+        remainders.push((i, exact - base as f64));
     }
 
-    // Distribute any remaining points to the largest triangles
+    let assigned_total: usize = assigned.iter().sum();
+    let remaining = num_points.saturating_sub(assigned_total);
     if remaining > 0 {
-        let mut indices: Vec<usize> = (0..areas.len()).collect();
-        indices.sort_by(|a, b| areas[*b].partial_cmp(&areas[*a]).unwrap());
-        for &i in indices.iter().cycle().take(remaining) {
+        remainders.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    areas[b.0]
+                        .partial_cmp(&areas[a.0])
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+        });
+        for &(i, _) in remainders.iter().cycle().take(remaining) {
             assigned[i] += 1;
         }
     }
@@ -69,7 +78,10 @@ pub fn point_sampler(input: &PolyData, num_points: usize) -> PolyData {
         }
 
         // Use a grid of barycentric coordinates
-        let grid_n = ((n as f64).sqrt().ceil() as usize).max(1);
+        let mut grid_n = ((n as f64).sqrt().ceil() as usize).max(1);
+        while grid_n * (grid_n + 1) / 2 < n {
+            grid_n += 1;
+        }
         let mut count = 0;
         for gi in 0..grid_n {
             for gj in 0..grid_n - gi {

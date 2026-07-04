@@ -1,4 +1,5 @@
 use crate::data::PolyData;
+use crate::filters::mesh::aspect_ratio::{triangle_aspect_ratio, VERDICT_DBL_MAX};
 
 /// Comprehensive aspect ratio analysis for mesh quality assessment.
 #[derive(Debug, Clone)]
@@ -20,23 +21,19 @@ pub fn aspect_ratio_report(input: &PolyData) -> AspectRatioReport {
     let mut degenerate = 0;
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 {
             degenerate += 1;
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
         let v1 = input.points.get(cell[1] as usize);
         let v2 = input.points.get(cell[2] as usize);
-        let d01 = dist(v0, v1);
-        let d12 = dist(v1, v2);
-        let d20 = dist(v2, v0);
-        let longest = d01.max(d12).max(d20);
-        let shortest = d01.min(d12).min(d20);
-        if shortest < 1e-15 {
+        let ratio = triangle_aspect_ratio(v0, v1, v2);
+        if ratio >= VERDICT_DBL_MAX {
             degenerate += 1;
             continue;
         }
-        ratios.push(longest / shortest);
+        ratios.push(ratio);
     }
 
     if ratios.is_empty() {
@@ -78,10 +75,6 @@ pub fn aspect_ratio_report(input: &PolyData) -> AspectRatioReport {
         pct_poor: poor,
         num_degenerate: degenerate,
     }
-}
-
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
 #[cfg(test)]

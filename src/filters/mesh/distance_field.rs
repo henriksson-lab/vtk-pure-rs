@@ -16,9 +16,19 @@ pub fn geodesic_distance(input: &PolyData, seed_indices: &[usize]) -> PolyData {
     // Build adjacency with edge lengths
     let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let (Ok(a), Ok(b)) = (
+                usize::try_from(cell[i]),
+                usize::try_from(cell[(i + 1) % cell.len()]),
+            ) else {
+                continue;
+            };
+            if a >= n || b >= n {
+                continue;
+            }
             let pa = input.points.get(a);
             let pb = input.points.get(b);
             let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))

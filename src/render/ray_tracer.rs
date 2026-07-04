@@ -354,7 +354,7 @@ fn offset_point(p: [f64; 3], n: [f64; 3]) -> [f64; 3] {
 mod tests {
     use super::*;
     use crate::data::PolyData;
-    use crate::render::{Actor, Camera, Scene};
+    use crate::render::{Actor, Scene};
 
     fn make_triangle_scene() -> Scene {
         let mesh = PolyData::from_triangles(

@@ -43,6 +43,10 @@ pub fn random_face_subsample(mesh: &PolyData, ratio: f64, seed: u64) -> PolyData
         .iter()
         .enumerate()
         .filter(|(i, _)| kept_set.contains(i))
+        .filter(|(_, c)| {
+            c.iter()
+                .all(|&v| usize::try_from(v).is_ok_and(|idx| idx < mesh.points.len()))
+        })
         .map(|(_, c)| c)
         .collect();
     for c in &kept_cells {

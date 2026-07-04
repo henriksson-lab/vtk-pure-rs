@@ -38,17 +38,35 @@ fn align_to(mesh: &PolyData, target_axis: usize) -> PolyData {
             }
         }
     }
-    // Power iteration for principal axis
-    let mut v = [1.0, 0.0, 0.0];
+    // Power iteration for principal axis. Start from the largest variance
+    // coordinate so axis-aligned inputs do not collapse to a zero vector.
+    let diag = [cov[0][0], cov[1][1], cov[2][2]];
+    let mut max_axis = 0usize;
+    for axis in 1..3 {
+        if diag[axis] > diag[max_axis] {
+            max_axis = axis;
+        }
+    }
+    if diag[max_axis] <= 1e-30 {
+        let mut r = mesh.clone();
+        for i in 0..n {
+            let p = r.points.get(i);
+            r.points.set(i, [p[0] - cx, p[1] - cy, p[2] - cz]);
+        }
+        return r;
+    }
+    let mut v = [0.0, 0.0, 0.0];
+    v[max_axis] = 1.0;
     for _ in 0..50 {
         let mv = [
             cov[0][0] * v[0] + cov[0][1] * v[1] + cov[0][2] * v[2],
             cov[1][0] * v[0] + cov[1][1] * v[1] + cov[1][2] * v[2],
             cov[2][0] * v[0] + cov[2][1] * v[1] + cov[2][2] * v[2],
         ];
-        let l = (mv[0] * mv[0] + mv[1] * mv[1] + mv[2] * mv[2])
-            .sqrt()
-            .max(1e-15);
+        let l = (mv[0] * mv[0] + mv[1] * mv[1] + mv[2] * mv[2]).sqrt();
+        if l <= 1e-15 {
+            break;
+        }
         v = [mv[0] / l, mv[1] / l, mv[2] / l];
     }
     // Build rotation that maps v to target axis
@@ -134,5 +152,24 @@ mod tests {
             }
         }
         assert!((mx[0] - mn[0]) >= (mx[1] - mn[1]) * 0.9);
+    }
+
+    #[test]
+    fn test_axis_aligned_y_to_x() {
+        let m = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [0.0, 10.0, 0.0], [0.0, 5.0, 1.0]],
+            vec![[0, 1, 2]],
+        );
+        let r = align_longest_to_x(&m);
+        let mut mn = [f64::INFINITY; 3];
+        let mut mx = [f64::NEG_INFINITY; 3];
+        for i in 0..3 {
+            let p = r.points.get(i);
+            for j in 0..3 {
+                mn[j] = mn[j].min(p[j]);
+                mx[j] = mx[j].max(p[j]);
+            }
+        }
+        assert!((mx[0] - mn[0]) > (mx[1] - mn[1]));
     }
 }

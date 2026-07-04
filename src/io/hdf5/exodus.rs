@@ -29,7 +29,8 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
     }
     info.num_dim = read_dim(&file, "num_dim").unwrap_or(3);
     info.num_nodes = read_dim(&file, "num_nodes").unwrap_or(0);
-    info.num_elem = read_dim(&file, "num_el_blk").unwrap_or(0);
+    info.num_elem = read_dim(&file, "num_elem").unwrap_or(0);
+    info.num_elem_blocks = read_dim(&file, "num_el_blk").unwrap_or(0);
 
     // Read coordinates
     let coord_x = read_f64_dataset(&file, "coordx")?;
@@ -64,15 +65,9 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
                 .read_raw()
                 .map_err(|e| VtkError::Parse(format!("read {connect_name}: {e}")))?;
 
-            // Determine cell type from nodes per element
-            let cell_type = match nodes_per_elem {
-                2 => CellType::Line,
-                3 => CellType::Triangle,
-                4 => CellType::Tetra, // could be Quad — check dim
-                6 => CellType::Wedge,
-                8 => CellType::Hexahedron,
-                _ => CellType::Triangle,
-            };
+            let cell_type = read_element_type(&ds)
+                .map(exodus_cell_type)
+                .unwrap_or_else(|| cell_type_from_nodes(nodes_per_elem, info.num_dim));
 
             for e in 0..num_elem {
                 all_cell_types.push(cell_type);
@@ -103,20 +98,19 @@ pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkErr
     let mut grid = UnstructuredGrid::new();
     grid.points = points;
     for (ct, conn) in all_cell_types.iter().zip(all_connectivity.iter()) {
-        grid.insert_cell(*ct, conn);
+        grid.push_cell(*ct, conn);
     }
 
     // Read nodal variables
     if let Ok(names_ds) = file.dataset("name_nod_var") {
         if let Ok(names) = read_string_array(&names_ds) {
             info.nodal_var_names = names.clone();
-            info.num_time_steps = read_dim(&file, "time_step").unwrap_or(1);
+            info.num_time_steps = read_dim(&file, "time_whole").unwrap_or(1);
 
             // Read last time step's nodal vars
-            let ts = info.num_time_steps;
             for (vi, name) in names.iter().enumerate() {
-                let ds_name = format!("vals_nod_var{}time{}", vi + 1, ts);
-                if let Ok(vals) = read_f64_dataset(&file, &ds_name) {
+                let ds_name = format!("vals_nod_var{}", vi + 1);
+                if let Ok(vals) = read_last_time_step_dataset(&file, &ds_name, num_nodes) {
                     grid.point_data_mut()
                         .add_array(AnyDataArray::F64(DataArray::from_vec(name.trim(), vals, 1)));
                 }
@@ -226,4 +220,54 @@ fn read_string_array(ds: &hdf5::Dataset) -> Result<Vec<String>, VtkError> {
     ds.read_raw::<hdf5::types::VarLenAscii>()
         .map(|v| v.into_iter().map(|s| s.to_string()).collect())
         .map_err(|e| VtkError::Parse(format!("read strings: {e}")))
+}
+
+fn read_element_type(ds: &hdf5::Dataset) -> Option<ExodusElementType> {
+    ds.attr("elem_type")
+        .ok()
+        .and_then(|a| a.read_scalar::<hdf5::types::VarLenAscii>().ok())
+        .and_then(|s| ExodusElementType::from_str(s.as_str()))
+}
+
+fn exodus_cell_type(elem_type: ExodusElementType) -> CellType {
+    match elem_type {
+        ExodusElementType::Bar2 => CellType::Line,
+        ExodusElementType::Tri3 => CellType::Triangle,
+        ExodusElementType::Quad4 | ExodusElementType::Shell4 => CellType::Quad,
+        ExodusElementType::Tet4 => CellType::Tetra,
+        ExodusElementType::Hex8 => CellType::Hexahedron,
+        ExodusElementType::Wedge6 => CellType::Wedge,
+        ExodusElementType::Pyramid5 => CellType::Pyramid,
+    }
+}
+
+fn cell_type_from_nodes(nodes_per_elem: usize, num_dim: usize) -> CellType {
+    match nodes_per_elem {
+        2 => CellType::Line,
+        3 => CellType::Triangle,
+        4 if num_dim == 2 => CellType::Quad,
+        4 => CellType::Tetra,
+        5 => CellType::Pyramid,
+        6 => CellType::Wedge,
+        8 => CellType::Hexahedron,
+        _ => CellType::Triangle,
+    }
+}
+
+fn read_last_time_step_dataset(
+    file: &hdf5::File,
+    name: &str,
+    num_nodes: usize,
+) -> Result<Vec<f64>, VtkError> {
+    let ds = file
+        .dataset(name)
+        .map_err(|e| VtkError::Parse(format!("dataset '{name}': {e}")))?;
+    let data: Vec<f64> = ds
+        .read_raw()
+        .map_err(|e| VtkError::Parse(format!("read '{name}': {e}")))?;
+    if num_nodes == 0 || data.len() <= num_nodes {
+        return Ok(data);
+    }
+    let start = data.len() - num_nodes;
+    Ok(data[start..].to_vec())
 }

@@ -59,6 +59,19 @@ pub fn write_video(
 ) -> Result<(), String> {
     use ffmpeg_next as ffmpeg;
 
+    if seq.frames.is_empty() {
+        return Err("cannot write video with no frames".into());
+    }
+    if seq.fps == 0 {
+        return Err("fps must be greater than zero".into());
+    }
+    if options.pixel_format != "yuv420p" {
+        return Err(format!(
+            "unsupported pixel format '{}'; only yuv420p is currently supported",
+            options.pixel_format
+        ));
+    }
+
     ffmpeg::init().map_err(|e| format!("ffmpeg init: {e}"))?;
 
     let codec_id = match options.codec {
@@ -125,7 +138,8 @@ pub fn write_video(
         let stride = frame_rgb.stride(0);
         let data = frame_rgb.data_mut(0);
         for y in 0..seq.height as usize {
-            let src_start = y * (seq.width as usize) * 3;
+            let src_y = seq.height as usize - y - 1;
+            let src_start = src_y * (seq.width as usize) * 3;
             let dst_start = y * stride;
             let row_bytes = (seq.width as usize) * 3;
             data[dst_start..dst_start + row_bytes]

@@ -15,6 +15,9 @@ pub fn ffd_deform(
     lz: usize,
 ) -> PolyData {
     let n = mesh.points.len();
+    if n == 0 || lx < 2 || ly < 2 || lz < 2 {
+        return mesh.clone();
+    }
     let range = [
         bbox_max[0] - bbox_min[0],
         bbox_max[1] - bbox_min[1],
@@ -40,8 +43,19 @@ pub fn ffd_deform(
 /// Simpler FFD: bend mesh along one axis using a 1D spline of displacements.
 pub fn bend_along_axis(mesh: &PolyData, axis: usize, displacements: &[[f64; 3]]) -> PolyData {
     let n = mesh.points.len();
-    if displacements.is_empty() || n == 0 {
+    if axis >= 3 || displacements.is_empty() || n == 0 {
         return mesh.clone();
+    }
+    if displacements.len() == 1 {
+        let d = displacements[0];
+        let mut result = mesh.clone();
+        for i in 0..n {
+            let p = mesh.points.get(i);
+            result
+                .points
+                .set(i, [p[0] + d[0], p[1] + d[1], p[2] + d[2]]);
+        }
+        return result;
     }
 
     let mut mn = f64::INFINITY;

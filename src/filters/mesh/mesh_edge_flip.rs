@@ -7,7 +7,7 @@ pub fn edge_flip_improve(mesh: &PolyData, max_iterations: usize) -> PolyData {
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| valid_triangle_ids(c, n))
         .collect();
     if tris.len() < 2 {
         return mesh.clone();
@@ -28,9 +28,19 @@ pub fn edge_flip_improve(mesh: &PolyData, max_iterations: usize) -> PolyData {
             }
             let t0 = faces[0];
             let t1 = faces[1];
+            if !tris[t0].contains(&e0)
+                || !tris[t0].contains(&e1)
+                || !tris[t1].contains(&e0)
+                || !tris[t1].contains(&e1)
+            {
+                continue;
+            }
             let opp0 = tris[t0].iter().find(|&&v| v != e0 && v != e1).copied();
             let opp1 = tris[t1].iter().find(|&&v| v != e0 && v != e1).copied();
             if let (Some(o0), Some(o1)) = (opp0, opp1) {
+                if o0 == o1 {
+                    continue;
+                }
                 let min_before = min_angle_pair(&mesh, &tris[t0], &tris[t1]);
                 let new_t0 = [e0, o0, o1];
                 let new_t1 = [e1, o1, o0];
@@ -39,6 +49,7 @@ pub fn edge_flip_improve(mesh: &PolyData, max_iterations: usize) -> PolyData {
                     tris[t0] = new_t0;
                     tris[t1] = new_t1;
                     flipped = true;
+                    break;
                 }
             }
         }
@@ -54,6 +65,16 @@ pub fn edge_flip_improve(mesh: &PolyData, max_iterations: usize) -> PolyData {
     result.points = mesh.points.clone();
     result.polys = polys;
     result
+}
+
+fn valid_triangle_ids(cell: &[i64], n_points: usize) -> Option<[usize; 3]> {
+    let a = usize::try_from(cell[0]).ok()?;
+    let b = usize::try_from(cell[1]).ok()?;
+    let c = usize::try_from(cell[2]).ok()?;
+    if a >= n_points || b >= n_points || c >= n_points || a == b || b == c || c == a {
+        return None;
+    }
+    Some([a, b, c])
 }
 
 fn min_angle_pair(mesh: &PolyData, t0: &[usize; 3], t1: &[usize; 3]) -> f64 {

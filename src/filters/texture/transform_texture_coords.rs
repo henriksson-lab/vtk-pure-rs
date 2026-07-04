@@ -4,12 +4,24 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Translate texture coordinates by an offset.
 pub fn translate_tcoords(input: &PolyData, du: f64, dv: f64) -> PolyData {
-    transform_tcoords_impl(input, |u, v| (u + du, v + dv))
+    transform_tcoords(
+        input,
+        [du, dv, 0.0],
+        [1.0, 1.0, 1.0],
+        [0.5, 0.5, 0.5],
+        [false; 3],
+    )
 }
 
 /// Scale texture coordinates around (0.5, 0.5).
 pub fn scale_tcoords(input: &PolyData, su: f64, sv: f64) -> PolyData {
-    transform_tcoords_impl(input, |u, v| (0.5 + (u - 0.5) * su, 0.5 + (v - 0.5) * sv))
+    transform_tcoords(
+        input,
+        [0.0, 0.0, 0.0],
+        [su, sv, 1.0],
+        [0.5, 0.5, 0.5],
+        [false; 3],
+    )
 }
 
 /// Rotate texture coordinates around (0.5, 0.5) by angle in radians.
@@ -25,17 +37,35 @@ pub fn rotate_tcoords(input: &PolyData, angle: f64) -> PolyData {
 
 /// Flip texture coordinates (mirror).
 pub fn flip_tcoords_u(input: &PolyData) -> PolyData {
-    transform_tcoords_impl(input, |u, v| (1.0 - u, v))
+    transform_tcoords(
+        input,
+        [0.0, 0.0, 0.0],
+        [1.0, 1.0, 1.0],
+        [0.5, 0.5, 0.5],
+        [false, true, false],
+    )
 }
 
 /// Flip texture coordinates vertically.
 pub fn flip_tcoords_v(input: &PolyData) -> PolyData {
-    transform_tcoords_impl(input, |u, v| (u, 1.0 - v))
+    transform_tcoords(
+        input,
+        [0.0, 0.0, 0.0],
+        [1.0, 1.0, 1.0],
+        [0.5, 0.5, 0.5],
+        [true, false, false],
+    )
 }
 
 /// Tile texture coordinates (repeat).
 pub fn tile_tcoords(input: &PolyData, repeat_u: f64, repeat_v: f64) -> PolyData {
-    transform_tcoords_impl(input, |u, v| (u * repeat_u, v * repeat_v))
+    transform_tcoords(
+        input,
+        [0.0, 0.0, 0.0],
+        [repeat_u, repeat_v, 1.0],
+        [0.0, 0.0, 0.0],
+        [false; 3],
+    )
 }
 
 /// Clamp texture coordinates to [0, 1].
@@ -46,6 +76,50 @@ pub fn clamp_tcoords(input: &PolyData) -> PolyData {
 /// Wrap texture coordinates to [0, 1) using modulo.
 pub fn wrap_tcoords(input: &PolyData) -> PolyData {
     transform_tcoords_impl(input, |u, v| (u.rem_euclid(1.0), v.rem_euclid(1.0)))
+}
+
+/// Transform 1D, 2D, or 3D texture coordinates with VTK's position/scale/origin/flip model.
+///
+/// `flip` is ordered as r, s, t, matching `FlipR`, `FlipS`, and `FlipT`.
+pub fn transform_tcoords(
+    input: &PolyData,
+    position: [f64; 3],
+    scale: [f64; 3],
+    origin: [f64; 3],
+    flip: [bool; 3],
+) -> PolyData {
+    let tcoords = match input.point_data().tcoords() {
+        Some(tc) if (1..=3).contains(&tc.num_components()) => tc,
+        _ => return input.clone(),
+    };
+
+    let n = tcoords.num_tuples();
+    let tex_dim = tcoords.num_components();
+    let mut new_data = Vec::with_capacity(n * tex_dim);
+    let mut buf = [0.0f64; 3];
+
+    for i in 0..n {
+        tcoords.tuple_as_f64(i, &mut buf);
+        let mut new_tc = [0.0f64; 3];
+        let sign = [
+            if flip[1] ^ flip[2] { -1.0 } else { 1.0 },
+            if flip[0] ^ flip[2] { -1.0 } else { 1.0 },
+            if flip[0] ^ flip[1] { -1.0 } else { 1.0 },
+        ];
+        for j in 0..tex_dim {
+            new_tc[j] = origin[j] + position[j] + sign[j] * scale[j] * (buf[j] - origin[j]);
+        }
+        new_data.extend_from_slice(&new_tc[..tex_dim]);
+    }
+
+    let mut result = input.clone();
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "TCoords", new_data, tex_dim,
+        )));
+    result.point_data_mut().set_active_tcoords("TCoords");
+    result
 }
 
 fn transform_tcoords_impl(input: &PolyData, f: impl Fn(f64, f64) -> (f64, f64)) -> PolyData {
@@ -165,5 +239,32 @@ mod tests {
         );
         let result = translate_tcoords(&mesh, 1.0, 1.0);
         assert_eq!(result.points.len(), 3); // unchanged
+    }
+
+    #[test]
+    fn preserves_one_dimensional_tcoords() {
+        let mut mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "TCoords",
+                vec![0.0, 1.0],
+                1,
+            )));
+        mesh.point_data_mut().set_active_tcoords("TCoords");
+
+        let result = transform_tcoords(
+            &mesh,
+            [0.25, 0.0, 0.0],
+            [2.0, 1.0, 1.0],
+            [0.5, 0.5, 0.5],
+            [false; 3],
+        );
+        let tc = result.point_data().tcoords().unwrap();
+        assert_eq!(tc.num_components(), 1);
+        let mut buf = [0.0f64; 1];
+        tc.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] + 0.25).abs() < 1e-10);
+        tc.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 1.75).abs() < 1e-10);
     }
 }

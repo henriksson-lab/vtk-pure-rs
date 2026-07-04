@@ -12,7 +12,9 @@ pub fn laplace_beltrami_curvature(mesh: &PolyData) -> PolyData {
         if c.len() != 3 {
             continue;
         }
-        let ids = [c[0] as usize, c[1] as usize, c[2] as usize];
+        let Some(ids) = triangle_point_ids(c, n) else {
+            continue;
+        };
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),
@@ -35,10 +37,13 @@ pub fn laplace_beltrami_curvature(mesh: &PolyData) -> PolyData {
                 lap[ids[k]][d] -= cot * ejk[d] * 0.5;
             }
         }
+        let e01 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+        let e02 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
         let tri_area = 0.5
-            * ((p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
-                - (p[1][1] - p[0][1]) * (p[2][0] - p[0][0]))
-                .abs();
+            * ((e01[1] * e02[2] - e01[2] * e02[1]).powi(2)
+                + (e01[2] * e02[0] - e01[0] * e02[2]).powi(2)
+                + (e01[0] * e02[1] - e01[1] * e02[0]).powi(2))
+            .sqrt();
         for &id in &ids {
             area[id] += tri_area / 3.0;
         }
@@ -81,6 +86,26 @@ pub fn laplace_beltrami_curvature(mesh: &PolyData) -> PolyData {
     r.point_data_mut().set_active_scalars("LBMeanCurvature");
     r
 }
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    if cell.len() != 3 {
+        return None;
+    }
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

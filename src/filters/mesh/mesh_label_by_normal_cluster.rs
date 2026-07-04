@@ -3,15 +3,19 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn cluster_by_normal(mesh: &PolyData, k: usize, iterations: usize) -> PolyData {
     let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let nc = cells.len();
+    if nc == 0 {
+        let mut r = mesh.clone();
+        r.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "NormalCluster",
+                Vec::new(),
+                1,
+            )));
+        return r;
+    }
     let k = k.max(1).min(nc);
     let normals: Vec<[f64; 3]> = cells.iter().map(|c| fnorm(c, mesh)).collect();
-    // Initialize centers evenly spaced
-    let mut centers: Vec<[f64; 3]> = (0..k)
-        .map(|i| {
-            let a = 2.0 * std::f64::consts::PI * i as f64 / k as f64;
-            [a.cos(), a.sin(), 0.0]
-        })
-        .collect();
+    let mut centers: Vec<[f64; 3]> = normals.iter().take(k).copied().collect();
     let mut labels = vec![0usize; nc];
     for _ in 0..iterations {
         for ci in 0..nc {
@@ -60,9 +64,18 @@ fn fnorm(c: &[i64], m: &PolyData) -> [f64; 3] {
     if c.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = m.points.get(c[0] as usize);
-    let b = m.points.get(c[1] as usize);
-    let cc = m.points.get(c[2] as usize);
+    let Some(ia) = valid_point_id(c[0], m.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(ib) = valid_point_id(c[1], m.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(ic) = valid_point_id(c[2], m.points.len()) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let a = m.points.get(ia);
+    let b = m.points.get(ib);
+    let cc = m.points.get(ic);
     let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
     let n = [
@@ -75,6 +88,13 @@ fn fnorm(c: &[i64], m: &PolyData) -> [f64; 3] {
         [0.0, 0.0, 1.0]
     } else {
         [n[0] / l, n[1] / l, n[2] / l]
+    }
+}
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
     }
 }
 #[cfg(test)]

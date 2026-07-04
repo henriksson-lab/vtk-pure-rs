@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 use std::collections::HashMap;
 
 /// Flip edges to improve triangle quality (Delaunay-like criterion).
@@ -11,7 +11,7 @@ pub fn edge_flip_delaunay(input: &PolyData) -> PolyData {
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| triangle_point_ids(c, n))
         .collect();
 
     // Build edge-to-triangle adjacency
@@ -61,6 +61,9 @@ pub fn edge_flip_delaunay(input: &PolyData) -> PolyData {
                 (Some(c), Some(d)) => (c, d),
                 _ => continue,
             };
+            if c == d {
+                continue;
+            }
 
             // Check if flip improves minimum angle
             let min_before = min_angle_pair(&pts, a, b, c, d);
@@ -109,6 +112,14 @@ fn angle_between(a: [f64; 3], b: [f64; 3]) -> f64 {
         return 0.0;
     }
     (dot / (la * lb)).clamp(-1.0, 1.0).acos()
+}
+
+fn triangle_point_ids(cell: &[i64], n_points: usize) -> Option<[usize; 3]> {
+    Some([
+        usize::try_from(cell[0]).ok().filter(|&id| id < n_points)?,
+        usize::try_from(cell[1]).ok().filter(|&id| id < n_points)?,
+        usize::try_from(cell[2]).ok().filter(|&id| id < n_points)?,
+    ])
 }
 
 #[cfg(test)]

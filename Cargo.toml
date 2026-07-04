@@ -83,6 +83,7 @@ render-wgpu = ["render", "dep:wgpu", "dep:winit", "dep:pollster"]
 
 # Parallel
 parallel = []
+mpi = ["parallel", "dep:mpi"]
 
 # Optional deps
 truetype = ["dep:fontdue"]
@@ -99,6 +100,7 @@ wgpu = { version = "24", optional = true }
 winit = { version = "0.30", optional = true }
 pollster = { version = "0.4", optional = true }
 fontdue = { version = "0.9", optional = true }
+mpi = { version = "0.8", optional = true }
 
 [dev-dependencies]
 proptest = "1"

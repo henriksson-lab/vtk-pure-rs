@@ -11,8 +11,15 @@ pub fn select_face_ring(mesh: &PolyData, seed_face: usize, rings: usize) -> Poly
     for (ci, c) in cells.iter().enumerate() {
         let n = c.len();
         for i in 0..n {
-            let a = c[i] as usize;
-            let b = c[(i + 1) % n] as usize;
+            let Ok(a) = usize::try_from(c[i]) else {
+                continue;
+            };
+            let Ok(b) = usize::try_from(c[(i + 1) % n]) else {
+                continue;
+            };
+            if a >= mesh.points.len() || b >= mesh.points.len() {
+                continue;
+            }
             ef.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -44,8 +51,20 @@ pub fn select_face_ring(mesh: &PolyData, seed_face: usize, rings: usize) -> Poly
     let mut kept = Vec::new();
     for (ci, c) in cells.iter().enumerate() {
         if selected[ci] {
+            let mut valid = true;
             for &v in c {
-                used[v as usize] = true;
+                let Ok(v) = usize::try_from(v) else {
+                    valid = false;
+                    break;
+                };
+                if v >= mesh.points.len() {
+                    valid = false;
+                    break;
+                }
+                used[v] = true;
+            }
+            if !valid {
+                continue;
             }
             kept.push(c.clone());
         }
@@ -60,7 +79,11 @@ pub fn select_face_ring(mesh: &PolyData, seed_face: usize, rings: usize) -> Poly
     }
     let mut polys = CellArray::new();
     for c in &kept {
-        polys.push_cell(&c.iter().map(|&v| pm[v as usize] as i64).collect::<Vec<_>>());
+        polys.push_cell(
+            &c.iter()
+                .map(|&v| pm[usize::try_from(v).unwrap()] as i64)
+                .collect::<Vec<_>>(),
+        );
     }
     let mut r = PolyData::new();
     r.points = pts;

@@ -1,4 +1,4 @@
-use crate::data::PolyData;
+use crate::data::{CellLocator, PolyData};
 
 /// Result of computing distance statistics between two meshes.
 #[derive(Debug, Clone, Copy)]
@@ -32,8 +32,12 @@ pub fn mesh_distance_stats(a: &PolyData, b: &PolyData) -> MeshDistanceResult {
 /// Returns (max_distance, mean_distance).
 fn directed_distance(a: &PolyData, b: &PolyData) -> (f64, f64) {
     let na: usize = a.points.len();
-    let nb: usize = b.points.len();
-    if na == 0 || nb == 0 {
+    if na == 0 {
+        return (0.0, 0.0);
+    }
+    let locator = CellLocator::build(b);
+    let use_locator = locator.num_primitives() > 0;
+    if !use_locator && b.points.len() == 0 {
         return (0.0, 0.0);
     }
 
@@ -42,18 +46,14 @@ fn directed_distance(a: &PolyData, b: &PolyData) -> (f64, f64) {
 
     for i in 0..na {
         let pa = a.points.get(i);
-        let mut min_d2: f64 = f64::MAX;
-        for j in 0..nb {
-            let pb = b.points.get(j);
-            let dx: f64 = pa[0] - pb[0];
-            let dy: f64 = pa[1] - pb[1];
-            let dz: f64 = pa[2] - pb[2];
-            let d2: f64 = dx * dx + dy * dy + dz * dz;
-            if d2 < min_d2 {
-                min_d2 = d2;
-            }
-        }
-        let d: f64 = min_d2.sqrt();
+        let d: f64 = if use_locator {
+            locator
+                .find_closest_cell(pa)
+                .map(|(_, _, d2)| d2.sqrt())
+                .unwrap_or(0.0)
+        } else {
+            min_distance_to_points(pa, b)
+        };
         if d > max_d {
             max_d = d;
         }
@@ -61,6 +61,18 @@ fn directed_distance(a: &PolyData, b: &PolyData) -> (f64, f64) {
     }
 
     (max_d, sum_d / na as f64)
+}
+
+fn min_distance_to_points(p: [f64; 3], mesh: &PolyData) -> f64 {
+    let mut best = f64::INFINITY;
+    for i in 0..mesh.points.len() {
+        let q = mesh.points.get(i);
+        let dx = p[0] - q[0];
+        let dy = p[1] - q[1];
+        let dz = p[2] - q[2];
+        best = best.min((dx * dx + dy * dy + dz * dz).sqrt());
+    }
+    best
 }
 
 #[cfg(test)]
@@ -111,5 +123,17 @@ mod tests {
         assert!((result.max_b_to_a - 10.0).abs() < 1e-10);
         // mean B->A: (0 + 10) / 2 = 5
         assert!((result.mean_b_to_a - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn uses_surface_not_only_vertices() {
+        let a = PolyData::from_points(vec![[0.25, 0.25, 1.0]]);
+        let b = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+
+        let result = mesh_distance_stats(&a, &b);
+        assert!((result.max_a_to_b - 1.0).abs() < 1e-10);
     }
 }

@@ -8,60 +8,27 @@ pub fn bilateral_smooth(
     sigma_r: f64,
 ) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || iterations == 0 || sigma_s <= 0.0 || sigma_r <= 0.0 {
         return mesh.clone();
     }
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc == 0 {
+            continue;
+        }
+        if !valid_cell(cell, n) {
+            continue;
+        }
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
+            if !adj[a].contains(&b) {
+                adj[a].push(b);
             }
-        }
-    }
-    // Compute vertex normals
-    let mut vnorm = vec![[0.0f64; 3]; n];
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let a = cell[0] as usize;
-        let b = cell[1] as usize;
-        let c = cell[2] as usize;
-        if a >= n || b >= n || c >= n {
-            continue;
-        }
-        let pa = mesh.points.get(a);
-        let pb = mesh.points.get(b);
-        let pc = mesh.points.get(c);
-        let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
-        let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
-        let nx = u[1] * v[2] - u[2] * v[1];
-        let ny = u[2] * v[0] - u[0] * v[2];
-        let nz = u[0] * v[1] - u[1] * v[0];
-        for &vi in &cell[..] {
-            let vi = vi as usize;
-            if vi < n {
-                vnorm[vi][0] += nx;
-                vnorm[vi][1] += ny;
-                vnorm[vi][2] += nz;
+            if !adj[b].contains(&a) {
+                adj[b].push(a);
             }
-        }
-    }
-    for vn in &mut vnorm {
-        let l = (vn[0] * vn[0] + vn[1] * vn[1] + vn[2] * vn[2]).sqrt();
-        if l > 1e-15 {
-            vn[0] /= l;
-            vn[1] /= l;
-            vn[2] /= l;
         }
     }
     let mut positions: Vec<[f64; 3]> = (0..n)
@@ -73,6 +40,7 @@ pub fn bilateral_smooth(
     let ss2 = 2.0 * sigma_s * sigma_s;
     let sr2 = 2.0 * sigma_r * sigma_r;
     for _ in 0..iterations {
+        let vnorm = compute_vertex_normals(mesh, &positions);
         let mut new_pos = positions.clone();
         for i in 0..n {
             if adj[i].is_empty() {
@@ -108,10 +76,49 @@ pub fn bilateral_smooth(
     for p in &positions {
         pts.push(*p);
     }
-    let mut result = PolyData::new();
+    let mut result = mesh.clone();
     result.points = pts;
-    result.polys = mesh.polys.clone();
     result
+}
+
+fn compute_vertex_normals(mesh: &PolyData, positions: &[[f64; 3]]) -> Vec<[f64; 3]> {
+    let n = positions.len();
+    let mut vnorm = vec![[0.0f64; 3]; n];
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3 || !valid_cell(cell, n) {
+            continue;
+        }
+        let a = cell[0] as usize;
+        let b = cell[1] as usize;
+        let c = cell[2] as usize;
+        let pa = positions[a];
+        let pb = positions[b];
+        let pc = positions[c];
+        let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
+        let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
+        let nx = u[1] * v[2] - u[2] * v[1];
+        let ny = u[2] * v[0] - u[0] * v[2];
+        let nz = u[0] * v[1] - u[1] * v[0];
+        for &vi in cell {
+            let vi = vi as usize;
+            vnorm[vi][0] += nx;
+            vnorm[vi][1] += ny;
+            vnorm[vi][2] += nz;
+        }
+    }
+    for vn in &mut vnorm {
+        let l = (vn[0] * vn[0] + vn[1] * vn[1] + vn[2] * vn[2]).sqrt();
+        if l > 1e-15 {
+            vn[0] /= l;
+            vn[1] /= l;
+            vn[2] /= l;
+        }
+    }
+    vnorm
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 
 #[cfg(test)]

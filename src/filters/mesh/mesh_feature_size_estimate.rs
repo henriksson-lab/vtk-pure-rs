@@ -11,9 +11,15 @@ pub fn estimate_feature_size(mesh: &PolyData) -> FeatureSize {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            edges.insert((a.min(b), a.max(b)));
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            if a >= 0 && b >= 0 {
+                let a = a as usize;
+                let b = b as usize;
+                if a < mesh.points.len() && b < mesh.points.len() {
+                    edges.insert((a.min(b), a.max(b)));
+                }
+            }
         }
     }
     if edges.is_empty() {

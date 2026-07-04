@@ -17,8 +17,8 @@ pub fn remap_range(input: &ImageData, scalars: &str, new_min: f64, new_max: f64)
 
     // Find current min/max
     let mut buf = [0.0f64];
-    let mut old_min: f64 = f64::MAX;
-    let mut old_max: f64 = f64::MIN;
+    let mut old_min: f64 = f64::INFINITY;
+    let mut old_max: f64 = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         let v: f64 = buf[0];
@@ -96,6 +96,25 @@ mod tests {
         assert!((buf[0] - 10.0).abs() < 1e-10);
         arr.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn remap_negative_only_range() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![-10.0, -5.0, -2.0],
+                1,
+            )));
+
+        let result = remap_range(&img, "val", 0.0, 1.0);
+        let arr = result.point_data().get_array("Remapped").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.0).abs() < 1e-10);
+        arr.tuple_as_f64(2, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
     }
 
     #[test]

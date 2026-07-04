@@ -40,7 +40,7 @@ impl Default for Light {
     fn default() -> Self {
         Self {
             light_type: LightType::Directional,
-            position: [0.0, 0.0, 10.0],
+            position: [0.0, 0.0, 1.0],
             direction: [0.0, 0.0, -1.0],
             color: [1.0, 1.0, 1.0],
             intensity: 1.0,

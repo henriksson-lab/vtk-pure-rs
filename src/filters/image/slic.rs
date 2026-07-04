@@ -11,15 +11,18 @@ pub fn image_slic(
     compactness: f64,
 ) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
     let nx = dims[0] as usize;
     let ny = dims[1] as usize;
+    if dims[2] != 1 || nx == 0 || ny == 0 {
+        return input.clone();
+    }
     let n = nx * ny;
-    let sp = input.spacing();
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)

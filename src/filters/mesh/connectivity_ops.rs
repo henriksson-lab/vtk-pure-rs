@@ -6,13 +6,21 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 pub fn label_connected_components(mesh: &PolyData) -> PolyData {
     let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
     let n = all_cells.len();
+    let num_points = mesh.points.len();
     let mut edge_adj: std::collections::HashMap<(usize, usize), Vec<usize>> =
         std::collections::HashMap::new();
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], num_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], num_points) else {
+                continue;
+            };
             edge_adj.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -29,9 +37,16 @@ pub fn label_connected_components(mesh: &PolyData) -> PolyData {
         while let Some(ci) = q.pop_front() {
             let cell = &all_cells[ci];
             let nc = cell.len();
+            if nc < 2 {
+                continue;
+            }
             for i in 0..nc {
-                let a = cell[i] as usize;
-                let b = cell[(i + 1) % nc] as usize;
+                let Some(a) = valid_point_id(cell[i], num_points) else {
+                    continue;
+                };
+                let Some(b) = valid_point_id(cell[(i + 1) % nc], num_points) else {
+                    continue;
+                };
                 if let Some(nbs) = edge_adj.get(&(a.min(b), a.max(b))) {
                     for &ni in nbs {
                         if labels[ni] == usize::MAX {
@@ -110,7 +125,10 @@ pub fn extract_component(mesh: &PolyData, component_id: usize) -> PolyData {
         let cell = &all_cells[ci];
         let mut ids = Vec::new();
         for &pid in cell {
-            let old = pid as usize;
+            let Some(old) = valid_point_id(pid, mesh.points.len()) else {
+                ids.clear();
+                break;
+            };
             let idx = *pm.entry(old).or_insert_with(|| {
                 let i = pts.len();
                 pts.push(mesh.points.get(old));
@@ -118,7 +136,9 @@ pub fn extract_component(mesh: &PolyData, component_id: usize) -> PolyData {
             });
             ids.push(idx as i64);
         }
-        polys.push_cell(&ids);
+        if ids.len() == cell.len() {
+            polys.push_cell(&ids);
+        }
     }
     let mut r = PolyData::new();
     r.points = pts;
@@ -144,9 +164,28 @@ pub fn component_sizes(mesh: &PolyData) -> Vec<usize> {
     sizes
 }
 
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn component_labels(mesh: &PolyData) -> Vec<usize> {
+        let labeled = label_connected_components(mesh);
+        let arr = match labeled.cell_data().get_array("ComponentId") {
+            Some(a) => a,
+            None => return Vec::new(),
+        };
+        let mut labels = Vec::with_capacity(arr.num_tuples());
+        let mut buf = [0.0f64];
+        for i in 0..arr.num_tuples() {
+            arr.tuple_as_f64(i, &mut buf);
+            labels.push(buf[0] as usize);
+        }
+        labels
+    }
     #[test]
     fn single_component() {
         let mesh = PolyData::from_triangles(
@@ -210,5 +249,34 @@ mod tests {
         let s = component_sizes(&mesh);
         assert_eq!(s[0], 2); // largest first
         assert_eq!(s[1], 1);
+    }
+
+    #[test]
+    fn non_manifold_shared_edge_is_one_component() {
+        let mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            vec![[0, 1, 2], [1, 0, 3], [0, 1, 4]],
+        );
+
+        assert_eq!(num_connected_components(&mesh), 1);
+        assert_eq!(component_labels(&mesh), vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn invalid_edges_do_not_connect_or_extract() {
+        let mesh = PolyData::from_polygons(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![vec![0, 1, 2], vec![-1, 99, 2]],
+        );
+
+        assert_eq!(num_connected_components(&mesh), 2);
+        assert_eq!(component_sizes(&mesh), vec![1, 1]);
+        assert_eq!(extract_component(&mesh, 1).polys.num_cells(), 0);
     }
 }

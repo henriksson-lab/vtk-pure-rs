@@ -1,5 +1,28 @@
 //! Geodesic medial axis (skeleton from boundary distance).
 use crate::data::{CellArray, Points, PolyData};
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
+
+#[derive(PartialEq)]
+struct State {
+    cost: f64,
+    node: usize,
+}
+impl Eq for State {}
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for State {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
+    }
+}
+
 pub fn geodesic_medial_axis(mesh: &PolyData, threshold: f64) -> PolyData {
     let n = mesh.points.len();
     if n == 0 {
@@ -8,22 +31,22 @@ pub fn geodesic_medial_axis(mesh: &PolyData, threshold: f64) -> PolyData {
     let mut nb: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
+        if !valid_polygon_cell(cell, n) {
+            continue;
+        }
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                if !nb[a].iter().any(|&(x, _)| x == b) {
-                    nb[a].push((b, d));
-                    nb[b].push((a, d));
-                }
+            if let Some((a, b)) = add_edge(mesh, cell[i], cell[(i + 1) % nc], &mut nb) {
                 *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
             }
+        }
+    }
+    for strip in mesh.strips.iter() {
+        add_triangle_strip_edges(mesh, strip, &mut nb, &mut ec);
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(mesh, edge[0], edge[1], &mut nb);
         }
     }
     // Find boundary
@@ -39,30 +62,23 @@ pub fn geodesic_medial_axis(mesh: &PolyData, threshold: f64) -> PolyData {
     }
     // Geodesic distance from boundary
     let mut dist = vec![f64::INFINITY; n];
-    let mut visited = vec![false; n];
+    let mut heap = BinaryHeap::new();
     for &b in &boundary {
         dist[b] = 0.0;
+        heap.push(State { cost: 0.0, node: b });
     }
-    for _ in 0..n {
-        let u = (0..n).filter(|&i| !visited[i]).min_by(|&a, &b| {
-            dist[a]
-                .partial_cmp(&dist[b])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let u = match u {
-            Some(u) => u,
-            None => {
-                break;
-            }
-        };
-        if dist[u].is_infinite() {
-            break;
+    while let Some(State { cost, node }) = heap.pop() {
+        if cost > dist[node] {
+            continue;
         }
-        visited[u] = true;
-        for &(v, w) in &nb[u] {
-            let alt = dist[u] + w;
-            if alt < dist[v] {
-                dist[v] = alt;
+        for &(next_node, weight) in &nb[node] {
+            let next = cost + weight;
+            if next < dist[next_node] {
+                dist[next_node] = next;
+                heap.push(State {
+                    cost: next,
+                    node: next_node,
+                });
             }
         }
     }
@@ -83,6 +99,7 @@ pub fn geodesic_medial_axis(mesh: &PolyData, threshold: f64) -> PolyData {
     }
     // Connect medial vertices that are neighbors
     let mut pts = Points::<f64>::new();
+    let mut verts = CellArray::new();
     let mut lines = CellArray::new();
     let mut pm: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     let medial_set: std::collections::HashSet<usize> = medial.iter().copied().collect();
@@ -108,15 +125,85 @@ pub fn geodesic_medial_axis(mesh: &PolyData, threshold: f64) -> PolyData {
         if !pm.contains_key(&mi) {
             let idx = pts.len();
             pts.push(mesh.points.get(mi));
-            let mut verts = CellArray::new();
             verts.push_cell(&[idx as i64]);
         }
     }
     let mut r = PolyData::new();
     r.points = pts;
+    r.verts = verts;
     r.lines = lines;
     r
 }
+
+fn add_triangle_strip_edges(
+    mesh: &PolyData,
+    strip: &[i64],
+    nb: &mut [Vec<(usize, f64)>],
+    edge_count: &mut std::collections::HashMap<(usize, usize), usize>,
+) {
+    for tri in strip.windows(3) {
+        if !valid_triangle(tri, nb.len()) {
+            continue;
+        }
+        if let Some((a, b)) = add_edge(mesh, tri[0], tri[1], nb) {
+            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        }
+        if let Some((a, b)) = add_edge(mesh, tri[1], tri[2], nb) {
+            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        }
+        if let Some((a, b)) = add_edge(mesh, tri[2], tri[0], nb) {
+            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        }
+    }
+}
+
+fn add_edge(
+    mesh: &PolyData,
+    a: i64,
+    b: i64,
+    nb: &mut [Vec<(usize, f64)>],
+) -> Option<(usize, usize)> {
+    let n = nb.len();
+    let a = valid_point_id(a, n)?;
+    let b = valid_point_id(b, n)?;
+    if a == b {
+        return None;
+    }
+    let pa = mesh.points.get(a);
+    let pb = mesh.points.get(b);
+    let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+    if !nb[a].iter().any(|&(v, _)| v == b) {
+        nb[a].push((b, d));
+    }
+    if !nb[b].iter().any(|&(v, _)| v == a) {
+        nb[b].push((a, d));
+    }
+    Some((a, b))
+}
+
+fn valid_triangle(tri: &[i64], n_points: usize) -> bool {
+    tri.len() == 3
+        && tri[0] != tri[1]
+        && tri[1] != tri[2]
+        && tri[2] != tri[0]
+        && tri
+            .iter()
+            .all(|&point_id| valid_point_id(point_id, n_points).is_some())
+}
+
+fn valid_polygon_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.len() >= 3
+        && cell
+            .iter()
+            .all(|&point_id| valid_point_id(point_id, n_points).is_some())
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

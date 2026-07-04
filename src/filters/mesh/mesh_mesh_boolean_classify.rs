@@ -19,17 +19,10 @@ pub fn classify_vertices(mesh: &PolyData, reference: &PolyData) -> PolyData {
 }
 pub fn vertex_distance_to_mesh(mesh: &PolyData, reference: &PolyData) -> PolyData {
     let n = mesh.points.len();
-    let rn = reference.points.len();
     let data: Vec<f64> = (0..n)
         .map(|i| {
             let p = mesh.points.get(i);
-            let mut best = f64::INFINITY;
-            for j in 0..rn {
-                let q = reference.points.get(j);
-                let d = (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2);
-                best = best.min(d);
-            }
-            best.sqrt()
+            min_distance_to_surface(p, reference)
         })
         .collect();
     let mut r = mesh.clone();
@@ -38,10 +31,47 @@ pub fn vertex_distance_to_mesh(mesh: &PolyData, reference: &PolyData) -> PolyDat
     r.point_data_mut().set_active_scalars("DistToRef");
     r
 }
+
+fn min_distance_to_surface(p: [f64; 3], mesh: &PolyData) -> f64 {
+    let mut best = f64::INFINITY;
+    let n = mesh.points.len();
+
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3
+            || !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < n))
+        {
+            continue;
+        }
+        let a = mesh.points.get(cell[0] as usize);
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            best = best.min(point_triangle_dist2(p, a, b, c));
+        }
+    }
+
+    if best.is_finite() {
+        return best.sqrt();
+    }
+
+    for i in 0..n {
+        let q = mesh.points.get(i);
+        best = best.min(dist2(p, q));
+    }
+    best.sqrt()
+}
+
 fn point_inside(p: [f64; 3], mesh: &PolyData) -> bool {
     let mut crossings = 0;
+    let n = mesh.points.len();
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3
+            || !cell
+                .iter()
+                .all(|&id| usize::try_from(id).is_ok_and(|idx| idx < n))
+        {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);
@@ -81,6 +111,86 @@ fn point_inside(p: [f64; 3], mesh: &PolyData) -> bool {
         }
     }
     crossings % 2 == 1
+}
+
+fn point_triangle_dist2(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
+    let ab = sub(b, a);
+    let ac = sub(c, a);
+    let ap = sub(p, a);
+
+    let d1 = dot(ab, ap);
+    let d2 = dot(ac, ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return dist2(p, a);
+    }
+
+    let bp = sub(p, b);
+    let d3 = dot(ab, bp);
+    let d4 = dot(ac, bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return dist2(p, b);
+    }
+
+    let cp = sub(p, c);
+    let d5 = dot(ab, cp);
+    let d6 = dot(ac, cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return dist2(p, c);
+    }
+
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let v = d1 / (d1 - d3);
+        return dist2(p, [a[0] + v * ab[0], a[1] + v * ab[1], a[2] + v * ab[2]]);
+    }
+
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let w = d2 / (d2 - d6);
+        return dist2(p, [a[0] + w * ac[0], a[1] + w * ac[1], a[2] + w * ac[2]]);
+    }
+
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return dist2(
+            p,
+            [
+                b[0] + w * (c[0] - b[0]),
+                b[1] + w * (c[1] - b[1]),
+                b[2] + w * (c[2] - b[2]),
+            ],
+        );
+    }
+
+    let denom = va + vb + vc;
+    if denom.abs() <= 1e-15 {
+        return dist2(p, a).min(dist2(p, b)).min(dist2(p, c));
+    }
+    let inv = 1.0 / denom;
+    let v = vb * inv;
+    let w = vc * inv;
+    dist2(
+        p,
+        [
+            a[0] + ab[0] * v + ac[0] * w,
+            a[1] + ab[1] * v + ac[1] * w,
+            a[2] + ab[2] * v + ac[2] * w,
+        ],
+    )
+}
+
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
+    let d = sub(a, b);
+    dot(d, d)
 }
 #[cfg(test)]
 mod tests {

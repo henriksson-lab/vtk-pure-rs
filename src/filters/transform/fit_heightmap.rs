@@ -18,7 +18,8 @@ pub fn fit_to_heightmap(mesh: &PolyData, heightmap: &ImageData) -> PolyData {
     let dims = heightmap.dimensions();
     let nx = dims[0];
     let ny = dims[1];
-    if nx < 2 || ny < 2 {
+    let nz = dims[2];
+    if mesh.points.is_empty() || mesh.total_cells() < 1 || nx < 2 || ny < 2 || nz != 1 {
         return output;
     }
 
@@ -38,28 +39,29 @@ pub fn fit_to_heightmap(mesh: &PolyData, heightmap: &ImageData) -> PolyData {
         return output; // no scalars, nothing to do
     }
 
-    let x_min = origin[0];
-    let y_min = origin[1];
-    let x_max = origin[0] + (nx - 1) as f64 * spacing[0];
-    let y_max = origin[1] + (ny - 1) as f64 * spacing[1];
-
     for i in 0..output.points.len() {
         let p = output.points.get(i);
-        // Clamp to bounds
-        let x = p[0].clamp(x_min, x_max);
-        let y = p[1].clamp(y_min, y_max);
+        let fi = (p[0] - origin[0]) / spacing[0];
+        let fj = (p[1] - origin[1]) / spacing[1];
 
-        // Continuous grid coordinates
-        let fi = (x - x_min) / spacing[0];
-        let fj = (y - y_min) / spacing[1];
-
-        let i0 = (fi.floor() as usize).min(nx - 2);
-        let j0 = (fj.floor() as usize).min(ny - 2);
+        let (i0, tx) = if fi < 0.0 {
+            (0, 0.0)
+        } else if fi >= (nx - 1) as f64 {
+            (nx - 2, 1.0)
+        } else {
+            let i0 = fi.floor() as usize;
+            (i0, fi - i0 as f64)
+        };
+        let (j0, ty) = if fj < 0.0 {
+            (0, 0.0)
+        } else if fj >= (ny - 1) as f64 {
+            (ny - 2, 1.0)
+        } else {
+            let j0 = fj.floor() as usize;
+            (j0, fj - j0 as f64)
+        };
         let i1 = i0 + 1;
         let j1 = j0 + 1;
-
-        let tx = fi - i0 as f64;
-        let ty = fj - j0 as f64;
 
         // Bilinear interpolation
         let h00 = heights[j0 * nx + i0];
@@ -72,7 +74,7 @@ pub fn fit_to_heightmap(mesh: &PolyData, heightmap: &ImageData) -> PolyData {
             + h01 * (1.0 - tx) * ty
             + h11 * tx * ty;
 
-        output.points.set(i, [p[0], p[1], z]);
+        output.points.set(i, [p[0], p[1], z + origin[2]]);
     }
 
     output

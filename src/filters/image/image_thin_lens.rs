@@ -11,7 +11,7 @@ pub fn image_thin_lens(input: &ImageData, scalars: &str) -> ImageData {
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             if buf[0].abs() > 0.01 {
-                1.0 / (1.0 / buf[0] - 1.0 / 0.5)
+                1.0 / (1.0 / 0.5 - 1.0 / buf[0])
             } else {
                 0.0
             }

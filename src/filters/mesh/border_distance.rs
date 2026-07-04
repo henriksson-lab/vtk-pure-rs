@@ -19,6 +19,9 @@ pub fn boundary_distance(input: &PolyData) -> PolyData {
         for i in 0..cell.len() {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             let key = if (a as i64) < (b as i64) {
                 (a as i64, b as i64)
             } else {

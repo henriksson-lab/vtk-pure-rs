@@ -1,4 +1,4 @@
-use crate::data::PolyData;
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, PolyData};
 
 /// A 4x4 transformation matrix in column-major order.
 pub type Matrix4 = [[f64; 4]; 4];
@@ -99,37 +99,145 @@ pub fn transform(input: &PolyData, matrix: &Matrix4) -> PolyData {
         pts[base + 2] = m[0][2] * x + m[1][2] * y + m[2][2] * z + m[3][2];
     }
 
-    // Transform normals if present
-    if let Some(normals_arr) = output.point_data().normals() {
-        let nc = normals_arr.num_components();
-        let nt = normals_arr.num_tuples();
-        if nc == 3 {
-            let name = normals_arr.name().to_string();
-            let mut flat = vec![0.0f64; nt * 3];
-            let mut buf = [0.0f64; 3];
-            for i in 0..nt {
-                normals_arr.tuple_as_f64(i, &mut buf);
-                let tx = m[0][0] * buf[0] + m[1][0] * buf[1] + m[2][0] * buf[2];
-                let ty = m[0][1] * buf[0] + m[1][1] * buf[1] + m[2][1] * buf[2];
-                let tz = m[0][2] * buf[0] + m[1][2] * buf[1] + m[2][2] * buf[2];
-                let len = (tx * tx + ty * ty + tz * tz).sqrt();
-                let base = i * 3;
-                if len > 1e-10 {
-                    let inv = 1.0 / len;
-                    flat[base] = tx * inv;
-                    flat[base + 1] = ty * inv;
-                    flat[base + 2] = tz * inv;
-                } else {
-                    flat[base + 2] = 1.0;
-                }
-            }
-            let new_normals = crate::data::DataArray::<f64>::from_vec(&name, flat, 3);
-            output.point_data_mut().add_array(new_normals.into());
-            output.point_data_mut().set_active_normals(&name);
-        }
-    }
+    let normal_matrix = inverse_transpose_3x3(m);
+    transform_active_vectors(output.point_data_mut(), m);
+    transform_active_normals(output.point_data_mut(), &normal_matrix);
+    transform_active_vectors(output.cell_data_mut(), m);
+    transform_active_normals(output.cell_data_mut(), &normal_matrix);
 
     output
+}
+
+fn transform_active_vectors(attrs: &mut DataSetAttributes, matrix: &Matrix4) {
+    let Some(vectors) = attrs.vectors() else {
+        return;
+    };
+    let Some(new_vectors) = transform_vector_array(vectors, matrix, false) else {
+        return;
+    };
+    let name = new_vectors.name().to_string();
+    attrs.add_array(new_vectors.into());
+    attrs.set_active_vectors(&name);
+}
+
+fn transform_active_normals(attrs: &mut DataSetAttributes, normal_matrix: &[[f64; 3]; 3]) {
+    let Some(normals) = attrs.normals() else {
+        return;
+    };
+    let Some(new_normals) = transform_normal_array(normals, normal_matrix) else {
+        return;
+    };
+    let name = new_normals.name().to_string();
+    attrs.add_array(new_normals.into());
+    attrs.set_active_normals(&name);
+}
+
+fn transform_vector_array(
+    array: &AnyDataArray,
+    matrix: &Matrix4,
+    normalize: bool,
+) -> Option<DataArray<f32>> {
+    if array.num_components() != 3 {
+        return None;
+    }
+
+    let nt = array.num_tuples();
+    let mut flat = vec![0.0f32; nt * 3];
+    let mut buf = [0.0f64; 3];
+    for i in 0..nt {
+        array.tuple_as_f64(i, &mut buf);
+        let tx = matrix[0][0] * buf[0] + matrix[1][0] * buf[1] + matrix[2][0] * buf[2];
+        let ty = matrix[0][1] * buf[0] + matrix[1][1] * buf[1] + matrix[2][1] * buf[2];
+        let tz = matrix[0][2] * buf[0] + matrix[1][2] * buf[1] + matrix[2][2] * buf[2];
+        write_vector(&mut flat, i, [tx, ty, tz], normalize);
+    }
+
+    Some(DataArray::<f32>::from_vec(array.name(), flat, 3))
+}
+
+fn transform_normal_array(
+    array: &AnyDataArray,
+    normal_matrix: &[[f64; 3]; 3],
+) -> Option<DataArray<f32>> {
+    if array.num_components() != 3 {
+        return None;
+    }
+
+    let nt = array.num_tuples();
+    let mut flat = vec![0.0f32; nt * 3];
+    let mut buf = [0.0f64; 3];
+    for i in 0..nt {
+        array.tuple_as_f64(i, &mut buf);
+        let tx = normal_matrix[0][0] * buf[0]
+            + normal_matrix[0][1] * buf[1]
+            + normal_matrix[0][2] * buf[2];
+        let ty = normal_matrix[1][0] * buf[0]
+            + normal_matrix[1][1] * buf[1]
+            + normal_matrix[1][2] * buf[2];
+        let tz = normal_matrix[2][0] * buf[0]
+            + normal_matrix[2][1] * buf[1]
+            + normal_matrix[2][2] * buf[2];
+        write_vector(&mut flat, i, [tx, ty, tz], true);
+    }
+
+    Some(DataArray::<f32>::from_vec(array.name(), flat, 3))
+}
+
+fn write_vector(flat: &mut [f32], idx: usize, v: [f64; 3], normalize: bool) {
+    let base = idx * 3;
+    if normalize {
+        let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        if len > 1e-10 {
+            let inv = 1.0 / len;
+            flat[base] = (v[0] * inv) as f32;
+            flat[base + 1] = (v[1] * inv) as f32;
+            flat[base + 2] = (v[2] * inv) as f32;
+        } else {
+            flat[base + 2] = 1.0;
+        }
+    } else {
+        flat[base] = v[0] as f32;
+        flat[base + 1] = v[1] as f32;
+        flat[base + 2] = v[2] as f32;
+    }
+}
+
+fn inverse_transpose_3x3(matrix: &Matrix4) -> [[f64; 3]; 3] {
+    let a00 = matrix[0][0];
+    let a01 = matrix[1][0];
+    let a02 = matrix[2][0];
+    let a10 = matrix[0][1];
+    let a11 = matrix[1][1];
+    let a12 = matrix[2][1];
+    let a20 = matrix[0][2];
+    let a21 = matrix[1][2];
+    let a22 = matrix[2][2];
+
+    let c00 = a11 * a22 - a12 * a21;
+    let c01 = -(a10 * a22 - a12 * a20);
+    let c02 = a10 * a21 - a11 * a20;
+    let c10 = -(a01 * a22 - a02 * a21);
+    let c11 = a00 * a22 - a02 * a20;
+    let c12 = -(a00 * a21 - a01 * a20);
+    let c20 = a01 * a12 - a02 * a11;
+    let c21 = -(a00 * a12 - a02 * a10);
+    let c22 = a00 * a11 - a01 * a10;
+
+    let det = a00 * c00 + a01 * c01 + a02 * c02;
+    if det.abs() <= 1e-15 {
+        return [
+            [matrix[0][0], matrix[0][1], matrix[0][2]],
+            [matrix[1][0], matrix[1][1], matrix[1][2]],
+            [matrix[2][0], matrix[2][1], matrix[2][2]],
+        ];
+    }
+
+    let inv_det = 1.0 / det;
+    [
+        [c00 * inv_det, c01 * inv_det, c02 * inv_det],
+        [c10 * inv_det, c11 * inv_det, c12 * inv_det],
+        [c20 * inv_det, c21 * inv_det, c22 * inv_det],
+    ]
 }
 
 #[cfg(test)]
@@ -185,5 +293,36 @@ mod tests {
 
         assert_eq!(result.points.get(0), [1.0, 2.0, 3.0]);
         assert_eq!(result.points.get(2), [7.0, 8.0, 9.0]);
+    }
+
+    #[test]
+    fn transforms_active_vectors_and_cell_normals() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.point_data_mut().add_array(
+            crate::data::DataArray::<f64>::from_vec("Vectors", vec![1.0, 0.0, 0.0], 3).into(),
+        );
+        pd.point_data_mut().set_active_vectors("Vectors");
+        pd.cell_data_mut().add_array(
+            crate::data::DataArray::<f64>::from_vec("Normals", vec![1.0, 1.0, 0.0], 3).into(),
+        );
+        pd.cell_data_mut().set_active_normals("Normals");
+
+        let result = transform(&pd, &scale(2.0, 4.0, 1.0));
+        let vectors = result.point_data().vectors().unwrap();
+        assert!(vectors.as_f32().is_some());
+        let mut buf = [0.0; 3];
+        vectors.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [2.0, 0.0, 0.0]);
+
+        let normals = result.cell_data().normals().unwrap();
+        assert!(normals.as_f32().is_some());
+        normals.tuple_as_f64(0, &mut buf);
+        let expected = [2.0 / 5.0_f64.sqrt(), 1.0 / 5.0_f64.sqrt(), 0.0];
+        assert!((buf[0] - expected[0]).abs() < 1e-6);
+        assert!((buf[1] - expected[1]).abs() < 1e-6);
+        assert!((buf[2] - expected[2]).abs() < 1e-6);
     }
 }

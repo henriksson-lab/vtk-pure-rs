@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, DataSet, ImageData};
+use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Normalize scalar values in an ImageData to the [0, 1] range.
 ///
@@ -13,6 +13,9 @@ pub fn normalize_to_unit(input: &ImageData, scalars: &str) -> ImageData {
 
     let nc: usize = arr.num_components();
     let nt: usize = arr.num_tuples();
+    if nt == 0 {
+        return input.clone();
+    }
 
     // Read all values to find min and max.
     let total: usize = nt * nc;
@@ -26,7 +29,7 @@ pub fn normalize_to_unit(input: &ImageData, scalars: &str) -> ImageData {
     }
 
     let mut vmin: f64 = f64::MAX;
-    let mut vmax: f64 = f64::MIN;
+    let mut vmax: f64 = f64::NEG_INFINITY;
     for &v in &values {
         if v < vmin {
             vmin = v;

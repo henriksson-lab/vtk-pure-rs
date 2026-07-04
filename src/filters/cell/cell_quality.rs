@@ -70,12 +70,6 @@ pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
     let mut pd = input.clone();
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Quality",
-            values.clone(),
-            1,
-        )));
-    pd.cell_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
             "CellQuality",
             values,
             1,

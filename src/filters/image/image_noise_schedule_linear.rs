@@ -10,7 +10,7 @@ pub fn image_noise_schedule_linear(input: &ImageData, scalars: &str) -> ImageDat
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0].clamp(0.0, 1.0) * 0.02 + 0.0001
+            0.0001 + buf[0].clamp(0.0, 1.0) * (0.02 - 0.0001)
         })
         .collect();
     let dims = input.dimensions();
@@ -33,5 +33,26 @@ mod tests {
         );
         let r = image_noise_schedule_linear(&img, "v");
         assert_eq!(r.dimensions(), [5, 5, 1]);
+    }
+
+    #[test]
+    fn maps_unit_interval_to_beta_range() {
+        let mut img = ImageData::with_dimensions(3, 1, 1);
+        img.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 0.5, 1.0],
+                1,
+            )));
+
+        let r = image_noise_schedule_linear(&img, "v");
+        let arr = r.point_data().get_array("v").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 0.0001).abs() < 1e-12);
+        arr.tuple_as_f64(1, &mut buf);
+        assert!((buf[0] - 0.01005).abs() < 1e-12);
+        arr.tuple_as_f64(2, &mut buf);
+        assert!((buf[0] - 0.02).abs() < 1e-12);
     }
 }

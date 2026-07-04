@@ -10,7 +10,9 @@ pub fn image_overtopping_rate(input: &ImageData, scalars: &str) -> ImageData {
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            0.067 * (9.81 * buf[0].powi(3)).sqrt() * (-4.75 * 1.0 / buf[0].abs().max(0.01)).exp()
+            0.067
+                * (9.81 * buf[0].max(0.0).powi(3)).sqrt()
+                * (-4.75 * 1.0 / buf[0].abs().max(0.01)).exp()
         })
         .collect();
     let dims = input.dimensions();

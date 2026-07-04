@@ -62,9 +62,15 @@ fn project_along_z(
         }
     }
 
+    let spacing = input.spacing();
+    let mut origin = input.origin();
+    if nz > 0 {
+        origin[2] += 0.5 * spacing[2] * (nz - 1) as f64;
+    }
+
     ImageData::with_dimensions(nx, ny, 1)
-        .with_spacing([input.spacing()[0], input.spacing()[1], 1.0])
-        .with_origin(input.origin())
+        .with_spacing(spacing)
+        .with_origin(origin)
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(out_name, data, 1)))
 }
 
@@ -90,9 +96,13 @@ pub fn extract_z_slice(input: &ImageData, scalars: &str, z_index: usize) -> Imag
         })
         .collect();
 
+    let spacing = input.spacing();
+    let mut origin = input.origin();
+    origin[2] += z_index as f64 * spacing[2];
+
     ImageData::with_dimensions(nx, ny, 1)
-        .with_spacing([input.spacing()[0], input.spacing()[1], 1.0])
-        .with_origin(input.origin())
+        .with_spacing(spacing)
+        .with_origin(origin)
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
 }
 
@@ -110,6 +120,8 @@ mod tests {
         );
         let r = max_intensity_projection(&img, "v");
         assert_eq!(r.dimensions(), [4, 4, 1]);
+        assert_eq!(r.spacing(), [1.0, 1.0, 1.0]);
+        assert_eq!(r.origin(), [0.0, 0.0, 1.0]);
         let arr = r.point_data().get_array("MIP").unwrap();
         let mut buf = [0.0];
         arr.tuple_as_f64(0, &mut buf);
@@ -126,9 +138,39 @@ mod tests {
         );
         let r = extract_z_slice(&img, "v", 1);
         assert_eq!(r.dimensions(), [4, 4, 1]);
+        assert_eq!(r.spacing(), [1.0, 1.0, 1.0]);
+        assert_eq!(r.origin(), [0.0, 0.0, 1.0]);
         let arr = r.point_data().get_array("v").unwrap();
         let mut buf = [0.0];
         arr.tuple_as_f64(0, &mut buf);
         assert!((buf[0] - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn projection_preserves_non_unit_spacing_and_centers_origin() {
+        let img = ImageData::from_function(
+            [2, 2, 4],
+            [0.5, 2.0, 3.0],
+            [10.0, 20.0, 30.0],
+            "v",
+            |_, _, z| z,
+        );
+        let r = mean_intensity_projection(&img, "v");
+        assert_eq!(r.spacing(), [0.5, 2.0, 3.0]);
+        assert_eq!(r.origin(), [10.0, 20.0, 34.5]);
+    }
+
+    #[test]
+    fn slice_origin_tracks_selected_z() {
+        let img = ImageData::from_function(
+            [2, 2, 4],
+            [0.5, 2.0, 3.0],
+            [10.0, 20.0, 30.0],
+            "v",
+            |_, _, z| z,
+        );
+        let r = extract_z_slice(&img, "v", 2);
+        assert_eq!(r.spacing(), [0.5, 2.0, 3.0]);
+        assert_eq!(r.origin(), [10.0, 20.0, 36.0]);
     }
 }

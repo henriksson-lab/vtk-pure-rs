@@ -1,16 +1,17 @@
 use crate::data::{CellArray, Points, PolyData};
+use crate::filters::mesh::aspect_ratio::triangle_aspect_ratio;
 use std::collections::HashMap;
 
 /// Remove triangles with aspect ratio exceeding a threshold.
 ///
-/// Aspect ratio = longest_edge / shortest_edge. Removes slivers.
+/// Uses the VTK/Verdict triangle aspect ratio and removes slivers.
 pub fn remove_high_aspect_ratio(input: &PolyData, max_ratio: f64) -> PolyData {
     let mut pt_map: HashMap<i64, i64> = HashMap::new();
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 {
             continue;
         }
 
@@ -18,16 +19,7 @@ pub fn remove_high_aspect_ratio(input: &PolyData, max_ratio: f64) -> PolyData {
         let v1 = input.points.get(cell[1] as usize);
         let v2 = input.points.get(cell[2] as usize);
 
-        let d01 = dist(v0, v1);
-        let d12 = dist(v1, v2);
-        let d20 = dist(v2, v0);
-        let longest = d01.max(d12).max(d20);
-        let shortest = d01.min(d12).min(d20);
-        let ratio = if shortest > 1e-15 {
-            longest / shortest
-        } else {
-            f64::MAX
-        };
+        let ratio = triangle_aspect_ratio(v0, v1, v2);
 
         if ratio <= max_ratio {
             let mapped: Vec<i64> = cell
@@ -57,22 +49,13 @@ pub fn extract_high_aspect_ratio(input: &PolyData, min_ratio: f64) -> PolyData {
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() != 3 {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
         let v1 = input.points.get(cell[1] as usize);
         let v2 = input.points.get(cell[2] as usize);
-        let d01 = dist(v0, v1);
-        let d12 = dist(v1, v2);
-        let d20 = dist(v2, v0);
-        let longest = d01.max(d12).max(d20);
-        let shortest = d01.min(d12).min(d20);
-        let ratio = if shortest > 1e-15 {
-            longest / shortest
-        } else {
-            f64::MAX
-        };
+        let ratio = triangle_aspect_ratio(v0, v1, v2);
 
         if ratio >= min_ratio {
             let mapped: Vec<i64> = cell
@@ -93,10 +76,6 @@ pub fn extract_high_aspect_ratio(input: &PolyData, min_ratio: f64) -> PolyData {
     pd.points = out_points;
     pd.polys = out_polys;
     pd
-}
-
-fn dist(a: [f64; 3], b: [f64; 3]) -> f64 {
-    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
 
 #[cfg(test)]

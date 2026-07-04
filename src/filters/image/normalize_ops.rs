@@ -9,9 +9,12 @@ pub fn normalize_min_max(image: &ImageData, array_name: &str) -> ImageData {
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);
@@ -37,6 +40,9 @@ pub fn normalize_zscore(image: &ImageData, array_name: &str) -> ImageData {
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut sum = 0.0;
     let mut sum2 = 0.0;
@@ -71,8 +77,11 @@ pub fn normalize_percentile(
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
-    let mut vals: Vec<f64> = (0..n)
+    let vals: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -80,8 +89,10 @@ pub fn normalize_percentile(
         .collect();
     let mut sorted = vals.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let lo = sorted[(low_pct * (n - 1) as f64) as usize];
-    let hi = sorted[(high_pct * (n - 1) as f64) as usize];
+    let low_idx = (low_pct.clamp(0.0, 1.0) * (n - 1) as f64) as usize;
+    let high_idx = (high_pct.clamp(0.0, 1.0) * (n - 1) as f64) as usize;
+    let lo = sorted[low_idx.min(high_idx)];
+    let hi = sorted[low_idx.max(high_idx)];
     let range = (hi - lo).max(1e-15);
     let data: Vec<f64> = vals
         .iter()
@@ -105,9 +116,12 @@ pub fn rescale_to_range(
         _ => return image.clone(),
     };
     let n = arr.num_tuples();
+    if n == 0 {
+        return image.clone();
+    }
     let mut buf = [0.0f64];
     let mut min_v = f64::MAX;
-    let mut max_v = f64::MIN;
+    let mut max_v = f64::NEG_INFINITY;
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         min_v = min_v.min(buf[0]);

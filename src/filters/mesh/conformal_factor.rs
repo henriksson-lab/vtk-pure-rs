@@ -1,5 +1,4 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
-use std::collections::HashSet;
 
 /// Compute the conformal factor (area distortion) relative to a reference mesh.
 ///
@@ -22,7 +21,7 @@ pub fn conformal_factor(current: &PolyData, reference: &PolyData) -> PolyData {
         let rc = ri.next();
         match (cc, rc) {
             (Some(c), Some(r)) => {
-                if c.len() < 3 || r.len() < 3 {
+                if !valid_triangle_cell(current, c) || !valid_triangle_cell(reference, r) {
                     factors.push(0.0);
                     continue;
                 }
@@ -63,7 +62,9 @@ pub fn angle_distortion(current: &PolyData, reference: &PolyData) -> PolyData {
         let cc = ci.next();
         let rc = ri.next();
         match (cc, rc) {
-            (Some(c), Some(r)) if c.len() >= 3 && r.len() >= 3 => {
+            (Some(c), Some(r))
+                if valid_triangle_cell(current, c) && valid_triangle_cell(reference, r) =>
+            {
                 let ca = tri_angles(current, c);
                 let ra = tri_angles(reference, r);
                 let max_diff = (ca[0] - ra[0])
@@ -85,6 +86,16 @@ pub fn angle_distortion(current: &PolyData, reference: &PolyData) -> PolyData {
             1,
         )));
     pd
+}
+
+fn valid_triangle_cell(pd: &PolyData, c: &[i64]) -> bool {
+    c.len() >= 3
+        && c[0] >= 0
+        && c[1] >= 0
+        && c[2] >= 0
+        && (c[0] as usize) < pd.points.len()
+        && (c[1] as usize) < pd.points.len()
+        && (c[2] as usize) < pd.points.len()
 }
 
 fn tri_area_cell(pd: &PolyData, c: &[i64]) -> f64 {
@@ -189,5 +200,25 @@ mod tests {
         let pd = PolyData::new();
         let result = conformal_factor(&pd, &pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn invalid_triangle_ids_produce_zero_distortion() {
+        let mut current = PolyData::new();
+        current.points.push([0.0, 0.0, 0.0]);
+        current.points.push([1.0, 0.0, 0.0]);
+        current.polys.push_cell(&[0, 1, 99]);
+
+        let reference = current.clone();
+        let result = conformal_factor(&current, &reference);
+        let arr = result.cell_data().get_array("ConformalFactor").unwrap();
+        let mut buf = [1.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+
+        let result = angle_distortion(&current, &reference);
+        let arr = result.cell_data().get_array("AngleDistortion").unwrap();
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

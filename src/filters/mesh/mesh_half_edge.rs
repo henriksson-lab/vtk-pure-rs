@@ -6,31 +6,32 @@ pub fn half_edge_analysis(mesh: &PolyData) -> PolyData {
     if n == 0 {
         return mesh.clone();
     }
-    // Count directed edges
-    let mut directed: std::collections::HashMap<(i64, i64), u32> = std::collections::HashMap::new();
+    // Count polygon use per undirected edge.
+    let mut edges: std::collections::HashMap<(usize, usize), u32> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i];
-            let b = cell[(i + 1) % nc];
-            *directed.entry((a, b)).or_insert(0) += 1;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            *edges.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
     // Classify vertices
     let mut boundary = vec![0.0f64; n];
     let mut non_manifold = vec![0.0f64; n];
-    for (&(a, b), &count) in &directed {
-        // Check if twin exists
-        let twin_count = directed.get(&(b, a)).copied().unwrap_or(0);
-        if twin_count == 0 {
-            // Boundary edge
-            boundary[a as usize] = 1.0;
-            boundary[b as usize] = 1.0;
+    for (&(a, b), &count) in &edges {
+        if count == 1 {
+            boundary[a] = 1.0;
+            boundary[b] = 1.0;
         }
-        if count > 1 || twin_count > 1 {
-            // Non-manifold edge
-            non_manifold[a as usize] = 1.0;
-            non_manifold[b as usize] = 1.0;
+        if count > 2 {
+            non_manifold[a] = 1.0;
+            non_manifold[b] = 1.0;
         }
     }
     let mut result = mesh.clone();
@@ -48,6 +49,12 @@ pub fn half_edge_analysis(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("Boundary");
     result
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]

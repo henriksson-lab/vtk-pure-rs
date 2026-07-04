@@ -30,13 +30,14 @@ impl ExodusElementType {
     /// Map from Exodus type string.
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
-            "TRI3" | "TRI" => Some(Self::Tri3),
-            "QUAD4" | "QUAD" | "SHELL4" | "SHELL" => Some(Self::Quad4),
+            "TRIANGLE" | "TRI3" | "TRI" => Some(Self::Tri3),
+            "QUAD4" | "QUAD" => Some(Self::Quad4),
+            "SHELL4" | "SHELL" => Some(Self::Shell4),
             "TETRA4" | "TETRA" | "TET4" | "TET" => Some(Self::Tet4),
             "HEX8" | "HEX" => Some(Self::Hex8),
             "WEDGE6" | "WEDGE" => Some(Self::Wedge6),
             "PYRAMID5" | "PYRAMID" => Some(Self::Pyramid5),
-            "BAR2" | "BAR" | "BEAM" | "TRUSS" => Some(Self::Bar2),
+            "BAR2" | "BAR" | "BEAM" | "TRUSS" | "EDGE2" | "EDGE" => Some(Self::Bar2),
             _ => None,
         }
     }
@@ -101,6 +102,18 @@ mod tests {
         assert_eq!(ExodusElementType::Hex8.nodes_per_element(), 8);
         assert_eq!(ExodusElementType::Tet4.nodes_per_element(), 4);
         assert!(ExodusElementType::from_str("HEX8").is_some());
+        assert!(matches!(
+            ExodusElementType::from_str("SHELL4"),
+            Some(ExodusElementType::Shell4)
+        ));
+        assert!(matches!(
+            ExodusElementType::from_str("TRIANGLE"),
+            Some(ExodusElementType::Tri3)
+        ));
+        assert!(matches!(
+            ExodusElementType::from_str("EDGE2"),
+            Some(ExodusElementType::Bar2)
+        ));
         assert!(ExodusElementType::from_str("UNKNOWN").is_none());
     }
 

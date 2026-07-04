@@ -1,5 +1,31 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+fn image_point_count(dims: [usize; 3]) -> Option<usize> {
+    dims[0].checked_mul(dims[1])?.checked_mul(dims[2])
+}
+
+fn shift_distance(dx: i64, dy: i64) -> i64 {
+    dx.abs() + dy.abs()
+}
+
+fn better_shift(
+    corr: f64,
+    count: usize,
+    dx: i64,
+    dy: i64,
+    best_corr: f64,
+    best_count: usize,
+    best_dx: i64,
+    best_dy: i64,
+) -> bool {
+    const EPS: f64 = 1e-12;
+    corr > best_corr + EPS
+        || ((corr - best_corr).abs() <= EPS
+            && (count > best_count
+                || (count == best_count
+                    && shift_distance(dx, dy) < shift_distance(best_dx, best_dy))))
+}
+
 /// Estimate translation offset between two 2D images via cross-correlation.
 ///
 /// Computes normalized cross-correlation for a range of offsets and
@@ -25,6 +51,17 @@ pub fn register_translation_2d(
     let md = moving_img.dimensions();
     let mnx = md[0] as usize;
     let mny = md[1] as usize;
+    let fn_points = match image_point_count(fd) {
+        Some(n) if n > 0 => n,
+        _ => return (0, 0, 0.0),
+    };
+    let mn_points = match image_point_count(md) {
+        Some(n) if n > 0 => n,
+        _ => return (0, 0, 0.0),
+    };
+    if fd[2] == 0 || md[2] == 0 || fa.num_tuples() < fn_points || ma.num_tuples() < mn_points {
+        return (0, 0, 0.0);
+    }
 
     let mut fb = [0.0f64];
     let mut mb = [0.0f64];
@@ -43,15 +80,18 @@ pub fn register_translation_2d(
 
     let s = max_shift as i64;
     let mut best_corr = f64::MIN;
+    let mut best_count = 0usize;
     let mut best_dx = 0i64;
     let mut best_dy = 0i64;
 
     for dy in -s..=s {
         for dx in -s..=s {
+            let mut sum_f = 0.0;
+            let mut sum_m = 0.0;
             let mut sum_fm = 0.0;
             let mut sum_f2 = 0.0;
             let mut sum_m2 = 0.0;
-            let mut count = 0;
+            let mut count = 0usize;
             for j in 0..ny {
                 let mj = j as i64 + dy;
                 if mj < 0 || mj >= mny as i64 {
@@ -64,16 +104,24 @@ pub fn register_translation_2d(
                     }
                     let f = fv[j * nx + i];
                     let m = mv[mj as usize * mnx + mi as usize];
+                    sum_f += f;
+                    sum_m += m;
                     sum_fm += f * m;
                     sum_f2 += f * f;
                     sum_m2 += m * m;
                     count += 1;
                 }
             }
-            if count > 0 && sum_f2 > 1e-15 && sum_m2 > 1e-15 {
-                let ncc = sum_fm / (sum_f2.sqrt() * sum_m2.sqrt());
-                if ncc > best_corr {
+            if count > 0 {
+                let n = count as f64;
+                let cov = sum_fm - (sum_f * sum_m / n);
+                let var_f = sum_f2 - (sum_f * sum_f / n);
+                let var_m = sum_m2 - (sum_m * sum_m / n);
+                let denom = (var_f.max(0.0) * var_m.max(0.0)).sqrt();
+                let ncc = if denom > 1e-15 { cov / denom } else { 0.0 };
+                if better_shift(ncc, count, dx, dy, best_corr, best_count, best_dx, best_dy) {
                     best_corr = ncc;
+                    best_count = count;
                     best_dx = dx;
                     best_dy = dy;
                 }

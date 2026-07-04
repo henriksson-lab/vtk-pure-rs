@@ -1,4 +1,4 @@
-//! Orient mesh faces consistently (outward normals).
+//! Orient mesh faces consistently.
 
 use crate::data::{CellArray, PolyData};
 
@@ -16,6 +16,9 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
     for (ci, cell) in cells.iter().enumerate() {
         let n = cell.len();
         for i in 0..n {
+            if cell[i] < 0 || cell[(i + 1) % n] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % n] as usize;
             edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
@@ -25,30 +28,38 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
     let mut oriented = vec![false; nc];
     let mut flipped = vec![false; nc];
     let mut queue = std::collections::VecDeque::new();
-    oriented[0] = true;
-    queue.push_back(0);
+    for seed in 0..nc {
+        if oriented[seed] {
+            continue;
+        }
+        oriented[seed] = true;
+        queue.push_back(seed);
 
-    while let Some(ci) = queue.pop_front() {
-        let cell = &cells[ci];
-        let n = cell.len();
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            let key = (a.min(b), a.max(b));
-            if let Some(neighbors) = edge_faces.get(&key) {
-                for &ni in neighbors {
-                    if oriented[ni] {
-                        continue;
+        while let Some(ci) = queue.pop_front() {
+            let cell = &cells[ci];
+            let n = cell.len();
+            for i in 0..n {
+                if cell[i] < 0 || cell[(i + 1) % n] < 0 {
+                    continue;
+                }
+                let a = cell[i] as usize;
+                let b = cell[(i + 1) % n] as usize;
+                let key = (a.min(b), a.max(b));
+                if let Some(neighbors) = edge_faces.get(&key) {
+                    for &ni in neighbors {
+                        if ni == ci || oriented[ni] {
+                            continue;
+                        }
+                        oriented[ni] = true;
+                        // Check if neighbor has same edge direction (needs flip)
+                        let ncell = &cells[ni];
+                        let edge_dir_same = has_same_edge_direction(ncell, a, b);
+                        let parent_flipped = flipped[ci];
+                        // If parent is flipped, its effective edge is reversed
+                        let need_flip = edge_dir_same ^ parent_flipped;
+                        flipped[ni] = need_flip;
+                        queue.push_back(ni);
                     }
-                    oriented[ni] = true;
-                    // Check if neighbor has same edge direction (needs flip)
-                    let ncell = &cells[ni];
-                    let edge_dir_same = has_same_edge_direction(ncell, a, b);
-                    let parent_flipped = flipped[ci];
-                    // If parent is flipped, its effective edge is reversed
-                    let need_flip = edge_dir_same ^ parent_flipped;
-                    flipped[ni] = need_flip;
-                    queue.push_back(ni);
                 }
             }
         }
@@ -73,6 +84,9 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
 fn has_same_edge_direction(cell: &[i64], a: usize, b: usize) -> bool {
     let n = cell.len();
     for i in 0..n {
+        if cell[i] < 0 || cell[(i + 1) % n] < 0 {
+            continue;
+        }
         if cell[i] as usize == a && cell[(i + 1) % n] as usize == b {
             return true;
         }
@@ -88,6 +102,9 @@ pub fn is_consistently_oriented(mesh: &PolyData) -> bool {
     for cell in &cells {
         let n = cell.len();
         for i in 0..n {
+            if cell[i] < 0 || cell[(i + 1) % n] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % n] as usize;
             let key = (a.min(b), a.max(b));

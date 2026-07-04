@@ -10,14 +10,17 @@ pub fn dihedral_angles(mesh: &PolyData) -> PolyData {
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| {
+            Some([
+                valid_point_id(c[0], n)?,
+                valid_point_id(c[1], n)?,
+                valid_point_id(c[2], n)?,
+            ])
+        })
         .collect();
     let normals: Vec<[f64; 3]> = tris
         .iter()
         .map(|&[a, b, c]| {
-            if a >= n || b >= n || c >= n {
-                return [0.0, 0.0, 1.0];
-            }
             let pa = mesh.points.get(a);
             let pb = mesh.points.get(b);
             let pc = mesh.points.get(c);
@@ -69,6 +72,10 @@ pub fn dihedral_angles(mesh: &PolyData) -> PolyData {
         .point_data_mut()
         .set_active_scalars("MaxDihedralAngle");
     result
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 #[cfg(test)]

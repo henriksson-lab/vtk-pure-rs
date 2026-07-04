@@ -29,41 +29,91 @@ pub fn flatten_to_best_fit_plane(mesh: &PolyData) -> PolyData {
             }
         }
     }
-    // Power iteration for normal (smallest eigenvector)
-    let mut v = [0.0, 0.0, 1.0];
-    for _ in 0..50 {
-        let mv = [
-            cov[0][0] * v[0] + cov[0][1] * v[1] + cov[0][2] * v[2],
-            cov[1][0] * v[0] + cov[1][1] * v[1] + cov[1][2] * v[2],
-            cov[2][0] * v[0] + cov[2][1] * v[1] + cov[2][2] * v[2],
-        ];
-        let l = (mv[0] * mv[0] + mv[1] * mv[1] + mv[2] * mv[2])
-            .sqrt()
-            .max(1e-15);
-        v = [mv[0] / l, mv[1] / l, mv[2] / l];
-    }
-    // v is largest eigenvector; normal is perpendicular
-    let mut v2 = if v[0].abs() < 0.9 {
-        [1.0, 0.0, 0.0]
-    } else {
-        [0.0, 1.0, 0.0]
-    };
-    let d = v2[0] * v[0] + v2[1] * v[1] + v2[2] * v[2];
-    v2 = [v2[0] - d * v[0], v2[1] - d * v[1], v2[2] - d * v[2]];
-    let l2 = (v2[0] * v2[0] + v2[1] * v2[1] + v2[2] * v2[2])
-        .sqrt()
-        .max(1e-15);
-    v2 = [v2[0] / l2, v2[1] / l2, v2[2] / l2];
-    // Use v and v2 as 2D axes, project
+    let (eigenvalues, eigenvectors) = jacobi_eigen_symmetric_3x3(cov);
+    let mut axes = [0usize, 1, 2];
+    axes.sort_by(|&a, &b| {
+        eigenvalues[b]
+            .partial_cmp(&eigenvalues[a])
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let u_axis = eigenvectors[axes[0]];
+    let v_axis = eigenvectors[axes[1]];
+
     let mut r = mesh.clone();
     for i in 0..n {
         let p = mesh.points.get(i);
         let d = [p[0] - cx, p[1] - cy, p[2] - cz];
-        let u = d[0] * v[0] + d[1] * v[1] + d[2] * v[2];
-        let w = d[0] * v2[0] + d[1] * v2[1] + d[2] * v2[2];
+        let u = d[0] * u_axis[0] + d[1] * u_axis[1] + d[2] * u_axis[2];
+        let w = d[0] * v_axis[0] + d[1] * v_axis[1] + d[2] * v_axis[2];
         r.points.set(i, [u, w, 0.0]);
     }
     r
+}
+
+fn jacobi_eigen_symmetric_3x3(mut a: [[f64; 3]; 3]) -> ([f64; 3], [[f64; 3]; 3]) {
+    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+    for _ in 0..24 {
+        let mut p = 0;
+        let mut q = 1;
+        let mut max_offdiag = a[0][1].abs();
+        for i in 0..3 {
+            for j in i + 1..3 {
+                let value = a[i][j].abs();
+                if value > max_offdiag {
+                    max_offdiag = value;
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if max_offdiag <= 1e-15 {
+            break;
+        }
+
+        let tau = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let t = if tau >= 0.0 {
+            1.0 / (tau + (1.0 + tau * tau).sqrt())
+        } else {
+            -1.0 / (-tau + (1.0 + tau * tau).sqrt())
+        };
+        let c = 1.0 / (1.0 + t * t).sqrt();
+        let s = t * c;
+
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+        a[p][p] = app - t * apq;
+        a[q][q] = aqq + t * apq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
+
+        for r in 0..3 {
+            if r != p && r != q {
+                let arp = a[r][p];
+                let arq = a[r][q];
+                a[r][p] = c * arp - s * arq;
+                a[p][r] = a[r][p];
+                a[r][q] = s * arp + c * arq;
+                a[q][r] = a[r][q];
+            }
+        }
+
+        for row in &mut v {
+            let vrp = row[p];
+            let vrq = row[q];
+            row[p] = c * vrp - s * vrq;
+            row[q] = s * vrp + c * vrq;
+        }
+    }
+
+    let eigenvalues = [a[0][0], a[1][1], a[2][2]];
+    let eigenvectors = [
+        [v[0][0], v[1][0], v[2][0]],
+        [v[0][1], v[1][1], v[2][1]],
+        [v[0][2], v[1][2], v[2][2]],
+    ];
+    (eigenvalues, eigenvectors)
 }
 #[cfg(test)]
 mod tests {

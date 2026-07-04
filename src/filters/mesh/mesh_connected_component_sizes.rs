@@ -1,5 +1,6 @@
 //! Compute sizes (vertex count, face count, area) of each connected component.
 use crate::data::PolyData;
+
 pub struct ComponentInfo {
     pub component_id: usize,
     pub num_vertices: usize,
@@ -12,36 +13,41 @@ pub fn component_sizes(mesh: &PolyData) -> Vec<ComponentInfo> {
         return vec![];
     }
     let mut parent: Vec<usize> = (0..n).collect();
-    for cell in mesh.polys.iter() {
-        if cell.len() < 2 {
-            continue;
-        }
-        let first = cell[0] as usize;
-        for i in 1..cell.len() {
-            union(&mut parent, first, cell[i] as usize);
+    let mut rank = vec![0usize; n];
+    for cells in [&mesh.verts, &mesh.lines, &mesh.polys, &mesh.strips] {
+        for cell in cells.iter() {
+            let mut ids = cell.iter().filter_map(|&id| valid_point_id(id, n));
+            let Some(first) = ids.next() else {
+                continue;
+            };
+            for id in ids {
+                union(&mut parent, &mut rank, first, id);
+            }
         }
     }
     let mut comp_verts: std::collections::HashMap<usize, std::collections::HashSet<usize>> =
         std::collections::HashMap::new();
     let mut comp_faces: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
     let mut comp_area: std::collections::HashMap<usize, f64> = std::collections::HashMap::new();
+    for i in 0..n {
+        let root = find(&mut parent, i);
+        comp_verts.entry(root).or_default().insert(i);
+    }
     for cell in mesh.polys.iter() {
-        if cell.is_empty() {
+        let valid: Vec<usize> = cell
+            .iter()
+            .filter_map(|&id| valid_point_id(id, n))
+            .collect();
+        if valid.is_empty() {
             continue;
         }
-        let root = find(&mut parent, cell[0] as usize);
+        let root = find(&mut parent, valid[0]);
         *comp_faces.entry(root).or_insert(0) += 1;
-        for &v in cell {
-            comp_verts
-                .entry(root)
-                .or_default()
-                .insert(find(&mut parent, v as usize));
-        }
-        if cell.len() >= 3 {
-            let a = mesh.points.get(cell[0] as usize);
-            for i in 1..cell.len() - 1 {
-                let b = mesh.points.get(cell[i] as usize);
-                let c = mesh.points.get(cell[i + 1] as usize);
+        if valid.len() >= 3 {
+            let a = mesh.points.get(valid[0]);
+            for i in 1..valid.len() - 1 {
+                let b = mesh.points.get(valid[i]);
+                let c = mesh.points.get(valid[i + 1]);
                 let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
                 let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
                 *comp_area.entry(root).or_insert(0.0) += 0.5
@@ -52,17 +58,22 @@ pub fn component_sizes(mesh: &PolyData) -> Vec<ComponentInfo> {
             }
         }
     }
-    let mut result: Vec<ComponentInfo> = comp_verts
-        .keys()
+    let mut roots: Vec<usize> = comp_verts.keys().copied().collect();
+    roots.sort_unstable();
+    let mut result: Vec<ComponentInfo> = roots
+        .into_iter()
         .enumerate()
-        .map(|(id, &root)| ComponentInfo {
-            component_id: id,
+        .map(|(component_id, root)| ComponentInfo {
+            component_id,
             num_vertices: comp_verts[&root].len(),
             num_faces: *comp_faces.get(&root).unwrap_or(&0),
             area: *comp_area.get(&root).unwrap_or(&0.0),
         })
         .collect();
     result.sort_by(|a, b| b.num_faces.cmp(&a.num_faces));
+    for (component_id, info) in result.iter_mut().enumerate() {
+        info.component_id = component_id;
+    }
     result
 }
 fn find(p: &mut [usize], mut i: usize) -> usize {
@@ -72,12 +83,24 @@ fn find(p: &mut [usize], mut i: usize) -> usize {
     }
     i
 }
-fn union(p: &mut [usize], a: usize, b: usize) {
+fn union(p: &mut [usize], rank: &mut [usize], a: usize, b: usize) {
     let ra = find(p, a);
     let rb = find(p, b);
-    if ra != rb {
-        p[rb] = ra;
+    if ra == rb {
+        return;
     }
+    if rank[ra] < rank[rb] {
+        p[ra] = rb;
+    } else if rank[ra] > rank[rb] {
+        p[rb] = ra;
+    } else {
+        p[rb] = ra;
+        rank[ra] += 1;
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 #[cfg(test)]
 mod tests {
