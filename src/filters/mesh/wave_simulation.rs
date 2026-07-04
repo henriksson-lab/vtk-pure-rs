@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, PolyData};
 
 /// Simulate wave propagation on a mesh.
 ///
@@ -13,28 +13,18 @@ pub fn wave_step(
     dt: f64,
 ) -> PolyData {
     let u_arr = match input.point_data().get_array(u_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= input.points.len() => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
     let u_old_arr = match input.point_data().get_array(u_old_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= input.points.len() => a,
         None => return input.clone(),
+        _ => return input.clone(),
     };
 
     let n = input.points.len();
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
+    let neighbors = build_neighbors(input, n);
 
     let mut buf = [0.0f64];
     let u: Vec<f64> = (0..n)
@@ -84,8 +74,126 @@ pub fn wave_step(
             attrs.add_array(a.clone());
         }
     }
+    copy_active_attributes(input.point_data(), &mut attrs);
     *pd.point_data_mut() = attrs;
     pd
+}
+
+fn build_neighbors(input: &PolyData, number_of_points: usize) -> Vec<Vec<usize>> {
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); number_of_points];
+
+    for cell in input.polys.iter() {
+        add_closed_cell_edges(cell, number_of_points, &mut neighbors);
+    }
+    for cell in input.lines.iter() {
+        add_open_cell_edges(cell, number_of_points, &mut neighbors);
+    }
+    for cell in input.strips.iter() {
+        add_triangle_strip_edges(cell, number_of_points, &mut neighbors);
+    }
+
+    neighbors
+}
+
+fn add_closed_cell_edges(cell: &[i64], number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    if cell.len() < 2 {
+        return;
+    }
+    for i in 0..cell.len() {
+        add_neighbor_edge(
+            cell[i],
+            cell[(i + 1) % cell.len()],
+            number_of_points,
+            neighbors,
+        );
+    }
+}
+
+fn add_open_cell_edges(cell: &[i64], number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    for edge in cell.windows(2) {
+        add_neighbor_edge(edge[0], edge[1], number_of_points, neighbors);
+    }
+}
+
+fn add_triangle_strip_edges(cell: &[i64], number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    if cell.len() < 3 {
+        return;
+    }
+    for i in 0..cell.len() - 2 {
+        let tri = if i % 2 == 0 {
+            [cell[i], cell[i + 1], cell[i + 2]]
+        } else {
+            [cell[i + 1], cell[i], cell[i + 2]]
+        };
+        add_neighbor_edge(tri[0], tri[1], number_of_points, neighbors);
+        add_neighbor_edge(tri[1], tri[2], number_of_points, neighbors);
+        add_neighbor_edge(tri[2], tri[0], number_of_points, neighbors);
+    }
+}
+
+fn add_neighbor_edge(a: i64, b: i64, number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    let Some(a) = point_id(a, number_of_points) else {
+        return;
+    };
+    let Some(b) = point_id(b, number_of_points) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    if !neighbors[a].contains(&b) {
+        neighbors[a].push(b);
+    }
+    if !neighbors[b].contains(&a) {
+        neighbors[b].push(a);
+    }
+}
+
+fn point_id(id: i64, number_of_points: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < number_of_points {
+        Some(id as usize)
+    } else {
+        None
+    }
+}
+
+fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(array) = input.scalars() {
+        output.set_active_scalars(array.name());
+    }
+    if let Some(array) = input.vectors() {
+        output.set_active_vectors(array.name());
+    }
+    if let Some(array) = input.normals() {
+        output.set_active_normals(array.name());
+    }
+    if let Some(array) = input.tcoords() {
+        output.set_active_tcoords(array.name());
+    }
+    if let Some(array) = input.tensors() {
+        output.set_active_tensors(array.name());
+    }
+    if let Some(array) = input.global_ids() {
+        output.set_active_global_ids(array.name());
+    }
+    if let Some(array) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = input.edge_flags() {
+        output.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = input.tangents() {
+        output.set_active_tangents(array.name());
+    }
+    if let Some(array) = input.rational_weights() {
+        output.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = input.process_ids() {
+        output.set_active_process_ids(array.name());
+    }
 }
 
 #[cfg(test)]

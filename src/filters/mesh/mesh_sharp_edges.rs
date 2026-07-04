@@ -1,5 +1,6 @@
 //! Mark vertices adjacent to sharp edges (dihedral angle exceeds threshold).
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 pub fn sharp_edge_vertices(mesh: &PolyData, angle_threshold_deg: f64) -> PolyData {
     let n = mesh.points.len();
@@ -7,41 +8,26 @@ pub fn sharp_edge_vertices(mesh: &PolyData, angle_threshold_deg: f64) -> PolyDat
         return mesh.clone();
     }
     let threshold = angle_threshold_deg * std::f64::consts::PI / 180.0;
-    let tris: Vec<[usize; 3]> = mesh
+    let polys: Vec<Vec<usize>> = mesh
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter(|c| c.len() >= 3)
+        .map(|c| c.iter().map(|&v| v as usize).collect())
         .collect();
     // Face normals
-    let normals: Vec<[f64; 3]> = tris
+    let normals: Vec<[f64; 3]> = polys
         .iter()
-        .map(|&[a, b, c]| {
-            if a >= n || b >= n || c >= n {
-                return [0.0, 0.0, 1.0];
-            }
-            let pa = mesh.points.get(a);
-            let pb = mesh.points.get(b);
-            let pc = mesh.points.get(c);
-            let u = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
-            let v = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
-            let nx = u[1] * v[2] - u[2] * v[1];
-            let ny = u[2] * v[0] - u[0] * v[2];
-            let nz = u[0] * v[1] - u[1] * v[0];
-            let len = (nx * nx + ny * ny + nz * nz).sqrt();
-            if len > 1e-15 {
-                [nx / len, ny / len, nz / len]
-            } else {
-                [0.0, 0.0, 1.0]
-            }
-        })
+        .map(|cell| polygon_normal(mesh, cell))
         .collect();
-    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
-        std::collections::HashMap::new();
-    for (fi, &[a, b, c]) in tris.iter().enumerate() {
-        for &(e0, e1) in &[(a, b), (b, c), (c, a)] {
-            let e = if e0 < e1 { (e0, e1) } else { (e1, e0) };
-            edge_faces.entry(e).or_default().push(fi);
+    let mut edge_faces: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    for (fi, cell) in polys.iter().enumerate() {
+        for i in 0..cell.len() {
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
+            if a < n && b < n {
+                let e = if a < b { (a, b) } else { (b, a) };
+                edge_faces.entry(e).or_default().push(fi);
+            }
         }
     }
     let mut sharp = vec![0.0f64; n];
@@ -69,9 +55,36 @@ pub fn sharp_edge_vertices(mesh: &PolyData, angle_threshold_deg: f64) -> PolyDat
     result
 }
 
+fn polygon_normal(mesh: &PolyData, cell: &[usize]) -> [f64; 3] {
+    let n = mesh.points.len();
+    let mut nx = 0.0;
+    let mut ny = 0.0;
+    let mut nz = 0.0;
+    for i in 0..cell.len() {
+        let a = cell[i];
+        let b = cell[(i + 1) % cell.len()];
+        if a >= n || b >= n {
+            return [0.0, 0.0, 1.0];
+        }
+        let p = mesh.points.get(a);
+        let q = mesh.points.get(b);
+        nx += (p[1] - q[1]) * (p[2] + q[2]);
+        ny += (p[2] - q[2]) * (p[0] + q[0]);
+        nz += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let len = (nx * nx + ny * ny + nz * nz).sqrt();
+    if len > 1e-15 {
+        [nx / len, ny / len, nz / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{CellArray, Points};
+
     #[test]
     fn test_sharp() {
         let mesh = PolyData::from_triangles(
@@ -88,5 +101,30 @@ mod tests {
         let mut b = [0.0f64];
         arr.tuple_as_f64(0, &mut b);
         assert_eq!(b[0], 1.0); // vertex 0 is on sharp edge
+    }
+
+    #[test]
+    fn test_sharp_quad_edge() {
+        let mut mesh = PolyData::new();
+        mesh.points = Points::from_flat_vec(vec![
+            0.0, 0.0, 0.0, //
+            1.0, 0.0, 0.0, //
+            1.0, 1.0, 0.0, //
+            0.0, 1.0, 0.0, //
+            1.0, 0.0, 1.0, //
+            1.0, 1.0, 1.0,
+        ]);
+        let mut polys = CellArray::new();
+        polys.push_cell(&[0, 1, 2, 3]);
+        polys.push_cell(&[1, 4, 5, 2]);
+        mesh.polys = polys;
+
+        let r = sharp_edge_vertices(&mesh, 45.0);
+        let arr = r.point_data().get_array("SharpEdge").unwrap();
+        let mut b = [0.0f64];
+        arr.tuple_as_f64(1, &mut b);
+        assert_eq!(b[0], 1.0);
+        arr.tuple_as_f64(2, &mut b);
+        assert_eq!(b[0], 1.0);
     }
 }

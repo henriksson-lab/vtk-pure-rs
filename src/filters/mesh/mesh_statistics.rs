@@ -24,13 +24,17 @@ pub fn mesh_statistics(mesh: &PolyData) -> MeshStats {
     let mut num_triangles = 0;
     let mut num_quads = 0;
     let mut num_other = 0;
-    let num_cells = mesh.polys.num_cells();
+    let mut num_cells = 0;
 
     let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
         std::collections::HashMap::new();
     let mut area = 0.0;
 
     for cell in mesh.polys.iter() {
+        if cell.iter().any(|&id| id < 0 || (id as usize) >= num_points) {
+            continue;
+        }
+        num_cells += 1;
         match cell.len() {
             3 => num_triangles += 1,
             4 => num_quads += 1,

@@ -12,6 +12,9 @@ pub fn cluster_by_normal(input: &PolyData, k: usize, normals_array: &str, seed: 
         Some(a) => a,
         None => return input.clone(),
     };
+    if arr.num_components() != 3 || arr.num_tuples() != input.points.len() {
+        return input.clone();
+    }
 
     let n = arr.num_tuples();
     if n == 0 || k == 0 {
@@ -166,6 +169,20 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         let result = cluster_by_normal(&pd, 2, "NonExistent", 0);
+        assert!(result.point_data().get_array("NormalCluster").is_none());
+    }
+
+    #[test]
+    fn wrong_component_count_returns_clone() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals",
+                vec![1.0],
+                1,
+            )));
+        let result = cluster_by_normal(&pd, 1, "Normals", 0);
         assert!(result.point_data().get_array("NormalCluster").is_none());
     }
 

@@ -28,14 +28,16 @@ pub fn youngs_material_interface(
         None => return PolyData::new(),
     };
 
+    let poly_cell_offset = input.verts.num_cells() + input.lines.num_cells();
     let nc = input.polys.num_cells();
     let mut interface_points = crate::data::Points::<f64>::new();
     let mut interface_lines = crate::data::CellArray::new();
     let mut material_id = Vec::new();
 
     for ci in 0..nc {
+        let source_cell_id = poly_cell_offset + ci;
         let mut frac = [0.0f64];
-        vf.tuple_as_f64(ci, &mut frac);
+        vf.tuple_as_f64(source_cell_id, &mut frac);
         let f = frac[0];
 
         // Only process mixed cells (not fully one material)
@@ -44,7 +46,7 @@ pub fn youngs_material_interface(
         }
 
         let mut n = [0.0f64; 3];
-        normals.tuple_as_f64(ci, &mut n);
+        normals.tuple_as_f64(source_cell_id, &mut n);
         let nlen = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
         if nlen < 1e-15 {
             continue;
@@ -55,6 +57,13 @@ pub fn youngs_material_interface(
 
         let cell = input.polys.cell(ci);
         if cell.len() < 3 {
+            continue;
+        }
+        if !cell.iter().all(|&vid| {
+            usize::try_from(vid)
+                .ok()
+                .is_some_and(|idx| idx < input.points.len())
+        }) {
             continue;
         }
 
@@ -110,7 +119,7 @@ pub fn youngs_material_interface(
                 interface_points.push(*p);
             }
             interface_lines.push_cell(&cell_ids);
-            material_id.push(ci as f64);
+            material_id.push(source_cell_id as f64);
         }
     }
 
@@ -178,5 +187,34 @@ mod tests {
             0,
             "pure cell should produce no interface"
         );
+    }
+
+    #[test]
+    fn uses_poly_cell_data_offset() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 2.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.verts.push_cell(&[0]);
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "VF",
+                vec![0.0, 0.5],
+                1,
+            )));
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normal",
+                vec![0.0, 0.0, 1.0, 1.0, 0.0, 0.0],
+                3,
+            )));
+
+        let result = youngs_material_interface(&pd, "VF", "Normal");
+        assert_eq!(result.lines.num_cells(), 1);
+
+        let source_ids = result.cell_data().get_array("SourceCellId").unwrap();
+        let mut value = [0.0f64];
+        source_ids.tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 1.0);
     }
 }

@@ -36,8 +36,14 @@ pub fn orient_normals(mesh: &PolyData) -> PolyData {
             for i in 0..nc {
                 let a = oriented[fi][i];
                 let b = oriented[fi][(i + 1) % nc];
+                if a < 0 || b < 0 {
+                    continue;
+                }
                 let e = if a < b { (a, b) } else { (b, a) };
                 if let Some(neighbors) = edge_faces.get(&e) {
+                    if neighbors.len() != 2 {
+                        continue;
+                    }
                     for &fj in neighbors {
                         if fj == fi || visited[fj] {
                             continue;
@@ -82,5 +88,22 @@ mod tests {
         let r = orient_normals(&mesh);
         let cells: Vec<Vec<i64>> = r.polys.iter().map(|c| c.to_vec()).collect();
         assert_eq!(cells, vec![vec![0, 1, 2], vec![3, 2, 1]]);
+    }
+
+    #[test]
+    fn non_manifold_edges_are_not_traversed() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.points.push([0.0, -1.0, 0.0]);
+        mesh.points.push([0.0, 0.0, 1.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[0, 1, 3]);
+        mesh.polys.push_cell(&[0, 1, 4]);
+
+        let r = orient_normals(&mesh);
+        let cells: Vec<Vec<i64>> = r.polys.iter().map(|c| c.to_vec()).collect();
+        assert_eq!(cells, vec![vec![0, 1, 2], vec![0, 1, 3], vec![0, 1, 4]]);
     }
 }

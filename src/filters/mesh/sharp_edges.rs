@@ -7,7 +7,12 @@ use std::collections::HashMap;
 pub fn extract_sharp_edges(input: &PolyData, angle_threshold_deg: f64) -> PolyData {
     let cos_thresh = angle_threshold_deg.to_radians().cos();
 
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<i64>> = input
+        .polys
+        .iter()
+        .filter(|c| valid_cell(input, c))
+        .map(|c| c.to_vec())
+        .collect();
     let normals: Vec<[f64; 3]> = cells.iter().map(|c| face_normal(input, c)).collect();
 
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
@@ -31,7 +36,7 @@ pub fn extract_sharp_edges(input: &PolyData, angle_threshold_deg: f64) -> PolyDa
         let na = normals[faces[0]];
         let nb = normals[faces[1]];
         let dot = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
-        if dot < cos_thresh {
+        if dot <= cos_thresh {
             let ma = *pt_map.entry(a).or_insert_with(|| {
                 let i = out_pts.len() as i64;
                 out_pts.push(input.points.get(a as usize));
@@ -54,13 +59,17 @@ pub fn extract_sharp_edges(input: &PolyData, angle_threshold_deg: f64) -> PolyDa
 
 /// Mark vertices that lie on sharp edges. Adds "SharpVertex" scalar (0 or 1).
 pub fn mark_sharp_vertices(input: &PolyData, angle_threshold_deg: f64) -> PolyData {
-    let sharp = extract_sharp_edges(input, angle_threshold_deg);
     let n = input.points.len();
     let mut is_sharp = vec![0.0f64; n];
 
     // Map sharp edge points back to original indices
     let cos_thresh = angle_threshold_deg.to_radians().cos();
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let cells: Vec<Vec<i64>> = input
+        .polys
+        .iter()
+        .filter(|c| valid_cell(input, c))
+        .map(|c| c.to_vec())
+        .collect();
     let normals: Vec<[f64; 3]> = cells.iter().map(|c| face_normal(input, c)).collect();
 
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
@@ -80,7 +89,7 @@ pub fn mark_sharp_vertices(input: &PolyData, angle_threshold_deg: f64) -> PolyDa
         let na = normals[faces[0]];
         let nb = normals[faces[1]];
         let dot = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
-        if dot < cos_thresh {
+        if dot <= cos_thresh {
             is_sharp[a as usize] = 1.0;
             is_sharp[b as usize] = 1.0;
         }
@@ -96,20 +105,22 @@ pub fn mark_sharp_vertices(input: &PolyData, angle_threshold_deg: f64) -> PolyDa
     pd
 }
 
+fn valid_cell(input: &PolyData, cell: &[i64]) -> bool {
+    cell.len() >= 3
+        && cell
+            .iter()
+            .all(|&point_id| point_id >= 0 && (point_id as usize) < input.points.len())
+}
+
 fn face_normal(input: &PolyData, c: &[i64]) -> [f64; 3] {
-    if c.len() < 3 {
-        return [0.0; 3];
+    let mut n = [0.0, 0.0, 0.0];
+    for i in 0..c.len() {
+        let current = input.points.get(c[i] as usize);
+        let next = input.points.get(c[(i + 1) % c.len()] as usize);
+        n[0] += (current[1] - next[1]) * (current[2] + next[2]);
+        n[1] += (current[2] - next[2]) * (current[0] + next[0]);
+        n[2] += (current[0] - next[0]) * (current[1] + next[1]);
     }
-    let v0 = input.points.get(c[0] as usize);
-    let v1 = input.points.get(c[1] as usize);
-    let v2 = input.points.get(c[2] as usize);
-    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-    let n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-    ];
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     if len > 1e-15 {
         [n[0] / len, n[1] / len, n[2] / len]
@@ -168,5 +179,23 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(extract_sharp_edges(&pd, 30.0).lines.num_cells(), 0);
+    }
+
+    #[test]
+    fn handles_polygon_with_collinear_first_three_points() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.5, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([0.5, 0.0, 1.0]);
+        pd.points.push([1.0, 0.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3, 4]);
+        pd.polys.push_cell(&[1, 5, 6, 2]);
+
+        let result = extract_sharp_edges(&pd, 45.0);
+
+        assert_eq!(result.lines.num_cells(), 1);
     }
 }

@@ -17,6 +17,9 @@ pub fn weighted_smooth(
     }
 
     let weights: Vec<f64> = if let Some(arr) = input.point_data().get_array(weight_array) {
+        if arr.num_tuples() != n {
+            return input.clone();
+        }
         let mut buf = [0.0f64];
         (0..n)
             .map(|i| {
@@ -28,19 +31,7 @@ pub fn weighted_smooth(
         vec![1.0; n]
     };
 
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
+    let neighbors = build_neighbors(input, n);
 
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
@@ -76,6 +67,78 @@ pub fn weighted_smooth(
     let mut pd = input.clone();
     pd.points = points;
     pd
+}
+
+fn build_neighbors(input: &PolyData, number_of_points: usize) -> Vec<Vec<usize>> {
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); number_of_points];
+    for cell in input.polys.iter() {
+        add_closed_cell_edges(cell, number_of_points, &mut neighbors);
+    }
+    for cell in input.strips.iter() {
+        add_triangle_strip_edges(cell, number_of_points, &mut neighbors);
+    }
+    for cell in input.lines.iter() {
+        add_open_cell_edges(cell, number_of_points, &mut neighbors);
+    }
+    neighbors
+}
+
+fn add_closed_cell_edges(cell: &[i64], number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    let number_of_cell_points = cell.len();
+    if number_of_cell_points < 2 {
+        return;
+    }
+    for i in 0..number_of_cell_points {
+        add_neighbor_edge(
+            cell[i],
+            cell[(i + 1) % number_of_cell_points],
+            number_of_points,
+            neighbors,
+        );
+    }
+}
+
+fn add_open_cell_edges(cell: &[i64], number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    if cell.len() < 2 {
+        return;
+    }
+    for i in 0..(cell.len() - 1) {
+        add_neighbor_edge(cell[i], cell[i + 1], number_of_points, neighbors);
+    }
+}
+
+fn add_triangle_strip_edges(cell: &[i64], number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    if cell.len() < 3 {
+        return;
+    }
+    for i in 0..(cell.len() - 2) {
+        add_neighbor_edge(cell[i], cell[i + 1], number_of_points, neighbors);
+        add_neighbor_edge(cell[i + 1], cell[i + 2], number_of_points, neighbors);
+        add_neighbor_edge(cell[i + 2], cell[i], number_of_points, neighbors);
+    }
+}
+
+fn add_neighbor_edge(a: i64, b: i64, number_of_points: usize, neighbors: &mut [Vec<usize>]) {
+    let Some(a) = point_id(a, number_of_points) else {
+        return;
+    };
+    let Some(b) = point_id(b, number_of_points) else {
+        return;
+    };
+    if a != b && !neighbors[a].contains(&b) {
+        neighbors[a].push(b);
+    }
+    if a != b && !neighbors[b].contains(&a) {
+        neighbors[b].push(a);
+    }
+}
+
+fn point_id(id: i64, number_of_points: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < number_of_points {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

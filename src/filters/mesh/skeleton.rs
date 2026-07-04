@@ -1,5 +1,5 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
-use std::collections::{HashMap, HashSet};
+use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Extract the topological skeleton (medial axis) of a 2D point cloud.
 ///
@@ -102,22 +102,15 @@ fn delaunay_2d(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
                 bad[ti] = true;
             }
         }
-        let mut poly = Vec::new();
+        let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
         for (ti, tri) in tris.iter().enumerate() {
             if !bad[ti] {
                 continue;
             }
             let edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
             for &(a, b) in &edges {
-                let shared = tris.iter().enumerate().any(|(tj, o)| {
-                    if tj == ti || !bad[tj] {
-                        return false;
-                    }
-                    [(o[0], o[1]), (o[1], o[2]), (o[2], o[0])].contains(&(b, a))
-                });
-                if !shared {
-                    poly.push((a, b));
-                }
+                let key = if a < b { (a, b) } else { (b, a) };
+                *edge_count.entry(key).or_insert(0) += 1;
             }
         }
         let mut nt: Vec<[usize; 3]> = tris
@@ -126,8 +119,11 @@ fn delaunay_2d(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
             .filter(|(ti, _)| !bad[*ti])
             .map(|(_, t)| *t)
             .collect();
-        for &(a, b) in &poly {
-            nt.push([a, b, pi]);
+        for (&(a, b), &count) in &edge_count {
+            if count == 1 {
+                let tri = orient_triangle([a, b, pi], &all);
+                nt.push(tri);
+            }
         }
         tris = nt;
     }
@@ -136,16 +132,35 @@ fn delaunay_2d(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
 }
 
 fn in_cc(a: [f64; 2], b: [f64; 2], c: [f64; 2], p: [f64; 2]) -> bool {
+    let orient = orient2d(a, b, c);
+    if orient.abs() <= 1e-15 {
+        return false;
+    }
     let ax = a[0] - p[0];
     let ay = a[1] - p[1];
     let bx = b[0] - p[0];
     let by = b[1] - p[1];
     let cx = c[0] - p[0];
     let cy = c[1] - p[1];
-    ax * (by * (cx * cx + cy * cy) - cy * (bx * bx + by * by))
+    let det = ax * (by * (cx * cx + cy * cy) - cy * (bx * bx + by * by))
         - ay * (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by))
-        + (ax * ax + ay * ay) * (bx * cy - by * cx)
-        > 0.0
+        + (ax * ax + ay * ay) * (bx * cy - by * cx);
+    if orient > 0.0 {
+        det > 1e-15
+    } else {
+        det < -1e-15
+    }
+}
+
+fn orient_triangle(mut tri: [usize; 3], pts: &[[f64; 2]]) -> [usize; 3] {
+    if orient2d(pts[tri[0]], pts[tri[1]], pts[tri[2]]) < 0.0 {
+        tri.swap(0, 1);
+    }
+    tri
+}
+
+fn orient2d(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }
 
 fn circumcenter(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> [f64; 2] {

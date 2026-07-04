@@ -14,33 +14,40 @@ pub fn simplify_by_angle(mesh: &PolyData, angle_threshold_degrees: f64) -> PolyD
     }
     let cos_thresh = (angle_threshold_degrees * std::f64::consts::PI / 180.0).cos();
 
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .map(|c| c.to_vec())
+        .filter(|c| c.len() >= 3 && c.iter().all(|&id| valid_point_id(id, n).is_some()))
+        .collect();
     let normals: Vec<[f64; 3]> = all_cells
         .iter()
         .map(|cell| face_normal(mesh, cell))
         .collect();
 
+    let boundary = boundary_vertices(&all_cells, n);
+
     // Find which faces each vertex belongs to
     let mut vert_faces: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (ci, cell) in all_cells.iter().enumerate() {
         for &pid in cell {
-            vert_faces[pid as usize].push(ci);
+            if let Some(pt_id) = valid_point_id(pid, n) {
+                vert_faces[pt_id].push(ci);
+            }
         }
     }
 
     // Identify removable vertices (all adjacent faces are coplanar)
     let mut removable = vec![false; n];
     for vi in 0..n {
+        if boundary[vi] {
+            continue;
+        }
         let faces = &vert_faces[vi];
         if faces.len() < 2 {
             continue;
         }
-        let all_coplanar = faces.windows(2).all(|pair| {
-            let dot = normals[pair[0]][0] * normals[pair[1]][0]
-                + normals[pair[0]][1] * normals[pair[1]][1]
-                + normals[pair[0]][2] * normals[pair[1]][2];
-            dot >= cos_thresh
-        });
+        let all_coplanar = all_faces_within_threshold(faces, &normals, cos_thresh);
         if all_coplanar {
             removable[vi] = true;
         }
@@ -53,13 +60,17 @@ pub fn simplify_by_angle(mesh: &PolyData, angle_threshold_degrees: f64) -> PolyD
     let mut pt_map = vec![usize::MAX; n];
 
     for cell in &all_cells {
-        let has_removable = cell.iter().any(|&pid| removable[pid as usize]);
+        let has_removable = cell
+            .iter()
+            .any(|&pid| valid_point_id(pid, n).is_some_and(|pt_id| removable[pt_id]));
         if has_removable {
             continue;
         }
         let mut ids = Vec::new();
         for &pid in cell {
-            let old = pid as usize;
+            let Some(old) = valid_point_id(pid, n) else {
+                continue;
+            };
             if pt_map[old] == usize::MAX {
                 pt_map[old] = new_pts.len();
                 new_pts.push(mesh.points.get(old));
@@ -80,44 +91,100 @@ pub fn count_removable_vertices(mesh: &PolyData, angle_threshold_degrees: f64) -
     let n = mesh.points.len();
     let cos_thresh = (angle_threshold_degrees * std::f64::consts::PI / 180.0).cos();
 
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .map(|c| c.to_vec())
+        .filter(|c| c.len() >= 3 && c.iter().all(|&id| valid_point_id(id, n).is_some()))
+        .collect();
     let normals: Vec<[f64; 3]> = all_cells
         .iter()
         .map(|cell| face_normal(mesh, cell))
         .collect();
 
+    let boundary = boundary_vertices(&all_cells, n);
+
     let mut vert_faces: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (ci, cell) in all_cells.iter().enumerate() {
         for &pid in cell {
-            vert_faces[pid as usize].push(ci);
+            if let Some(pt_id) = valid_point_id(pid, n) {
+                vert_faces[pt_id].push(ci);
+            }
         }
     }
 
     let mut count = 0;
     for vi in 0..n {
+        if boundary[vi] {
+            continue;
+        }
         let faces = &vert_faces[vi];
         if faces.len() < 2 {
             continue;
         }
-        if faces.windows(2).all(|pair| {
-            normals[pair[0]][0] * normals[pair[1]][0]
-                + normals[pair[0]][1] * normals[pair[1]][1]
-                + normals[pair[0]][2] * normals[pair[1]][2]
-                >= cos_thresh
-        }) {
+        if all_faces_within_threshold(faces, &normals, cos_thresh) {
             count += 1;
         }
     }
     count
 }
 
+fn all_faces_within_threshold(faces: &[usize], normals: &[[f64; 3]], cos_thresh: f64) -> bool {
+    for i in 0..faces.len() {
+        for j in i + 1..faces.len() {
+            let a = normals[faces[i]];
+            let b = normals[faces[j]];
+            if a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < cos_thresh {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn boundary_vertices(cells: &[Vec<i64>], n: usize) -> Vec<bool> {
+    let mut edge_count = std::collections::HashMap::<(usize, usize), usize>::new();
+    for cell in cells {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % cell.len()], n) else {
+                continue;
+            };
+            *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        }
+    }
+    let mut boundary = vec![false; n];
+    for ((a, b), count) in edge_count {
+        if count == 1 {
+            boundary[a] = true;
+            boundary[b] = true;
+        }
+    }
+    boundary
+}
+
 fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
+    let npts = mesh.points.len();
+    let Some(a_id) = valid_point_id(cell[0], npts) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(b_id) = valid_point_id(cell[1], npts) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let Some(c_id) = valid_point_id(cell[2], npts) else {
+        return [0.0, 0.0, 1.0];
+    };
+    let a = mesh.points.get(a_id);
+    let b = mesh.points.get(b_id);
+    let c = mesh.points.get(c_id);
     let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
     let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     let n = [
@@ -130,6 +197,14 @@ fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
         [n[0] / len, n[1] / len, n[2] / len]
     } else {
         [0.0, 0.0, 1.0]
+    }
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
     }
 }
 

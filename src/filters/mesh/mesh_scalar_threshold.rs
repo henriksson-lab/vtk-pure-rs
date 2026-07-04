@@ -4,9 +4,13 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_threshold(mesh: &PolyData, scalar_name: &str, threshold: f64) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut labels = Vec::with_capacity(n);
     let mut buf = [0.0f64];
     for i in 0..n {
@@ -46,5 +50,22 @@ mod tests {
         assert_eq!(b[0], 1.0);
         arr.tuple_as_f64(2, &mut b);
         assert_eq!(b[0], 1.0);
+    }
+
+    #[test]
+    fn rejects_vector_arrays() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.3, 0.0, 0.7, 0.0, 0.5, 0.0],
+                2,
+            )));
+
+        let r = scalar_threshold(&mesh, "v", 0.5);
+        assert!(r.point_data().get_array("v_thresh").is_none());
     }
 }

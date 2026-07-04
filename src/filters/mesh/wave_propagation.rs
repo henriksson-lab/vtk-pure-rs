@@ -1,6 +1,7 @@
 //! Wave propagation simulation on mesh connectivity.
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashSet;
 
 /// Simulate wave propagation from source vertices.
 ///
@@ -29,6 +30,7 @@ pub fn wave_propagate(
         let mut u_next = vec![0.0f64; n];
         for i in 0..n {
             if adj[i].is_empty() {
+                u_next[i] = u[i];
                 continue;
             }
             let lap: f64 = adj[i].iter().map(|&j| u[j] - u[i]).sum::<f64>() / adj[i].len() as f64;
@@ -47,23 +49,73 @@ pub fn wave_propagate(
             u,
             1,
         )));
+    result.point_data_mut().set_active_scalars("WaveAmplitude");
     result
 }
 
 fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut a: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    let mut a: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for c in m.polys.iter() {
-        let nc = c.len();
-        for i in 0..nc {
-            let x = c[i] as usize;
-            let y = c[(i + 1) % nc] as usize;
-            if x < n && y < n {
-                a[x].insert(y);
-                a[y].insert(x);
-            }
-        }
+        add_closed_cell_edges(c, n, &mut a);
+    }
+    for c in m.strips.iter() {
+        add_triangle_strip_edges(c, n, &mut a);
+    }
+    for c in m.lines.iter() {
+        add_open_cell_edges(c, n, &mut a);
     }
     a.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn add_closed_cell_edges(cell: &[i64], n: usize, adj: &mut [HashSet<usize>]) {
+    let nc = cell.len();
+    if nc < 2 {
+        return;
+    }
+    for i in 0..nc {
+        add_adjacent_edge(cell[i], cell[(i + 1) % nc], n, adj);
+    }
+}
+
+fn add_open_cell_edges(cell: &[i64], n: usize, adj: &mut [HashSet<usize>]) {
+    if cell.len() < 2 {
+        return;
+    }
+    for i in 0..(cell.len() - 1) {
+        add_adjacent_edge(cell[i], cell[i + 1], n, adj);
+    }
+}
+
+fn add_triangle_strip_edges(cell: &[i64], n: usize, adj: &mut [HashSet<usize>]) {
+    if cell.len() < 3 {
+        return;
+    }
+    for i in 0..(cell.len() - 2) {
+        add_adjacent_edge(cell[i], cell[i + 1], n, adj);
+        add_adjacent_edge(cell[i + 1], cell[i + 2], n, adj);
+        add_adjacent_edge(cell[i + 2], cell[i], n, adj);
+    }
+}
+
+fn add_adjacent_edge(a: i64, b: i64, n: usize, adj: &mut [HashSet<usize>]) {
+    let Some(x) = point_id(a, n) else {
+        return;
+    };
+    let Some(y) = point_id(b, n) else {
+        return;
+    };
+    if x != y {
+        adj[x].insert(y);
+        adj[y].insert(x);
+    }
+}
+
+fn point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -91,5 +143,15 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(50, &mut buf);
         assert!(buf[0].abs() > 0.0);
+    }
+
+    #[test]
+    fn isolated_source_keeps_amplitude() {
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let result = wave_propagate(&mesh, &[(0, 1.0)], 1.0, 0.01, 0.1, 20);
+        let arr = result.point_data().get_array("WaveAmplitude").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
 }

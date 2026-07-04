@@ -20,6 +20,7 @@ pub fn extract_skeleton_graph(
 
     let adj = build_adj(mesh, n);
     let mut positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
+    let contraction_rate = contraction_rate.clamp(0.0, 1.0);
 
     // Iterative contraction
     for _ in 0..iterations {
@@ -81,8 +82,32 @@ pub fn extract_skeleton_graph(
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = mapping[cell[i] as usize];
-            let b = mapping[cell[(i + 1) % nc] as usize];
+            let Some(pa) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(pb) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            let a = mapping[pa];
+            let b = mapping[pb];
+            if a != b {
+                let edge = (a.min(b), a.max(b));
+                if edge_set.insert(edge) {
+                    lines.push_cell(&[a as i64, b as i64]);
+                }
+            }
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for i in 0..cell.len().saturating_sub(1) {
+            let Some(pa) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(pb) = valid_point_id(cell[i + 1], n) else {
+                continue;
+            };
+            let a = mapping[pa];
+            let b = mapping[pb];
             if a != b {
                 let edge = (a.min(b), a.max(b));
                 if edge_set.insert(edge) {
@@ -134,13 +159,33 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                adj[a].insert(b);
-                adj[b].insert(a);
-            }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            adj[a].insert(b);
+            adj[b].insert(a);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() - 1 {
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[i + 1], n) else {
+                continue;
+            };
+            adj[a].insert(b);
+            adj[b].insert(a);
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
@@ -151,9 +196,23 @@ fn compute_avg_edge_length(mesh: &PolyData) -> f64 {
     let mut count = 0;
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 || !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
         for i in 0..nc {
             let a = mesh.points.get(cell[i] as usize);
             let b = mesh.points.get(cell[(i + 1) % nc] as usize);
+            total += ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
+            count += 1;
+        }
+    }
+    for cell in mesh.lines.iter() {
+        if cell.len() < 2 || !valid_cell(cell, mesh.points.len()) {
+            continue;
+        }
+        for i in 0..cell.len() - 1 {
+            let a = mesh.points.get(cell[i] as usize);
+            let b = mesh.points.get(cell[i + 1] as usize);
             total += ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
             count += 1;
         }
@@ -162,6 +221,19 @@ fn compute_avg_edge_length(mesh: &PolyData) -> f64 {
         total / count as f64
     } else {
         1.0
+    }
+}
+
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| valid_point_id(id, n_points).is_some())
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n_points {
+        Some(id as usize)
+    } else {
+        None
     }
 }
 

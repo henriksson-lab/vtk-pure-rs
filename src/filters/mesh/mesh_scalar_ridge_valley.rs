@@ -6,6 +6,9 @@ pub fn detect_ridges_valleys(mesh: &PolyData, array_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -63,7 +66,10 @@ pub fn detect_ridges_valleys(mesh: &PolyData, array_name: &str) -> PolyData {
 }
 pub fn extract_ridge_lines(mesh: &PolyData, array_name: &str) -> PolyData {
     let rv = detect_ridges_valleys(mesh, array_name);
-    let arr = rv.point_data().get_array("RidgeValley").unwrap();
+    let arr = match rv.point_data().get_array("RidgeValley") {
+        Some(a) => a,
+        None => return PolyData::new(),
+    };
     let n = arr.num_tuples();
     let mut buf = [0.0f64];
     let mut ridge_verts: std::collections::HashSet<usize> = std::collections::HashSet::new();

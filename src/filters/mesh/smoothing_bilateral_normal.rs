@@ -13,9 +13,15 @@ pub fn bilateral_normal_filter(
     sigma_s: f64,
     sigma_r: f64,
 ) -> PolyData {
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let n_points = mesh.points.len();
+    let all_cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .filter(|c| c.len() >= 3 && c.iter().all(|&pid| valid_point_id(pid, n_points).is_some()))
+        .map(|c| c.to_vec())
+        .collect();
     let nc = all_cells.len();
-    if nc == 0 {
+    if nc == 0 || sigma_s <= 0.0 || sigma_r <= 0.0 {
         return mesh.clone();
     }
 
@@ -92,9 +98,11 @@ pub fn bilateral_normal_filter(
     }
 
     // Step 2: Update vertex positions to match smoothed normals
-    let mut pos: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
+    let mut pos: Vec<[f64; 3]> = (0..n_points).map(|i| mesh.points.get(i)).collect();
     for _ in 0..vertex_iterations {
         let mut new_pos = pos.clone();
+        let mut displacements = vec![[0.0; 3]; n_points];
+        let mut counts = vec![0usize; n_points];
         for (ci, cell) in all_cells.iter().enumerate() {
             let centroid = {
                 let mut c = [0.0; 3];
@@ -115,9 +123,18 @@ pub fn bilateral_normal_filter(
                 ];
                 let proj = d[0] * normals[ci][0] + d[1] * normals[ci][1] + d[2] * normals[ci][2];
                 for j in 0..3 {
-                    new_pos[vi][j] -= 0.5 * proj * normals[ci][j]
-                        / (all_cells.len() as f64 / mesh.points.len() as f64).max(1.0);
+                    displacements[vi][j] -= 0.5 * proj * normals[ci][j];
                 }
+                counts[vi] += 1;
+            }
+        }
+        for vi in 0..n_points {
+            if counts[vi] == 0 {
+                continue;
+            }
+            let scale = 1.0 / counts[vi] as f64;
+            for j in 0..3 {
+                new_pos[vi][j] += displacements[vi][j] * scale;
             }
         }
         pos = new_pos;
@@ -132,22 +149,23 @@ fn face_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
     if cell.len() < 3 {
         return [0.0, 0.0, 1.0];
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let n = [
-        e1[1] * e2[2] - e1[2] * e2[1],
-        e1[2] * e2[0] - e1[0] * e2[2],
-        e1[0] * e2[1] - e1[1] * e2[0],
-    ];
+    let mut n = [0.0; 3];
+    for i in 0..cell.len() {
+        let p = mesh.points.get(cell[i] as usize);
+        let q = mesh.points.get(cell[(i + 1) % cell.len()] as usize);
+        n[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        n[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        n[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
     let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     if len > 1e-15 {
         [n[0] / len, n[1] / len, n[2] / len]
     } else {
         [0.0, 0.0, 1.0]
     }
+}
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&idx| idx < n_points)
 }
 fn dist(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()

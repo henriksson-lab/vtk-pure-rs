@@ -17,47 +17,69 @@ pub struct WatertightReport {
 /// Check if a mesh is watertight (closed, manifold, consistent).
 pub fn watertight_check(input: &PolyData) -> WatertightReport {
     let n = input.points.len();
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
 
     let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
-    let mut directed_count: HashMap<(i64, i64), usize> = HashMap::new();
+    let mut same_direction_count: HashMap<(i64, i64), usize> = HashMap::new();
     let mut used = vec![false; n];
     let mut degenerate = 0;
 
-    for c in &cells {
-        if c.len() < 3 {
+    for cell in input.polys.iter() {
+        if cell.len() < 3 {
             degenerate += 1;
             continue;
         }
-        // Check degenerate (zero area)
-        let v0 = input.points.get(c[0] as usize);
-        let v1 = input.points.get(c[1] as usize);
-        let v2 = input.points.get(c[2] as usize);
+
+        if !cell.iter().all(|&id| valid_point_id(id, n)) {
+            degenerate += 1;
+            continue;
+        }
+
+        let mut has_duplicate_point = false;
+        for i in 0..cell.len() {
+            if cell[i + 1..].contains(&cell[i]) {
+                has_duplicate_point = true;
+                break;
+            }
+        }
+
+        let v0 = input.points.get(cell[0] as usize);
+        let v1 = input.points.get(cell[1] as usize);
+        let v2 = input.points.get(cell[2] as usize);
         let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
         let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
         let cx = e1[1] * e2[2] - e1[2] * e2[1];
         let cy = e1[2] * e2[0] - e1[0] * e2[2];
         let cz = e1[0] * e2[1] - e1[1] * e2[0];
-        if cx * cx + cy * cy + cz * cz < 1e-30 {
+        if has_duplicate_point || cx * cx + cy * cy + cz * cz < 1e-30 {
             degenerate += 1;
         }
 
-        for i in 0..c.len() {
-            let a = c[i];
-            let b = c[(i + 1) % c.len()];
-            used[a as usize] = true;
+        for &id in cell {
+            used[id as usize] = true;
+        }
+
+        for i in 0..cell.len() {
+            let a = cell[i];
+            let b = cell[(i + 1) % cell.len()];
             let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
-            *directed_count.entry((a, b)).or_insert(0) += 1;
+            if (a, b) == key {
+                *same_direction_count.entry(key).or_insert(0) += 1;
+            }
         }
     }
 
     let boundary = edge_count.values().filter(|&&c| c == 1).count();
     let non_manifold = edge_count.values().filter(|&&c| c > 2).count();
-    let inconsistent = directed_count.values().filter(|&&c| c > 1).count();
+    let inconsistent = edge_count
+        .iter()
+        .filter(|&(_, &count)| count == 2)
+        .filter(|&(key, _)| same_direction_count.get(key).copied().unwrap_or(0) != 1)
+        .count();
     let isolated = used.iter().filter(|&&u| !u).count();
 
-    let is_watertight = boundary == 0 && non_manifold == 0 && inconsistent == 0 && degenerate == 0;
+    let is_watertight =
+        boundary == 0 && non_manifold == 0 && inconsistent == 0 && degenerate == 0 && isolated == 0;
 
     WatertightReport {
         is_watertight,
@@ -67,6 +89,10 @@ pub fn watertight_check(input: &PolyData) -> WatertightReport {
         num_degenerate_faces: degenerate,
         num_isolated_vertices: isolated,
     }
+}
+
+fn valid_point_id(id: i64, number_of_points: usize) -> bool {
+    id >= 0 && (id as usize) < number_of_points
 }
 
 #[cfg(test)]

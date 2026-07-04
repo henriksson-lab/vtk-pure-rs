@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 use std::collections::HashMap;
 
 /// Remove non-manifold edges by duplicating shared vertices.
@@ -10,6 +10,9 @@ pub fn fix_non_manifold(input: &PolyData) -> PolyData {
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, c) in cells.iter().enumerate() {
+        if !is_valid_polygon(c, input.points.len()) {
+            continue;
+        }
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
@@ -56,10 +59,14 @@ pub fn fix_non_manifold(input: &PolyData) -> PolyData {
         out_polys.push_cell(c);
     }
 
-    let mut pd = PolyData::new();
+    let mut pd = input.clone();
     pd.points = out_pts;
     pd.polys = out_polys;
     pd
+}
+
+fn is_valid_polygon(cell: &[i64], n_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 #[cfg(test)]

@@ -6,6 +6,9 @@ pub fn simplify_by_persistence(mesh: &PolyData, array_name: &str, threshold: f64
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let mut vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -13,22 +16,7 @@ pub fn simplify_by_persistence(mesh: &PolyData, array_name: &str, threshold: f64
             buf[0]
         })
         .collect();
-    let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
-        }
-    }
+    let nb = build_neighbors(mesh, n);
     // Iteratively cancel persistence pairs below threshold
     let mut changed = true;
     while changed {
@@ -40,8 +28,8 @@ pub fn simplify_by_persistence(mesh: &PolyData, array_name: &str, threshold: f64
             let is_max = nb[i].iter().all(|&j| vals[j] <= vals[i]);
             let is_min = nb[i].iter().all(|&j| vals[j] >= vals[i]);
             if is_max {
-                // Find nearest saddle
-                let nearest_lower = nb[i].iter().min_by(|&&a, &&b| {
+                // Find nearest lower neighbor in scalar value.
+                let nearest_lower = nb[i].iter().max_by(|&&a, &&b| {
                     vals[a]
                         .partial_cmp(&vals[b])
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -49,13 +37,16 @@ pub fn simplify_by_persistence(mesh: &PolyData, array_name: &str, threshold: f64
                 if let Some(&nl) = nearest_lower {
                     let persistence = vals[i] - vals[nl];
                     if persistence < threshold {
-                        vals[i] = vals[nl];
-                        changed = true;
+                        let new_value = vals[nl];
+                        if vals[i] != new_value {
+                            vals[i] = new_value;
+                            changed = true;
+                        }
                     }
                 }
             }
             if is_min {
-                let nearest_higher = nb[i].iter().max_by(|&&a, &&b| {
+                let nearest_higher = nb[i].iter().min_by(|&&a, &&b| {
                     vals[a]
                         .partial_cmp(&vals[b])
                         .unwrap_or(std::cmp::Ordering::Equal)
@@ -63,8 +54,11 @@ pub fn simplify_by_persistence(mesh: &PolyData, array_name: &str, threshold: f64
                 if let Some(&nh) = nearest_higher {
                     let persistence = vals[nh] - vals[i];
                     if persistence < threshold {
-                        vals[i] = vals[nh];
-                        changed = true;
+                        let new_value = vals[nh];
+                        if vals[i] != new_value {
+                            vals[i] = new_value;
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -81,6 +75,9 @@ pub fn count_critical_points(mesh: &PolyData, array_name: &str) -> (usize, usize
         _ => return (0, 0, 0),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return (0, 0, 0);
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -88,22 +85,7 @@ pub fn count_critical_points(mesh: &PolyData, array_name: &str) -> (usize, usize
             buf[0]
         })
         .collect();
-    let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
-        }
-    }
+    let nb = build_neighbors(mesh, n);
     let mut mins = 0;
     let mut maxs = 0;
     let mut saddles = 0;
@@ -118,9 +100,12 @@ pub fn count_critical_points(mesh: &PolyData, array_name: &str) -> (usize, usize
         } else if upper == 0 && lower > 0 {
             maxs += 1;
         } else if lower > 0 && upper > 0 {
-            let changes = nb[i]
-                .windows(2)
-                .filter(|w| (vals[w[0]] > vals[i]) != (vals[w[1]] > vals[i]))
+            let changes = (0..nb[i].len())
+                .filter(|&j| {
+                    let a = nb[i][j];
+                    let b = nb[i][(j + 1) % nb[i].len()];
+                    (vals[a] > vals[i]) != (vals[b] > vals[i])
+                })
                 .count();
             if changes >= 4 {
                 saddles += 1;
@@ -128,6 +113,58 @@ pub fn count_critical_points(mesh: &PolyData, array_name: &str) -> (usize, usize
         }
     }
     (mins, maxs, saddles)
+}
+fn build_neighbors(mesh: &PolyData, number_of_points: usize) -> Vec<Vec<usize>> {
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); number_of_points];
+    for cell in mesh.polys.iter() {
+        let nc = cell.len();
+        for i in 0..nc {
+            add_edge(cell[i], cell[(i + 1) % nc], &mut neighbors);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(edge[0], edge[1], &mut neighbors);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            if i % 2 == 0 {
+                add_triangle_edges(tri[0], tri[1], tri[2], &mut neighbors);
+            } else {
+                add_triangle_edges(tri[1], tri[0], tri[2], &mut neighbors);
+            }
+        }
+    }
+    neighbors
+}
+
+fn add_triangle_edges(a: i64, b: i64, c: i64, neighbors: &mut [Vec<usize>]) {
+    add_edge(a, b, neighbors);
+    add_edge(b, c, neighbors);
+    add_edge(c, a, neighbors);
+}
+
+fn add_edge(a: i64, b: i64, neighbors: &mut [Vec<usize>]) {
+    if let Some((a, b)) = valid_edge(a, b, neighbors.len()) {
+        if !neighbors[a].contains(&b) {
+            neighbors[a].push(b);
+        }
+        if !neighbors[b].contains(&a) {
+            neighbors[b].push(a);
+        }
+    }
+}
+
+fn valid_edge(a: i64, b: i64, number_of_points: usize) -> Option<(usize, usize)> {
+    if a >= 0 && b >= 0 {
+        let a = a as usize;
+        let b = b as usize;
+        if a < number_of_points && b < number_of_points {
+            return Some((a, b));
+        }
+    }
+    None
 }
 #[cfg(test)]
 mod tests {
@@ -172,5 +209,22 @@ mod tests {
             )));
         let (mins, maxs, _) = count_critical_points(&m, "h");
         assert!(maxs >= 1);
+    }
+
+    #[test]
+    fn test_simplify_plateau_terminates() {
+        let mut m = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "h",
+                vec![1.0, 1.0, 1.0],
+                1,
+            )));
+
+        let r = simplify_by_persistence(&m, "h", 0.2);
+        assert!(r.point_data().get_array("h").is_some());
     }
 }

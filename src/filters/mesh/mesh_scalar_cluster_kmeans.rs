@@ -1,11 +1,11 @@
 //! K-means clustering on mesh scalar data.
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn kmeans_scalar(mesh: &PolyData, array_name: &str, k: usize, iterations: usize) -> PolyData {
+    let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         _ => return mesh.clone(),
     };
-    let n = arr.num_tuples();
     if n == 0 {
         return mesh.clone();
     }
@@ -23,19 +23,24 @@ pub fn kmeans_scalar(mesh: &PolyData, array_name: &str, k: usize, iterations: us
         .map(|i| mn + (mx - mn) * (i as f64 + 0.5) / k as f64)
         .collect();
     let mut labels = vec![0usize; n];
-    for _ in 0..iterations {
+
+    let assign_labels = |labels: &mut [usize], centers: &[f64]| {
         for i in 0..n {
             let mut best = 0;
-            let mut bd = f64::INFINITY;
-            for (ci, &c) in centers.iter().enumerate() {
-                let d = (vals[i] - c).abs();
-                if d < bd {
-                    bd = d;
-                    best = ci;
+            let mut best_distance = f64::INFINITY;
+            for (center_index, &center) in centers.iter().enumerate() {
+                let distance = (vals[i] - center).abs();
+                if distance < best_distance {
+                    best_distance = distance;
+                    best = center_index;
                 }
             }
             labels[i] = best;
         }
+    };
+
+    for _ in 0..iterations {
+        assign_labels(&mut labels, &centers);
         let mut sums = vec![0.0f64; k];
         let mut counts = vec![0usize; k];
         for i in 0..n {
@@ -48,6 +53,7 @@ pub fn kmeans_scalar(mesh: &PolyData, array_name: &str, k: usize, iterations: us
             }
         }
     }
+    assign_labels(&mut labels, &centers);
     let data: Vec<f64> = labels.iter().map(|&l| l as f64).collect();
     let mut r = mesh.clone();
     r.point_data_mut()

@@ -8,7 +8,7 @@ pub fn anisotropic_scalar_diffuse(
     kappa: f64,
 ) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
@@ -36,6 +36,9 @@ pub fn anisotropic_scalar_diffuse(
         }
     }
     let k2 = kappa * kappa;
+    if k2 <= 0.0 {
+        return mesh.clone();
+    }
     for _ in 0..iterations {
         let prev = vals.clone();
         for i in 0..n {

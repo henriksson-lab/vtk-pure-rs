@@ -7,7 +7,8 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn uv_checkerboard(input: &PolyData, frequency: f64) -> PolyData {
     let tc = input
         .point_data()
-        .get_array("TCoords")
+        .tcoords()
+        .or_else(|| input.point_data().get_array("TCoords"))
         .or_else(|| input.point_data().get_array("UV"))
         .or_else(|| input.point_data().get_array("AtlasUV"));
     let arr = match tc {
@@ -15,7 +16,10 @@ pub fn uv_checkerboard(input: &PolyData, frequency: f64) -> PolyData {
         _ => return input.clone(),
     };
 
-    let n = arr.num_tuples();
+    let n = input.points.len();
+    if arr.num_tuples() < n {
+        return input.clone();
+    }
     let mut buf = [0.0f64; 2];
     let checker: Vec<f64> = (0..n)
         .map(|i| {
@@ -42,8 +46,10 @@ pub fn uv_checkerboard(input: &PolyData, frequency: f64) -> PolyData {
 pub fn uv_seam_length(input: &PolyData) -> f64 {
     let tc = input
         .point_data()
-        .get_array("TCoords")
-        .or_else(|| input.point_data().get_array("UV"));
+        .tcoords()
+        .or_else(|| input.point_data().get_array("TCoords"))
+        .or_else(|| input.point_data().get_array("UV"))
+        .or_else(|| input.point_data().get_array("AtlasUV"));
     let arr = match tc {
         Some(a) if a.num_components() == 2 => a,
         _ => return 0.0,
@@ -58,6 +64,13 @@ pub fn uv_seam_length(input: &PolyData) -> f64 {
         for i in 0..cell.len() {
             let a = cell[i];
             let b = cell[(i + 1) % cell.len()];
+            if a as usize >= input.points.len()
+                || b as usize >= input.points.len()
+                || a as usize >= arr.num_tuples()
+                || b as usize >= arr.num_tuples()
+            {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             if !seen.insert(key) {
                 continue;

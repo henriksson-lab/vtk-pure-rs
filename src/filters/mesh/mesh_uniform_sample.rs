@@ -6,8 +6,21 @@ pub fn uniform_sample(mesh: &PolyData, n_samples: usize, seed: u64) -> PolyData 
     let tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter(|c| c.len() >= 3)
+        .flat_map(|c| {
+            (1..c.len() - 1).filter_map(move |i| {
+                if c[0] < 0 || c[i] < 0 || c[i + 1] < 0 {
+                    None
+                } else {
+                    let tri = [c[0] as usize, c[i] as usize, c[i + 1] as usize];
+                    if tri.iter().all(|&id| id < n) {
+                        Some(tri)
+                    } else {
+                        None
+                    }
+                }
+            })
+        })
         .collect();
     if tris.is_empty() {
         return PolyData::new();
@@ -15,9 +28,6 @@ pub fn uniform_sample(mesh: &PolyData, n_samples: usize, seed: u64) -> PolyData 
     let areas: Vec<f64> = tris
         .iter()
         .map(|&[a, b, c]| {
-            if a >= n || b >= n || c >= n {
-                return 0.0;
-            }
             let pa = mesh.points.get(a);
             let pb = mesh.points.get(b);
             let pc = mesh.points.get(c);
@@ -46,7 +56,7 @@ pub fn uniform_sample(mesh: &PolyData, n_samples: usize, seed: u64) -> PolyData 
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((rng >> 33) as f64) / (u32::MAX as f64)
+        ((rng >> 11) as f64) * (1.0 / ((1u64 << 53) as f64))
     };
     let mut pts = Points::<f64>::new();
     let mut verts = CellArray::new();
@@ -54,9 +64,6 @@ pub fn uniform_sample(mesh: &PolyData, n_samples: usize, seed: u64) -> PolyData 
         let r = next_rand();
         let ti = cdf.iter().position(|&c| c >= r).unwrap_or(tris.len() - 1);
         let [a, b, c] = tris[ti];
-        if a >= n || b >= n || c >= n {
-            continue;
-        }
         let pa = mesh.points.get(a);
         let pb = mesh.points.get(b);
         let pc = mesh.points.get(c);
@@ -92,5 +99,19 @@ mod tests {
         );
         let r = uniform_sample(&mesh, 50, 42);
         assert_eq!(r.points.len(), 50);
+    }
+
+    #[test]
+    fn skips_invalid_cells_before_sampling() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 99]);
+        mesh.polys.push_cell(&[0, -1, 2]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+
+        let r = uniform_sample(&mesh, 16, 7);
+        assert_eq!(r.points.len(), 16);
     }
 }

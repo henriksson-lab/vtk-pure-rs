@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 use std::collections::{HashMap, HashSet};
 
 /// For each vertex, count the number of neighboring vertices (connected by an edge).
@@ -57,17 +57,90 @@ pub fn n_ring_neighborhood(input: &PolyData, vertex: usize, n: usize) -> HashSet
 /// Build an adjacency map: vertex index -> set of neighboring vertex indices.
 fn build_adjacency(input: &PolyData) -> HashMap<usize, HashSet<usize>> {
     let mut adj: HashMap<usize, HashSet<usize>> = HashMap::new();
+    let npoints = input.points.len();
 
-    for cell in input.polys.iter() {
-        let n = cell.len();
-        for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
-            adj.entry(a).or_default().insert(b);
-            adj.entry(b).or_default().insert(a);
+    add_closed_cell_edges(&input.polys, npoints, &mut adj);
+    add_open_cell_edges(&input.lines, npoints, &mut adj);
+    add_triangle_strip_edges(&input.strips, npoints, &mut adj);
+
+    adj
+}
+
+fn add_closed_cell_edges(
+    cells: &CellArray,
+    npoints: usize,
+    adj: &mut HashMap<usize, HashSet<usize>>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        if indices.len() < 2 {
+            continue;
+        }
+        for i in 0..indices.len() {
+            add_edge(adj, indices[i], indices[(i + 1) % indices.len()]);
         }
     }
-    adj
+}
+
+fn add_open_cell_edges(
+    cells: &CellArray,
+    npoints: usize,
+    adj: &mut HashMap<usize, HashSet<usize>>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        for edge in indices.windows(2) {
+            add_edge(adj, edge[0], edge[1]);
+        }
+    }
+}
+
+fn add_triangle_strip_edges(
+    cells: &CellArray,
+    npoints: usize,
+    adj: &mut HashMap<usize, HashSet<usize>>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        if indices.len() < 3 {
+            continue;
+        }
+        for i in 0..indices.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [indices[i], indices[i + 1], indices[i + 2]]
+            } else {
+                [indices[i + 1], indices[i], indices[i + 2]]
+            };
+            add_edge(adj, tri[0], tri[1]);
+            add_edge(adj, tri[1], tri[2]);
+            add_edge(adj, tri[2], tri[0]);
+        }
+    }
+}
+
+fn add_edge(adj: &mut HashMap<usize, HashSet<usize>>, a: usize, b: usize) {
+    if a == b {
+        return;
+    }
+    adj.entry(a).or_default().insert(b);
+    adj.entry(b).or_default().insert(a);
+}
+
+fn valid_cell_indices(cell: &[i64], npoints: usize) -> Option<Vec<usize>> {
+    let mut indices = Vec::with_capacity(cell.len());
+    for &id in cell {
+        if id < 0 || id as usize >= npoints {
+            return None;
+        }
+        indices.push(id as usize);
+    }
+    Some(indices)
 }
 
 #[cfg(test)]
@@ -153,5 +226,39 @@ mod tests {
         assert!(ring2.contains(&3));
         assert!(ring2.contains(&4));
         assert_eq!(ring2.len(), 4);
+    }
+
+    #[test]
+    fn triangle_strip_does_not_add_closing_edge() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let ring = n_ring_neighborhood(&pd, 0, 1);
+        assert!(ring.contains(&1));
+        assert!(ring.contains(&2));
+        assert!(!ring.contains(&3));
+    }
+
+    #[test]
+    fn verts_do_not_create_neighbors() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.verts.push_cell(&[0, 1]);
+
+        let result = compute_vertex_neighbor_counts(&pd);
+        let arr = result
+            .point_data()
+            .get_array("VertexNeighborCount")
+            .unwrap();
+        let mut val = [0.0f64];
+        arr.tuple_as_f64(0, &mut val);
+        assert_eq!(val[0], 0.0);
+        arr.tuple_as_f64(1, &mut val);
+        assert_eq!(val[0], 0.0);
     }
 }

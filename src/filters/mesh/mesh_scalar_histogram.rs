@@ -17,15 +17,15 @@ pub fn scalar_histogram(
 ) -> Option<ScalarHistogram> {
     let n = mesh.points.len();
     let arr = mesh.point_data().get_array(scalar_name)?;
+    if arr.num_components() != 1 || arr.num_tuples() < n || n == 0 {
+        return None;
+    }
     let nb = n_bins.max(1);
     let mut vals = Vec::with_capacity(n);
     let mut buf = [0.0f64];
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         vals.push(buf[0]);
-    }
-    if vals.is_empty() {
-        return None;
     }
     let min = vals.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);

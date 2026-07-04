@@ -5,12 +5,19 @@ pub fn transfer_barycentric(source: &PolyData, target: &PolyData, array_name: &s
         Some(a) if a.num_components() == 1 => a,
         _ => return target.clone(),
     };
+    if arr.num_tuples() != source.points.len() {
+        return target.clone();
+    }
     let tn = target.points.len();
     let mut buf = [0.0f64];
     let cells: Vec<Vec<i64>> = source
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
+        .filter(|c| {
+            c.len() == 3
+                && c.iter()
+                    .all(|&point_id| point_id >= 0 && (point_id as usize) < source.points.len())
+        })
         .map(|c| c.to_vec())
         .collect();
     let data: Vec<f64> = (0..tn)
@@ -43,29 +50,54 @@ pub fn transfer_barycentric(source: &PolyData, target: &PolyData, array_name: &s
     r
 }
 fn closest_bary(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> (f64, f64, f64, f64) {
-    let v0 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let v1 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let v2 = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
-    let d00 = v0[0] * v0[0] + v0[1] * v0[1] + v0[2] * v0[2];
-    let d01 = v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v1[2];
-    let d11 = v1[0] * v1[0] + v1[1] * v1[1] + v1[2] * v1[2];
-    let d20 = v2[0] * v0[0] + v2[1] * v0[1] + v2[2] * v0[2];
-    let d21 = v2[0] * v1[0] + v2[1] * v1[1] + v2[2] * v1[2];
-    let denom = d00 * d11 - d01 * d01;
-    if denom.abs() < 1e-30 {
-        return (1.0, 0.0, 0.0, f64::INFINITY);
+    let ab = sub(b, a);
+    let ac = sub(c, a);
+    let ap = sub(p, a);
+    let area = dot(ab, ab) * dot(ac, ac) - dot(ab, ac) * dot(ab, ac);
+    if area.abs() < 1e-30 {
+        return closest_vertex_bary(p, a, b, c);
     }
-    let v = (d11 * d20 - d01 * d21) / denom;
-    let w = (d00 * d21 - d01 * d20) / denom;
-    let u = 1.0 - v - w;
-    let uc = u.clamp(0.0, 1.0);
-    let vc = v.clamp(0.0, 1.0);
-    let wc = w.clamp(0.0, 1.0);
-    let s = uc + vc + wc;
-    let (uc, vc, wc) = if s > 1e-15 {
-        (uc / s, vc / s, wc / s)
+    let d1 = dot(ab, ap);
+    let d2 = dot(ac, ap);
+    let (uc, vc, wc) = if d1 <= 0.0 && d2 <= 0.0 {
+        (1.0, 0.0, 0.0)
     } else {
-        (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+        let bp = sub(p, b);
+        let d3 = dot(ab, bp);
+        let d4 = dot(ac, bp);
+        if d3 >= 0.0 && d4 <= d3 {
+            (0.0, 1.0, 0.0)
+        } else {
+            let vc = d1 * d4 - d3 * d2;
+            if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+                let v = d1 / (d1 - d3);
+                (1.0 - v, v, 0.0)
+            } else {
+                let cp = sub(p, c);
+                let d5 = dot(ab, cp);
+                let d6 = dot(ac, cp);
+                if d6 >= 0.0 && d5 <= d6 {
+                    (0.0, 0.0, 1.0)
+                } else {
+                    let vb = d5 * d2 - d1 * d6;
+                    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+                        let w = d2 / (d2 - d6);
+                        (1.0 - w, 0.0, w)
+                    } else {
+                        let va = d3 * d6 - d5 * d4;
+                        if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+                            let w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                            (0.0, 1.0 - w, w)
+                        } else {
+                            let denom = 1.0 / (va + vb + vc);
+                            let v = vb * denom;
+                            let w = vc * denom;
+                            (1.0 - v - w, v, w)
+                        }
+                    }
+                }
+            }
+        }
     };
     let proj = [
         a[0] * uc + b[0] * vc + c[0] * wc,
@@ -74,6 +106,24 @@ fn closest_bary(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> (f64, f64
     ];
     let d = ((p[0] - proj[0]).powi(2) + (p[1] - proj[1]).powi(2) + (p[2] - proj[2]).powi(2)).sqrt();
     (uc, vc, wc, d)
+}
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+fn closest_vertex_bary(p: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> (f64, f64, f64, f64) {
+    let da = dot(sub(p, a), sub(p, a));
+    let db = dot(sub(p, b), sub(p, b));
+    let dc = dot(sub(p, c), sub(p, c));
+    if da <= db && da <= dc {
+        (1.0, 0.0, 0.0, da.sqrt())
+    } else if db <= dc {
+        (0.0, 1.0, 0.0, db.sqrt())
+    } else {
+        (0.0, 0.0, 1.0, dc.sqrt())
+    }
 }
 #[cfg(test)]
 mod tests {

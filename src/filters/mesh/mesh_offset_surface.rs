@@ -65,24 +65,56 @@ pub fn shell(mesh: &PolyData, inner_offset: f64, outer_offset: f64) -> PolyData 
         let shifted: Vec<i64> = cell.iter().map(|&v| v + n as i64).collect();
         polys.push_cell(&shifted);
     }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            polys.push_cell(&[tri[2], tri[1], tri[0]]);
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            polys.push_cell(&[tri[0] + n as i64, tri[1] + n as i64, tri[2] + n as i64]);
+        }
+    }
     // Side walls on boundary edges
-    let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut ec: std::collections::HashMap<(usize, usize), (usize, usize, usize)> =
+        std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         if nc == 0 {
             continue;
         }
         for i in 0..nc {
-            let Some(a) = valid_point_id(cell[i], n) else {
-                continue;
-            };
-            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
-                continue;
-            };
-            *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            count_directed_edge(cell[i], cell[(i + 1) % nc], n, &mut ec);
         }
     }
-    for (&(a, b), &c) in &ec {
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            count_directed_edge(tri[0], tri[1], n, &mut ec);
+            count_directed_edge(tri[1], tri[2], n, &mut ec);
+            count_directed_edge(tri[2], tri[0], n, &mut ec);
+        }
+    }
+    for &(_, a, b) in ec.values() {
+        let c = ec[&(a.min(b), a.max(b))].0;
         if c == 1 {
             polys.push_cell(&[a as i64, b as i64, (b + n) as i64, (a + n) as i64]);
         }
@@ -99,33 +131,21 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let Some(ia) = valid_point_id(cell[0], n) else {
-            continue;
-        };
-        let a = mesh.points.get(ia);
         for i in 1..cell.len() - 1 {
-            let Some(ib) = valid_point_id(cell[i], n) else {
-                continue;
+            accumulate_triangle_normal(mesh, [cell[0], cell[i], cell[i + 1]], &mut nm);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
             };
-            let Some(ic) = valid_point_id(cell[i + 1], n) else {
-                continue;
-            };
-            let b = mesh.points.get(ib);
-            let c = mesh.points.get(ic);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let fn_ = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            for v in [cell[0], cell[i], cell[i + 1]] {
-                if let Some(vi) = valid_point_id(v, n) {
-                    nm[vi][0] += fn_[0];
-                    nm[vi][1] += fn_[1];
-                    nm[vi][2] += fn_[2];
-                }
-            }
+            accumulate_triangle_normal(mesh, tri, &mut nm);
         }
     }
     for v in &mut nm {
@@ -137,6 +157,51 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     nm
+}
+fn accumulate_triangle_normal(mesh: &PolyData, tri: [i64; 3], nm: &mut [[f64; 3]]) {
+    let n = nm.len();
+    let Some(ia) = valid_point_id(tri[0], n) else {
+        return;
+    };
+    let Some(ib) = valid_point_id(tri[1], n) else {
+        return;
+    };
+    let Some(ic) = valid_point_id(tri[2], n) else {
+        return;
+    };
+    let a = mesh.points.get(ia);
+    let b = mesh.points.get(ib);
+    let c = mesh.points.get(ic);
+    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let fn_ = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    for vi in [ia, ib, ic] {
+        nm[vi][0] += fn_[0];
+        nm[vi][1] += fn_[1];
+        nm[vi][2] += fn_[2];
+    }
+}
+fn count_directed_edge(
+    a_id: i64,
+    b_id: i64,
+    n: usize,
+    edge_count: &mut std::collections::HashMap<(usize, usize), (usize, usize, usize)>,
+) {
+    let Some(a) = valid_point_id(a_id, n) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b_id, n) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    let entry = edge_count.entry((a.min(b), a.max(b))).or_insert((0, a, b));
+    entry.0 += 1;
 }
 fn valid_point_id(id: i64, n: usize) -> Option<usize> {
     if id >= 0 && (id as usize) < n {
@@ -166,5 +231,28 @@ mod tests {
         let r = shell(&m, -0.05, 0.05);
         assert_eq!(r.points.len(), 6);
         assert!(r.polys.num_cells() > 2);
+    }
+    #[test]
+    fn offset_uses_strip_normals() {
+        let mut m = PolyData::new();
+        m.points.push([0.0, 0.0, 0.0]);
+        m.points.push([1.0, 0.0, 0.0]);
+        m.points.push([0.0, 1.0, 0.0]);
+        m.strips.push_cell(&[0, 1, 2]);
+
+        let r = offset_surface(&m, 0.1);
+        assert!((r.points.get(0)[2] - 0.1).abs() < 1e-10);
+    }
+    #[test]
+    fn shell_includes_strip_surface() {
+        let mut m = PolyData::new();
+        m.points.push([0.0, 0.0, 0.0]);
+        m.points.push([1.0, 0.0, 0.0]);
+        m.points.push([0.0, 1.0, 0.0]);
+        m.strips.push_cell(&[0, 1, 2]);
+
+        let r = shell(&m, -0.05, 0.05);
+        assert_eq!(r.points.len(), 6);
+        assert_eq!(r.polys.num_cells(), 5);
     }
 }

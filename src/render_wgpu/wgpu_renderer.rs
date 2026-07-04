@@ -333,7 +333,7 @@ impl WgpuRenderer {
         let msaa_texture = create_msaa_texture(&device, surface_format, width, height);
         let overlay_pipeline = OverlayPipeline::new(&device, surface_format);
         let volume_pass = VolumePass::new(&device, surface_format);
-        let skybox_pass = SkyboxPass::new(&device, surface_format);
+        let skybox_pass = SkyboxPass::new(&device, surface_format, MSAA_SAMPLE_COUNT);
         let shadow_pass = ShadowPass::new(&device);
         let bloom_pass = BloomPass::new(&device, surface_format);
         let ssao_pass = SsaoPass::new(&device, surface_format);
@@ -482,13 +482,20 @@ impl WgpuRenderer {
         let cam_pos = scene.camera.position;
 
         let mut gpu_lights = [GpuLight::zeroed(); MAX_LIGHTS];
-        let num_lights = scene.lights.len().min(MAX_LIGHTS);
-        for (i, light) in scene.lights.iter().take(MAX_LIGHTS).enumerate() {
-            if !light.enabled {
-                continue;
+        let mut num_lights = 0usize;
+        for light in scene.lights.iter().filter(|light| light.enabled) {
+            if num_lights == MAX_LIGHTS {
+                break;
             }
+            let i = num_lights;
             gpu_lights[i] = light_to_gpu(light);
+            num_lights += 1;
         }
+        let shadow_available = scene.shadows.enabled
+            && scene
+                .lights
+                .iter()
+                .any(|light| light.enabled && matches!(light.light_type, LightType::Directional));
 
         let uniforms = Uniforms {
             mvp: mvp_f32.to_cols_array_2d(),
@@ -535,10 +542,10 @@ impl WgpuRenderer {
             fog_near: scene.fog.near as f32,
             fog_far: scene.fog.far as f32,
             fog_density: scene.fog.density as f32,
-            shadow_enabled: if scene.shadows.enabled { 1.0 } else { 0.0 },
+            shadow_enabled: if shadow_available { 1.0 } else { 0.0 },
             shadow_darkness: scene.shadows.darkness as f32,
             light_vp: {
-                if scene.shadows.enabled {
+                if shadow_available {
                     // Find first directional light
                     let dir_light = scene.lights.iter().find(|l| {
                         l.enabled && matches!(l.light_type, crate::render::LightType::Directional)
@@ -666,12 +673,7 @@ impl WgpuRenderer {
                     view: msaa_view,
                     resolve_target: Some(resolve_target),
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: scene.background[0] as f64,
-                            g: scene.background[1] as f64,
-                            b: scene.background[2] as f64,
-                            a: scene.background[3] as f64,
-                        }),
+                        load: wgpu::LoadOp::Load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -883,6 +885,25 @@ impl WgpuRenderer {
                         },
                     ],
                 });
+            } else {
+                self.bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("bind group no shadow"),
+                    layout: &self.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.uniform_buffer.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&self.dummy_shadow_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(&self.shadow_sampler),
+                        },
+                    ],
+                });
             }
         } else {
             // Reset to dummy shadow map
@@ -906,6 +927,21 @@ impl WgpuRenderer {
             });
         }
 
+        let default_background = [0.1, 0.1, 0.1, 1.0];
+        let background_skybox;
+        let skybox = match &scene.skybox {
+            crate::render::Skybox::Solid(c)
+                if *c == default_background && scene.background != default_background =>
+            {
+                background_skybox = crate::render::Skybox::Solid(scene.background);
+                &background_skybox
+            }
+            skybox => skybox,
+        };
+
+        self.skybox_pass
+            .render(&self.queue, &mut encoder, msaa_view, skybox);
+
         // 3D scene with MSAA
         self.render_3d_msaa(scene, msaa_view, resolve_target, depth_view, &mut encoder);
 
@@ -916,16 +952,33 @@ impl WgpuRenderer {
             let mut all_sil_verts = Vec::new();
             let mut all_sil_idxs: Vec<u32> = Vec::new();
             for actor in &scene.actors {
-                if actor.representation != Representation::Surface {
+                if !actor.visible || actor.representation != Representation::Surface {
                     continue;
                 }
+                let actor_scale = if actor.scale.abs() > f64::EPSILON {
+                    actor.scale
+                } else {
+                    1.0
+                };
+                let local_cam = [
+                    (cam[0] - actor.position[0]) / actor_scale,
+                    (cam[1] - actor.position[1]) / actor_scale,
+                    (cam[2] - actor.position[2]) / actor_scale,
+                ];
                 let (verts, idxs) = crate::render_wgpu::silhouette_pass::extract_silhouette_edges(
                     &actor.data,
-                    cam,
+                    local_cam,
                     &scene.silhouette,
                 );
                 let base = all_sil_verts.len() as u32;
-                all_sil_verts.extend_from_slice(&verts);
+                all_sil_verts.extend(verts.into_iter().map(|mut vertex| {
+                    vertex.position = [
+                        vertex.position[0] * actor.scale as f32 + actor.position[0] as f32,
+                        vertex.position[1] * actor.scale as f32 + actor.position[1] as f32,
+                        vertex.position[2] * actor.scale as f32 + actor.position[2] as f32,
+                    ];
+                    vertex
+                }));
                 all_sil_idxs.extend(idxs.iter().map(|&i| i + base));
             }
             if !all_sil_idxs.is_empty() {

@@ -14,9 +14,26 @@ pub fn smooth_volume_preserving(mesh: &PolyData, iterations: usize, lambda: f64)
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[i], n),
+                valid_point_id(cell[(i + 1) % nc], n),
+            ) {
+                if !neighbors[a].contains(&b) {
+                    neighbors[a].push(b);
+                }
+                if !neighbors[b].contains(&a) {
+                    neighbors[b].push(a);
+                }
+            }
+        }
+    }
+    for cell in mesh.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() - 1 {
+            if let (Some(a), Some(b)) = (valid_point_id(cell[i], n), valid_point_id(cell[i + 1], n))
+            {
                 if !neighbors[a].contains(&b) {
                     neighbors[a].push(b);
                 }
@@ -92,16 +109,33 @@ fn signed_volume(mesh: &PolyData) -> f64 {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
+        let Some(a_idx) = valid_point_id(cell[0], mesh.points.len()) else {
+            continue;
+        };
+        let a = mesh.points.get(a_idx);
         for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
+            let Some(b_idx) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(c_idx) = valid_point_id(cell[i + 1], mesh.points.len()) else {
+                continue;
+            };
+            let b = mesh.points.get(b_idx);
+            let c = mesh.points.get(c_idx);
             vol += a[0] * (b[1] * c[2] - b[2] * c[1])
                 + a[1] * (b[2] * c[0] - b[0] * c[2])
                 + a[2] * (b[0] * c[1] - b[1] * c[0]);
         }
     }
     vol / 6.0
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

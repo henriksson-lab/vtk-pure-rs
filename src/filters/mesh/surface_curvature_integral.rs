@@ -13,26 +13,29 @@ pub fn total_absolute_curvature(input: &PolyData) -> f64 {
     let mut vertex_area = vec![0.0f64; n];
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        let Some(ids) = valid_cell_point_ids(cell, n) else {
+            continue;
+        };
+        if ids.len() < 3 {
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i + 1] as usize);
+        let v0 = input.points.get(ids[0]);
+        for i in 1..ids.len() - 1 {
+            let v1 = input.points.get(ids[i]);
+            let v2 = input.points.get(ids[i + 1]);
             let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
             let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
             let cx = e1[1] * e2[2] - e1[2] * e2[1];
             let cy = e1[2] * e2[0] - e1[0] * e2[2];
             let cz = e1[0] * e2[1] - e1[1] * e2[0];
             let a = 0.5 * (cx * cx + cy * cy + cz * cz).sqrt() / 3.0;
-            vertex_area[cell[0] as usize] += a;
-            vertex_area[cell[i] as usize] += a;
-            vertex_area[cell[i + 1] as usize] += a;
+            vertex_area[ids[0]] += a;
+            vertex_area[ids[i]] += a;
+            vertex_area[ids[i + 1]] += a;
         }
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+        for i in 0..ids.len() {
+            let a = ids[i];
+            let b = ids[(i + 1) % ids.len()];
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -67,14 +70,18 @@ pub fn total_absolute_curvature(input: &PolyData) -> f64 {
 /// Compute total surface area.
 pub fn total_surface_area(input: &PolyData) -> f64 {
     let mut area = 0.0;
+    let n = input.points.len();
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        let Some(ids) = valid_cell_point_ids(cell, n) else {
+            continue;
+        };
+        if ids.len() < 3 {
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i + 1] as usize);
+        let v0 = input.points.get(ids[0]);
+        for i in 1..ids.len() - 1 {
+            let v1 = input.points.get(ids[i]);
+            let v2 = input.points.get(ids[i + 1]);
             let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
             let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
             let cx = e1[1] * e2[2] - e1[2] * e2[1];
@@ -94,6 +101,12 @@ pub fn mean_total_curvature(input: &PolyData) -> f64 {
     } else {
         0.0
     }
+}
+
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
 }
 
 #[cfg(test)]
@@ -136,5 +149,19 @@ mod tests {
         let pd = PolyData::new();
         assert_eq!(total_absolute_curvature(&pd), 0.0);
         assert_eq!(total_surface_area(&pd), 0.0);
+    }
+
+    #[test]
+    fn invalid_cell_ids_are_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, -1, 2]);
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        assert!((total_surface_area(&pd) - 0.5).abs() < 1e-10);
+        assert!(total_absolute_curvature(&pd).is_finite());
     }
 }

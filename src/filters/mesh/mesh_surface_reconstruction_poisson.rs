@@ -16,10 +16,19 @@ pub fn poisson_reconstruct_simple(points: &PolyData, grid_res: usize) -> PolyDat
             mx[j] = mx[j].max(p[j]);
         }
     }
+    let mut max_range = 0.0f64;
+    for j in 0..3 {
+        max_range = max_range.max(mx[j] - mn[j]);
+    }
+    if max_range <= f64::EPSILON {
+        max_range = 1.0;
+    }
     let pad = 0.1;
     for j in 0..3 {
-        mn[j] -= pad * (mx[j] - mn[j]);
-        mx[j] += pad * (mx[j] - mn[j]);
+        let range = (mx[j] - mn[j]).max(max_range * 1e-3);
+        let center = 0.5 * (mn[j] + mx[j]);
+        mn[j] = center - 0.5 * range - pad * range;
+        mx[j] = center + 0.5 * range + pad * range;
     }
     let dx = [
         (mx[0] - mn[0]) / gr as f64,

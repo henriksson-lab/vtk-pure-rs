@@ -5,7 +5,13 @@ use std::collections::HashMap;
 ///
 /// Removes connected components with fewer than `min_faces` triangles.
 pub fn remove_small_components(input: &PolyData, min_faces: usize) -> PolyData {
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let n_points = input.points.len();
+    let cells: Vec<Vec<i64>> = input
+        .polys
+        .iter()
+        .filter(|c| is_valid_polygon(c, n_points))
+        .map(|c| c.to_vec())
+        .collect();
     let nc = cells.len();
     if nc == 0 {
         return input.clone();
@@ -67,6 +73,10 @@ pub fn remove_small_components(input: &PolyData, min_faces: usize) -> PolyData {
     pd.points = out_pts;
     pd.polys = out_polys;
     pd
+}
+
+fn is_valid_polygon(cell: &[i64], n_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 #[cfg(test)]

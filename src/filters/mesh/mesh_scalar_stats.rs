@@ -11,8 +11,11 @@ pub struct ScalarStats {
 }
 
 pub fn scalar_stats(mesh: &PolyData, scalar_name: &str) -> Option<ScalarStats> {
-    let n = mesh.points.len();
     let arr = mesh.point_data().get_array(scalar_name)?;
+    let n = arr.num_tuples();
+    if arr.num_components() != 1 || n != mesh.points.len() {
+        return None;
+    }
     if n == 0 {
         return None;
     }
@@ -64,5 +67,21 @@ mod tests {
         assert_eq!(s.max, 3.0);
         assert!((s.mean - 2.0).abs() < 1e-9);
         assert_eq!(s.median, 2.0);
+    }
+
+    #[test]
+    fn rejects_vector_arrays() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                2,
+            )));
+
+        assert!(scalar_stats(&mesh, "v").is_none());
     }
 }

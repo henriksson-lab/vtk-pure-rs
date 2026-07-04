@@ -14,14 +14,18 @@ pub fn thin_mesh(input: &PolyData, target_vertices: usize) -> PolyData {
     }
 
     // Copy points
-    let mut points: Vec<[f64; 3]> = (0..n_pts).map(|i| input.points.get(i)).collect();
+    let points: Vec<[f64; 3]> = (0..n_pts).map(|i| input.points.get(i)).collect();
 
     // Copy triangles
     let mut triangles: Vec<Option<[usize; 3]>> = Vec::new();
     for cell in input.polys.iter() {
-        if cell.len() == 3 {
-            triangles.push(Some([cell[0] as usize, cell[1] as usize, cell[2] as usize]));
+        if cell.len() != 3 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n_pts) {
+            return input.clone();
         }
+        triangles.push(Some([cell[0] as usize, cell[1] as usize, cell[2] as usize]));
+    }
+    if triangles.is_empty() {
+        return input.clone();
     }
 
     let mut alive = vec![true; n_pts];
@@ -196,5 +200,20 @@ mod tests {
             assert_ne!(cell[1], cell[2]);
             assert_ne!(cell[0], cell[2]);
         }
+    }
+
+    #[test]
+    fn non_triangle_polygons_are_unchanged() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let result = thin_mesh(&pd, 2);
+        assert_eq!(result.points.len(), pd.points.len());
+        assert_eq!(result.polys.num_cells(), pd.polys.num_cells());
     }
 }

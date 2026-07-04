@@ -22,9 +22,20 @@ pub fn topology_info(mesh: &PolyData) -> TopologyInfo {
         std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % nc];
+            if a_id < 0 || b_id < 0 {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
+            if a >= v || b >= v {
+                continue;
+            }
             *edge_count.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
@@ -37,7 +48,11 @@ pub fn topology_info(mesh: &PolyData) -> TopologyInfo {
 
     let euler = v as isize - e as isize + f as isize;
     // genus = (2 - euler - boundary_loops) / 2 for orientable surfaces
-    let genus = (2 - euler - boundary_loops as isize) / 2;
+    let genus = if non_manifold == 0 {
+        (2 - euler - boundary_loops as isize) / 2
+    } else {
+        0
+    };
 
     TopologyInfo {
         vertices: v,
@@ -47,7 +62,7 @@ pub fn topology_info(mesh: &PolyData) -> TopologyInfo {
         genus: genus.max(0),
         boundary_loops,
         is_manifold: non_manifold == 0,
-        is_closed: boundary == 0,
+        is_closed: f > 0 && boundary == 0,
     }
 }
 

@@ -2,6 +2,7 @@
 use crate::data::PolyData;
 pub fn twist(mesh: &PolyData, axis: usize, angle_per_unit: f64) -> PolyData {
     let n = mesh.points.len();
+    let axis = axis.min(2);
     let mut r = mesh.clone();
     for i in 0..n {
         let p = r.points.get(i);
@@ -19,6 +20,7 @@ pub fn twist(mesh: &PolyData, axis: usize, angle_per_unit: f64) -> PolyData {
 }
 pub fn taper(mesh: &PolyData, axis: usize, scale_per_unit: f64) -> PolyData {
     let n = mesh.points.len();
+    let axis = axis.min(2);
     let mut r = mesh.clone();
     for i in 0..n {
         let p = r.points.get(i);
@@ -35,6 +37,8 @@ pub fn taper(mesh: &PolyData, axis: usize, scale_per_unit: f64) -> PolyData {
 }
 pub fn bend_mesh(mesh: &PolyData, axis: usize, bend_axis: usize, curvature: f64) -> PolyData {
     let n = mesh.points.len();
+    let axis = axis.min(2);
+    let bend_axis = bend_axis.min(2);
     let mut r = mesh.clone();
     for i in 0..n {
         let p = r.points.get(i);

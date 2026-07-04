@@ -1,26 +1,41 @@
 //! Compute minimum distance from each vertex to any non-adjacent edge.
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::HashSet;
 
 pub fn vertex_edge_distance(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     if n == 0 {
         return mesh.clone();
     }
-    // Collect all edges
     let mut edges: Vec<(usize, usize)> = Vec::new();
-    let mut vert_adj: Vec<std::collections::HashSet<usize>> =
-        vec![std::collections::HashSet::new(); n];
+    let mut vert_adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            insert_edge(&mut edges, &mut vert_adj, n, edge[0], edge[1]);
+        }
+    }
+
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                let e = if a < b { (a, b) } else { (b, a) };
-                vert_adj[a].insert(b);
-                vert_adj[b].insert(a);
-                edges.push(e);
-            }
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            insert_edge(
+                &mut edges,
+                &mut vert_adj,
+                n,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+            );
+        }
+    }
+
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edges, &mut vert_adj, n, tri[0], tri[1]);
+            insert_edge(&mut edges, &mut vert_adj, n, tri[1], tri[2]);
+            insert_edge(&mut edges, &mut vert_adj, n, tri[2], tri[0]);
         }
     }
     edges.sort();
@@ -68,6 +83,29 @@ pub fn vertex_edge_distance(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("EdgeDistance");
     result
+}
+
+fn insert_edge(
+    edges: &mut Vec<(usize, usize)>,
+    vert_adj: &mut [HashSet<usize>],
+    n: usize,
+    a: i64,
+    b: i64,
+) {
+    let (Some(a), Some(b)) = (valid_point_index(a, n), valid_point_index(b, n)) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    let e = if a < b { (a, b) } else { (b, a) };
+    vert_adj[a].insert(b);
+    vert_adj[b].insert(a);
+    edges.push(e);
+}
+
+fn valid_point_index(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n)
 }
 
 #[cfg(test)]

@@ -24,10 +24,16 @@ pub fn vertices_to_points(poly: &PolyData) -> Vec<[f64; 3]> {
     let mut result: Vec<[f64; 3]> = Vec::new();
     for cell in poly.verts.iter() {
         for &id in cell {
-            result.push(poly.points.get(id as usize));
+            if let Some(id) = valid_point_id(id, poly.points.len()) {
+                result.push(poly.points.get(id));
+            }
         }
     }
     result
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]
@@ -69,5 +75,14 @@ mod tests {
         );
         let pts = vertices_to_points(&pd);
         assert!(pts.is_empty());
+    }
+
+    #[test]
+    fn vertices_to_points_skips_invalid_point_ids() {
+        let mut pd = PolyData::from_points(vec![[1.0, 2.0, 3.0]]);
+        pd.verts.push_cell(&[0, -1, 99]);
+
+        let pts = vertices_to_points(&pd);
+        assert_eq!(pts, vec![[1.0, 2.0, 3.0]]);
     }
 }

@@ -15,15 +15,14 @@ pub fn vertex_star_info(input: &PolyData) -> PolyData {
     let mut edge_count: std::collections::HashMap<(usize, usize), usize> =
         std::collections::HashMap::new();
 
+    for cell in input.lines.iter() {
+        add_open_cell_edges(cell, n, &mut neighbors, None);
+    }
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(key).or_insert(0) += 1;
-        }
+        add_closed_cell_edges(cell, n, &mut neighbors, Some(&mut edge_count));
+    }
+    for cell in input.strips.iter() {
+        add_triangle_strip_edges(cell, n, &mut neighbors, Some(&mut edge_count));
     }
 
     let mut degrees = vec![0.0f64; n];
@@ -75,6 +74,70 @@ pub fn count_boundary_vertices(input: &PolyData) -> usize {
 /// Count the number of interior vertices.
 pub fn count_interior_vertices(input: &PolyData) -> usize {
     input.points.len() - count_boundary_vertices(input)
+}
+
+fn add_edge(
+    a: i64,
+    b: i64,
+    n: usize,
+    neighbors: &mut [std::collections::HashSet<usize>],
+    edge_count: Option<&mut std::collections::HashMap<(usize, usize), usize>>,
+) {
+    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
+        return;
+    };
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    neighbors[a].insert(b);
+    neighbors[b].insert(a);
+    if let Some(edge_count) = edge_count {
+        let key = if a < b { (a, b) } else { (b, a) };
+        *edge_count.entry(key).or_insert(0) += 1;
+    }
+}
+
+fn add_open_cell_edges(
+    cell: &[i64],
+    n: usize,
+    neighbors: &mut [std::collections::HashSet<usize>],
+    mut edge_count: Option<&mut std::collections::HashMap<(usize, usize), usize>>,
+) {
+    for edge in cell.windows(2) {
+        add_edge(edge[0], edge[1], n, neighbors, edge_count.as_deref_mut());
+    }
+}
+
+fn add_closed_cell_edges(
+    cell: &[i64],
+    n: usize,
+    neighbors: &mut [std::collections::HashSet<usize>],
+    mut edge_count: Option<&mut std::collections::HashMap<(usize, usize), usize>>,
+) {
+    if cell.len() < 2 {
+        return;
+    }
+    add_open_cell_edges(cell, n, neighbors, edge_count.as_deref_mut());
+    add_edge(
+        cell[cell.len() - 1],
+        cell[0],
+        n,
+        neighbors,
+        edge_count.as_deref_mut(),
+    );
+}
+
+fn add_triangle_strip_edges(
+    cell: &[i64],
+    n: usize,
+    neighbors: &mut [std::collections::HashSet<usize>],
+    mut edge_count: Option<&mut std::collections::HashMap<(usize, usize), usize>>,
+) {
+    for tri in cell.windows(3) {
+        add_edge(tri[0], tri[1], n, neighbors, edge_count.as_deref_mut());
+        add_edge(tri[1], tri[2], n, neighbors, edge_count.as_deref_mut());
+        add_edge(tri[2], tri[0], n, neighbors, edge_count.as_deref_mut());
+    }
 }
 
 #[cfg(test)]

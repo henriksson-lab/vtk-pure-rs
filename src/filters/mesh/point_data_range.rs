@@ -65,7 +65,11 @@ pub fn normalize_scalar(input: &PolyData, array_name: &str) -> PolyData {
         }
     }
 
-    let range: f64 = (max_val - min_val).max(1e-15);
+    let range: f64 = max_val - min_val;
+    if range <= 1e-15 {
+        return input.clone();
+    }
+
     let normalized: Vec<f64> = values.iter().map(|v| (v - min_val) / range).collect();
 
     let mut pd = input.clone();
@@ -139,5 +143,22 @@ mod tests {
 
         arr.tuple_as_f64(2, &mut buf);
         assert!((buf[0] - 0.5).abs() < 1e-10); // mid -> 0.5
+    }
+
+    #[test]
+    fn test_normalize_zero_range_returns_clone() {
+        let mut pd = PolyData::from_vertices(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Constant",
+                vec![4.0, 4.0],
+                1,
+            )));
+
+        let result = normalize_scalar(&pd, "Constant");
+        assert!(result
+            .point_data()
+            .get_array("Constant_normalized")
+            .is_none());
     }
 }

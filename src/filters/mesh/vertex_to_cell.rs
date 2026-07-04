@@ -13,19 +13,20 @@ pub fn vertex_mask_to_cell_mask(input: &PolyData, mask_name: &str, threshold: f6
     let mut buf = [0.0f64];
     let selected: Vec<bool> = (0..n)
         .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0] >= threshold
+            if i < arr.num_tuples() {
+                arr.tuple_as_f64(i, &mut buf);
+                buf[0] >= threshold
+            } else {
+                false
+            }
         })
         .collect();
 
-    let mut cell_mask = Vec::new();
-    for cell in input.polys.iter() {
-        cell_mask.push(if cell.iter().all(|&id| selected[id as usize]) {
-            1.0
-        } else {
-            0.0
-        });
-    }
+    let mut cell_mask = Vec::with_capacity(input.total_cells());
+    push_cell_mask(&input.verts, &selected, &mut cell_mask);
+    push_cell_mask(&input.lines, &selected, &mut cell_mask);
+    push_cell_mask(&input.polys, &selected, &mut cell_mask);
+    push_cell_mask(&input.strips, &selected, &mut cell_mask);
 
     let mut pd = input.clone();
     pd.cell_data_mut()
@@ -48,15 +49,44 @@ pub fn cell_mask_to_vertex_mask(input: &PolyData, mask_name: &str, threshold: f6
     let n = input.points.len();
     let mut buf = [0.0f64];
     let mut vertex_selected = vec![0.0f64; n];
+    let mut cell_idx = 0;
 
-    for (ci, cell) in input.polys.iter().enumerate() {
-        arr.tuple_as_f64(ci, &mut buf);
-        if buf[0] >= threshold {
-            for &id in cell.iter() {
-                vertex_selected[id as usize] = 1.0;
-            }
-        }
-    }
+    select_vertices_from_cells(
+        &input.verts,
+        n,
+        arr,
+        threshold,
+        &mut cell_idx,
+        &mut vertex_selected,
+        &mut buf,
+    );
+    select_vertices_from_cells(
+        &input.lines,
+        n,
+        arr,
+        threshold,
+        &mut cell_idx,
+        &mut vertex_selected,
+        &mut buf,
+    );
+    select_vertices_from_cells(
+        &input.polys,
+        n,
+        arr,
+        threshold,
+        &mut cell_idx,
+        &mut vertex_selected,
+        &mut buf,
+    );
+    select_vertices_from_cells(
+        &input.strips,
+        n,
+        arr,
+        threshold,
+        &mut cell_idx,
+        &mut vertex_selected,
+        &mut buf,
+    );
 
     let mut pd = input.clone();
     pd.point_data_mut()
@@ -66,6 +96,47 @@ pub fn cell_mask_to_vertex_mask(input: &PolyData, mask_name: &str, threshold: f6
             1,
         )));
     pd
+}
+
+fn push_cell_mask(source: &crate::data::CellArray, selected: &[bool], cell_mask: &mut Vec<f64>) {
+    for cell in source.iter() {
+        let all_selected = !cell.is_empty()
+            && cell.iter().all(|&id| {
+                usize::try_from(id)
+                    .ok()
+                    .and_then(|idx| selected.get(idx))
+                    .copied()
+                    .unwrap_or(false)
+            });
+        cell_mask.push(if all_selected { 1.0 } else { 0.0 });
+    }
+}
+
+fn select_vertices_from_cells(
+    source: &crate::data::CellArray,
+    num_points: usize,
+    array: &crate::data::AnyDataArray,
+    threshold: f64,
+    cell_idx: &mut usize,
+    vertex_selected: &mut [f64],
+    tuple: &mut [f64],
+) {
+    for cell in source.iter() {
+        if *cell_idx < array.num_tuples() {
+            array.tuple_as_f64(*cell_idx, tuple);
+            if tuple[0] >= threshold {
+                for &id in cell.iter() {
+                    let Ok(id) = usize::try_from(id) else {
+                        continue;
+                    };
+                    if id < num_points {
+                        vertex_selected[id] = 1.0;
+                    }
+                }
+            }
+        }
+        *cell_idx += 1;
+    }
 }
 
 #[cfg(test)]

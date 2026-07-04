@@ -14,8 +14,7 @@ pub fn cotangent_smooth(input: &PolyData, lambda: f64, iterations: usize) -> Pol
     let tris: Vec<[usize; 3]> = input
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| triangle_point_ids(c, n))
         .collect();
 
     let pts_init: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
@@ -100,6 +99,21 @@ fn add_cot_weight(
     lap[j][1] += cot * d2[1];
     lap[j][2] += cot * d2[2];
     w[j] += cot;
+}
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    if cell.len() != 3 {
+        return None;
+    }
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n)
 }
 
 #[cfg(test)]

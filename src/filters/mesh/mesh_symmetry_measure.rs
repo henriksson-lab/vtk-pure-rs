@@ -10,6 +10,9 @@ pub fn symmetry_error_z(mesh: &PolyData) -> f64 {
     symmetry_error(mesh, 2)
 }
 fn symmetry_error(mesh: &PolyData, axis: usize) -> f64 {
+    if axis >= 3 {
+        return 0.0;
+    }
     let n = mesh.points.len();
     if n == 0 {
         return 0.0;
@@ -37,6 +40,9 @@ fn symmetry_error(mesh: &PolyData, axis: usize) -> f64 {
     }
 }
 pub fn attach_symmetry_deviation(mesh: &PolyData, axis: usize) -> PolyData {
+    if axis >= 3 {
+        return mesh.clone();
+    }
     let n = mesh.points.len();
     let pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
     let data: Vec<f64> = (0..n)

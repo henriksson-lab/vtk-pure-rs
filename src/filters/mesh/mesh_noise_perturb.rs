@@ -45,33 +45,21 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let Some(ia) = valid_point_id(cell[0], n) else {
-            continue;
-        };
-        let a = mesh.points.get(ia);
         for i in 1..cell.len() - 1 {
-            let Some(ib) = valid_point_id(cell[i], n) else {
-                continue;
+            accumulate_triangle_normal(mesh, [cell[0], cell[i], cell[i + 1]], &mut nm);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
             };
-            let Some(ic) = valid_point_id(cell[i + 1], n) else {
-                continue;
-            };
-            let b = mesh.points.get(ib);
-            let c = mesh.points.get(ic);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let fn_ = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            for v in [cell[0], cell[i], cell[i + 1]] {
-                if let Some(vi) = valid_point_id(v, n) {
-                    nm[vi][0] += fn_[0];
-                    nm[vi][1] += fn_[1];
-                    nm[vi][2] += fn_[2];
-                }
-            }
+            accumulate_triangle_normal(mesh, tri, &mut nm);
         }
     }
     for v in &mut nm {
@@ -83,6 +71,33 @@ fn calc_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     nm
+}
+fn accumulate_triangle_normal(mesh: &PolyData, tri: [i64; 3], nm: &mut [[f64; 3]]) {
+    let n = nm.len();
+    let Some(ia) = valid_point_id(tri[0], n) else {
+        return;
+    };
+    let Some(ib) = valid_point_id(tri[1], n) else {
+        return;
+    };
+    let Some(ic) = valid_point_id(tri[2], n) else {
+        return;
+    };
+    let a = mesh.points.get(ia);
+    let b = mesh.points.get(ib);
+    let c = mesh.points.get(ic);
+    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let fn_ = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    for vi in [ia, ib, ic] {
+        nm[vi][0] += fn_[0];
+        nm[vi][1] += fn_[1];
+        nm[vi][2] += fn_[2];
+    }
 }
 fn valid_point_id(id: i64, n: usize) -> Option<usize> {
     if id >= 0 && (id as usize) < n {
@@ -124,5 +139,16 @@ mod tests {
         );
         let r = perturb_along_normals(&m, 0.1, 42);
         assert_eq!(r.points.len(), 3);
+    }
+    #[test]
+    fn strip_normals_are_used() {
+        let mut m = PolyData::new();
+        m.points.push([0.0, 0.0, 0.0]);
+        m.points.push([1.0, 0.0, 0.0]);
+        m.points.push([0.0, 1.0, 0.0]);
+        m.strips.push_cell(&[0, 1, 2]);
+
+        let r = perturb_along_normals(&m, 0.1, 42);
+        assert!(r.points.get(0)[2].abs() > 0.0);
     }
 }

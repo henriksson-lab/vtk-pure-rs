@@ -19,6 +19,9 @@ pub fn blend_vertex_colors(
         _ => return mesh.clone(),
     };
     let n = a.num_tuples().min(b.num_tuples());
+    if n != mesh.points.len() || a.num_tuples() != b.num_tuples() {
+        return mesh.clone();
+    }
     let mut ba = [0.0f64; 3];
     let mut bb = [0.0f64; 3];
     let mut data = Vec::with_capacity(n * 3);

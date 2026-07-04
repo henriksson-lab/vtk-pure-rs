@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::data::{CellArray, Points, PolyData};
 
@@ -33,18 +33,51 @@ pub fn count_non_manifold_edges(input: &PolyData) -> usize {
     edge_faces.values().filter(|&&c| c > 2).count()
 }
 
-fn build_edge_face_count(input: &PolyData) -> HashMap<(i64, i64), usize> {
-    let mut edge_faces: HashMap<(i64, i64), usize> = HashMap::new();
+fn build_edge_face_count(input: &PolyData) -> BTreeMap<(i64, i64), usize> {
+    let mut edge_faces: BTreeMap<(i64, i64), usize> = BTreeMap::new();
+    let n_points = input.points.len();
     for cell in input.polys.iter() {
-        let n = cell.len();
-        for i in 0..n {
-            let a = cell[i];
-            let b = cell[(i + 1) % n];
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_faces.entry(key).or_insert(0) += 1;
+        insert_polygon_edges(&mut edge_faces, cell, n_points);
+    }
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            insert_edge(&mut edge_faces, tri[0], tri[1], n_points);
+            insert_edge(&mut edge_faces, tri[1], tri[2], n_points);
+            insert_edge(&mut edge_faces, tri[2], tri[0], n_points);
         }
     }
     edge_faces
+}
+
+fn insert_polygon_edges(
+    edge_faces: &mut BTreeMap<(i64, i64), usize>,
+    cell: &[i64],
+    n_points: usize,
+) {
+    for i in 0..cell.len() {
+        insert_edge(edge_faces, cell[i], cell[(i + 1) % cell.len()], n_points);
+    }
+}
+
+fn insert_edge(edge_faces: &mut BTreeMap<(i64, i64), usize>, a: i64, b: i64, n_points: usize) {
+    let (Some(a), Some(b)) = (
+        valid_point_index(a, n_points),
+        valid_point_index(b, n_points),
+    ) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    let key = if a < b { (a, b) } else { (b, a) };
+    *edge_faces.entry(key).or_insert(0) += 1;
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<i64> {
+    usize::try_from(id)
+        .ok()
+        .filter(|&id| id < n_points)
+        .map(|id| id as i64)
 }
 
 fn map_point(
@@ -114,5 +147,22 @@ mod tests {
         assert_eq!(count_non_manifold_edges(&pd), 0);
         let result = non_manifold_edges(&pd);
         assert_eq!(result.lines.num_cells(), 0);
+    }
+
+    #[test]
+    fn detects_non_manifold_edge_from_triangle_strips() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([0.0, -1.0, 0.0]);
+        pd.points.push([0.0, 0.0, 1.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 1, 3]);
+        pd.strips.push_cell(&[0, 1, 4]);
+
+        assert_eq!(count_non_manifold_edges(&pd), 1);
+        let result = non_manifold_edges(&pd);
+        assert_eq!(result.lines.num_cells(), 1);
     }
 }

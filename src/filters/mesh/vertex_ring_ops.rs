@@ -1,13 +1,14 @@
 //! Vertex ring (neighborhood) operations.
 
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::{HashMap, HashSet};
 
 /// Extract the 1-ring neighborhood of a vertex as a PolyData.
 pub fn extract_one_ring(mesh: &PolyData, vertex: usize) -> PolyData {
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells = valid_polygon_cells(mesh);
     let mut selected = Vec::new();
     for (ci, cell) in all_cells.iter().enumerate() {
-        if cell.iter().any(|&pid| pid as usize == vertex) {
+        if cell.iter().any(|&pid| pid == vertex) {
             selected.push(ci);
         }
     }
@@ -16,13 +17,15 @@ pub fn extract_one_ring(mesh: &PolyData, vertex: usize) -> PolyData {
 
 /// Extract the N-ring neighborhood of a vertex.
 pub fn extract_n_ring(mesh: &PolyData, vertex: usize, n: usize) -> PolyData {
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells = valid_polygon_cells(mesh);
     let n_cells = all_cells.len();
     let np = mesh.points.len();
     let adj = build_adj(mesh, np);
+    if vertex >= np {
+        return PolyData::new();
+    }
 
-    // Find vertices within N hops
-    let mut ring_verts: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let mut ring_verts: HashSet<usize> = HashSet::new();
     let mut frontier = vec![vertex];
     ring_verts.insert(vertex);
     for _ in 0..n {
@@ -37,13 +40,8 @@ pub fn extract_n_ring(mesh: &PolyData, vertex: usize, n: usize) -> PolyData {
         frontier = next_frontier;
     }
 
-    // Select cells that have all vertices in the ring
     let selected: Vec<usize> = (0..n_cells)
-        .filter(|&ci| {
-            all_cells[ci]
-                .iter()
-                .all(|&pid| ring_verts.contains(&(pid as usize)))
-        })
+        .filter(|&ci| all_cells[ci].iter().all(|&pid| ring_verts.contains(&pid)))
         .collect();
     extract_cells(mesh, &all_cells, &selected)
 }
@@ -83,28 +81,32 @@ pub fn find_irregular_vertices(mesh: &PolyData) -> PolyData {
 }
 
 fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut a: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    let mut a: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for c in m.polys.iter() {
-        let nc = c.len();
+        let Some(indices) = valid_cell_indices(c, n) else {
+            continue;
+        };
+        let nc = indices.len();
         for i in 0..nc {
-            let x = c[i] as usize;
-            let y = c[(i + 1) % nc] as usize;
-            if x < n && y < n {
-                a[x].insert(y);
-                a[y].insert(x);
-            }
+            let x = indices[i];
+            let y = indices[(i + 1) % nc];
+            a[x].insert(y);
+            a[y].insert(x);
         }
     }
     a.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 fn find_boundary_verts(mesh: &PolyData, n: usize) -> Vec<bool> {
-    let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
+    let mut ec: HashMap<(usize, usize), usize> = HashMap::new();
     for c in mesh.polys.iter() {
-        let nc = c.len();
+        let Some(indices) = valid_cell_indices(c, n) else {
+            continue;
+        };
+        let nc = indices.len();
         for i in 0..nc {
-            let a = c[i] as usize;
-            let b = c[(i + 1) % nc] as usize;
+            let a = indices[i];
+            let b = indices[(i + 1) % nc];
             *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
         }
     }
@@ -118,15 +120,14 @@ fn find_boundary_verts(mesh: &PolyData, n: usize) -> Vec<bool> {
     bnd
 }
 
-fn extract_cells(mesh: &PolyData, all_cells: &[Vec<i64>], selected: &[usize]) -> PolyData {
+fn extract_cells(mesh: &PolyData, all_cells: &[Vec<usize>], selected: &[usize]) -> PolyData {
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
-    let mut pm: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut pm: HashMap<usize, usize> = HashMap::new();
     for &ci in selected {
         let cell = &all_cells[ci];
         let mut ids = Vec::new();
-        for &pid in cell {
-            let old = pid as usize;
+        for &old in cell {
             let idx = *pm.entry(old).or_insert_with(|| {
                 let i = pts.len();
                 pts.push(mesh.points.get(old));
@@ -140,6 +141,25 @@ fn extract_cells(mesh: &PolyData, all_cells: &[Vec<i64>], selected: &[usize]) ->
     r.points = pts;
     r.polys = polys;
     r
+}
+
+fn valid_polygon_cells(mesh: &PolyData) -> Vec<Vec<usize>> {
+    let n = mesh.points.len();
+    mesh.polys
+        .iter()
+        .filter_map(|cell| valid_cell_indices(cell, n))
+        .collect()
+}
+
+fn valid_cell_indices(cell: &[i64], npoints: usize) -> Option<Vec<usize>> {
+    let mut indices = Vec::with_capacity(cell.len());
+    for &id in cell {
+        if id < 0 || id as usize >= npoints {
+            return None;
+        }
+        indices.push(id as usize);
+    }
+    Some(indices)
 }
 
 #[cfg(test)]

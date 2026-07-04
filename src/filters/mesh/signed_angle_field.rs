@@ -14,7 +14,7 @@ pub fn signed_angle_field(input: &PolyData, reference: [f64; 3]) -> PolyData {
     // Compute vertex normals
     let mut vnormals = vec![[0.0f64; 3]; n];
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3 || !valid_cell(cell, n) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -95,6 +95,10 @@ pub fn signed_angle_field(input: &PolyData, reference: [f64; 3]) -> PolyData {
     pd
 }
 
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,5 +147,20 @@ mod tests {
         let pd = PolyData::new();
         let result = signed_angle_field(&pd, [1.0, 0.0, 0.0]);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn skips_invalid_cell_ids() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[0, -1, 2]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let result = signed_angle_field(&pd, [1.0, 0.0, 0.0]);
+        let arr = result.point_data().get_array("SignedAngleField").unwrap();
+        assert_eq!(arr.num_tuples(), 3);
     }
 }

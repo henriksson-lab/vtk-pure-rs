@@ -4,9 +4,13 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_invert(mesh: &PolyData, scalar_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
+    if n == 0 {
+        return mesh.clone();
+    }
     let mut vals = Vec::with_capacity(n);
     let mut buf = [0.0f64];
     for i in 0..n {

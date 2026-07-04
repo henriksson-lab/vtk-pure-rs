@@ -1,5 +1,7 @@
 use crate::data::PolyData;
 
+const VERDICT_DBL_MAX: f64 = 1.0e30;
+
 /// Compute a histogram of triangle aspect ratios.
 ///
 /// Returns (bin_centers, counts) with `n_bins` bins from 1.0 to max_ratio.
@@ -9,19 +11,24 @@ pub fn aspect_ratio_histogram(input: &PolyData, n_bins: usize) -> (Vec<f64>, Vec
         if cell.len() < 3 {
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
-        let v1 = input.points.get(cell[1] as usize);
-        let v2 = input.points.get(cell[2] as usize);
-        let d01 = dist(v0, v1);
-        let d12 = dist(v1, v2);
-        let d20 = dist(v2, v0);
-        let longest = d01.max(d12).max(d20);
-        let shortest = d01.min(d12).min(d20);
-        ratios.push(if shortest > 1e-15 {
-            longest / shortest
-        } else {
-            f64::MAX
-        });
+        let Some(i0) = valid_point_id(cell[0], input.points.len()) else {
+            continue;
+        };
+        let v0 = input.points.get(i0);
+        for i in 1..cell.len() - 1 {
+            let Some(i1) = valid_point_id(cell[i], input.points.len()) else {
+                continue;
+            };
+            let Some(i2) = valid_point_id(cell[i + 1], input.points.len()) else {
+                continue;
+            };
+            let v1 = input.points.get(i1);
+            let v2 = input.points.get(i2);
+            let d01 = dist(v0, v1);
+            let d12 = dist(v1, v2);
+            let d20 = dist(v2, v0);
+            ratios.push(tri_aspect_ratio(d01, d12, d20, tri_area(v0, v1, v2)));
+        }
     }
 
     if ratios.is_empty() {
@@ -30,7 +37,7 @@ pub fn aspect_ratio_histogram(input: &PolyData, n_bins: usize) -> (Vec<f64>, Vec
     let nb = n_bins.max(1);
     let max_r = ratios
         .iter()
-        .filter(|&&r| r < f64::MAX)
+        .filter(|&&r| r < VERDICT_DBL_MAX)
         .copied()
         .fold(1.0f64, f64::max);
     let bw = (max_r - 1.0).max(0.01) / nb as f64;
@@ -38,7 +45,7 @@ pub fn aspect_ratio_histogram(input: &PolyData, n_bins: usize) -> (Vec<f64>, Vec
     let centers: Vec<f64> = (0..nb).map(|i| 1.0 + (i as f64 + 0.5) * bw).collect();
     let mut counts = vec![0usize; nb];
     for &r in &ratios {
-        if r >= f64::MAX {
+        if r >= VERDICT_DBL_MAX {
             continue;
         }
         let bin = ((r - 1.0) / bw).floor() as usize;
@@ -54,10 +61,19 @@ pub fn area_histogram(input: &PolyData, n_bins: usize) -> (Vec<f64>, Vec<usize>)
         if cell.len() < 3 {
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
+        let Some(i0) = valid_point_id(cell[0], input.points.len()) else {
+            continue;
+        };
+        let v0 = input.points.get(i0);
         for i in 1..cell.len() - 1 {
-            let v1 = input.points.get(cell[i] as usize);
-            let v2 = input.points.get(cell[i + 1] as usize);
+            let Some(i1) = valid_point_id(cell[i], input.points.len()) else {
+                continue;
+            };
+            let Some(i2) = valid_point_id(cell[i + 1], input.points.len()) else {
+                continue;
+            };
+            let v1 = input.points.get(i1);
+            let v2 = input.points.get(i2);
             areas.push(tri_area(v0, v1, v2));
         }
     }
@@ -88,6 +104,18 @@ fn tri_area(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     let cy = e1[2] * e2[0] - e1[0] * e2[2];
     let cz = e1[0] * e2[1] - e1[1] * e2[0];
     0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
+}
+fn tri_aspect_ratio(e0: f64, e1: f64, e2: f64, area: f64) -> f64 {
+    if area <= 1e-15 {
+        return VERDICT_DBL_MAX;
+    }
+    let longest = e0.max(e1).max(e2);
+    let perimeter = e0 + e1 + e2;
+    longest * perimeter / (4.0 * 3.0f64.sqrt() * area)
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < num_points)
 }
 
 #[cfg(test)]
@@ -121,6 +149,33 @@ mod tests {
         let (centers, counts) = area_histogram(&pd, 3);
         let total: usize = counts.iter().sum();
         assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn histogram_uses_vtk_triangle_aspect_ratio() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let (centers, counts) = aspect_ratio_histogram(&pd, 1);
+        let expected = (2.0f64.sqrt() * (2.0 + 2.0f64.sqrt())) / (2.0 * 3.0f64.sqrt());
+        assert_eq!(counts, [1]);
+        assert!((centers[0] - ((1.0 + expected) / 2.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn aspect_histogram_uses_all_polygon_fan_triangles() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let (_, counts) = aspect_ratio_histogram(&pd, 3);
+        assert_eq!(counts.iter().sum::<usize>(), 2);
     }
 
     #[test]

@@ -63,30 +63,59 @@ pub fn read_netcdf(path: &Path) -> Result<(ImageData, Vec<NetcdfVarInfo>), VtkEr
         )));
     }
 
-    // Try to read coordinate variables for spacing
-    let dx = read_spacing(&file, &var, 2).unwrap_or(1.0);
-    let dy = read_spacing(&file, &var, 1).unwrap_or(1.0);
-    let dz = if shape.len() == 3 {
-        read_spacing(&file, &var, 0).unwrap_or(1.0)
+    // Try to read coordinate variables for origin and spacing.  VTK's
+    // NetCDF CF reader maps netCDF dimensions in reverse order to image axes.
+    let ndims = shape.len();
+    let x_axis = read_axis_coordinate(&file, &var, ndims - 1);
+    let y_axis = read_axis_coordinate(&file, &var, ndims - 2);
+    let z_axis = if ndims == 3 {
+        read_axis_coordinate(&file, &var, 0)
     } else {
-        1.0
+        None
     };
 
     let mut img = ImageData::with_dimensions(nx, ny, nz);
-    img.set_spacing([dx, dy, dz]);
+    img.set_origin([
+        x_axis.map(|axis| axis.0).unwrap_or(0.0),
+        y_axis.map(|axis| axis.0).unwrap_or(0.0),
+        z_axis.map(|axis| axis.0).unwrap_or(0.0),
+    ]);
+    img.set_spacing([
+        x_axis.map(|axis| axis.1).unwrap_or(1.0),
+        y_axis.map(|axis| axis.1).unwrap_or(1.0),
+        z_axis.map(|axis| axis.1).unwrap_or(1.0),
+    ]);
     img.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(&var_name, data, 1)));
 
     Ok((img, var_infos))
 }
 
-fn read_spacing(file: &netcdf_rs::File, var: &netcdf_rs::Variable, dim_idx: usize) -> Option<f64> {
+fn read_axis_coordinate(
+    file: &netcdf_rs::File,
+    var: &netcdf_rs::Variable,
+    dim_idx: usize,
+) -> Option<(f64, f64)> {
     let dim_name = var.dimensions().get(dim_idx)?.name().to_string();
     let coord_var = file.variable(&dim_name)?;
     let vals: Vec<f64> = coord_var.get_values(..).ok()?;
-    if vals.len() >= 2 {
-        Some((vals[1] - vals[0]).abs())
+    let origin = *vals.first()?;
+    let spacing = if vals.len() >= 2 {
+        (vals[vals.len() - 1] - origin) / (vals.len() - 1) as f64
     } else {
-        None
+        1.0
+    };
+    Some((origin, spacing))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn axis_spacing_keeps_regular_coordinate_sign() {
+        let vals = [10.0, 7.5, 5.0];
+        let origin = vals[0];
+        let spacing = (vals[vals.len() - 1] - origin) / (vals.len() - 1) as f64;
+        assert_eq!(origin, 10.0);
+        assert_eq!(spacing, -2.5);
     }
 }

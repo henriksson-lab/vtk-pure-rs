@@ -1,4 +1,5 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
+use std::collections::HashMap;
 
 /// Compute vertex importance for mesh simplification.
 ///
@@ -12,21 +13,10 @@ pub fn vertex_importance(input: &PolyData) -> PolyData {
     }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    let mut edge_count = std::collections::HashMap::new();
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(key).or_insert(0usize) += 1;
-        }
-    }
+    let mut edge_count = HashMap::new();
+    add_closed_cell_edges(&input.polys, n, &mut neighbors, &mut edge_count);
+    add_open_cell_edges(&input.lines, n, &mut neighbors, &mut edge_count);
+    add_triangle_strip_edges(&input.strips, n, &mut neighbors, &mut edge_count);
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
@@ -91,6 +81,102 @@ pub fn vertex_importance(input: &PolyData) -> PolyData {
     pd
 }
 
+fn add_closed_cell_edges(
+    cells: &CellArray,
+    npoints: usize,
+    neighbors: &mut [Vec<usize>],
+    edge_count: &mut HashMap<(usize, usize), usize>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        if indices.len() < 2 {
+            continue;
+        }
+        for i in 0..indices.len() {
+            add_edge(
+                neighbors,
+                edge_count,
+                indices[i],
+                indices[(i + 1) % indices.len()],
+            );
+        }
+    }
+}
+
+fn add_open_cell_edges(
+    cells: &CellArray,
+    npoints: usize,
+    neighbors: &mut [Vec<usize>],
+    edge_count: &mut HashMap<(usize, usize), usize>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        for edge in indices.windows(2) {
+            add_edge(neighbors, edge_count, edge[0], edge[1]);
+        }
+    }
+}
+
+fn add_triangle_strip_edges(
+    cells: &CellArray,
+    npoints: usize,
+    neighbors: &mut [Vec<usize>],
+    edge_count: &mut HashMap<(usize, usize), usize>,
+) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, npoints) else {
+            continue;
+        };
+        if indices.len() < 3 {
+            continue;
+        }
+        for i in 0..indices.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [indices[i], indices[i + 1], indices[i + 2]]
+            } else {
+                [indices[i + 1], indices[i], indices[i + 2]]
+            };
+            add_edge(neighbors, edge_count, tri[0], tri[1]);
+            add_edge(neighbors, edge_count, tri[1], tri[2]);
+            add_edge(neighbors, edge_count, tri[2], tri[0]);
+        }
+    }
+}
+
+fn add_edge(
+    neighbors: &mut [Vec<usize>],
+    edge_count: &mut HashMap<(usize, usize), usize>,
+    a: usize,
+    b: usize,
+) {
+    if a == b {
+        return;
+    }
+    if !neighbors[a].contains(&b) {
+        neighbors[a].push(b);
+    }
+    if !neighbors[b].contains(&a) {
+        neighbors[b].push(a);
+    }
+    let key = if a < b { (a, b) } else { (b, a) };
+    *edge_count.entry(key).or_insert(0) += 1;
+}
+
+fn valid_cell_indices(cell: &[i64], npoints: usize) -> Option<Vec<usize>> {
+    let mut indices = Vec::with_capacity(cell.len());
+    for &id in cell {
+        if id < 0 || id as usize >= npoints {
+            return None;
+        }
+        indices.push(id as usize);
+    }
+    Some(indices)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +221,40 @@ mod tests {
         let pd = PolyData::new();
         let result = vertex_importance(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn triangle_strip_uses_decomposed_edges() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let mut neighbors = vec![Vec::new(); pd.points.len()];
+        let mut edge_count = HashMap::new();
+        add_triangle_strip_edges(&pd.strips, pd.points.len(), &mut neighbors, &mut edge_count);
+
+        assert!(edge_count.contains_key(&(0, 2)));
+        assert!(edge_count.contains_key(&(1, 3)));
+        assert!(!edge_count.contains_key(&(0, 3)));
+        assert_eq!(edge_count.get(&(1, 2)), Some(&2));
+    }
+
+    #[test]
+    fn verts_do_not_create_mesh_edges() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.verts.push_cell(&[0, 1]);
+
+        let result = vertex_importance(&pd);
+        let arr = result.point_data().get_array("Importance").unwrap();
+        let mut val = [0.0f64];
+        arr.tuple_as_f64(0, &mut val);
+        assert_eq!(val[0], 0.2);
+        arr.tuple_as_f64(1, &mut val);
+        assert_eq!(val[0], 0.2);
     }
 }

@@ -3,9 +3,10 @@ use crate::data::{CellArray, Points, PolyData};
 /// Extract iso-line at given value from a scalar point data array.
 pub fn scalar_isoline(mesh: &PolyData, array_name: &str, isovalue: f64) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= mesh.points.len() => a,
         _ => return PolyData::new(),
     };
+    let n = mesh.points.len();
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -22,19 +23,37 @@ pub fn scalar_isoline(mesh: &PolyData, array_name: &str, isovalue: f64) -> PolyD
         let nc = cell.len();
         let mut edge_pts: Vec<[f64; 3]> = Vec::new();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
             let va = vals[a];
             let vb = vals[b];
-            if (va - isovalue) * (vb - isovalue) < 0.0 {
+            let da = va - isovalue;
+            let db = vb - isovalue;
+            if da == 0.0 && db == 0.0 {
+                let i0 = pts.len();
+                pts.push(mesh.points.get(a));
+                pts.push(mesh.points.get(b));
+                lines.push_cell(&[i0 as i64, (i0 + 1) as i64]);
+            } else if da == 0.0 {
+                push_unique_point(&mut edge_pts, mesh.points.get(a));
+            } else if db == 0.0 {
+                push_unique_point(&mut edge_pts, mesh.points.get(b));
+            } else if da * db < 0.0 {
                 let t = (isovalue - va) / (vb - va);
                 let pa = mesh.points.get(a);
                 let pb = mesh.points.get(b);
-                edge_pts.push([
-                    pa[0] + t * (pb[0] - pa[0]),
-                    pa[1] + t * (pb[1] - pa[1]),
-                    pa[2] + t * (pb[2] - pa[2]),
-                ]);
+                push_unique_point(
+                    &mut edge_pts,
+                    [
+                        pa[0] + t * (pb[0] - pa[0]),
+                        pa[1] + t * (pb[1] - pa[1]),
+                        pa[2] + t * (pb[2] - pa[2]),
+                    ],
+                );
             }
         }
         if edge_pts.len() == 2 {
@@ -68,6 +87,16 @@ pub fn scalar_isolines(mesh: &PolyData, array_name: &str, values: &[f64]) -> Pol
     r.points = all_pts;
     r.lines = all_lines;
     r
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
+}
+
+fn push_unique_point(points: &mut Vec<[f64; 3]>, point: [f64; 3]) {
+    if !points.iter().any(|&p| p == point) {
+        points.push(point);
+    }
 }
 #[cfg(test)]
 mod tests {

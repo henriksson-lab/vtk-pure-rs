@@ -11,14 +11,9 @@ pub fn random_perturb(input: &PolyData, amplitude: f64, seed: u64) -> PolyData {
 
     for i in 0..n {
         let p = input.points.get(i);
-        let rx = next_f64(&mut rng) * 2.0 - 1.0;
-        let ry = next_f64(&mut rng) * 2.0 - 1.0;
-        let rz = next_f64(&mut rng) * 2.0 - 1.0;
-        points.push([
-            p[0] + rx * amplitude,
-            p[1] + ry * amplitude,
-            p[2] + rz * amplitude,
-        ]);
+        let [rx, ry, rz] = random_unit_ball(&mut rng);
+        let scale = amplitude.abs();
+        points.push([p[0] + rx * scale, p[1] + ry * scale, p[2] + rz * scale]);
     }
 
     let mut pd = input.clone();
@@ -52,6 +47,17 @@ fn next_f64(rng: &mut u64) -> f64 {
     (*rng >> 33) as f64 / (1u64 << 31) as f64
 }
 
+fn random_unit_ball(rng: &mut u64) -> [f64; 3] {
+    loop {
+        let x = next_f64(rng) * 2.0 - 1.0;
+        let y = next_f64(rng) * 2.0 - 1.0;
+        let z = next_f64(rng) * 2.0 - 1.0;
+        if x * x + y * y + z * z <= 1.0 {
+            return [x, y, z];
+        }
+    }
+}
+
 fn box_muller(rng: &mut u64) -> f64 {
     let u1 = next_f64(rng).max(1e-15);
     let u2 = next_f64(rng);
@@ -70,8 +76,8 @@ mod tests {
 
         let result = random_perturb(&pd, 0.1, 42);
         let p = result.points.get(0);
-        assert!(p[0].abs() <= 0.1 + 1e-10 || true); // some displacement
-                                                    // Just verify it doesn't crash and produces different points
+        let d = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+        assert!(d <= 0.1 + 1e-10);
         assert_eq!(result.points.len(), 2);
     }
 
@@ -109,5 +115,21 @@ mod tests {
         let a = random_perturb(&pd, 1.0, 42);
         let b = random_perturb(&pd, 1.0, 42);
         assert_eq!(a.points.get(0), b.points.get(0));
+    }
+
+    #[test]
+    fn displacement_magnitude_is_bounded_by_amplitude() {
+        let mut pd = PolyData::new();
+        for i in 0..50 {
+            pd.points.push([i as f64, 0.0, 0.0]);
+        }
+
+        let result = random_perturb(&pd, 0.25, 99);
+        for i in 0..pd.points.len() {
+            let p = pd.points.get(i);
+            let q = result.points.get(i);
+            let d = ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2) + (q[2] - p[2]).powi(2)).sqrt();
+            assert!(d <= 0.25 + 1e-12);
+        }
     }
 }

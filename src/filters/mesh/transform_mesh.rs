@@ -73,7 +73,7 @@ pub fn rotate_z(mesh: &PolyData, angle: f64) -> PolyData {
     result
 }
 
-/// Apply a 4x4 transformation matrix (row-major, last row assumed [0,0,0,1]).
+/// Apply a 4x4 transformation matrix in row-major order.
 pub fn transform_by_matrix(mesh: &PolyData, m: &[[f64; 4]; 4]) -> PolyData {
     let mut result = mesh.clone();
     for i in 0..result.points.len() {
@@ -81,7 +81,9 @@ pub fn transform_by_matrix(mesh: &PolyData, m: &[[f64; 4]; 4]) -> PolyData {
         let x = m[0][0] * p[0] + m[0][1] * p[1] + m[0][2] * p[2] + m[0][3];
         let y = m[1][0] * p[0] + m[1][1] * p[1] + m[1][2] * p[2] + m[1][3];
         let z = m[2][0] * p[0] + m[2][1] * p[1] + m[2][2] * p[2] + m[2][3];
-        result.points.set(i, [x, y, z]);
+        let w = m[3][0] * p[0] + m[3][1] * p[1] + m[3][2] * p[2] + m[3][3];
+        let inv_w = 1.0 / w;
+        result.points.set(i, [x * inv_w, y * inv_w, z * inv_w]);
     }
     result
 }
@@ -136,6 +138,40 @@ mod tests {
         let p = r.points.get(0);
         assert!(p[0].abs() < 1e-10); // (1,0) -> (0,1)
         assert!((p[1] - 1.0).abs() < 1e-10);
+    }
+    #[test]
+    fn test_homogeneous_matrix_divides_by_w() {
+        let mesh = PolyData::from_triangles(
+            vec![[2.0, 4.0, 6.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let matrix = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 2.0],
+        ];
+        let r = transform_by_matrix(&mesh, &matrix);
+        let p = r.points.get(0);
+        assert!((p[0] - 1.0).abs() < 1e-10);
+        assert!((p[1] - 2.0).abs() < 1e-10);
+        assert!((p[2] - 3.0).abs() < 1e-10);
+    }
+    #[test]
+    fn test_homogeneous_matrix_divides_by_zero_w_like_vtk() {
+        let mesh = PolyData::from_triangles(
+            vec![[2.0, 4.0, 6.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let matrix = [
+            [1.0, 0.0, 0.0, 10.0],
+            [0.0, 1.0, 0.0, 20.0],
+            [0.0, 0.0, 1.0, 30.0],
+            [0.0, 0.0, 0.0, 0.0],
+        ];
+        let r = transform_by_matrix(&mesh, &matrix);
+        let p = r.points.get(0);
+        assert_eq!(p, [f64::INFINITY, f64::INFINITY, f64::INFINITY]);
     }
     #[test]
     fn test_center() {

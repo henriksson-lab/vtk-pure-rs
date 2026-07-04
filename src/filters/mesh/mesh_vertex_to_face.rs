@@ -1,34 +1,25 @@
 //! Interpolate vertex scalar data to face (cell) data by averaging.
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 
 pub fn vertex_to_face(mesh: &PolyData, scalar_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
+    let nt = n.min(arr.num_tuples());
     let mut vals = vec![0.0f64; n];
     let mut buf = [0.0f64];
-    for i in 0..n {
+    for i in 0..nt {
         arr.tuple_as_f64(i, &mut buf);
         vals[i] = buf[0];
     }
-    let mut face_vals = Vec::new();
-    for cell in mesh.polys.iter() {
-        let avg: f64 = cell
-            .iter()
-            .filter_map(|&v| {
-                let vi = v as usize;
-                if vi < n {
-                    Some(vals[vi])
-                } else {
-                    None
-                }
-            })
-            .sum::<f64>()
-            / cell.len().max(1) as f64;
-        face_vals.push(avg);
-    }
+    let mut face_vals = Vec::with_capacity(mesh.total_cells());
+    append_cell_averages(&mesh.verts, nt, &vals, &mut face_vals);
+    append_cell_averages(&mesh.lines, nt, &vals, &mut face_vals);
+    append_cell_averages(&mesh.polys, nt, &vals, &mut face_vals);
+    append_cell_averages(&mesh.strips, nt, &vals, &mut face_vals);
     let mut result = mesh.clone();
     let out_name = format!("{}_cell", scalar_name);
     result
@@ -36,7 +27,27 @@ pub fn vertex_to_face(mesh: &PolyData, scalar_name: &str) -> PolyData {
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             &out_name, face_vals, 1,
         )));
+    result.cell_data_mut().set_active_scalars(&out_name);
     result
+}
+
+fn append_cell_averages(cells: &CellArray, nt: usize, vals: &[f64], face_vals: &mut Vec<f64>) {
+    for cell in cells.iter() {
+        let mut count = 0usize;
+        let sum: f64 = cell
+            .iter()
+            .filter_map(|&v| {
+                let vi = usize::try_from(v).ok()?;
+                if vi < nt {
+                    count += 1;
+                    Some(vals[vi])
+                } else {
+                    None
+                }
+            })
+            .sum();
+        face_vals.push(if count > 0 { sum / count as f64 } else { 0.0 });
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
-use crate::data::{CellArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
+use crate::types::Scalar;
 
 fn dist_sq(a: [f64; 3], b: [f64; 3]) -> f64 {
     let dx: f64 = a[0] - b[0];
@@ -14,8 +15,11 @@ fn dist_sq(a: [f64; 3], b: [f64; 3]) -> f64 {
 /// diagonal that is shorter, producing better-shaped triangles.
 pub fn triangulate_quads(input: &PolyData) -> PolyData {
     let mut out_polys = CellArray::new();
+    let mut old_poly_ids = Vec::new();
+    let poly_cell_offset = input.verts.num_cells() + input.lines.num_cells();
 
-    for cell in input.polys.iter() {
+    for (poly_id, cell) in input.polys.iter().enumerate() {
+        let old_cell_id = poly_cell_offset + poly_id;
         if cell.len() == 4 {
             let p0 = input.points.get(cell[0] as usize);
             let p1 = input.points.get(cell[1] as usize);
@@ -28,25 +32,84 @@ pub fn triangulate_quads(input: &PolyData) -> PolyData {
             if diag_02 <= diag_13 {
                 // Split along 0-2
                 out_polys.push_cell(&[cell[0], cell[1], cell[2]]);
+                old_poly_ids.push(old_cell_id);
                 out_polys.push_cell(&[cell[0], cell[2], cell[3]]);
+                old_poly_ids.push(old_cell_id);
             } else {
                 // Split along 1-3
                 out_polys.push_cell(&[cell[0], cell[1], cell[3]]);
+                old_poly_ids.push(old_cell_id);
                 out_polys.push_cell(&[cell[1], cell[2], cell[3]]);
+                old_poly_ids.push(old_cell_id);
             }
         } else {
             out_polys.push_cell(cell);
+            old_poly_ids.push(old_cell_id);
         }
     }
 
-    let mut pd = PolyData::new();
-    pd.points = input.points.clone();
+    let mut pd = input.clone();
     pd.polys = out_polys;
-    // Copy verts, lines, strips unchanged
-    pd.verts = input.verts.clone();
-    pd.lines = input.lines.clone();
-    pd.strips = input.strips.clone();
+    remap_cell_data(input, &old_poly_ids, &mut pd);
     pd
+}
+
+fn remap_cell_data(input: &PolyData, old_poly_ids: &[usize], output: &mut PolyData) {
+    if input.cell_data().num_arrays() == 0 {
+        return;
+    }
+
+    let mut old_cell_ids = Vec::with_capacity(output.total_cells());
+    old_cell_ids.extend(0..input.verts.num_cells());
+
+    let line_offset = input.verts.num_cells();
+    old_cell_ids.extend(line_offset..line_offset + input.lines.num_cells());
+
+    old_cell_ids.extend_from_slice(old_poly_ids);
+
+    let strip_offset = input.verts.num_cells() + input.lines.num_cells() + input.polys.num_cells();
+    old_cell_ids.extend(strip_offset..strip_offset + input.strips.num_cells());
+
+    output.cell_data_mut().clear();
+    for i in 0..input.cell_data().num_arrays() {
+        let Some(array) = input.cell_data().get_array_by_index(i) else {
+            continue;
+        };
+        if array.num_tuples() == input.total_cells() {
+            output
+                .cell_data_mut()
+                .add_array(remap_array(array, &old_cell_ids));
+        }
+    }
+}
+
+fn remap_array(array: &AnyDataArray, old_cell_ids: &[usize]) -> AnyDataArray {
+    macro_rules! remap {
+        ($array:expr, $variant:ident) => {
+            AnyDataArray::$variant(remap_typed_array($array, old_cell_ids))
+        };
+    }
+
+    match array {
+        AnyDataArray::F32(array) => remap!(array, F32),
+        AnyDataArray::F64(array) => remap!(array, F64),
+        AnyDataArray::I8(array) => remap!(array, I8),
+        AnyDataArray::I16(array) => remap!(array, I16),
+        AnyDataArray::I32(array) => remap!(array, I32),
+        AnyDataArray::I64(array) => remap!(array, I64),
+        AnyDataArray::U8(array) => remap!(array, U8),
+        AnyDataArray::U16(array) => remap!(array, U16),
+        AnyDataArray::U32(array) => remap!(array, U32),
+        AnyDataArray::U64(array) => remap!(array, U64),
+    }
+}
+
+fn remap_typed_array<T: Scalar>(array: &DataArray<T>, old_cell_ids: &[usize]) -> DataArray<T> {
+    let mut data = Vec::with_capacity(old_cell_ids.len() * array.num_components());
+    for &old_cell_id in old_cell_ids {
+        data.extend_from_slice(array.tuple(old_cell_id));
+    }
+    DataArray::from_vec(array.name(), data, array.num_components())
 }
 
 #[cfg(test)]

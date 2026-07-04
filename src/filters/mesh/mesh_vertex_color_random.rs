@@ -9,15 +9,15 @@ pub fn random_vertex_colors(mesh: &PolyData, seed: u64) -> PolyData {
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        data.push(((rng >> 33) as f64 / u32::MAX as f64) * 255.0);
+        data.push(((rng >> 32) as f64 / u32::MAX as f64) * 255.0);
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        data.push(((rng >> 33) as f64 / u32::MAX as f64) * 255.0);
+        data.push(((rng >> 32) as f64 / u32::MAX as f64) * 255.0);
         rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        data.push(((rng >> 33) as f64 / u32::MAX as f64) * 255.0);
+        data.push(((rng >> 32) as f64 / u32::MAX as f64) * 255.0);
     }
     let mut r = mesh.clone();
     r.point_data_mut()
@@ -34,7 +34,7 @@ pub fn random_face_colors(mesh: &PolyData, seed: u64) -> PolyData {
             rng = rng
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
-            data.push(((rng >> 33) as f64 / u32::MAX as f64) * 255.0);
+            data.push(((rng >> 32) as f64 / u32::MAX as f64) * 255.0);
         }
     }
     let mut r = mesh.clone();

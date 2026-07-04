@@ -1,4 +1,4 @@
-use crate::data::{DataSet, PolyData};
+use crate::data::PolyData;
 
 /// Result of a point picking operation.
 #[derive(Debug, Clone)]
@@ -61,25 +61,39 @@ pub fn pick_closest_cell(input: &PolyData, query: [f64; 3]) -> Option<usize> {
         if cell.is_empty() {
             continue;
         }
+        let Some(ids) = valid_cell_point_ids(cell, input.points.len()) else {
+            continue;
+        };
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
-        for &id in cell.iter() {
-            let p = input.points.get(id as usize);
+        for id in ids.iter().copied() {
+            let p = input.points.get(id);
             cx += p[0];
             cy += p[1];
             cz += p[2];
         }
-        let n = cell.len() as f64;
-        let d2 = ((cx / n - query[0]).powi(2)
-            + (cy / n - query[1]).powi(2)
-            + (cz / n - query[2]).powi(2));
+        let n = ids.len() as f64;
+        let d2 =
+            (cx / n - query[0]).powi(2) + (cy / n - query[1]).powi(2) + (cz / n - query[2]).powi(2);
         if d2 < best_d2 {
             best_d2 = d2;
             best_id = Some(ci);
         }
     }
     best_id
+}
+
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&point_id| valid_point_id(point_id, n_points))
+        .collect()
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 
 #[cfg(test)]
@@ -129,5 +143,17 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert!(pick_closest_point(&pd, [0.0; 3]).is_none());
+    }
+
+    #[test]
+    fn malformed_cell_ids_are_skipped() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, -1, 2]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        assert_eq!(pick_closest_cell(&pd, [0.3, 0.3, 0.0]), Some(1));
     }
 }

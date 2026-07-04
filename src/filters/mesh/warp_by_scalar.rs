@@ -4,22 +4,27 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Warp mesh points along their normals scaled by a scalar array.
 pub fn warp_by_scalar(mesh: &PolyData, scalar_name: &str, scale: f64) -> PolyData {
-    let scalars = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return mesh.clone(),
-    };
-    let normals = match mesh.point_data().get_array("Normals") {
-        Some(a) if a.num_components() == 3 => a,
-        _ => return mesh.clone(),
-    };
-
     let n = mesh.points.len();
+    let scalars = match mesh.point_data().get_array(scalar_name) {
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
+        _ => return mesh.clone(),
+    };
+    let normals = mesh
+        .point_data()
+        .normals()
+        .or_else(|| mesh.point_data().get_array("Normals"))
+        .filter(|a| a.num_components() == 3 && a.num_tuples() >= n);
+
     let mut sbuf = [0.0f64];
     let mut nbuf = [0.0f64; 3];
     let mut result = mesh.clone();
     for i in 0..n {
         scalars.tuple_as_f64(i, &mut sbuf);
-        normals.tuple_as_f64(i, &mut nbuf);
+        if let Some(normals) = normals {
+            normals.tuple_as_f64(i, &mut nbuf);
+        } else {
+            nbuf = [0.0, 0.0, 1.0];
+        }
         let p = mesh.points.get(i);
         let d = sbuf[0] * scale;
         result.points.set(
@@ -32,11 +37,11 @@ pub fn warp_by_scalar(mesh: &PolyData, scalar_name: &str, scale: f64) -> PolyDat
 
 /// Warp mesh points along Z axis by a scalar array.
 pub fn warp_z_by_scalar(mesh: &PolyData, scalar_name: &str, scale: f64) -> PolyData {
+    let n = mesh.points.len();
     let scalars = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
-    let n = mesh.points.len();
     let mut buf = [0.0f64];
     let mut result = mesh.clone();
     for i in 0..n {
@@ -54,11 +59,11 @@ pub fn warp_radial_by_scalar(
     center: [f64; 3],
     scale: f64,
 ) -> PolyData {
+    let n = mesh.points.len();
     let scalars = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
-    let n = mesh.points.len();
     let mut buf = [0.0f64];
     let mut result = mesh.clone();
     for i in 0..n {
@@ -138,5 +143,25 @@ mod tests {
         let r = warp_radial_by_scalar(&mesh, "s", [0.0, 0.0, 0.0], 0.5);
         let p = r.points.get(0);
         assert!((p[0] - 1.5).abs() < 1e-10); // moved outward
+    }
+
+    #[test]
+    fn warp_scalar_defaults_to_z_normal() {
+        let mut mesh = PolyData::from_points(vec![[0.0, 0.0, 1.0]]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("h", vec![2.0], 1)));
+
+        let r = warp_by_scalar(&mesh, "h", 0.5);
+        assert_eq!(r.points.get(0), [0.0, 0.0, 2.0]);
+    }
+
+    #[test]
+    fn short_scalar_array_returns_input_clone() {
+        let mut mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("h", vec![1.0], 1)));
+
+        let r = warp_z_by_scalar(&mesh, "h", 1.0);
+        assert_eq!(r.points.get(1), [1.0, 0.0, 0.0]);
     }
 }

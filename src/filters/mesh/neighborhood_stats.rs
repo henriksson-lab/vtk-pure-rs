@@ -11,23 +11,11 @@ pub fn neighborhood_stats(input: &PolyData, array_name: &str) -> PolyData {
         Some(a) => a,
         None => return input.clone(),
     };
-    if n == 0 {
+    if n == 0 || arr.num_tuples() < n {
         return input.clone();
     }
 
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
+    let neighbors = build_neighbors(input, n);
 
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
@@ -92,6 +80,50 @@ pub fn neighborhood_stats(input: &PolyData, array_name: &str) -> PolyData {
     pd
 }
 
+fn build_neighbors(input: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut neighbors = vec![Vec::new(); n];
+    for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            add_neighbor_edge(cell[i], cell[(i + 1) % cell.len()], n, &mut neighbors);
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_edge(edge[0], edge[1], n, &mut neighbors);
+        }
+    }
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            add_neighbor_edge(tri[0], tri[1], n, &mut neighbors);
+            add_neighbor_edge(tri[1], tri[2], n, &mut neighbors);
+            add_neighbor_edge(tri[2], tri[0], n, &mut neighbors);
+        }
+    }
+    neighbors
+}
+
+fn add_neighbor_edge(a: i64, b: i64, n: usize, neighbors: &mut [Vec<usize>]) {
+    let (Some(a), Some(b)) = (valid_point_index(a, n), valid_point_index(b, n)) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    if !neighbors[a].contains(&b) {
+        neighbors[a].push(b);
+    }
+    if !neighbors[b].contains(&a) {
+        neighbors[b].push(a);
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,5 +180,17 @@ mod tests {
         let pd = PolyData::new();
         let result = neighborhood_stats(&pd, "nope");
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn short_array_returns_input() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("val", vec![1.0], 1)));
+
+        let result = neighborhood_stats(&pd, "val");
+        assert!(result.point_data().get_array("NeighborMin").is_none());
     }
 }

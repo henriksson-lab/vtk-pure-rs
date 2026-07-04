@@ -19,10 +19,11 @@ pub fn normalize_uv(mesh: &PolyData, uv_name: &str) -> PolyData {
     let v_mx = uvs.iter().map(|uv| uv[1]).fold(f64::NEG_INFINITY, f64::max);
     let ur = (u_mx - u_mn).max(1e-15);
     let vr = (v_mx - v_mn).max(1e-15);
-    let data: Vec<f64> = uvs
-        .iter()
-        .flat_map(|uv| vec![(uv[0] - u_mn) / ur, (uv[1] - v_mn) / vr])
-        .collect();
+    let mut data = Vec::with_capacity(2 * n);
+    for uv in &uvs {
+        data.push((uv[0] - u_mn) / ur);
+        data.push((uv[1] - v_mn) / vr);
+    }
     let mut r = mesh.clone();
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(uv_name, data, 2)));
@@ -35,15 +36,12 @@ pub fn tile_uv(mesh: &PolyData, uv_name: &str, tile_u: f64, tile_v: f64) -> Poly
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64; 2];
-    let data: Vec<f64> = (0..n)
-        .flat_map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            vec![
-                (buf[0] * tile_u).rem_euclid(1.0),
-                (buf[1] * tile_v).rem_euclid(1.0),
-            ]
-        })
-        .collect();
+    let mut data = Vec::with_capacity(2 * n);
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        data.push((buf[0] * tile_u).rem_euclid(1.0));
+        data.push((buf[1] * tile_v).rem_euclid(1.0));
+    }
     let mut r = mesh.clone();
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(uv_name, data, 2)));
@@ -56,12 +54,12 @@ pub fn offset_uv(mesh: &PolyData, uv_name: &str, du: f64, dv: f64) -> PolyData {
     };
     let n = arr.num_tuples();
     let mut buf = [0.0f64; 2];
-    let data: Vec<f64> = (0..n)
-        .flat_map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            vec![buf[0] + du, buf[1] + dv]
-        })
-        .collect();
+    let mut data = Vec::with_capacity(2 * n);
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        data.push(buf[0] + du);
+        data.push(buf[1] + dv);
+    }
     let mut r = mesh.clone();
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(uv_name, data, 2)));

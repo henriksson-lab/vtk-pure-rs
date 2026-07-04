@@ -20,7 +20,11 @@ pub fn scatter_plot_3d(
     };
     let za = z_array.and_then(|name| input.point_data().get_array(name));
 
-    let n = xa.num_tuples().min(ya.num_tuples());
+    let n = if let Some(a) = &za {
+        xa.num_tuples().min(ya.num_tuples()).min(a.num_tuples())
+    } else {
+        xa.num_tuples().min(ya.num_tuples())
+    };
     let mut xb = [0.0f64];
     let mut yb = [0.0f64];
     let mut zb = [0.0f64];
@@ -154,5 +158,31 @@ mod tests {
     fn missing_array() {
         let pd = PolyData::new();
         assert_eq!(scatter_plot_3d(&pd, "x", "y", None).points.len(), 0);
+    }
+
+    #[test]
+    fn scatter_caps_to_z_array_length() {
+        let mut pd = PolyData::new();
+        for _ in 0..3 {
+            pd.points.push([0.0; 3]);
+        }
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "x",
+                vec![1.0, 2.0, 3.0],
+                1,
+            )));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "y",
+                vec![4.0, 5.0, 6.0],
+                1,
+            )));
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("z", vec![7.0], 1)));
+
+        let result = scatter_plot_3d(&pd, "x", "y", Some("z"));
+        assert_eq!(result.points.len(), 1);
+        assert_eq!(result.points.get(0), [1.0, 4.0, 7.0]);
     }
 }

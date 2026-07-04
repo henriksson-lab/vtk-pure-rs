@@ -6,33 +6,31 @@ pub fn blue_noise_sample(
     max_attempts: usize,
     seed: u64,
 ) -> PolyData {
-    let cells: Vec<Vec<i64>> = mesh
-        .polys
-        .iter()
-        .filter(|c| c.len() >= 3)
-        .map(|c| c.to_vec())
-        .collect();
-    if cells.is_empty() {
+    let mut tris = Vec::new();
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3 || !valid_point_cell(mesh, cell) {
+            continue;
+        }
+        for i in 1..cell.len() - 1 {
+            tris.push([cell[0] as usize, cell[i] as usize, cell[i + 1] as usize]);
+        }
+    }
+    if tris.is_empty() {
         return PolyData::new();
     }
     // Compute cumulative area for area-weighted sampling
-    let areas: Vec<f64> = cells
+    let areas: Vec<f64> = tris
         .iter()
-        .map(|c| {
-            let a = mesh.points.get(c[0] as usize);
-            let mut ta = 0.0;
-            for i in 1..c.len() - 1 {
-                let b = mesh.points.get(c[i] as usize);
-                let cc = mesh.points.get(c[i + 1] as usize);
-                let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-                let e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
-                ta += 0.5
-                    * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
-                        + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
-                        + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
-                    .sqrt();
-            }
-            ta
+        .map(|tri| {
+            let a = mesh.points.get(tri[0]);
+            let b = mesh.points.get(tri[1]);
+            let c = mesh.points.get(tri[2]);
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            0.5 * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
+                + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
+                + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
+            .sqrt()
         })
         .collect();
     let total: f64 = areas.iter().sum();
@@ -52,11 +50,11 @@ pub fn blue_noise_sample(
         *rng = rng
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
-        ((*rng >> 33) as f64) / (u32::MAX as f64)
+        ((*rng >> 11) as f64) * (1.0 / ((1u64 << 53) as f64))
     };
     for _ in 0..max_attempts {
         let r = next_f(&mut rng);
-        let ci = cum.partition_point(|&c| c < r).min(cells.len() - 1);
+        let ti = cum.partition_point(|&c| c < r).min(tris.len() - 1);
         let mut u = next_f(&mut rng);
         let mut v = next_f(&mut rng);
         if u + v > 1.0 {
@@ -64,11 +62,10 @@ pub fn blue_noise_sample(
             v = 1.0 - v;
         }
         let w = 1.0 - u - v;
-        let a = mesh.points.get(cells[ci][0] as usize);
-        let b = mesh.points.get(cells[ci][1] as usize);
-        let c = mesh
-            .points
-            .get(cells[ci][2.min(cells[ci].len() - 1)] as usize);
+        let tri = tris[ti];
+        let a = mesh.points.get(tri[0]);
+        let b = mesh.points.get(tri[1]);
+        let c = mesh.points.get(tri[2]);
         let p = [
             a[0] * w + b[0] * u + c[0] * v,
             a[1] * w + b[1] * u + c[1] * v,
@@ -93,6 +90,12 @@ pub fn blue_noise_sample(
     r.verts = verts;
     r
 }
+
+fn valid_point_cell(mesh: &PolyData, cell: &[i64]) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < mesh.points.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

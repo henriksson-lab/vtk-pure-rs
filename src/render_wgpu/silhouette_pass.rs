@@ -2,6 +2,7 @@ use crate::data::PolyData;
 use crate::render::SilhouetteConfig;
 
 use crate::render_wgpu::mesh::Vertex;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, Default)]
 struct EdgeNormals {
@@ -28,29 +29,14 @@ pub fn extract_silhouette_edges(
 
     // Build ordered edge normals following vtkPolyDataSilhouette's left/right
     // normal cache for vtkOrderedEdge.
-    let mut edges: std::collections::HashMap<(usize, usize), EdgeNormals> =
-        std::collections::HashMap::new();
+    let mut edges: BTreeMap<(usize, usize), EdgeNormals> = BTreeMap::new();
 
     for (ci, cell) in pd.polys.iter().enumerate() {
         if cell.len() < 3 {
             continue;
         }
 
-        // Face normal via cross product
-        let p0 = pd.points.get(cell[0] as usize);
-        let p1 = pd.points.get(cell[1] as usize);
-        let p2 = pd.points.get(cell[2] as usize);
-        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-        let nx = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny = e1[2] * e2[0] - e1[0] * e2[2];
-        let nz = e1[0] * e2[1] - e1[1] * e2[0];
-        let len = (nx * nx + ny * ny + nz * nz).sqrt();
-        let normal = if len > 1e-12 {
-            [nx / len, ny / len, nz / len]
-        } else {
-            [0.0, 0.0, 1.0]
-        };
+        let normal = polygon_normal(pd, cell);
 
         // Register edges
         for i in 0..cell.len() {
@@ -131,6 +117,34 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
+fn polygon_normal(pd: &PolyData, cell: &[i64]) -> [f64; 3] {
+    let mut normal = [0.0; 3];
+    for i in 0..cell.len() {
+        let Some(a) = valid_point_index(cell[i], pd.points.len()) else {
+            return [0.0, 0.0, 1.0];
+        };
+        let Some(b) = valid_point_index(cell[(i + 1) % cell.len()], pd.points.len()) else {
+            return [0.0, 0.0, 1.0];
+        };
+        let p = pd.points.get(a);
+        let q = pd.points.get(b);
+        normal[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        normal[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        normal[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+
+    let len = dot3(normal, normal).sqrt();
+    if len > 1e-12 {
+        [normal[0] / len, normal[1] / len, normal[2] / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +187,18 @@ mod tests {
         // Shared edge 0-1 is NOT silhouette (both faces front-facing)
         // 4 boundary edges are silhouette
         assert_eq!(idxs.len(), 8); // 4 edges * 2
+    }
+
+    #[test]
+    fn silhouette_uses_whole_polygon_for_normal() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let normal = polygon_normal(&pd, pd.polys.cell(0));
+        assert!((normal[2] - 1.0).abs() < 1e-12);
     }
 }

@@ -1,6 +1,6 @@
 //! Mesh smoothing pipeline combining multiple smoothing passes.
 
-use crate::data::{Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Adaptive smoothing: stronger smoothing where curvature is high.
 pub fn adaptive_smooth(mesh: &PolyData, iterations: usize, max_factor: f64) -> PolyData {
@@ -146,16 +146,81 @@ pub fn anisotropic_smooth(mesh: &PolyData, iterations: usize, factor: f64) -> Po
 
 fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for cell in mesh.polys.iter() {
+    add_adj_cells(&mesh.lines, n, false, &mut adj);
+    add_adj_cells(&mesh.polys, n, true, &mut adj);
+    add_strip_adj_cells(&mesh.strips, n, &mut adj);
+    adj.into_iter()
+        .map(|s| {
+            let mut neighbors: Vec<usize> = s.into_iter().collect();
+            neighbors.sort_unstable();
+            neighbors
+        })
+        .collect()
+}
+
+fn add_adj_cells(
+    cells: &CellArray,
+    n_points: usize,
+    closed: bool,
+    adj: &mut [std::collections::HashSet<usize>],
+) {
+    for cell in cells.iter() {
         let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            adj[a].insert(b);
-            adj[b].insert(a);
+        if nc < 2 {
+            continue;
+        }
+        let edge_count = if closed { nc } else { nc - 1 };
+        for i in 0..edge_count {
+            let Some(a) = valid_point_id(cell[i], n_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n_points) else {
+                continue;
+            };
+            if a != b {
+                adj[a].insert(b);
+                adj[b].insert(a);
+            }
         }
     }
-    adj.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&idx| idx < n_points)
+}
+
+fn add_strip_adj_cells(
+    cells: &CellArray,
+    n_points: usize,
+    adj: &mut [std::collections::HashSet<usize>],
+) {
+    for cell in cells.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        for i in 0..cell.len() - 2 {
+            let Some(a) = valid_point_id(cell[i], n_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[i + 1], n_points) else {
+                continue;
+            };
+            let Some(c) = valid_point_id(cell[i + 2], n_points) else {
+                continue;
+            };
+            add_adj_edge(a, b, adj);
+            add_adj_edge(b, c, adj);
+            add_adj_edge(c, a, adj);
+        }
+    }
+}
+
+fn add_adj_edge(a: usize, b: usize, adj: &mut [std::collections::HashSet<usize>]) {
+    if a == b {
+        return;
+    }
+    adj[a].insert(b);
+    adj[b].insert(a);
 }
 
 fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
@@ -165,16 +230,27 @@ fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let Some(ia) = valid_point_id(cell[0], n) else {
+            continue;
+        };
+        let Some(ib) = valid_point_id(cell[1], n) else {
+            continue;
+        };
+        let Some(ic) = valid_point_id(cell[2], n) else {
+            continue;
+        };
+        let a = mesh.points.get(ia);
+        let b = mesh.points.get(ib);
+        let c = mesh.points.get(ic);
         let fn_ = [
             (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
             (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
             (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
         ];
         for &pid in cell {
-            let idx = pid as usize;
+            let Some(idx) = valid_point_id(pid, n) else {
+                continue;
+            };
             for c in 0..3 {
                 normals[idx][c] += fn_[c];
             }
@@ -235,5 +311,25 @@ mod tests {
         let mesh = make_bumpy_plane();
         let result = anisotropic_smooth(&mesh, 3, 0.5);
         assert_eq!(result.points.len(), mesh.points.len());
+    }
+
+    #[test]
+    fn anisotropic_skips_invalid_cells() {
+        let mut mesh = make_bumpy_plane();
+        mesh.polys.push_cell(&[0, 1, 999]);
+        mesh.polys.push_cell(&[0, -1, 2]);
+
+        let result = anisotropic_smooth(&mesh, 1, 0.5);
+        assert_eq!(result.points.len(), mesh.points.len());
+    }
+
+    #[test]
+    fn progressive_zero_steps_is_identity() {
+        let mesh = make_bumpy_plane();
+        let result = progressive_smooth(&mesh, 0, 0.5);
+        assert_eq!(result.points.len(), mesh.points.len());
+        for i in 0..mesh.points.len() {
+            assert_eq!(result.points.get(i), mesh.points.get(i));
+        }
     }
 }

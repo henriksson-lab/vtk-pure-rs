@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Classify vertices of a scalar field on a mesh as minima, maxima, or saddles.
 ///
@@ -8,23 +9,56 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_field_critical_points(input: &PolyData, array_name: &str) -> PolyData {
     let n = input.points.len();
     let arr = match input.point_data().get_array(array_name) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
+        _ => return input.clone(),
     };
     if n == 0 {
         return input.clone();
     }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut links: Vec<HashMap<usize, Vec<usize>>> = vec![HashMap::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
+            if cell[i] < 0 || cell[(i + 1) % cell.len()] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
             if !neighbors[b].contains(&a) {
                 neighbors[b].push(a);
+            }
+        }
+
+        for i in 0..cell.len() {
+            if cell[i] < 0
+                || cell[(i + cell.len() - 1) % cell.len()] < 0
+                || cell[(i + 1) % cell.len()] < 0
+            {
+                continue;
+            }
+            let center = cell[i] as usize;
+            let prev = cell[(i + cell.len() - 1) % cell.len()] as usize;
+            let next = cell[(i + 1) % cell.len()] as usize;
+            if center >= n || prev >= n || next >= n || prev == next {
+                continue;
+            }
+            let prev_link = links[center].entry(prev).or_default();
+            if !prev_link.contains(&next) {
+                prev_link.push(next);
+            }
+            let next_link = links[center].entry(next).or_default();
+            if !next_link.contains(&prev) {
+                next_link.push(prev);
             }
         }
     }
@@ -45,10 +79,10 @@ pub fn scalar_field_critical_points(input: &PolyData, array_name: &str) -> PolyD
         let v = values[i];
         let mut n_higher = 0;
         let mut n_lower = 0;
-        let mut sign_changes = 0;
-        let mut prev_sign = 0i8; // -1=lower, 1=higher
+        let mut higher = Vec::new();
+        let mut lower = Vec::new();
 
-        for (ni, &j) in neighbors[i].iter().enumerate() {
+        for &j in &neighbors[i] {
             let nv = values[j];
             let sign = if nv > v + 1e-15 {
                 1i8
@@ -63,11 +97,10 @@ pub fn scalar_field_critical_points(input: &PolyData, array_name: &str) -> PolyD
             if sign < 0 {
                 n_lower += 1;
             }
-            if sign != 0 && prev_sign != 0 && sign != prev_sign {
-                sign_changes += 1;
-            }
-            if sign != 0 {
-                prev_sign = sign;
+            if sign > 0 {
+                higher.push(j);
+            } else if sign < 0 {
+                lower.push(j);
             }
         }
 
@@ -79,10 +112,11 @@ pub fn scalar_field_critical_points(input: &PolyData, array_name: &str) -> PolyD
             1.0
         }
         // maximum
-        else if sign_changes >= 2 {
+        else if link_components(&links[i], &higher) > 1 || link_components(&links[i], &lower) > 1
+        {
             2.0
         }
-        // saddle (multiple sign changes)
+        // saddle (split upper/lower link)
         else {
             0.0
         }; // regular
@@ -96,6 +130,34 @@ pub fn scalar_field_critical_points(input: &PolyData, array_name: &str) -> PolyD
             1,
         )));
     pd
+}
+
+fn link_components(link: &HashMap<usize, Vec<usize>>, subset: &[usize]) -> usize {
+    if subset.is_empty() {
+        return 0;
+    }
+
+    let subset_set: HashSet<usize> = subset.iter().copied().collect();
+    let mut seen = HashSet::new();
+    let mut components = 0usize;
+
+    for &start in subset {
+        if !seen.insert(start) {
+            continue;
+        }
+
+        components += 1;
+        let mut queue = VecDeque::from([start]);
+        while let Some(v) = queue.pop_front() {
+            for &next in link.get(&v).into_iter().flatten() {
+                if subset_set.contains(&next) && seen.insert(next) {
+                    queue.push_back(next);
+                }
+            }
+        }
+    }
+
+    components
 }
 
 /// Count critical points by type.

@@ -38,17 +38,17 @@ fn combine(
     out_name: &str,
     op: impl Fn(f64, f64) -> f64,
 ) -> PolyData {
+    let n = mesh.points.len();
     let arr_a = match mesh.point_data().get_array(name_a) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         None => return mesh.clone(),
         _ => return mesh.clone(),
     };
     let arr_b = match mesh.point_data().get_array(name_b) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         None => return mesh.clone(),
         _ => return mesh.clone(),
     };
-    let n = arr_a.num_tuples().min(arr_b.num_tuples());
     let mut vals = Vec::with_capacity(n);
     let mut ba = [0.0f64];
     let mut bb = [0.0f64];

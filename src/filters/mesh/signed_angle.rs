@@ -13,10 +13,14 @@ pub fn turning_angles(input: &PolyData) -> PolyData {
     let mut angles = vec![0.0f64; n];
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(input, cell) {
             continue;
         }
         let nc = cell.len();
+        let normal = polygon_normal(input, cell);
+        if length(normal) < 1e-15 {
+            continue;
+        }
         for i in 0..nc {
             let prev = input.points.get(cell[(i + nc - 1) % nc] as usize);
             let cur = input.points.get(cell[i] as usize);
@@ -25,16 +29,19 @@ pub fn turning_angles(input: &PolyData) -> PolyData {
             let e1 = [cur[0] - prev[0], cur[1] - prev[1], cur[2] - prev[2]];
             let e2 = [next[0] - cur[0], next[1] - cur[1], next[2] - cur[2]];
 
-            // Cross product Z component for 2D angle
-            let cross_z = e1[0] * e2[1] - e1[1] * e2[0];
             let dot = e1[0] * e2[0] + e1[1] * e2[1] + e1[2] * e2[2];
             let l1 = (e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2]).sqrt();
             let l2 = (e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2]).sqrt();
 
             if l1 > 1e-15 && l2 > 1e-15 {
-                let cos_a = (dot / (l1 * l2)).clamp(-1.0, 1.0);
-                let angle = cos_a.acos();
-                angles[cell[i] as usize] += if cross_z >= 0.0 { angle } else { -angle };
+                let cross = [
+                    e1[1] * e2[2] - e1[2] * e2[1],
+                    e1[2] * e2[0] - e1[0] * e2[2],
+                    e1[0] * e2[1] - e1[1] * e2[0],
+                ];
+                let signed_cross =
+                    cross[0] * normal[0] + cross[1] * normal[1] + cross[2] * normal[2];
+                angles[cell[i] as usize] += signed_cross.atan2(dot);
             }
         }
     }
@@ -47,6 +54,34 @@ pub fn turning_angles(input: &PolyData) -> PolyData {
             1,
         )));
     pd
+}
+
+fn valid_cell(input: &PolyData, cell: &[i64]) -> bool {
+    cell.len() >= 3
+        && cell
+            .iter()
+            .all(|&point_id| point_id >= 0 && (point_id as usize) < input.points.len())
+}
+
+fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
+    let mut normal = [0.0, 0.0, 0.0];
+    for i in 0..cell.len() {
+        let current = input.points.get(cell[i] as usize);
+        let next = input.points.get(cell[(i + 1) % cell.len()] as usize);
+        normal[0] += (current[1] - next[1]) * (current[2] + next[2]);
+        normal[1] += (current[2] - next[2]) * (current[0] + next[0]);
+        normal[2] += (current[0] - next[0]) * (current[1] + next[1]);
+    }
+    let len = length(normal);
+    if len < 1e-15 {
+        normal
+    } else {
+        [normal[0] / len, normal[1] / len, normal[2] / len]
+    }
+}
+
+fn length(v: [f64; 3]) -> f64 {
+    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
 #[cfg(test)]

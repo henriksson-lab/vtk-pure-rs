@@ -15,9 +15,13 @@ pub fn midpoint_refine(input: &PolyData) -> PolyData {
             let a = cell[0];
             let b = cell[1];
             let c = cell[2];
-            let mab = get_mid(a, b, &mut points, &mut mid_cache);
-            let mbc = get_mid(b, c, &mut points, &mut mid_cache);
-            let mca = get_mid(c, a, &mut points, &mut mid_cache);
+            if !valid_cell(cell, input.points.len()) {
+                out_polys.push_cell(cell);
+                continue;
+            }
+            let mab = get_mid(a, b, &mut points, &mut mid_cache).unwrap();
+            let mbc = get_mid(b, c, &mut points, &mut mid_cache).unwrap();
+            let mca = get_mid(c, a, &mut points, &mut mid_cache).unwrap();
             out_polys.push_cell(&[a, mab, mca]);
             out_polys.push_cell(&[mab, b, mbc]);
             out_polys.push_cell(&[mca, mbc, c]);
@@ -27,17 +31,23 @@ pub fn midpoint_refine(input: &PolyData) -> PolyData {
             let b = cell[1];
             let c = cell[2];
             let d = cell[3];
-            let mab = get_mid(a, b, &mut points, &mut mid_cache);
-            let mbc = get_mid(b, c, &mut points, &mut mid_cache);
-            let mcd = get_mid(c, d, &mut points, &mut mid_cache);
-            let mda = get_mid(d, a, &mut points, &mut mid_cache);
+            if !valid_cell(cell, input.points.len()) {
+                out_polys.push_cell(cell);
+                continue;
+            }
+            let mab = get_mid(a, b, &mut points, &mut mid_cache).unwrap();
+            let mbc = get_mid(b, c, &mut points, &mut mid_cache).unwrap();
+            let mcd = get_mid(c, d, &mut points, &mut mid_cache).unwrap();
+            let mda = get_mid(d, a, &mut points, &mut mid_cache).unwrap();
             let center = points.len() as i64;
             let pa = points.get(a as usize);
+            let pb = points.get(b as usize);
             let pc = points.get(c as usize);
+            let pd = points.get(d as usize);
             points.push([
-                (pa[0] + pc[0]) * 0.5,
-                (pa[1] + pc[1]) * 0.5,
-                (pa[2] + pc[2]) * 0.5,
+                (pa[0] + pb[0] + pc[0] + pd[0]) * 0.25,
+                (pa[1] + pb[1] + pc[1] + pd[1]) * 0.25,
+                (pa[2] + pb[2] + pc[2] + pd[2]) * 0.25,
             ]);
             out_polys.push_cell(&[a, mab, center, mda]);
             out_polys.push_cell(&[mab, b, mbc, center]);
@@ -54,9 +64,16 @@ pub fn midpoint_refine(input: &PolyData) -> PolyData {
     pd
 }
 
-fn get_mid(a: i64, b: i64, pts: &mut Points<f64>, cache: &mut HashMap<(i64, i64), i64>) -> i64 {
+fn get_mid(
+    a: i64,
+    b: i64,
+    pts: &mut Points<f64>,
+    cache: &mut HashMap<(i64, i64), i64>,
+) -> Option<i64> {
+    valid_point_index(a, pts.len())?;
+    valid_point_index(b, pts.len())?;
     let key = if a < b { (a, b) } else { (b, a) };
-    *cache.entry(key).or_insert_with(|| {
+    Some(*cache.entry(key).or_insert_with(|| {
         let pa = pts.get(a as usize);
         let pb = pts.get(b as usize);
         let idx = pts.len() as i64;
@@ -66,15 +83,31 @@ fn get_mid(a: i64, b: i64, pts: &mut Points<f64>, cache: &mut HashMap<(i64, i64)
             (pa[2] + pb[2]) * 0.5,
         ]);
         idx
-    })
+    }))
+}
+
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| valid_point_index(id, n_points).is_some())
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 /// Count how many times midpoint refinement is needed to reach a target face count.
 pub fn refinement_levels_for_target(current_faces: usize, target_faces: usize) -> usize {
+    if current_faces == 0 {
+        return 0;
+    }
     let mut faces = current_faces;
     let mut levels = 0;
     while faces < target_faces {
-        faces *= 4;
+        let next_faces = faces.saturating_mul(4);
+        if next_faces == faces {
+            break;
+        }
+        faces = next_faces;
         levels += 1;
     }
     levels
@@ -98,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn refine_quad() {
+    fn refines_quads() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         pd.points.push([1.0, 0.0, 0.0]);
@@ -129,6 +162,11 @@ mod tests {
     #[test]
     fn target_levels() {
         assert_eq!(refinement_levels_for_target(1, 100), 4); // 1->4->16->64->256
+    }
+
+    #[test]
+    fn target_levels_from_zero_faces_is_zero() {
+        assert_eq!(refinement_levels_for_target(0, 100), 0);
     }
 
     #[test]

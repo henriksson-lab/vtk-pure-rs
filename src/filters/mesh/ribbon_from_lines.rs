@@ -13,6 +13,9 @@ pub fn ribbon_from_lines(mesh: &PolyData, width: f64, up: [f64; 3]) -> PolyData 
         if line.len() < 2 {
             continue;
         }
+        if !cell_ids_are_valid(line, mesh.points.len()) {
+            continue;
+        }
         let line_pts: Vec<[f64; 3]> = line
             .iter()
             .map(|&id| mesh.points.get(id as usize))
@@ -28,7 +31,16 @@ pub fn ribbon_from_lines(mesh: &PolyData, width: f64, up: [f64; 3]) -> PolyData 
                 sub(line_pts[i + 1], line_pts[i - 1])
             };
             let t = normalize(tangent);
-            let side = normalize(cross(t, up_n));
+            let mut side = cross(t, up_n);
+            if length(side) < 1e-15 {
+                let fallback = if t[0].abs() < 0.9 {
+                    [1.0, 0.0, 0.0]
+                } else {
+                    [0.0, 1.0, 0.0]
+                };
+                side = cross(t, fallback);
+            }
+            let side = normalize(side);
             pts.push([
                 p[0] - half * side[0],
                 p[1] - half * side[1],
@@ -63,11 +75,15 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 }
 
 fn normalize(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    let len = length(v);
     if len < 1e-15 {
         return [0.0, 0.0, 1.0];
     }
     [v[0] / len, v[1] / len, v[2] / len]
+}
+
+fn length(v: [f64; 3]) -> f64 {
+    (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt()
 }
 
 fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -76,6 +92,10 @@ fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     ]
+}
+
+fn cell_ids_are_valid(cell: &[i64], num_points: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]

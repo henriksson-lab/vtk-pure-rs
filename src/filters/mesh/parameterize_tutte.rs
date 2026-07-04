@@ -16,9 +16,17 @@ pub fn tutte_parameterize(input: &PolyData) -> PolyData {
     let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
 
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+        let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
+        for i in 0..nc {
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
             let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
             if !neighbors[a].contains(&b) {
@@ -38,10 +46,13 @@ pub fn tutte_parameterize(input: &PolyData) -> PolyData {
             boundary_adj.entry(b).or_default().push(a);
         }
     }
+    for neighbors in boundary_adj.values_mut() {
+        neighbors.sort_unstable();
+    }
 
     // Trace boundary loop
     let mut boundary_loop = Vec::new();
-    if let Some(&start) = boundary_adj.keys().next() {
+    if let Some(&start) = boundary_adj.keys().min() {
         let mut visited = HashSet::new();
         let mut cur = start;
         loop {
@@ -78,6 +89,8 @@ pub fn tutte_parameterize(input: &PolyData) -> PolyData {
 
     // Iteratively solve for interior
     for _ in 0..200 {
+        let mut next_u = u.clone();
+        let mut next_v = v.clone();
         for i in 0..n {
             if boundary_set.contains(&i) || neighbors[i].is_empty() {
                 continue;
@@ -85,9 +98,11 @@ pub fn tutte_parameterize(input: &PolyData) -> PolyData {
             let cnt = neighbors[i].len() as f64;
             let su: f64 = neighbors[i].iter().map(|&j| u[j]).sum();
             let sv: f64 = neighbors[i].iter().map(|&j| v[j]).sum();
-            u[i] = su / cnt;
-            v[i] = sv / cnt;
+            next_u[i] = su / cnt;
+            next_v[i] = sv / cnt;
         }
+        u = next_u;
+        v = next_v;
     }
 
     let mut pd = input.clone();
@@ -96,6 +111,10 @@ pub fn tutte_parameterize(input: &PolyData) -> PolyData {
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("TutteV", v, 1)));
     pd
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]
@@ -148,5 +167,14 @@ mod tests {
         let pd = PolyData::new();
         let result = tutte_parameterize(&pd);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn malformed_cells_do_not_panic() {
+        let mut pd = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        pd.polys.push_cell(&[0, -1, 99]);
+
+        let result = tutte_parameterize(&pd);
+        assert_eq!(result.points.len(), 3);
     }
 }

@@ -1,13 +1,14 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
-/// Compute the strain tensor between two mesh configurations.
+/// Compute the displacement field between two mesh configurations.
 ///
 /// Given original and deformed mesh (same topology), computes per-vertex
-/// displacement magnitude and adds "Displacement" and "StrainMagnitude".
+/// displacement magnitude and adds "Displacement" and
+/// "DisplacementMagnitude".
 pub fn displacement_field(original: &PolyData, deformed: &PolyData) -> PolyData {
     let n = original.points.len();
     if n == 0 || n != deformed.points.len() {
-        return original.clone();
+        return deformed.clone();
     }
 
     let mut disp = Vec::with_capacity(n * 3);
@@ -38,6 +39,9 @@ pub fn displacement_field(original: &PolyData, deformed: &PolyData) -> PolyData 
             mag,
             1,
         )));
+    pd.point_data_mut().set_active_vectors("Displacement");
+    pd.point_data_mut()
+        .set_active_scalars("DisplacementMagnitude");
     pd
 }
 
@@ -48,7 +52,7 @@ pub fn displacement_field(original: &PolyData, deformed: &PolyData) -> PolyData 
 pub fn cell_strain(original: &PolyData, deformed: &PolyData) -> PolyData {
     let no = original.polys.num_cells();
     let nd = deformed.polys.num_cells();
-    if no != nd || no == 0 {
+    if no != nd || no == 0 || original.points.len() != deformed.points.len() {
         return deformed.clone();
     }
 
@@ -60,7 +64,12 @@ pub fn cell_strain(original: &PolyData, deformed: &PolyData) -> PolyData {
         let oc = oi.next();
         let dc = di.next();
         match (oc, dc) {
-            (Some(o), Some(d)) if o.len() >= 3 && d.len() >= 3 => {
+            (Some(o), Some(d))
+                if o.len() == d.len()
+                    && o.len() >= 3
+                    && valid_cell(o, original.points.len())
+                    && valid_cell(d, deformed.points.len()) =>
+            {
                 let mut total_stretch = 0.0;
                 let mut count = 0;
                 for k in 0..o.len() {
@@ -78,8 +87,8 @@ pub fn cell_strain(original: &PolyData, deformed: &PolyData) -> PolyData {
                     .sqrt();
                     if lo > 1e-15 {
                         total_stretch += (ld / lo - 1.0).abs();
+                        count += 1;
                     }
-                    count += 1;
                 }
                 strains.push(if count > 0 {
                     total_stretch / count as f64
@@ -95,7 +104,13 @@ pub fn cell_strain(original: &PolyData, deformed: &PolyData) -> PolyData {
     let mut pd = deformed.clone();
     pd.cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("Strain", strains, 1)));
+    pd.cell_data_mut().set_active_scalars("Strain");
     pd
+}
+
+fn valid_cell(cell: &[i64], number_of_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < number_of_points)
 }
 
 #[cfg(test)]

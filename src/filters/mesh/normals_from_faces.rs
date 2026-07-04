@@ -11,6 +11,9 @@ pub fn compute_vertex_normals(mesh: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
+        if !cell.iter().all(|&id| valid_point_index(id, n).is_some()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
@@ -22,13 +25,39 @@ pub fn compute_vertex_normals(mesh: &PolyData) -> PolyData {
                 e1[2] * e2[0] - e1[0] * e2[2],
                 e1[0] * e2[1] - e1[1] * e2[0],
             ]; // not normalized = area-weighted
-            for &v in cell {
+            for &v in &[cell[0], cell[i], cell[i + 1]] {
                 let vi = v as usize;
-                if vi < n {
-                    normals[vi][0] += fn_[0];
-                    normals[vi][1] += fn_[1];
-                    normals[vi][2] += fn_[2];
-                }
+                normals[vi][0] += fn_[0];
+                normals[vi][1] += fn_[1];
+                normals[vi][2] += fn_[2];
+            }
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            let tri = if i % 2 == 0 {
+                [tri[0], tri[1], tri[2]]
+            } else {
+                [tri[1], tri[0], tri[2]]
+            };
+            if !tri.iter().all(|&id| valid_point_index(id, n).is_some()) {
+                continue;
+            }
+            let a = mesh.points.get(tri[0] as usize);
+            let b = mesh.points.get(tri[1] as usize);
+            let c = mesh.points.get(tri[2] as usize);
+            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let fn_ = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+            for &v in &tri {
+                let vi = v as usize;
+                normals[vi][0] += fn_[0];
+                normals[vi][1] += fn_[1];
+                normals[vi][2] += fn_[2];
             }
         }
     }
@@ -56,26 +85,7 @@ pub fn compute_vertex_normals(mesh: &PolyData) -> PolyData {
 pub fn compute_face_normals(mesh: &PolyData) -> PolyData {
     let mut normals = Vec::new();
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            normals.extend_from_slice(&[0.0, 0.0, 1.0]);
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let mut n = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-        if len > 1e-15 {
-            n[0] /= len;
-            n[1] /= len;
-            n[2] /= len;
-        }
+        let n = polygon_normal(mesh, cell);
         normals.extend_from_slice(&n);
     }
     let mut result = mesh.clone();
@@ -85,6 +95,75 @@ pub fn compute_face_normals(mesh: &PolyData) -> PolyData {
             "Normals", normals, 3,
         )));
     result
+}
+
+fn polygon_normal(mesh: &PolyData, cell: &[i64]) -> [f64; 3] {
+    if cell.len() < 3 {
+        return [0.0, 0.0, 0.0];
+    }
+
+    let mut common_id = None;
+    let mut point_id = 0;
+    let mut v1 = [0.0; 3];
+    while point_id < cell.len() - 2 {
+        let Some(p0) = point(mesh, cell[point_id]) else {
+            return [0.0, 0.0, 0.0];
+        };
+        let Some(p1) = point(mesh, cell[point_id + 1]) else {
+            return [0.0, 0.0, 0.0];
+        };
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        if squared_norm(v1) > 0.0 {
+            common_id = Some(point_id);
+            point_id += 2;
+            break;
+        }
+        point_id += 1;
+    }
+
+    let Some(common_id) = common_id else {
+        return [0.0, 0.0, 0.0];
+    };
+    let Some(p0) = point(mesh, cell[common_id]) else {
+        return [0.0, 0.0, 0.0];
+    };
+
+    let mut n = [0.0; 3];
+    while point_id < cell.len() {
+        let Some(p) = point(mesh, cell[point_id]) else {
+            return [0.0, 0.0, 0.0];
+        };
+        let v2 = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
+        let cross = [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+        n[0] += cross[0];
+        n[1] += cross[1];
+        n[2] += cross[2];
+        v1 = v2;
+        point_id += 1;
+    }
+
+    let len = squared_norm(n).sqrt();
+    if len > 0.0 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0, 0.0, 0.0]
+    }
+}
+
+fn point(mesh: &PolyData, id: i64) -> Option<[f64; 3]> {
+    valid_point_index(id, mesh.points.len()).map(|idx| mesh.points.get(idx))
+}
+
+fn squared_norm(v: [f64; 3]) -> f64 {
+    v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]
@@ -112,5 +191,18 @@ mod tests {
         let arr = r.cell_data().get_array("Normals").unwrap();
         assert_eq!(arr.num_tuples(), 1);
         assert_eq!(arr.num_components(), 3);
+    }
+
+    #[test]
+    fn degenerate_face_normal_is_zero() {
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let r = compute_face_normals(&mesh);
+        let arr = r.cell_data().get_array("Normals").unwrap();
+        let mut buf = [1.0; 3];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf, [0.0, 0.0, 0.0]);
     }
 }

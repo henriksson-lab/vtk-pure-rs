@@ -41,13 +41,21 @@ pub fn offset_to_solid(mesh: &PolyData, thickness: f64) -> PolyData {
 
     // Outer shell (same winding)
     for cell in mesh.polys.iter() {
+        if !cell_point_ids_are_valid(cell, n) {
+            continue;
+        }
         polys.push_cell(cell);
     }
+    append_strip_triangles(&mesh.strips, n, 0, false, &mut polys);
     // Inner shell (reversed winding)
     for cell in mesh.polys.iter() {
+        if !cell_point_ids_are_valid(cell, n) {
+            continue;
+        }
         let reversed: Vec<i64> = cell.iter().rev().map(|&id| id + n as i64).collect();
         polys.push_cell(&reversed);
     }
+    append_strip_triangles(&mesh.strips, n, n as i64, true, &mut polys);
 
     // Side faces on boundary edges
     let boundary = find_boundary_edges(mesh);
@@ -56,14 +64,43 @@ pub fn offset_to_solid(mesh: &PolyData, thickness: f64) -> PolyData {
         let b0 = *b as i64;
         let a1 = a0 + n as i64;
         let b1 = b0 + n as i64;
-        polys.push_cell(&[a0, b0, b1]);
-        polys.push_cell(&[a0, b1, a1]);
+        polys.push_cell(&[a0, b0, b1, a1]);
     }
 
     let mut result = PolyData::new();
     result.points = pts;
     result.polys = polys;
     result
+}
+
+fn append_strip_triangles(
+    strips: &CellArray,
+    n_points: usize,
+    offset: i64,
+    reverse: bool,
+    polys: &mut CellArray,
+) {
+    for strip in strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for (i, tri) in strip.windows(3).enumerate() {
+            let tri = if i % 2 == 0 {
+                [tri[0], tri[1], tri[2]]
+            } else {
+                [tri[1], tri[0], tri[2]]
+            };
+            if !cell_point_ids_are_valid(&tri, n_points) {
+                continue;
+            }
+            let mapped = if reverse {
+                [tri[2] + offset, tri[1] + offset, tri[0] + offset]
+            } else {
+                [tri[0] + offset, tri[1] + offset, tri[2] + offset]
+            };
+            polys.push_cell(&mapped);
+        }
+    }
 }
 
 fn compute_vertex_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
@@ -73,19 +110,21 @@ fn compute_vertex_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let fn_ = [
-            (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
-            (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
-            (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
-        ];
-        for &pid in cell {
-            let idx = pid as usize;
-            for c in 0..3 {
-                normals[idx][c] += fn_[c];
-            }
+        if !cell_point_ids_are_valid(cell, n) {
+            continue;
+        }
+        for i in 1..cell.len() - 1 {
+            accumulate_triangle_normal(mesh, [cell[0], cell[i], cell[i + 1]], &mut normals);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            let tri = if i % 2 == 0 {
+                [tri[0], tri[1], tri[2]]
+            } else {
+                [tri[1], tri[0], tri[2]]
+            };
+            accumulate_triangle_normal(mesh, tri, &mut normals);
         }
     }
     for nm in &mut normals {
@@ -99,20 +138,85 @@ fn compute_vertex_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
     normals
 }
 
-fn find_boundary_edges(mesh: &PolyData) -> Vec<(usize, usize)> {
-    let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+fn accumulate_triangle_normal(mesh: &PolyData, tri: [i64; 3], normals: &mut [[f64; 3]]) {
+    let n = mesh.points.len();
+    let (Some(a_idx), Some(b_idx), Some(c_idx)) = (
+        valid_point_id(tri[0], n),
+        valid_point_id(tri[1], n),
+        valid_point_id(tri[2], n),
+    ) else {
+        return;
+    };
+    let a = mesh.points.get(a_idx);
+    let b = mesh.points.get(b_idx);
+    let c = mesh.points.get(c_idx);
+    let fn_ = [
+        (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
+        (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
+    ];
+    for &pid in &tri {
+        if let Some(idx) = valid_point_id(pid, n) {
+            for c in 0..3 {
+                normals[idx][c] += fn_[c];
+            }
         }
     }
-    ec.into_iter()
-        .filter(|(_, c)| *c == 1)
-        .map(|(e, _)| e)
+}
+
+fn find_boundary_edges(mesh: &PolyData) -> Vec<(usize, usize)> {
+    let mut edge_counts: std::collections::HashMap<(usize, usize), usize> =
+        std::collections::HashMap::new();
+    let mut oriented_edges = Vec::new();
+    let n = mesh.points.len();
+    for cell in mesh.polys.iter() {
+        let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
+        for i in 0..nc {
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            *edge_counts.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            oriented_edges.push((a, b));
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            let tri = if i % 2 == 0 {
+                [tri[0], tri[1], tri[2]]
+            } else {
+                [tri[1], tri[0], tri[2]]
+            };
+            for &(raw_a, raw_b) in &[(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+                let Some(a) = valid_point_id(raw_a, n) else {
+                    continue;
+                };
+                let Some(b) = valid_point_id(raw_b, n) else {
+                    continue;
+                };
+                *edge_counts.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+                oriented_edges.push((a, b));
+            }
+        }
+    }
+    oriented_edges
+        .into_iter()
+        .filter(|&(a, b)| edge_counts[&(a.min(b), a.max(b))] == 1)
         .collect()
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
+fn cell_point_ids_are_valid(cell: &[i64], n_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| valid_point_id(id, n_points).is_some())
 }
 
 #[cfg(test)]
@@ -131,6 +235,16 @@ mod tests {
     }
 
     #[test]
+    fn boundary_edges_keep_polygon_order() {
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[2, 1, 0]],
+        );
+
+        assert_eq!(find_boundary_edges(&mesh), vec![(2, 1), (1, 0), (0, 2)]);
+    }
+
+    #[test]
     fn closed_tet_no_sides() {
         let mesh = PolyData::from_triangles(
             vec![
@@ -143,5 +257,15 @@ mod tests {
         );
         let solid = offset_to_solid(&mesh, 0.1);
         assert_eq!(solid.polys.num_cells(), 8); // 4 outer + 4 inner, no boundary
+    }
+
+    #[test]
+    fn malformed_cells_do_not_panic() {
+        let mut mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        mesh.polys.push_cell(&[0, -1, 99]);
+
+        let solid = offset_to_solid(&mesh, 0.1);
+        assert_eq!(solid.points.len(), 4);
+        assert_eq!(solid.polys.num_cells(), 0);
     }
 }

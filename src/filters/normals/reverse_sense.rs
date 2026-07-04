@@ -1,13 +1,36 @@
-use crate::data::{CellArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 
 /// Reverse winding order of all polygon cells and flip normals.
-/// Uses raw connectivity reversal — no clone of point data.
+/// Mirrors `vtkReverseSense` with ReverseCellsOn and ReverseNormalsOn.
 pub fn reverse_sense(input: &PolyData) -> PolyData {
-    // Reverse connectivity in-place by reversing each cell's indices
-    let src_off = input.polys.offsets();
-    let src_conn = input.polys.connectivity();
-    let nc = input.polys.num_cells();
+    let mut pd = input.clone();
 
+    pd.verts = reverse_cells(&input.verts);
+    pd.lines = reverse_cells(&input.lines);
+    pd.polys = reverse_cells(&input.polys);
+    pd.strips = reverse_cells(&input.strips);
+
+    // Flip normals if present.
+    if let Some(normals) = input.point_data().normals() {
+        let name = normals.name().to_string();
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(flipped_normals(&name, normals)));
+        pd.point_data_mut().set_active_normals(&name);
+    }
+    if let Some(normals) = input.cell_data().normals() {
+        let name = normals.name().to_string();
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(flipped_normals(&name, normals)));
+        pd.cell_data_mut().set_active_normals(&name);
+    }
+
+    pd
+}
+
+fn reverse_cells(cells: &CellArray) -> CellArray {
+    let src_off = cells.offsets();
+    let src_conn = cells.connectivity();
+    let nc = cells.num_cells();
     let mut conn = Vec::with_capacity(src_conn.len());
     let mut offsets = Vec::with_capacity(src_off.len());
     offsets.push(0i64);
@@ -22,36 +45,21 @@ pub fn reverse_sense(input: &PolyData) -> PolyData {
         offsets.push(conn.len() as i64);
     }
 
-    let mut pd = PolyData::new();
-    pd.points = input.points.clone();
-    pd.polys = CellArray::from_raw(offsets, conn);
-    pd.lines = input.lines.clone();
-    pd.verts = input.verts.clone();
+    CellArray::from_raw(offsets, conn)
+}
 
-    // Flip normals if present
-    if let Some(normals) = input.point_data().normals() {
-        let nc = normals.num_components();
-        let nt = normals.num_tuples();
-        let name = normals.name().to_string();
-        let mut flipped = Vec::with_capacity(nt * nc);
-        let mut buf = vec![0.0f64; nc];
-        for i in 0..nt {
-            normals.tuple_as_f64(i, &mut buf);
-            for v in &buf {
-                flipped.push(-v);
-            }
+fn flipped_normals(name: &str, normals: &AnyDataArray) -> DataArray<f64> {
+    let nc = normals.num_components();
+    let nt = normals.num_tuples();
+    let mut flipped = Vec::with_capacity(nt * nc);
+    let mut buf = vec![0.0f64; nc];
+    for i in 0..nt {
+        normals.tuple_as_f64(i, &mut buf);
+        for v in &buf {
+            flipped.push(-v);
         }
-        pd.point_data_mut()
-            .add_array(crate::data::AnyDataArray::F64(
-                crate::data::DataArray::from_vec(&name, flipped, nc),
-            ));
-        pd.point_data_mut().set_active_normals(&name);
     }
-
-    // Copy other point/cell data
-    // (skip for now — the main use case is winding reversal)
-
-    pd
+    DataArray::from_vec(name, flipped, nc)
 }
 
 #[cfg(test)]
@@ -89,5 +97,32 @@ mod tests {
         );
         let r = reverse_sense(&pd);
         assert_eq!(r.points.get(0), [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn preserves_data_and_reverses_cell_families() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.verts.push_cell(&[0]);
+        pd.lines.push_cell(&[0, 1]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "scalars",
+                vec![1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
+
+        let r = reverse_sense(&pd);
+
+        assert_eq!(r.verts.cell(0), &[0]);
+        assert_eq!(r.lines.cell(0), &[1, 0]);
+        assert_eq!(r.polys.cell(0), &[2, 1, 0]);
+        assert_eq!(r.strips.cell(0), &[3, 2, 1, 0]);
+        assert!(r.point_data().get_array("scalars").is_some());
     }
 }

@@ -1,5 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 /// Select all faces connected to a seed face within a geodesic radius.
 ///
@@ -13,32 +13,29 @@ pub fn select_patch(input: &PolyData, seed_cell: usize, radius: f64) -> PolyData
     }
 
     // Face centroids
-    let centroids: Vec<[f64; 3]> = cells
+    let centroids: Vec<Option<[f64; 3]>> = cells
         .iter()
-        .map(|c| {
-            if c.is_empty() {
-                return [0.0; 3];
-            }
-            let mut cx = 0.0;
-            let mut cy = 0.0;
-            let mut cz = 0.0;
-            for &id in c {
-                let p = input.points.get(id as usize);
-                cx += p[0];
-                cy += p[1];
-                cz += p[2];
-            }
-            let n = c.len() as f64;
-            [cx / n, cy / n, cz / n]
-        })
+        .map(|c| cell_centroid(c, &input.points))
         .collect();
+    let Some(seed_c) = centroids[seed_cell] else {
+        return PolyData::new();
+    };
 
     // Edge adjacency
     let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
     for (fi, c) in cells.iter().enumerate() {
+        if centroids[fi].is_none() || c.len() < 2 {
+            continue;
+        }
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
+            if a == b
+                || valid_point_index(a, input.points.len()).is_none()
+                || valid_point_index(b, input.points.len()).is_none()
+            {
+                continue;
+            }
             let key = if a < b { (a, b) } else { (b, a) };
             edge_faces.entry(key).or_default().push(fi);
         }
@@ -54,21 +51,22 @@ pub fn select_patch(input: &PolyData, seed_cell: usize, radius: f64) -> PolyData
 
     // BFS from seed
     let r2 = radius * radius;
-    let seed_c = centroids[seed_cell];
-    let mut selected: HashSet<usize> = HashSet::new();
+    let mut selected = vec![false; n_cells];
     let mut queue = VecDeque::new();
     queue.push_back(seed_cell);
-    selected.insert(seed_cell);
+    selected[seed_cell] = true;
 
     while let Some(fi) = queue.pop_front() {
         for &ni in &adj[fi] {
-            if !selected.contains(&ni) {
-                let c = centroids[ni];
+            if !selected[ni] {
+                let Some(c) = centroids[ni] else {
+                    continue;
+                };
                 let d2 = (c[0] - seed_c[0]).powi(2)
                     + (c[1] - seed_c[1]).powi(2)
                     + (c[2] - seed_c[2]).powi(2);
                 if d2 <= r2 {
-                    selected.insert(ni);
+                    selected[ni] = true;
                     queue.push_back(ni);
                 }
             }
@@ -80,7 +78,10 @@ pub fn select_patch(input: &PolyData, seed_cell: usize, radius: f64) -> PolyData
     let mut out_pts = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
-    for &fi in &selected {
+    for fi in 0..n_cells {
+        if !selected[fi] {
+            continue;
+        }
         let mapped: Vec<i64> = cells[fi]
             .iter()
             .map(|&id| {
@@ -98,6 +99,26 @@ pub fn select_patch(input: &PolyData, seed_cell: usize, radius: f64) -> PolyData
     pd.points = out_pts;
     pd.polys = out_polys;
     pd
+}
+
+fn cell_centroid(cell: &[i64], points: &Points<f64>) -> Option<[f64; 3]> {
+    if cell.is_empty() {
+        return None;
+    }
+    let mut centroid = [0.0; 3];
+    for &id in cell {
+        let point_id = valid_point_index(id, points.len())?;
+        let p = points.get(point_id);
+        centroid[0] += p[0];
+        centroid[1] += p[1];
+        centroid[2] += p[2];
+    }
+    let n = cell.len() as f64;
+    Some([centroid[0] / n, centroid[1] / n, centroid[2] / n])
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]
@@ -148,6 +169,30 @@ mod tests {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
         let result = select_patch(&pd, 999, 1.0);
+        assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn invalid_cell_point_ids_are_skipped() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 99]);
+
+        let result = select_patch(&pd, 0, 100.0);
+        assert_eq!(result.polys.num_cells(), 1);
+    }
+
+    #[test]
+    fn invalid_seed_cell_returns_empty() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 99]);
+
+        let result = select_patch(&pd, 0, 1.0);
         assert_eq!(result.polys.num_cells(), 0);
     }
 

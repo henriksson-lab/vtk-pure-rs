@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 use std::collections::HashMap;
 
 /// Convert a triangle mesh to a quad-dominant mesh by merging triangle pairs.
@@ -63,15 +63,16 @@ pub fn tri_to_quad(input: &PolyData) -> PolyData {
         }
     }
 
-    let mut pd = PolyData::new();
-    pd.points = input.points.clone();
+    let mut pd = input.clone();
     pd.polys = out_polys;
+    pd.cell_data_mut().clear();
     pd
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
 
     #[test]
     fn merge_pair() {
@@ -88,6 +89,29 @@ mod tests {
         assert_eq!(result.polys.num_cells(), 1);
         let cell: Vec<i64> = result.polys.iter().next().unwrap().to_vec();
         assert_eq!(cell.len(), 4);
+    }
+
+    #[test]
+    fn preserves_non_polygon_topology_and_point_data() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 2, 3]);
+        pd.lines.push_cell(&[1, 4]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "weights",
+                vec![0.0, 1.0, 2.0, 3.0, 4.0],
+                1,
+            )));
+
+        let result = tri_to_quad(&pd);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert!(result.point_data().get_array("weights").is_some());
     }
 
     #[test]

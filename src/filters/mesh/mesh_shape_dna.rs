@@ -10,14 +10,18 @@ pub fn shape_dna(mesh: &PolyData, n_eigenvalues: usize, power_iters: usize) -> V
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % nc];
+            if a_id >= 0 && b_id >= 0 {
+                let a = a_id as usize;
+                let b = b_id as usize;
+                if a < n && b < n {
+                    if !adj[a].contains(&b) {
+                        adj[a].push(b);
+                    }
+                    if !adj[b].contains(&a) {
+                        adj[b].push(a);
+                    }
                 }
             }
         }

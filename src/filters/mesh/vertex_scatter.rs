@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Scatter vertices outward from centroid by a factor.
 ///
@@ -54,9 +54,14 @@ pub fn jitter_vertices(input: &PolyData, amount: f64, seed: u64) -> PolyData {
 
     for i in 0..n {
         let p = input.points.get(i);
-        let dx = next(&mut rng) * amount;
-        let dy = next(&mut rng) * amount;
-        let dz = next(&mut rng) * amount;
+        let (dx, dy, dz) = loop {
+            let dx = next(&mut rng);
+            let dy = next(&mut rng);
+            let dz = next(&mut rng);
+            if dx * dx + dy * dy + dz * dz <= 1.0 {
+                break (dx * amount, dy * amount, dz * amount);
+            }
+        };
         points.push([p[0] + dx, p[1] + dy, p[2] + dz]);
     }
 

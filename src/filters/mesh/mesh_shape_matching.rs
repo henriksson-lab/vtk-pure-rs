@@ -9,7 +9,7 @@ pub fn directed_hausdorff(from: &PolyData, to: &PolyData) -> f64 {
     let nf = from.points.len();
     let nt = to.points.len();
     if nf == 0 || nt == 0 {
-        return f64::INFINITY;
+        return 0.0;
     }
     let mut max_d = 0.0f64;
     for i in 0..nf {
@@ -33,7 +33,7 @@ fn directed_mean(from: &PolyData, to: &PolyData) -> f64 {
     let nf = from.points.len();
     let nt = to.points.len();
     if nf == 0 || nt == 0 {
-        return f64::INFINITY;
+        return 0.0;
     }
     let sum: f64 = (0..nf)
         .map(|i| {
@@ -50,17 +50,22 @@ fn directed_mean(from: &PolyData, to: &PolyData) -> f64 {
     sum / nf as f64
 }
 pub fn rms_surface_distance(a: &PolyData, b: &PolyData) -> f64 {
-    let nf = a.points.len();
-    let nt = b.points.len();
+    let d_ab = directed_rms(a, b);
+    let d_ba = directed_rms(b, a);
+    (d_ab + d_ba) / 2.0
+}
+fn directed_rms(from: &PolyData, to: &PolyData) -> f64 {
+    let nf = from.points.len();
+    let nt = to.points.len();
     if nf == 0 || nt == 0 {
-        return f64::INFINITY;
+        return 0.0;
     }
     let sum: f64 = (0..nf)
         .map(|i| {
-            let p = a.points.get(i);
+            let p = from.points.get(i);
             (0..nt)
                 .map(|j| {
-                    let q = b.points.get(j);
+                    let q = to.points.get(j);
                     (p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2) + (p[2] - q[2]).powi(2)
                 })
                 .fold(f64::INFINITY, f64::min)

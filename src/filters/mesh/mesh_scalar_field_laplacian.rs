@@ -2,7 +2,7 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_laplacian(mesh: &PolyData, array_name: &str) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();

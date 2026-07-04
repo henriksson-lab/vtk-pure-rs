@@ -4,15 +4,15 @@ use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
 ///
 /// Uses PCA (principal component analysis) on k-nearest-neighbor
 /// neighborhoods to estimate a normal direction at each point.
-/// The normals are oriented consistently by propagating from an
-/// initial point using a minimum spanning tree heuristic.
+/// The normals are oriented toward the origin, matching VTK's default
+/// orientation-point mode.
 ///
-/// Adds a "Normals" array to point data.
+/// Adds a "PCANormals" array to point data.
 pub fn normal_estimation(input: &PolyData, k: usize) -> PolyData {
     let n = input.points.len();
-    let k = k.max(3);
+    let k = k.max(1).min(n.max(1));
 
-    if n < 3 {
+    if n == 0 {
         return input.clone();
     }
 
@@ -24,7 +24,7 @@ pub fn normal_estimation(input: &PolyData, k: usize) -> PolyData {
 
     // Estimate normal at each point via PCA on k-NN
     for i in 0..n {
-        let neighbors = tree.k_nearest(pts[i], k + 1); // +1 because self is included
+        let neighbors = tree.k_nearest(pts[i], k);
 
         // Compute centroid of neighborhood
         let mut cx = 0.0;
@@ -53,98 +53,115 @@ pub fn normal_estimation(input: &PolyData, k: usize) -> PolyData {
             cov[1][2] += dy * dz;
             cov[2][2] += dz * dz;
         }
+        for row in &mut cov {
+            for value in row {
+                *value /= count;
+            }
+        }
         cov[1][0] = cov[0][1];
         cov[2][0] = cov[0][2];
         cov[2][1] = cov[1][2];
 
-        // Find smallest eigenvector via power iteration on inverse
-        // (normal is the eigenvector of smallest eigenvalue)
-        // Use simple approach: the normal is approximately the cross product
-        // of two vectors in the tangent plane found by SVD-like iteration
         let normal = smallest_eigenvector(&cov);
         normals_arr[i] = normal;
     }
 
-    // Orient normals consistently: start from point with max Z,
-    // orient it upward, then propagate via nearest neighbors
-    let mut oriented = vec![false; n];
-    let start = (0..n)
-        .max_by(|&a, &b| pts[a][2].partial_cmp(&pts[b][2]).unwrap())
-        .unwrap_or(0);
-
-    // Orient start normal to point "up" (positive Z)
-    if normals_arr[start][2] < 0.0 {
-        normals_arr[start] = negate(normals_arr[start]);
-    }
-    oriented[start] = true;
-
-    // BFS propagation
-    let mut queue = std::collections::VecDeque::new();
-    queue.push_back(start);
-
-    while let Some(curr) = queue.pop_front() {
-        let neighbors = tree.k_nearest(pts[curr], k + 1);
-        for &(idx, _) in &neighbors {
-            if oriented[idx] {
-                continue;
-            }
-            // Orient to agree with current point's normal
-            if dot(normals_arr[idx], normals_arr[curr]) < 0.0 {
-                normals_arr[idx] = negate(normals_arr[idx]);
-            }
-            oriented[idx] = true;
-            queue.push_back(idx);
+    for (point, normal) in pts.iter().zip(normals_arr.iter_mut()) {
+        let to_origin = [-point[0], -point[1], -point[2]];
+        if dot(to_origin, *normal) < 0.0 {
+            *normal = negate(*normal);
         }
     }
 
-    let mut pd = input.clone();
+    let mut pd = PolyData::new();
+    pd.points = input.points.clone();
+    *pd.point_data_mut() = input.point_data().clone();
+    *pd.field_data_mut() = input.field_data().clone();
     let flat: Vec<f64> = normals_arr.iter().flat_map(|n| n.iter().copied()).collect();
     pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Normals", flat, 3)));
-    pd.point_data_mut().set_active_normals("Normals");
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "PCANormals",
+            flat,
+            3,
+        )));
+    pd.point_data_mut().set_active_normals("PCANormals");
     pd
 }
 
 /// Find the eigenvector corresponding to the smallest eigenvalue
-/// of a 3×3 symmetric matrix using the power method on the adjugate.
+/// of a 3x3 symmetric matrix using Jacobi rotations.
 fn smallest_eigenvector(m: &[[f64; 3]; 3]) -> [f64; 3] {
-    // Use two iterations of inverse power method with shift
-    // For a simpler approach: compute cross products of rows
-    // and pick the one with largest magnitude
-    let r0 = [m[0][0], m[0][1], m[0][2]];
-    let r1 = [m[1][0], m[1][1], m[1][2]];
-    let r2 = [m[2][0], m[2][1], m[2][2]];
-
-    let c01 = cross(r0, r1);
-    let c02 = cross(r0, r2);
-    let c12 = cross(r1, r2);
-
-    let l01 = dot(c01, c01);
-    let l02 = dot(c02, c02);
-    let l12 = dot(c12, c12);
-
-    let best = if l01 >= l02 && l01 >= l12 {
-        c01
-    } else if l02 >= l12 {
-        c02
-    } else {
-        c12
-    };
-
-    let len = dot(best, best).sqrt();
-    if len > 1e-15 {
-        [best[0] / len, best[1] / len, best[2] / len]
-    } else {
-        [0.0, 0.0, 1.0]
+    let mut a = *m;
+    let mut v = [[0.0f64; 3]; 3];
+    for i in 0..3 {
+        v[i][i] = 1.0;
     }
-}
 
-fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
-    [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-    ]
+    for _ in 0..50 {
+        let mut p = 0usize;
+        let mut q = 1usize;
+        let mut max = a[0][1].abs();
+        for i in 0..3 {
+            for j in (i + 1)..3 {
+                if a[i][j].abs() > max {
+                    max = a[i][j].abs();
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if max < 1e-15 {
+            break;
+        }
+
+        let tau = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let t = if tau >= 0.0 {
+            1.0 / (tau + (1.0 + tau * tau).sqrt())
+        } else {
+            -1.0 / (-tau + (1.0 + tau * tau).sqrt())
+        };
+        let c = 1.0 / (1.0 + t * t).sqrt();
+        let s = t * c;
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+
+        a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
+        a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
+
+        for r in 0..3 {
+            if r != p && r != q {
+                let arp = a[r][p];
+                let arq = a[r][q];
+                a[r][p] = c * arp - s * arq;
+                a[p][r] = a[r][p];
+                a[r][q] = s * arp + c * arq;
+                a[q][r] = a[r][q];
+            }
+            let vrp = v[r][p];
+            let vrq = v[r][q];
+            v[r][p] = c * vrp - s * vrq;
+            v[r][q] = s * vrp + c * vrq;
+        }
+    }
+
+    let min_col = if a[0][0] <= a[1][1] && a[0][0] <= a[2][2] {
+        0
+    } else if a[1][1] <= a[2][2] {
+        1
+    } else {
+        2
+    };
+    let mut normal = [v[0][min_col], v[1][min_col], v[2][min_col]];
+    let len = dot(normal, normal).sqrt();
+    if len > 1e-15 {
+        normal[0] /= len;
+        normal[1] /= len;
+        normal[2] /= len;
+    }
+    normal
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -170,7 +187,7 @@ mod tests {
         }
 
         let result = normal_estimation(&pd, 6);
-        let arr = result.point_data().get_array("Normals").unwrap();
+        let arr = result.point_data().get_array("PCANormals").unwrap();
 
         // All normals should be approximately [0, 0, ±1]
         let mut buf = [0.0f64; 3];
@@ -204,7 +221,7 @@ mod tests {
         }
 
         let result = normal_estimation(&pd, 8);
-        let arr = result.point_data().get_array("Normals").unwrap();
+        let arr = result.point_data().get_array("PCANormals").unwrap();
 
         // Normals should roughly point radially
         let mut buf = [0.0f64; 3];

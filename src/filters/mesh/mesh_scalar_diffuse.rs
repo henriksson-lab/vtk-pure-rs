@@ -4,13 +4,20 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_diffuse(mesh: &PolyData, scalar_name: &str, dt: f64, steps: usize) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
+            if cell[i] < 0 || cell[(i + 1) % nc] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
             if a < n && b < n {
@@ -23,6 +30,7 @@ pub fn scalar_diffuse(mesh: &PolyData, scalar_name: &str, dt: f64, steps: usize)
             }
         }
     }
+    let dt = dt.clamp(0.0, 0.5);
     let mut vals = vec![0.0f64; n];
     let mut buf = [0.0f64];
     for i in 0..n {

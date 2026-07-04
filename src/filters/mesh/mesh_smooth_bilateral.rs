@@ -1,6 +1,6 @@
 //! Bilateral mesh smoothing (edge-preserving).
 
-use crate::data::PolyData;
+use crate::data::{Points, PolyData};
 
 /// Bilateral mesh smoothing: smooths positions while preserving sharp features.
 pub fn smooth_bilateral_mesh(
@@ -10,7 +10,7 @@ pub fn smooth_bilateral_mesh(
     sigma_normal: f64,
 ) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || iterations == 0 || sigma_spatial <= 0.0 || sigma_normal <= 0.0 {
         return mesh.clone();
     }
 
@@ -18,34 +18,34 @@ pub fn smooth_bilateral_mesh(
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc == 0 || !valid_cell(cell, n) {
+            continue;
+        }
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !neighbors[a].contains(&b) {
-                    neighbors[a].push(b);
-                }
-                if !neighbors[b].contains(&a) {
-                    neighbors[b].push(a);
-                }
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
             }
         }
     }
 
-    // Compute vertex normals
-    let normals = compute_normals(mesh);
     let mut positions: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
     let ss2 = 2.0 * sigma_spatial * sigma_spatial;
     let sn2 = 2.0 * sigma_normal * sigma_normal;
 
     for _ in 0..iterations {
+        let normals = compute_normals(mesh, &positions);
         let mut new_pos = positions.clone();
         for i in 0..n {
             if neighbors[i].is_empty() {
                 continue;
             }
             let ni = normals[i];
-            let mut sum = [0.0, 0.0, 0.0];
+            let mut sum = 0.0;
             let mut wsum = 0.0;
             for &nb in &neighbors[i] {
                 let dp = [
@@ -58,37 +58,34 @@ pub fn smooth_bilateral_mesh(
                 let ws = (-dist2 / ss2).exp();
                 let wn = (-h * h / sn2).exp();
                 let w = ws * wn;
-                sum[0] += w * dp[0];
-                sum[1] += w * dp[1];
-                sum[2] += w * dp[2];
+                sum += w * h;
                 wsum += w;
             }
             if wsum > 1e-15 {
-                new_pos[i][0] = positions[i][0] + sum[0] / wsum;
-                new_pos[i][1] = positions[i][1] + sum[1] / wsum;
-                new_pos[i][2] = positions[i][2] + sum[2] / wsum;
+                let offset = sum / wsum;
+                new_pos[i][0] = positions[i][0] + offset * ni[0];
+                new_pos[i][1] = positions[i][1] + offset * ni[1];
+                new_pos[i][2] = positions[i][2] + offset * ni[2];
             }
         }
         positions = new_pos;
     }
 
     let mut result = mesh.clone();
-    for i in 0..n {
-        result.points.set(i, positions[i]);
-    }
+    result.points = Points::from(positions);
     result
 }
 
-fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
-    let n = mesh.points.len();
+fn compute_normals(mesh: &PolyData, positions: &[[f64; 3]]) -> Vec<[f64; 3]> {
+    let n = positions.len();
     let mut normals = vec![[0.0f64; 3]; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3 || !valid_cell(cell, n) {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let a = positions[cell[0] as usize];
+        let b = positions[cell[1] as usize];
+        let c = positions[cell[2] as usize];
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let fn_ = [
@@ -98,11 +95,9 @@ fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         ];
         for &v in cell {
             let vi = v as usize;
-            if vi < n {
-                normals[vi][0] += fn_[0];
-                normals[vi][1] += fn_[1];
-                normals[vi][2] += fn_[2];
-            }
+            normals[vi][0] += fn_[0];
+            normals[vi][1] += fn_[1];
+            normals[vi][2] += fn_[2];
         }
     }
     for nm in &mut normals {
@@ -114,6 +109,10 @@ fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     normals
+}
+
+fn valid_cell(cell: &[i64], npoints: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 
 #[cfg(test)]

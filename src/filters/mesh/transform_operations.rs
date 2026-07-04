@@ -128,6 +128,10 @@ pub fn rotate_mesh(mesh: &PolyData, axis: [f64; 3], angle: f64) -> PolyData {
 /// Mirror mesh across a coordinate plane.
 pub fn mirror_mesh(mesh: &PolyData, plane: usize) -> PolyData {
     // 0=YZ, 1=XZ, 2=XY
+    if plane >= 3 {
+        return mesh.clone();
+    }
+
     let n = mesh.points.len();
     let mut pts = Points::<f64>::new();
     for i in 0..n {
@@ -177,5 +181,12 @@ mod tests {
         let mesh = PolyData::from_points(vec![[1.0, 2.0, 3.0]]);
         let result = mirror_mesh(&mesh, 0);
         assert!((result.points.get(0)[0] + 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn mirror_invalid_plane_returns_input() {
+        let mesh = PolyData::from_points(vec![[1.0, 2.0, 3.0]]);
+        let result = mirror_mesh(&mesh, 3);
+        assert_eq!(result, mesh);
     }
 }

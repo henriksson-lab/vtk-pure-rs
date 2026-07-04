@@ -1,5 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
-use std::collections::HashMap;
+use crate::data::{CellArray, PolyData};
 
 /// Remove T-junctions by splitting edges at T-junction vertices.
 ///
@@ -15,7 +14,7 @@ pub fn fix_t_junctions(input: &PolyData, tolerance: f64) -> PolyData {
 
     // For each edge, check if any non-adjacent vertex is within tolerance
     let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
-    let mut out_pts = input.points.clone();
+    let out_pts = input.points.clone();
     let mut new_cells = cells.clone();
     let mut modified = true;
     let mut pass = 0;
@@ -26,7 +25,7 @@ pub fn fix_t_junctions(input: &PolyData, tolerance: f64) -> PolyData {
         let mut replacement: Vec<Option<Vec<Vec<i64>>>> = vec![None; new_cells.len()];
 
         for (fi, cell) in new_cells.iter().enumerate() {
-            if cell.len() < 3 {
+            if !is_valid_triangle(cell, out_pts.len()) {
                 continue;
             }
             for i in 0..cell.len() {
@@ -67,8 +66,8 @@ pub fn fix_t_junctions(input: &PolyData, tolerance: f64) -> PolyData {
                         let vid = vi as i64;
                         let c_idx = (i + 2) % cell.len(); // opposite vertex
                         let opp = cell[c_idx];
-                        let mut tri1 = vec![cell[i], vid, opp];
-                        let mut tri2 = vec![vid, cell[(i + 1) % cell.len()], opp];
+                        let tri1 = vec![cell[i], vid, opp];
+                        let tri2 = vec![vid, cell[(i + 1) % cell.len()], opp];
                         replacement[fi] = Some(vec![tri1, tri2]);
                         modified = true;
                         break;
@@ -101,10 +100,14 @@ pub fn fix_t_junctions(input: &PolyData, tolerance: f64) -> PolyData {
         out_polys.push_cell(c);
     }
 
-    let mut pd = PolyData::new();
+    let mut pd = input.clone();
     pd.points = out_pts;
     pd.polys = out_polys;
     pd
+}
+
+fn is_valid_triangle(cell: &[i64], n_points: usize) -> bool {
+    cell.len() == 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 #[cfg(test)]

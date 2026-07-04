@@ -2,7 +2,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Recompute point normals, replacing any existing "Normals" array.
 ///
-/// Uses area-weighted face normals averaged to vertices.
+/// Uses polygon cell normals averaged to vertices.
 pub fn recompute_normals(input: &PolyData) -> PolyData {
     let n = input.points.len();
     if n == 0 {
@@ -14,18 +14,13 @@ pub fn recompute_normals(input: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
-        let v1 = input.points.get(cell[1] as usize);
-        let v2 = input.points.get(cell[2] as usize);
-        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-        let fn_ = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
+        let Some(fn_) = polygon_normal(input, cell) else {
+            continue;
+        };
         for &id in cell.iter() {
-            let i = id as usize;
+            let Some(i) = valid_point_id(id, n) else {
+                continue;
+            };
             vnormals[i][0] += fn_[0];
             vnormals[i][1] += fn_[1];
             vnormals[i][2] += fn_[2];
@@ -90,8 +85,34 @@ pub fn flip_normals(input: &PolyData) -> PolyData {
             attrs.add_array(a.clone());
         }
     }
+    attrs.set_active_normals("Normals");
     *pd.point_data_mut() = attrs;
     pd
+}
+
+fn polygon_normal(input: &PolyData, cell: &[i64]) -> Option<[f64; 3]> {
+    let mut normal = [0.0f64; 3];
+    for i in 0..cell.len() {
+        let p = point_for_id(input, cell[i])?;
+        let q = point_for_id(input, cell[(i + 1) % cell.len()])?;
+        normal[0] += (p[1] - q[1]) * (p[2] + q[2]);
+        normal[1] += (p[2] - q[2]) * (p[0] + q[0]);
+        normal[2] += (p[0] - q[0]) * (p[1] + q[1]);
+    }
+    let len = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+    if len > 1e-15 {
+        Some([normal[0] / len, normal[1] / len, normal[2] / len])
+    } else {
+        Some(normal)
+    }
+}
+
+fn point_for_id(input: &PolyData, id: i64) -> Option<[f64; 3]> {
+    valid_point_id(id, input.points.len()).map(|idx| input.points.get(idx))
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < n_points)
 }
 
 fn recompute_and_flip(input: &PolyData) -> PolyData {

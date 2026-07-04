@@ -15,13 +15,13 @@ pub fn scalar_multiply(mesh: &PolyData, scalar_name: &str, factor: f64) -> PolyD
 
 pub fn scalar_power(mesh: &PolyData, scalar_name: &str, exponent: f64) -> PolyData {
     apply_op(mesh, scalar_name, &format!("{}_pow", scalar_name), |v| {
-        v.abs().max(1e-30).powf(exponent)
+        v.powf(exponent)
     })
 }
 
 pub fn scalar_log(mesh: &PolyData, scalar_name: &str) -> PolyData {
     apply_op(mesh, scalar_name, &format!("{}_log", scalar_name), |v| {
-        v.abs().max(1e-30).ln()
+        v.ln()
     })
 }
 
@@ -39,8 +39,9 @@ fn apply_op(
 ) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
     let mut vals = Vec::with_capacity(n);
     let mut buf = [0.0f64];
@@ -76,5 +77,32 @@ mod tests {
         let mut b = [0.0f64];
         arr.tuple_as_f64(0, &mut b);
         assert_eq!(b[0], 6.0);
+    }
+
+    #[test]
+    fn test_math_preserves_float_domain_behavior() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![-2.0, 0.0, 4.0],
+                1,
+            )));
+
+        let pow = scalar_power(&mesh, "v", 3.0);
+        let pow_arr = pow.point_data().get_array("v_pow").unwrap();
+        let mut b = [0.0f64];
+        pow_arr.tuple_as_f64(0, &mut b);
+        assert_eq!(b[0], -8.0);
+
+        let log = scalar_log(&mesh, "v");
+        let log_arr = log.point_data().get_array("v_log").unwrap();
+        log_arr.tuple_as_f64(0, &mut b);
+        assert!(b[0].is_nan());
+        log_arr.tuple_as_f64(1, &mut b);
+        assert_eq!(b[0], f64::NEG_INFINITY);
     }
 }

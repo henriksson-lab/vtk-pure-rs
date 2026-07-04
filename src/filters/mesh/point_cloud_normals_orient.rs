@@ -1,13 +1,15 @@
-use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, KdTree, PolyData};
 
-/// Orient point cloud normals consistently using minimum spanning tree propagation.
+const DEFAULT_SAMPLE_SIZE: usize = 25;
+
+/// Orient point cloud normals consistently using graph traversal propagation.
 ///
-/// If normals exist, propagates orientation from the point with max Z.
-/// Each normal is flipped if it disagrees with its already-oriented nearest neighbor.
+/// If normals exist, propagates orientation through each connected wave.
+/// Each normal is flipped if it disagrees with its already-oriented neighbor.
 pub fn orient_point_cloud_normals(input: &PolyData) -> PolyData {
     let n = input.points.len();
     let arr = match input.point_data().get_array("Normals") {
-        Some(a) if a.num_components() == 3 => a,
+        Some(a) if a.num_components() == 3 && a.num_tuples() == n => a,
         _ => return input.clone(),
     };
 
@@ -22,41 +24,38 @@ pub fn orient_point_cloud_normals(input: &PolyData) -> PolyData {
 
     let tree = KdTree::build(&pts);
 
-    // Start from highest Z point
-    let start = (0..n)
-        .max_by(|&a, &b| pts[a][2].partial_cmp(&pts[b][2]).unwrap())
-        .unwrap_or(0);
-    // Ensure start normal points up
-    if normals[start][2] < 0.0 {
-        normals[start] = [-normals[start][0], -normals[start][1], -normals[start][2]];
-    }
-
-    // BFS propagation via k-NN
+    // BFS propagation via k-NN, starting a new wave for each disconnected component.
     let mut oriented = vec![false; n];
-    let mut queue = std::collections::VecDeque::new();
-    oriented[start] = true;
-    queue.push_back(start);
+    for seed in 0..n {
+        if oriented[seed] {
+            continue;
+        }
 
-    while let Some(i) = queue.pop_front() {
-        let knn = tree.k_nearest(pts[i], 8);
-        for &(j, _) in &knn {
-            if oriented[j] {
-                continue;
+        let mut queue = std::collections::VecDeque::new();
+        oriented[seed] = true;
+        queue.push_back(seed);
+
+        while let Some(i) = queue.pop_front() {
+            let knn = tree.k_nearest(pts[i], DEFAULT_SAMPLE_SIZE);
+            for &(j, _) in &knn {
+                if oriented[j] {
+                    continue;
+                }
+                let dot = normals[i][0] * normals[j][0]
+                    + normals[i][1] * normals[j][1]
+                    + normals[i][2] * normals[j][2];
+                if dot < 0.0 {
+                    normals[j] = [-normals[j][0], -normals[j][1], -normals[j][2]];
+                }
+                oriented[j] = true;
+                queue.push_back(j);
             }
-            let dot = normals[i][0] * normals[j][0]
-                + normals[i][1] * normals[j][1]
-                + normals[i][2] * normals[j][2];
-            if dot < 0.0 {
-                normals[j] = [-normals[j][0], -normals[j][1], -normals[j][2]];
-            }
-            oriented[j] = true;
-            queue.push_back(j);
         }
     }
 
     let flat: Vec<f64> = normals.iter().flat_map(|n| n.iter().copied()).collect();
     let mut pd = input.clone();
-    let mut attrs = crate::data::DataSetAttributes::new();
+    let mut attrs = DataSetAttributes::new();
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == "Normals" {
@@ -69,6 +68,7 @@ pub fn orient_point_cloud_normals(input: &PolyData) -> PolyData {
             attrs.add_array(a.clone());
         }
     }
+    attrs.set_active_normals("Normals");
     *pd.point_data_mut() = attrs;
     pd
 }

@@ -88,12 +88,16 @@ pub fn kmeans_cluster(input: &PolyData, k: usize, iterations: usize, seed: u64) 
 
 /// Compute k-means inertia (sum of squared distances to centroids).
 pub fn kmeans_inertia(input: &PolyData, k: usize, iterations: usize) -> f64 {
+    let n = input.points.len();
+    if n == 0 || k == 0 {
+        return 0.0;
+    }
+    let k = k.min(n);
     let result = kmeans_cluster(input, k, iterations, 42);
     let arr = match result.point_data().get_array("KMeansCluster") {
         Some(a) => a,
         None => return 0.0,
     };
-    let n = input.points.len();
 
     // Recompute centroids
     let mut buf = [0.0f64];

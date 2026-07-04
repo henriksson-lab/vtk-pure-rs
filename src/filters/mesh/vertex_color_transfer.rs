@@ -15,6 +15,9 @@ pub fn vertex_color_transfer(source: &PolyData, target: &PolyData, array_name: &
     if ns == 0 || nt == 0 {
         return target.clone();
     }
+    if arr.num_tuples() != ns {
+        return target.clone();
+    }
 
     let src_pts: Vec<[f64; 3]> = (0..ns).map(|i| source.points.get(i)).collect();
     let tree = KdTree::build(&src_pts);

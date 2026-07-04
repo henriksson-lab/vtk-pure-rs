@@ -22,10 +22,13 @@ pub fn smooth_bilaplacian(input: &PolyData, iterations: usize, lambda: f64) -> P
     for cell in input.polys.iter() {
         let len: usize = cell.len();
         for j in 0..len {
-            let a: usize = cell[j] as usize;
-            let b: usize = cell[(j + 1) % len] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[j], n),
+                valid_point_id(cell[(j + 1) % len], n),
+            ) {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
         }
     }
 
@@ -114,6 +117,14 @@ fn compute_laplacian_of_vectors(
     }
 
     lap
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

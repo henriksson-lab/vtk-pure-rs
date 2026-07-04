@@ -46,6 +46,9 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
                 let b = cell[(i + 1) % n] as usize;
                 let key = (a.min(b), a.max(b));
                 if let Some(neighbors) = edge_faces.get(&key) {
+                    if neighbors.len() != 2 {
+                        continue;
+                    }
                     for &ni in neighbors {
                         if ni == ci || oriented[ni] {
                             continue;
@@ -152,5 +155,22 @@ mod tests {
             vec![[0, 1, 2], [1, 3, 2]], // edge 1-2 in opposite dirs -> consistent
         );
         assert!(is_consistently_oriented(&mesh));
+    }
+
+    #[test]
+    fn non_manifold_edges_are_not_traversed() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.points.push([0.0, -1.0, 0.0]);
+        mesh.points.push([0.0, 0.0, 1.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[0, 1, 3]);
+        mesh.polys.push_cell(&[0, 1, 4]);
+
+        let r = orient_faces_consistent(&mesh);
+        let cells: Vec<Vec<i64>> = r.polys.iter().map(|c| c.to_vec()).collect();
+        assert_eq!(cells, vec![vec![0, 1, 2], vec![0, 1, 3], vec![0, 1, 4]]);
     }
 }

@@ -3,22 +3,16 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn detect_feature_vertices(mesh: &PolyData, angle_threshold: f64) -> PolyData {
     let n = mesh.points.len();
     let cos_t = angle_threshold.to_radians().cos();
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let mut vf: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for (ci, c) in cells.iter().enumerate() {
-        for &v in c {
-            vf[v as usize].push(ci);
-        }
-    }
+    let cells = surface_cells(mesh, n);
     let fnormals: Vec<[f64; 3]> = cells
         .iter()
         .map(|c| {
             if c.len() < 3 {
                 return [0.0, 0.0, 1.0];
             }
-            let a = mesh.points.get(c[0] as usize);
-            let b = mesh.points.get(c[1] as usize);
-            let cc = mesh.points.get(c[2] as usize);
+            let a = mesh.points.get(c[0]);
+            let b = mesh.points.get(c[1]);
+            let cc = mesh.points.get(c[2]);
             let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
             let e2 = [cc[0] - a[0], cc[1] - a[1], cc[2] - a[2]];
             let nn = [
@@ -34,26 +28,42 @@ pub fn detect_feature_vertices(mesh: &PolyData, angle_threshold: f64) -> PolyDat
             }
         })
         .collect();
+    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
+        std::collections::HashMap::new();
+    for (ci, cell) in cells.iter().enumerate() {
+        let nc = cell.len();
+        for i in 0..nc {
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            if a == b {
+                continue;
+            }
+            edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
+        }
+    }
+    let mut sharp_count = vec![0usize; n];
+    for (&(a, b), faces) in &edge_faces {
+        let is_feature = if faces.len() == 1 {
+            true
+        } else if faces.len() == 2 {
+            let n1 = fnormals[faces[0]];
+            let n2 = fnormals[faces[1]];
+            let dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
+            dot < cos_t
+        } else {
+            true
+        };
+        if is_feature {
+            sharp_count[a] += 1;
+            sharp_count[b] += 1;
+        }
+    }
     // Feature type: 0=flat, 1=edge, 2=corner
     let data: Vec<f64> = (0..n)
         .map(|i| {
-            if vf[i].len() < 2 {
-                return 0.0;
-            }
-            let mut sharp_count = 0;
-            for fi in 0..vf[i].len() {
-                for fj in fi + 1..vf[i].len() {
-                    let n1 = fnormals[vf[i][fi]];
-                    let n2 = fnormals[vf[i][fj]];
-                    let dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
-                    if dot < cos_t {
-                        sharp_count += 1;
-                    }
-                }
-            }
-            if sharp_count >= 2 {
+            if sharp_count[i] >= 3 {
                 2.0
-            } else if sharp_count >= 1 {
+            } else if sharp_count[i] >= 1 {
                 1.0
             } else {
                 0.0
@@ -70,6 +80,39 @@ pub fn detect_feature_vertices(mesh: &PolyData, angle_threshold: f64) -> PolyDat
     r.point_data_mut().set_active_scalars("FeatureType");
     r
 }
+
+fn surface_cells(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut cells = Vec::new();
+    for cell in mesh.polys.iter() {
+        push_valid_cell(&mut cells, cell, n);
+    }
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            if i % 2 == 0 {
+                push_valid_cell(&mut cells, &[tri[0], tri[1], tri[2]], n);
+            } else {
+                push_valid_cell(&mut cells, &[tri[1], tri[0], tri[2]], n);
+            }
+        }
+    }
+    cells
+}
+
+fn push_valid_cell(cells: &mut Vec<Vec<usize>>, cell: &[i64], n: usize) {
+    let mut ids = Vec::with_capacity(cell.len());
+    for &v in cell {
+        let Some(v) = valid_point_index(v, n) else {
+            return;
+        };
+        ids.push(v);
+    }
+    cells.push(ids);
+}
+
+fn valid_point_index(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

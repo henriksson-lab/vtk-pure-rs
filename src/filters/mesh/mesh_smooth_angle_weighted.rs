@@ -11,6 +11,9 @@ pub fn smooth_angle_weighted(mesh: &PolyData, iterations: usize, lambda: f64) ->
             continue;
         }
         let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+        if ids.iter().any(|&id| id >= n) {
+            continue;
+        }
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),

@@ -7,7 +7,7 @@ use crate::data::{AnyDataArray, DataArray, UnstructuredGrid};
 use crate::types::{CellType, VtkError};
 use std::path::Path;
 
-use crate::types::{ExodusElementType, ExodusInfo};
+use super::types::{ExodusElementType, ExodusInfo};
 
 /// Read an Exodus II file, returning an UnstructuredGrid + metadata.
 pub fn read_exodus(path: &Path) -> Result<(UnstructuredGrid, ExodusInfo), VtkError> {

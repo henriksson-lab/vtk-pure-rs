@@ -5,6 +5,7 @@ pub struct CriticalPoint {
     pub value: f64,
     pub kind: CriticalKind,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CriticalKind {
     Minimum,
     Maximum,
@@ -13,7 +14,7 @@ pub enum CriticalKind {
 }
 pub fn find_critical_points(mesh: &PolyData, array_name: &str) -> Vec<CriticalPoint> {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return vec![],
     };
     let n = mesh.points.len();
@@ -25,6 +26,7 @@ pub fn find_critical_points(mesh: &PolyData, array_name: &str) -> Vec<CriticalPo
         })
         .collect();
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut link_edges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
@@ -38,6 +40,14 @@ pub fn find_critical_points(mesh: &PolyData, array_name: &str) -> Vec<CriticalPo
                     nb[b].push(a);
                 }
             }
+            if nc > 2 {
+                let center = cell[i] as usize;
+                let prev = cell[(i + nc - 1) % nc] as usize;
+                let next = cell[(i + 1) % nc] as usize;
+                if center < n && prev < n && next < n && prev != next {
+                    link_edges[center].push((prev, next));
+                }
+            }
         }
     }
     let mut result = Vec::new();
@@ -46,24 +56,14 @@ pub fn find_critical_points(mesh: &PolyData, array_name: &str) -> Vec<CriticalPo
             continue;
         }
         let vi = vals[i];
-        let lower = nb[i].iter().filter(|&&j| vals[j] < vi).count();
-        let upper = nb[i].iter().filter(|&&j| vals[j] > vi).count();
-        let kind = if lower == 0 && upper > 0 {
+        let lower_components = link_components(&nb[i], &link_edges[i], |j| vals[j] < vi);
+        let upper_components = link_components(&nb[i], &link_edges[i], |j| vals[j] > vi);
+        let kind = if lower_components == 0 && upper_components > 0 {
             CriticalKind::Minimum
-        } else if upper == 0 && lower > 0 {
+        } else if upper_components == 0 && lower_components > 0 {
             CriticalKind::Maximum
-        } else if lower > 0 && upper > 0 {
-            // Check for saddle: count sign changes around ring
-            let sorted_nb = &nb[i];
-            let changes = sorted_nb
-                .windows(2)
-                .filter(|w| (vals[w[0]] > vi) != (vals[w[1]] > vi))
-                .count();
-            if changes >= 4 {
-                CriticalKind::Saddle
-            } else {
-                CriticalKind::Regular
-            }
+        } else if lower_components > 1 || upper_components > 1 {
+            CriticalKind::Saddle
         } else {
             CriticalKind::Regular
         };
@@ -77,6 +77,46 @@ pub fn find_critical_points(mesh: &PolyData, array_name: &str) -> Vec<CriticalPo
         }
     }
     result
+}
+
+fn link_components<F>(neighbors: &[usize], edges: &[(usize, usize)], keep: F) -> usize
+where
+    F: Fn(usize) -> bool,
+{
+    let mut selected = Vec::new();
+    for &neighbor in neighbors {
+        if keep(neighbor) {
+            selected.push(neighbor);
+        }
+    }
+    let mut visited = vec![false; selected.len()];
+    let mut components = 0;
+    for start in 0..selected.len() {
+        if visited[start] {
+            continue;
+        }
+        components += 1;
+        let mut stack = vec![selected[start]];
+        visited[start] = true;
+        while let Some(vertex) = stack.pop() {
+            for &(a, b) in edges {
+                let other = if a == vertex && keep(b) {
+                    b
+                } else if b == vertex && keep(a) {
+                    a
+                } else {
+                    continue;
+                };
+                if let Some(pos) = selected.iter().position(|&v| v == other) {
+                    if !visited[pos] {
+                        visited[pos] = true;
+                        stack.push(other);
+                    }
+                }
+            }
+        }
+    }
+    components
 }
 pub fn attach_critical_type(mesh: &PolyData, array_name: &str) -> PolyData {
     let crits = find_critical_points(mesh, array_name);

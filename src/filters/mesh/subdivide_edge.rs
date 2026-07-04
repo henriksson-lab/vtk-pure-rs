@@ -18,12 +18,15 @@ pub fn subdivide_long_edges(input: &PolyData, max_length: f64) -> PolyData {
             continue;
         }
 
+        let Some([a_idx, b_idx, c_idx]) = valid_triangle_point_ids(cell, input.points.len()) else {
+            continue;
+        };
         let a = cell[0];
         let b = cell[1];
         let c = cell[2];
-        let pa = input.points.get(a as usize);
-        let pb = input.points.get(b as usize);
-        let pc = input.points.get(c as usize);
+        let pa = input.points.get(a_idx);
+        let pb = input.points.get(b_idx);
+        let pc = input.points.get(c_idx);
 
         let d_ab = dist2(pa, pb);
         let d_bc = dist2(pb, pc);
@@ -54,52 +57,26 @@ pub fn subdivide_long_edges(input: &PolyData, max_length: f64) -> PolyData {
                 })
             };
 
-        if num_splits == 3 {
-            let mab = mid(a, b, &mut points, &mut midpoint_cache);
-            let mbc = mid(b, c, &mut points, &mut midpoint_cache);
-            let mca = mid(c, a, &mut points, &mut midpoint_cache);
-            out_polys.push_cell(&[a, mab, mca]);
-            out_polys.push_cell(&[b, mbc, mab]);
-            out_polys.push_cell(&[c, mca, mbc]);
-            out_polys.push_cell(&[mab, mbc, mca]);
-        } else if num_splits == 2 {
-            if !split_ab {
-                let mbc = mid(b, c, &mut points, &mut midpoint_cache);
-                let mca = mid(c, a, &mut points, &mut midpoint_cache);
-                out_polys.push_cell(&[a, b, mbc]);
-                out_polys.push_cell(&[a, mbc, mca]);
-                out_polys.push_cell(&[mca, mbc, c]);
-            } else if !split_bc {
-                let mab = mid(a, b, &mut points, &mut midpoint_cache);
-                let mca = mid(c, a, &mut points, &mut midpoint_cache);
-                out_polys.push_cell(&[b, c, mca]);
-                out_polys.push_cell(&[b, mca, mab]);
-                out_polys.push_cell(&[mab, mca, a]);
-            } else {
-                let mab = mid(a, b, &mut points, &mut midpoint_cache);
-                let mbc = mid(b, c, &mut points, &mut midpoint_cache);
-                out_polys.push_cell(&[c, a, mab]);
-                out_polys.push_cell(&[c, mab, mbc]);
-                out_polys.push_cell(&[mbc, mab, b]);
-            }
-        } else {
-            if split_ab {
-                let m = mid(a, b, &mut points, &mut midpoint_cache);
-                out_polys.push_cell(&[a, m, c]);
-                out_polys.push_cell(&[m, b, c]);
-            } else if split_bc {
-                let m = mid(b, c, &mut points, &mut midpoint_cache);
-                out_polys.push_cell(&[a, b, m]);
-                out_polys.push_cell(&[a, m, c]);
-            } else {
-                let m = mid(c, a, &mut points, &mut midpoint_cache);
-                out_polys.push_cell(&[a, b, m]);
-                out_polys.push_cell(&[m, b, c]);
-            }
+        let mut pt_ids = [a, b, c, a, b, c];
+        if split_ab {
+            pt_ids[3] = mid(a, b, &mut points, &mut midpoint_cache);
+        }
+        if split_bc {
+            pt_ids[4] = mid(b, c, &mut points, &mut midpoint_cache);
+        }
+        if split_ca {
+            pt_ids[5] = mid(c, a, &mut points, &mut midpoint_cache);
+        }
+
+        let sub_case =
+            (split_ab as usize) | ((split_bc as usize) << 1) | ((split_ca as usize) << 2);
+        let tess = select_tessellation(sub_case, &pt_ids, &points);
+        for tri in tess {
+            out_polys.push_cell(&[pt_ids[tri[0]], pt_ids[tri[1]], pt_ids[tri[2]]]);
         }
     }
 
-    let mut pd = PolyData::new();
+    let mut pd = input.clone();
     pd.points = points;
     pd.polys = out_polys;
     pd
@@ -107,6 +84,60 @@ pub fn subdivide_long_edges(input: &PolyData, max_length: f64) -> PolyData {
 
 fn dist2(a: [f64; 3], b: [f64; 3]) -> f64 {
     (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
+}
+
+fn valid_triangle_point_ids(cell: &[i64], n_points: usize) -> Option<[usize; 3]> {
+    Some([
+        usize::try_from(cell[0])
+            .ok()
+            .filter(|&idx| idx < n_points)?,
+        usize::try_from(cell[1])
+            .ok()
+            .filter(|&idx| idx < n_points)?,
+        usize::try_from(cell[2])
+            .ok()
+            .filter(|&idx| idx < n_points)?,
+    ])
+}
+
+const TESS_CASES: [&[[usize; 3]]; 16] = [
+    &[[0, 1, 2]],
+    &[[0, 3, 2], [3, 1, 2]],
+    &[[0, 1, 4], [4, 2, 0]],
+    &[[3, 1, 4], [3, 4, 2], [2, 0, 3]],
+    &[[0, 1, 5], [5, 1, 2]],
+    &[[0, 3, 5], [5, 3, 1], [1, 2, 5]],
+    &[[5, 4, 2], [0, 1, 4], [4, 5, 0]],
+    &[[0, 3, 5], [3, 1, 4], [5, 3, 4], [5, 4, 2]],
+    &[[0, 1, 2]],
+    &[[0, 3, 2], [3, 1, 2]],
+    &[[0, 1, 4], [4, 2, 0]],
+    &[[3, 1, 4], [0, 3, 4], [4, 2, 0]],
+    &[[0, 1, 5], [5, 1, 2]],
+    &[[0, 3, 5], [3, 1, 2], [2, 5, 3]],
+    &[[4, 2, 5], [5, 0, 1], [1, 4, 5]],
+    &[[0, 3, 5], [3, 1, 4], [5, 3, 4], [5, 4, 2]],
+];
+
+fn select_tessellation(
+    sub_case: usize,
+    pt_ids: &[i64; 6],
+    points: &Points<f64>,
+) -> &'static [[usize; 3]] {
+    let tess = TESS_CASES[sub_case];
+    if tess.len() != 3 {
+        return tess;
+    }
+
+    let x0 = points.get(pt_ids[tess[1][0]] as usize);
+    let x1 = points.get(pt_ids[tess[1][2]] as usize);
+    let x2 = points.get(pt_ids[tess[1][1]] as usize);
+    let x3 = points.get(pt_ids[tess[2][1]] as usize);
+    if dist2(x0, x1) <= dist2(x2, x3) {
+        tess
+    } else {
+        TESS_CASES[sub_case + 8]
+    }
 }
 
 #[cfg(test)]
@@ -141,5 +172,18 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(subdivide_long_edges(&pd, 1.0).polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn invalid_triangle_ids_are_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, -1, 1]);
+        pd.polys.push_cell(&[0, 2, 1]);
+
+        let result = subdivide_long_edges(&pd, 0.5);
+        assert_eq!(result.polys.num_cells(), 0);
+        assert_eq!(result.points.len(), 2);
     }
 }

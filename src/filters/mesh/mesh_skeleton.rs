@@ -1,98 +1,174 @@
-//! Approximate medial axis / skeleton of a mesh using vertex erosion.
+//! 2D medial-axis skeleton via the Voronoi dual of a Delaunay triangulation.
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
-pub fn skeleton(mesh: &PolyData, erosion_steps: usize) -> PolyData {
+pub fn skeleton(mesh: &PolyData, _erosion_steps: usize) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
-        return mesh.clone();
+    if n < 3 {
+        return PolyData::new();
     }
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
+
+    let pts: Vec<[f64; 2]> = (0..n)
+        .map(|i| {
+            let p = mesh.points.get(i);
+            [p[0], p[1]]
+        })
+        .collect();
+
+    let tris = delaunay_2d(&pts);
+    if tris.is_empty() {
+        return PolyData::new();
+    }
+
+    let circumcenters: Vec<[f64; 2]> = tris
+        .iter()
+        .map(|tri| circumcenter(pts[tri[0]], pts[tri[1]], pts[tri[2]]))
+        .collect();
+
+    let mut edge_tris: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    for (ti, tri) in tris.iter().enumerate() {
+        for k in 0..3 {
+            let a = tri[k];
+            let b = tri[(k + 1) % 3];
+            let key = if a < b { (a, b) } else { (b, a) };
+            edge_tris.entry(key).or_default().push(ti);
+        }
+    }
+
+    let mut out_points = Points::<f64>::new();
+    let mut out_lines = CellArray::new();
+    let mut cc_map: HashMap<usize, i64> = HashMap::new();
+
+    for adj_tris in edge_tris.values() {
+        if adj_tris.len() == 2 {
+            let t0 = adj_tris[0];
+            let t1 = adj_tris[1];
+            let id0 = *cc_map.entry(t0).or_insert_with(|| {
+                let idx = out_points.len() as i64;
+                out_points.push([circumcenters[t0][0], circumcenters[t0][1], 0.0]);
+                idx
+            });
+            let id1 = *cc_map.entry(t1).or_insert_with(|| {
+                let idx = out_points.len() as i64;
+                out_points.push([circumcenters[t1][0], circumcenters[t1][1], 0.0]);
+                idx
+            });
+            out_lines.push_cell(&[id0, id1]);
+        }
+    }
+
+    let mut pd = PolyData::new();
+    pd.points = out_points;
+    pd.lines = out_lines;
+    pd
+}
+
+fn delaunay_2d(pts: &[[f64; 2]]) -> Vec<[usize; 3]> {
+    let n = pts.len();
+    if n < 3 {
+        return vec![];
+    }
+    let mut min_x = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut min_y = f64::MAX;
+    let mut max_y = f64::MIN;
+    for p in pts {
+        min_x = min_x.min(p[0]);
+        max_x = max_x.max(p[0]);
+        min_y = min_y.min(p[1]);
+        max_y = max_y.max(p[1]);
+    }
+    let m = ((max_x - min_x) + (max_y - min_y)) * 10.0;
+    let sp = [
+        [min_x - m, min_y - m],
+        [max_x + m * 2.0, min_y - m],
+        [min_x - m, max_y + m * 2.0],
+    ];
+    let mut all: Vec<[f64; 2]> = pts.to_vec();
+    all.extend_from_slice(&sp);
+    let mut tris: Vec<[usize; 3]> = vec![[n, n + 1, n + 2]];
+    for pi in 0..n {
+        let p = all[pi];
+        let mut bad = vec![false; tris.len()];
+        for (ti, tri) in tris.iter().enumerate() {
+            if in_cc(all[tri[0]], all[tri[1]], all[tri[2]], p) {
+                bad[ti] = true;
             }
         }
-    }
-    // Find boundary vertices
-    let mut edge_count: std::collections::HashMap<(usize, usize), u32> =
-        std::collections::HashMap::new();
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            let e = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(e).or_insert(0) += 1;
-        }
-    }
-    let mut boundary = vec![false; n];
-    for (&(a, b), &c) in &edge_count {
-        if c == 1 {
-            boundary[a] = true;
-            boundary[b] = true;
-        }
-    }
-    // Erode: iteratively remove boundary vertices that are not endpoints
-    let mut active = vec![true; n];
-    for _ in 0..erosion_steps {
-        let mut to_remove = Vec::new();
-        for i in 0..n {
-            if !active[i] || !boundary[i] {
+        let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
+        for (ti, tri) in tris.iter().enumerate() {
+            if !bad[ti] {
                 continue;
             }
-            let active_neighbors: usize = adj[i].iter().filter(|&&j| active[j]).count();
-            if active_neighbors > 1 {
-                to_remove.push(i);
-            } // not an endpoint
-        }
-        if to_remove.is_empty() {
-            break;
-        }
-        for &i in &to_remove {
-            active[i] = false;
-        }
-        // Update boundary
-        boundary = vec![false; n];
-        for (&(a, b), _) in &edge_count {
-            if active[a] && active[b] {
-                let shared_faces = adj[a]
-                    .iter()
-                    .filter(|&&j| adj[b].contains(&j) && active[j])
-                    .count();
-                if shared_faces <= 1 {
-                    boundary[a] = true;
-                    boundary[b] = true;
-                }
+            let edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
+            for &(a, b) in &edges {
+                let key = if a < b { (a, b) } else { (b, a) };
+                *edge_count.entry(key).or_insert(0) += 1;
             }
         }
-    }
-    let mut pts = Points::<f64>::new();
-    let mut lines = CellArray::new();
-    let mut pt_map = vec![0usize; n];
-    for i in 0..n {
-        if active[i] {
-            pt_map[i] = pts.len();
-            pts.push(mesh.points.get(i).try_into().unwrap());
+        let mut new_tris: Vec<[usize; 3]> = tris
+            .iter()
+            .enumerate()
+            .filter(|(ti, _)| !bad[*ti])
+            .map(|(_, t)| *t)
+            .collect();
+        for (&(a, b), &count) in &edge_count {
+            if count == 1 {
+                new_tris.push(orient_triangle([a, b, pi], &all));
+            }
         }
+        tris = new_tris;
     }
-    for (&(a, b), _) in &edge_count {
-        if active[a] && active[b] {
-            lines.push_cell(&[pt_map[a] as i64, pt_map[b] as i64]);
-        }
+    tris.retain(|t| t[0] < n && t[1] < n && t[2] < n);
+    tris
+}
+
+fn in_cc(a: [f64; 2], b: [f64; 2], c: [f64; 2], p: [f64; 2]) -> bool {
+    let orient = orient2d(a, b, c);
+    if orient.abs() <= 1e-15 {
+        return false;
     }
-    let mut m = PolyData::new();
-    m.points = pts;
-    m.lines = lines;
-    m
+    let ax = a[0] - p[0];
+    let ay = a[1] - p[1];
+    let bx = b[0] - p[0];
+    let by = b[1] - p[1];
+    let cx = c[0] - p[0];
+    let cy = c[1] - p[1];
+    let det = ax * (by * (cx * cx + cy * cy) - cy * (bx * bx + by * by))
+        - ay * (bx * (cx * cx + cy * cy) - cx * (bx * bx + by * by))
+        + (ax * ax + ay * ay) * (bx * cy - by * cx);
+    if orient > 0.0 {
+        det > 1e-15
+    } else {
+        det < -1e-15
+    }
+}
+
+fn orient_triangle(mut tri: [usize; 3], pts: &[[f64; 2]]) -> [usize; 3] {
+    if orient2d(pts[tri[0]], pts[tri[1]], pts[tri[2]]) < 0.0 {
+        tri.swap(0, 1);
+    }
+    tri
+}
+
+fn orient2d(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+}
+
+fn circumcenter(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> [f64; 2] {
+    let d = 2.0 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
+    if d.abs() < 1e-15 {
+        return [(a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0];
+    }
+    let ux = ((a[0] * a[0] + a[1] * a[1]) * (b[1] - c[1])
+        + (b[0] * b[0] + b[1] * b[1]) * (c[1] - a[1])
+        + (c[0] * c[0] + c[1] * c[1]) * (a[1] - b[1]))
+        / d;
+    let uy = ((a[0] * a[0] + a[1] * a[1]) * (c[0] - b[0])
+        + (b[0] * b[0] + b[1] * b[1]) * (a[0] - c[0])
+        + (c[0] * c[0] + c[1] * c[1]) * (b[0] - a[0]))
+        / d;
+    [ux, uy]
 }
 
 #[cfg(test)]

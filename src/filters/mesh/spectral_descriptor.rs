@@ -13,9 +13,15 @@ pub fn spectral_descriptor(input: &PolyData, num_scales: usize) -> PolyData {
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+        let Some(ids) = valid_cell_point_ids(cell, n) else {
+            continue;
+        };
+        for i in 0..ids.len() {
+            let a = ids[i];
+            let b = ids[(i + 1) % ids.len()];
+            if a == b {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -64,6 +70,19 @@ pub fn spectral_descriptor(input: &PolyData, num_scales: usize) -> PolyData {
     pd
 }
 
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    if cell.len() < 2 {
+        return None;
+    }
+    cell.iter()
+        .map(|&point_id| valid_point_id(point_id, n_points))
+        .collect()
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&idx| idx < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,5 +121,19 @@ mod tests {
         let pd = PolyData::new();
         let result = spectral_descriptor(&pd, 3);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn skips_invalid_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+        pd.polys.push_cell(&[-1, 0]);
+
+        let result = spectral_descriptor(&pd, 2);
+        let arr = result.point_data().get_array("SpectralDesc").unwrap();
+        assert_eq!(arr.num_tuples(), 2);
+        assert_eq!(arr.num_components(), 2);
     }
 }

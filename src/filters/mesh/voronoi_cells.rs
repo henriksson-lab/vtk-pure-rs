@@ -10,11 +10,8 @@ pub fn mesh_voronoi_partition(input: &PolyData, seed_indices: &[usize]) -> PolyD
         return input.clone();
     }
 
-    let seed_pts: Vec<[f64; 3]> = seed_indices
-        .iter()
-        .filter(|&&i| i < n)
-        .map(|&i| input.points.get(i))
-        .collect();
+    let valid_seeds: Vec<usize> = seed_indices.iter().copied().filter(|&i| i < n).collect();
+    let seed_pts: Vec<[f64; 3]> = valid_seeds.iter().map(|&i| input.points.get(i)).collect();
     if seed_pts.is_empty() {
         return input.clone();
     }
@@ -38,6 +35,7 @@ pub fn mesh_voronoi_partition(input: &PolyData, seed_indices: &[usize]) -> PolyD
             region_ids,
             1,
         )));
+    pd.point_data_mut().set_active_scalars("VoronoiRegion");
     pd
 }
 

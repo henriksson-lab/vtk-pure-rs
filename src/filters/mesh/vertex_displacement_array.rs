@@ -8,11 +8,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// - "DisplacementMagnitude" (1-component): the length of each displacement vector
 pub fn compute_displacement(source: &PolyData, target: &PolyData) -> PolyData {
     let n: usize = source.points.len();
-    assert_eq!(
-        n,
-        target.points.len(),
-        "Source and target must have the same number of points"
-    );
+    if n != target.points.len() {
+        return source.clone();
+    }
 
     let mut displacements: Vec<f64> = Vec::with_capacity(n * 3);
     let mut magnitudes: Vec<f64> = Vec::with_capacity(n);

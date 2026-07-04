@@ -1,6 +1,7 @@
 //! Spring-mass system simulation on mesh connectivity.
 
 use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use std::collections::HashSet;
 
 /// Simulate a spring-mass system on a mesh.
 ///
@@ -19,7 +20,7 @@ pub fn spring_simulate(
         return mesh.clone();
     }
     let adj = build_adj(mesh, n);
-    let fixed: std::collections::HashSet<usize> = fixed_vertices.iter().cloned().collect();
+    let fixed: HashSet<usize> = fixed_vertices.iter().cloned().collect();
 
     let mut pos: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
     let rest: Vec<Vec<f64>> = (0..n)
@@ -84,16 +85,17 @@ pub fn spring_simulate(
 }
 
 fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    let mut adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
+        let Some(ids) = valid_cell_point_ids(cell, n) else {
+            continue;
+        };
+        let nc = ids.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                adj[a].insert(b);
-                adj[b].insert(a);
-            }
+            let a = ids[i];
+            let b = ids[(i + 1) % nc];
+            adj[a].insert(b);
+            adj[b].insert(a);
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
@@ -104,6 +106,12 @@ fn edge_len(pts: &[[f64; 3]], a: usize, b: usize) -> f64 {
         + (pts[a][1] - pts[b][1]).powi(2)
         + (pts[a][2] - pts[b][2]).powi(2))
     .sqrt()
+}
+
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
 }
 
 #[cfg(test)]
@@ -127,5 +135,18 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(3, &mut buf);
         assert!(buf[0] > 0.0);
+    }
+
+    #[test]
+    fn invalid_cell_ids_are_ignored() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.polys.push_cell(&[0, -1, 1]);
+        mesh.polys.push_cell(&[0, 2, 1]);
+
+        let result = spring_simulate(&mesh, [0.0, 0.0, -1.0], &[], 10.0, 0.1, 0.01, 1);
+        assert!(result.point_data().get_array("Displacement").is_some());
+        assert_eq!(result.points.len(), 2);
     }
 }

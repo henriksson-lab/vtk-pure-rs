@@ -12,11 +12,11 @@ pub fn color_from_position(input: &PolyData) -> PolyData {
 
     // Compute bounding box
     let mut min_x: f64 = f64::MAX;
-    let mut max_x: f64 = f64::MIN;
+    let mut max_x: f64 = f64::NEG_INFINITY;
     let mut min_y: f64 = f64::MAX;
-    let mut max_y: f64 = f64::MIN;
+    let mut max_y: f64 = f64::NEG_INFINITY;
     let mut min_z: f64 = f64::MAX;
-    let mut max_z: f64 = f64::MIN;
+    let mut max_z: f64 = f64::NEG_INFINITY;
 
     for i in 0..n {
         let p = input.points.get(i);
@@ -117,6 +117,21 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn all_negative_coordinates_use_actual_bounds() {
+        let pd = PolyData::from_triangles(
+            vec![[-5.0, -6.0, -7.0], [-3.0, -4.0, -5.0], [-1.0, -2.0, -3.0]],
+            vec![[0, 1, 2]],
+        );
+        let result = color_from_position(&pd);
+        let arr = result.point_data().get_array("PositionColor").unwrap();
+        let mut val = [0.0f64; 3];
+        arr.tuple_as_f64(2, &mut val);
+        assert!((val[0] - 1.0).abs() < 1e-10);
+        assert!((val[1] - 1.0).abs() < 1e-10);
+        assert!((val[2] - 1.0).abs() < 1e-10);
     }
 
     #[test]

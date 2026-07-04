@@ -4,7 +4,10 @@ use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
 
 /// Select points inside a sphere.
 pub fn select_points_in_sphere(mesh: &PolyData, center: [f64; 3], radius: f64) -> PolyData {
-    let r2 = radius * radius;
+    let r2 = match radius_squared(radius) {
+        Some(r2) => r2,
+        None => return PolyData::new(),
+    };
     let mut pts = Points::<f64>::new();
     for i in 0..mesh.points.len() {
         let p = mesh.points.get(i);
@@ -51,6 +54,13 @@ pub fn select_cells_in_halfspace(
     let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
 
     for cell in &all_cells {
+        if cell.is_empty()
+            || cell
+                .iter()
+                .any(|&pid| pid < 0 || (pid as usize) >= mesh.points.len())
+        {
+            continue;
+        }
         let mut cx = 0.0;
         let mut cy = 0.0;
         let mut cz = 0.0;
@@ -86,13 +96,14 @@ pub fn select_cells_in_halfspace(
 
 /// Mark points inside a sphere with a scalar array.
 pub fn mark_points_in_sphere(mesh: &PolyData, center: [f64; 3], radius: f64) -> PolyData {
-    let r2 = radius * radius;
+    let r2 = radius_squared(radius);
     let data: Vec<f64> = (0..mesh.points.len())
         .map(|i| {
             let p = mesh.points.get(i);
-            if (p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2)
-                <= r2
-            {
+            if r2.is_some_and(|r2| {
+                (p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2)
+                    <= r2
+            }) {
                 1.0
             } else {
                 0.0
@@ -104,6 +115,14 @@ pub fn mark_points_in_sphere(mesh: &PolyData, center: [f64; 3], radius: f64) -> 
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("InSphere", data, 1)));
     result
+}
+
+fn radius_squared(radius: f64) -> Option<f64> {
+    if radius.is_finite() && radius >= 0.0 {
+        Some(radius * radius)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -146,6 +165,19 @@ mod tests {
         arr.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 1.0);
         arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
+    }
+
+    #[test]
+    fn negative_sphere_radius_selects_nothing() {
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let selected = select_points_in_sphere(&mesh, [0.0, 0.0, 0.0], -1.0);
+        assert_eq!(selected.points.len(), 0);
+
+        let marked = mark_points_in_sphere(&mesh, [0.0, 0.0, 0.0], -1.0);
+        let arr = marked.point_data().get_array("InSphere").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 0.0);
     }
 }

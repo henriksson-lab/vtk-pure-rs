@@ -11,51 +11,14 @@ pub fn voronoi_area(mesh: &PolyData) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
-        let verts: Vec<usize> = cell.iter().map(|&v| v as usize).collect();
-        if verts.iter().any(|&v| v >= n) {
+        if !valid_cell(cell, n) {
             continue;
         }
-        // For triangles: compute mixed Voronoi area
-        if verts.len() == 3 {
-            let (a, b, c) = (verts[0], verts[1], verts[2]);
-            let pa = mesh.points.get(a);
-            let pb = mesh.points.get(b);
-            let pc = mesh.points.get(c);
-            let ab = [pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]];
-            let ac = [pc[0] - pa[0], pc[1] - pa[1], pc[2] - pa[2]];
-            let bc = [pc[0] - pb[0], pc[1] - pb[1], pc[2] - pb[2]];
-            let cross = [
-                ab[1] * ac[2] - ab[2] * ac[1],
-                ab[2] * ac[0] - ab[0] * ac[2],
-                ab[0] * ac[1] - ab[1] * ac[0],
-            ];
-            let tri_area =
-                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
-            // Check for obtuse triangle
-            let dot_a = ab[0] * ac[0] + ab[1] * ac[1] + ab[2] * ac[2];
-            let dot_b = (-ab[0]) * bc[0] + (-ab[1]) * bc[1] + (-ab[2]) * bc[2];
-            let dot_c = (-ac[0]) * (-bc[0]) + (-ac[1]) * (-bc[1]) + (-ac[2]) * (-bc[2]);
-            if dot_a < 0.0 {
-                area[a] += tri_area / 2.0;
-                area[b] += tri_area / 4.0;
-                area[c] += tri_area / 4.0;
-            } else if dot_b < 0.0 {
-                area[b] += tri_area / 2.0;
-                area[a] += tri_area / 4.0;
-                area[c] += tri_area / 4.0;
-            } else if dot_c < 0.0 {
-                area[c] += tri_area / 2.0;
-                area[a] += tri_area / 4.0;
-                area[b] += tri_area / 4.0;
-            } else {
-                area[a] += tri_area / 3.0;
-                area[b] += tri_area / 3.0;
-                area[c] += tri_area / 3.0;
-            }
-        } else {
-            let tri_area_approx = 1.0; // fallback
-            for &v in &verts {
-                area[v] += tri_area_approx / verts.len() as f64;
+        for i in 1..cell.len() - 1 {
+            let ids = [cell[0] as usize, cell[i] as usize, cell[i + 1] as usize];
+            let contrib = mixed_triangle_areas(mesh, ids);
+            for j in 0..3 {
+                area[ids[j]] += contrib[j];
             }
         }
     }
@@ -69,6 +32,69 @@ pub fn voronoi_area(mesh: &PolyData) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("VoronoiArea");
     result
+}
+
+fn mixed_triangle_areas(mesh: &PolyData, ids: [usize; 3]) -> [f64; 3] {
+    let p = [
+        mesh.points.get(ids[0]),
+        mesh.points.get(ids[1]),
+        mesh.points.get(ids[2]),
+    ];
+    let e01 = sub(p[1], p[0]);
+    let e02 = sub(p[2], p[0]);
+    let e12 = sub(p[2], p[1]);
+    let tri_area = 0.5 * norm(cross(e01, e02));
+    if tri_area <= 1e-30 {
+        return [0.0; 3];
+    }
+
+    let dot_a = dot(e01, e02);
+    let dot_b = dot(scale(e01, -1.0), e12);
+    let dot_c = dot(scale(e02, -1.0), scale(e12, -1.0));
+    if dot_a < 0.0 {
+        return [tri_area * 0.5, tri_area * 0.25, tri_area * 0.25];
+    }
+    if dot_b < 0.0 {
+        return [tri_area * 0.25, tri_area * 0.5, tri_area * 0.25];
+    }
+    if dot_c < 0.0 {
+        return [tri_area * 0.25, tri_area * 0.25, tri_area * 0.5];
+    }
+
+    let cot_a = dot_a / (2.0 * tri_area);
+    let cot_b = dot_b / (2.0 * tri_area);
+    let cot_c = dot_c / (2.0 * tri_area);
+    let l_ab = dot(e01, e01);
+    let l_ac = dot(e02, e02);
+    let l_bc = dot(e12, e12);
+    [
+        (l_ac * cot_b + l_ab * cot_c) / 8.0,
+        (l_ab * cot_c + l_bc * cot_a) / 8.0,
+        (l_ac * cot_b + l_bc * cot_a) / 8.0,
+    ]
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
+}
+fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+fn scale(a: [f64; 3], s: f64) -> [f64; 3] {
+    [a[0] * s, a[1] * s, a[2] * s]
+}
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+fn norm(a: [f64; 3]) -> f64 {
+    dot(a, a).sqrt()
 }
 
 #[cfg(test)]

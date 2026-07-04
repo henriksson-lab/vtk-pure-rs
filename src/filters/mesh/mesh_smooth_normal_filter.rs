@@ -10,7 +10,7 @@ pub fn normal_guided_smooth(mesh: &PolyData, iterations: usize, sigma_n: f64) ->
     let fnormals: Vec<[f64; 3]> = cells
         .iter()
         .map(|c| {
-            if c.len() < 3 {
+            if c.len() < 3 || c.iter().any(|&v| v as usize >= n) {
                 return [0.0, 0.0, 1.0];
             }
             let a = mesh.points.get(c[0] as usize);
@@ -35,7 +35,10 @@ pub fn normal_guided_smooth(mesh: &PolyData, iterations: usize, sigma_n: f64) ->
     let mut vf: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (ci, c) in cells.iter().enumerate() {
         for &v in c {
-            vf[v as usize].push(ci);
+            let vi = v as usize;
+            if vi < n {
+                vf[vi].push(ci);
+            }
         }
     }
     let sn2 = 2.0 * sigma_n * sigma_n;
@@ -48,7 +51,9 @@ pub fn normal_guided_smooth(mesh: &PolyData, iterations: usize, sigma_n: f64) ->
         for i in 0..nc {
             let a = c[i] as usize;
             let b = c[(i + 1) % nc] as usize;
-            ef.entry((a.min(b), a.max(b))).or_default().push(ci);
+            if a < n && b < n {
+                ef.entry((a.min(b), a.max(b))).or_default().push(ci);
+            }
         }
     }
     let mut fadj: Vec<Vec<usize>> = vec![Vec::new(); cells.len()];
@@ -64,12 +69,10 @@ pub fn normal_guided_smooth(mesh: &PolyData, iterations: usize, sigma_n: f64) ->
         let prev = filtered_normals.clone();
         for ci in 0..cells.len() {
             let mut avg = [0.0, 0.0, 0.0];
-            let mut wsum = 0.0;
             let n0 = prev[ci];
             avg[0] += n0[0];
             avg[1] += n0[1];
             avg[2] += n0[2];
-            wsum += 1.0;
             for &ni in &fadj[ci] {
                 let nn = prev[ni];
                 let dot = n0[0] * nn[0] + n0[1] * nn[1] + n0[2] * nn[2];
@@ -77,7 +80,6 @@ pub fn normal_guided_smooth(mesh: &PolyData, iterations: usize, sigma_n: f64) ->
                 avg[0] += nn[0] * w;
                 avg[1] += nn[1] * w;
                 avg[2] += nn[2] * w;
-                wsum += w;
             }
             let l = (avg[0] * avg[0] + avg[1] * avg[1] + avg[2] * avg[2])
                 .sqrt()
@@ -103,12 +105,19 @@ pub fn normal_guided_smooth(mesh: &PolyData, iterations: usize, sigma_n: f64) ->
                 let mut cx = 0.0;
                 let mut cy = 0.0;
                 let mut cz = 0.0;
+                let mut cn = 0.0;
                 for &v in c {
-                    cx += pos[v as usize][0];
-                    cy += pos[v as usize][1];
-                    cz += pos[v as usize][2];
+                    let vi = v as usize;
+                    if vi < n {
+                        cx += pos[vi][0];
+                        cy += pos[vi][1];
+                        cz += pos[vi][2];
+                        cn += 1.0;
+                    }
                 }
-                let cn = c.len() as f64;
+                if cn == 0.0 {
+                    continue;
+                }
                 cx /= cn;
                 cy /= cn;
                 cz /= cn;

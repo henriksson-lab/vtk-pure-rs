@@ -20,10 +20,25 @@ pub fn smooth_laplacian_simple(input: &PolyData, iterations: usize, lambda: f64)
     for cell in input.polys.iter() {
         let len = cell.len();
         for j in 0..len {
-            let a = cell[j] as usize;
-            let b = cell[(j + 1) % len] as usize;
-            neighbors[a].insert(b);
-            neighbors[b].insert(a);
+            if let (Some(a), Some(b)) = (
+                valid_point_id(cell[j], n),
+                valid_point_id(cell[(j + 1) % len], n),
+            ) {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
+        }
+    }
+    for cell in input.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for j in 0..cell.len() - 1 {
+            if let (Some(a), Some(b)) = (valid_point_id(cell[j], n), valid_point_id(cell[j + 1], n))
+            {
+                neighbors[a].insert(b);
+                neighbors[b].insert(a);
+            }
         }
     }
 
@@ -74,8 +89,27 @@ fn find_boundary_vertices(input: &PolyData) -> HashSet<usize> {
     for cell in input.polys.iter() {
         let len = cell.len();
         for j in 0..len {
-            let a = cell[j] as usize;
-            let b = cell[(j + 1) % len] as usize;
+            let Some(a) = valid_point_id(cell[j], input.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(j + 1) % len], input.points.len()) else {
+                continue;
+            };
+            let edge = if a < b { (a, b) } else { (b, a) };
+            *edge_count.entry(edge).or_insert(0) += 1;
+        }
+    }
+    for cell in input.lines.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for j in 0..cell.len() - 1 {
+            let Some(a) = valid_point_id(cell[j], input.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[j + 1], input.points.len()) else {
+                continue;
+            };
             let edge = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(edge).or_insert(0) += 1;
         }
@@ -89,6 +123,14 @@ fn find_boundary_vertices(input: &PolyData) -> HashSet<usize> {
         }
     }
     boundary
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

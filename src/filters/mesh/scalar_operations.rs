@@ -6,7 +6,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn gradient_magnitude_on_mesh(mesh: &PolyData, array_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
     let adj = build_adj(mesh, n);
@@ -67,7 +67,7 @@ pub fn gradient_magnitude_on_mesh(mesh: &PolyData, array_name: &str) -> PolyData
 pub fn laplacian_on_mesh(mesh: &PolyData, array_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
     let adj = build_adj(mesh, n);
@@ -109,7 +109,7 @@ pub fn diffuse_scalar(
 ) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
     let adj = build_adj(mesh, n);
@@ -144,7 +144,13 @@ fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut a: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for c in m.polys.iter() {
         let nc = c.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
+            if c[i] < 0 || c[(i + 1) % nc] < 0 {
+                continue;
+            }
             let x = c[i] as usize;
             let y = c[(i + 1) % nc] as usize;
             if x < n && y < n {

@@ -11,6 +11,9 @@ pub fn cancel_pairs(
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let mut vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -22,9 +25,7 @@ pub fn cancel_pairs(
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            if let Some((a, b)) = valid_edge(cell[i], cell[(i + 1) % nc], n) {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }
@@ -60,7 +61,7 @@ pub fn cancel_pairs(
                 }
             }
         }
-        if best_pair.2 >= persistence_threshold || best_pair.2 >= f64::INFINITY {
+        if best_pair.2 >= persistence_threshold || !best_pair.2.is_finite() {
             break;
         }
         let avg = (vals[best_pair.0] + vals[best_pair.1]) / 2.0;
@@ -78,6 +79,9 @@ pub fn persistence_count(mesh: &PolyData, array_name: &str) -> usize {
         _ => return 0,
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return 0;
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -89,9 +93,7 @@ pub fn persistence_count(mesh: &PolyData, array_name: &str) -> usize {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            if let Some((a, b)) = valid_edge(cell[i], cell[(i + 1) % nc], n) {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }
@@ -113,6 +115,16 @@ pub fn persistence_count(mesh: &PolyData, array_name: &str) -> usize {
         }
     }
     count
+}
+fn valid_edge(a: i64, b: i64, number_of_points: usize) -> Option<(usize, usize)> {
+    if a >= 0 && b >= 0 {
+        let a = a as usize;
+        let b = b as usize;
+        if a < number_of_points && b < number_of_points {
+            return Some((a, b));
+        }
+    }
+    None
 }
 #[cfg(test)]
 mod tests {

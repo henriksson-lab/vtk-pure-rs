@@ -1,6 +1,6 @@
 //! Ray query utilities: ray-mesh intersection, ray casting, visibility.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Result of a ray-mesh intersection.
 #[derive(Debug, Clone)]
@@ -28,22 +28,35 @@ pub fn ray_cast_all(mesh: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> V
         if cell.len() < 3 {
             continue;
         }
+        if !cell_ids_are_valid(cell, mesh.points.len()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        if let Some((t, u, v)) = ray_triangle(origin, dir, a, b, c) {
-            if t >= 0.0 {
-                hits.push(RayHit {
-                    point: [
-                        origin[0] + t * dir[0],
-                        origin[1] + t * dir[1],
-                        origin[2] + t * dir[2],
-                    ],
-                    distance: t,
-                    cell_index: ci,
-                    barycentric: [1.0 - u - v, u, v],
-                });
+        let mut cell_hit: Option<RayHit> = None;
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            if let Some((t, u, v)) = ray_triangle(origin, dir, a, b, c) {
+                let hit = match &cell_hit {
+                    Some(existing) => t < existing.distance,
+                    None => true,
+                };
+                if hit {
+                    cell_hit = Some(RayHit {
+                        point: [
+                            origin[0] + t * dir[0],
+                            origin[1] + t * dir[1],
+                            origin[2] + t * dir[2],
+                        ],
+                        distance: t,
+                        cell_index: ci,
+                        barycentric: [1.0 - u - v, u, v],
+                    });
+                }
             }
+        }
+        if let Some(hit) = cell_hit {
+            hits.push(hit);
         }
     }
     hits.sort_by(|a, b| {
@@ -179,7 +192,15 @@ fn ray_triangle(
         return None;
     }
     let t = f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
-    Some((t, u, v))
+    if t > 1e-12 {
+        Some((t, u, v))
+    } else {
+        None
+    }
+}
+
+fn cell_ids_are_valid(cell: &[i64], num_points: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]
@@ -203,6 +224,16 @@ mod tests {
         );
         assert!(ray_cast_closest(&mesh, [5.0, 5.0, -1.0], [0.0, 0.0, 1.0]).is_none());
     }
+
+    #[test]
+    fn ray_starting_on_triangle_is_not_a_forward_hit() {
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 2.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        assert!(ray_cast_closest(&mesh, [1.0, 0.5, 0.0], [0.0, 0.0, 1.0]).is_none());
+    }
+
     #[test]
     fn visibility() {
         let mesh = PolyData::from_triangles(
@@ -231,5 +262,37 @@ mod tests {
         // At least some pixels should hit (the triangle covers a large area)
         let hit_count = depths.iter().filter(|&&d| d < 100.0).count();
         assert!(hit_count > 0, "no ray hits");
+    }
+
+    #[test]
+    fn polygon_fan_tests_all_triangles_once_per_cell() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 1.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2, 3]);
+
+        let second_fan_triangle_hit = ray_cast_all(&mesh, [0.25, 0.75, -1.0], [0.0, 0.0, 1.0]);
+        assert_eq!(second_fan_triangle_hit.len(), 1);
+        assert_eq!(second_fan_triangle_hit[0].cell_index, 0);
+
+        let diagonal_hit = ray_cast_all(&mesh, [0.5, 0.5, -1.0], [0.0, 0.0, 1.0]);
+        assert_eq!(diagonal_hit.len(), 1);
+    }
+
+    #[test]
+    fn invalid_cell_ids_are_ignored() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2]);
+        mesh.polys.push_cell(&[0, -1, 2]);
+        mesh.polys.push_cell(&[0, 99, 2]);
+
+        let hits = ray_cast_all(&mesh, [0.25, 0.25, -1.0], [0.0, 0.0, 1.0]);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].cell_index, 0);
     }
 }

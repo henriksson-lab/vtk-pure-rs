@@ -1,16 +1,13 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
-/// Compute gradient of a scalar field defined on mesh points using least-squares
-/// fitting in the 1-ring neighborhood of each vertex.
+/// Compute the gradient of a scalar field on a triangle mesh.
 ///
-/// Adds a 3-component "ScalarGradient" array to the output point data.
-/// If the named array is not found, returns a clone of the input.
+/// Uses a constant per-face gradient for each triangle fan, then averages
+/// incident face gradients to vertices.
 pub fn scalar_gradient_on_mesh(input: &PolyData, array_name: &str) -> PolyData {
     let n: usize = input.points.len();
-    let scalars: Vec<f64> = match input.point_data().get_array(array_name) {
-        Some(arr) => {
+    let values: Vec<f64> = match input.point_data().get_array(array_name) {
+        Some(arr) if arr.num_tuples() >= n => {
             let mut vals = vec![0.0f64; n];
             let mut buf = [0.0f64];
             for (i, val) in vals.iter_mut().enumerate() {
@@ -19,60 +16,61 @@ pub fn scalar_gradient_on_mesh(input: &PolyData, array_name: &str) -> PolyData {
             }
             vals
         }
-        None => return input.clone(),
+        _ => return input.clone(),
     };
 
-    // Build 1-ring adjacency from polygon cells
-    let mut neighbor_sets: HashMap<usize, HashSet<usize>> = HashMap::new();
-    for cell in input.polys.iter() {
-        let nc: usize = cell.len();
-        for i in 0..nc {
-            let a: usize = cell[i] as usize;
-            let b: usize = cell[(i + 1) % nc] as usize;
-            neighbor_sets.entry(a).or_default().insert(b);
-            neighbor_sets.entry(b).or_default().insert(a);
-        }
+    if n == 0 {
+        return input.clone();
     }
-    let neighbors: HashMap<usize, Vec<usize>> = neighbor_sets
-        .into_iter()
-        .map(|(k, v)| (k, v.into_iter().collect()))
-        .collect();
 
-    let mut grad_data = vec![0.0f64; n * 3];
+    let mut vertex_gradients = vec![[0.0f64; 3]; n];
+    let mut vertex_counts = vec![0usize; n];
 
-    for i in 0..n {
-        let pi = input.points.get(i);
-        let si: f64 = scalars[i];
-
-        let nbrs = match neighbors.get(&i) {
-            Some(nb) => nb,
-            None => continue,
+    for cell in input.polys.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        let Some(i0) = valid_point_id(cell[0], n) else {
+            continue;
         };
-
-        // Least-squares gradient: minimize sum_j |grad . (pj - pi) - (sj - si)|^2
-        // Normal equations: A^T A x = A^T b
-        let mut ata = [[0.0f64; 3]; 3];
-        let mut atb = [0.0f64; 3];
-
-        for &j in nbrs {
-            let pj = input.points.get(j);
-            let dx: [f64; 3] = [pj[0] - pi[0], pj[1] - pi[1], pj[2] - pi[2]];
-            let ds: f64 = scalars[j] - si;
-
-            for r in 0..3 {
-                for c in 0..3 {
-                    ata[r][c] += dx[r] * dx[c];
+        for k in 1..cell.len() - 1 {
+            let Some(i1) = valid_point_id(cell[k], n) else {
+                continue;
+            };
+            let Some(i2) = valid_point_id(cell[k + 1], n) else {
+                continue;
+            };
+            if let Some(gradient) = triangle_gradient(input, &values, [i0, i1, i2]) {
+                for id in [i0, i1, i2] {
+                    vertex_gradients[id][0] += gradient[0];
+                    vertex_gradients[id][1] += gradient[1];
+                    vertex_gradients[id][2] += gradient[2];
+                    vertex_counts[id] += 1;
                 }
-                atb[r] += dx[r] * ds;
             }
         }
+    }
 
-        if let Some(g) = solve_3x3(&ata, &atb) {
-            grad_data[i * 3] = g[0];
-            grad_data[i * 3 + 1] = g[1];
-            grad_data[i * 3 + 2] = g[2];
+    for (gradient, count) in vertex_gradients.iter_mut().zip(vertex_counts) {
+        if count > 0 {
+            let denom = count as f64;
+            gradient[0] /= denom;
+            gradient[1] /= denom;
+            gradient[2] /= denom;
         }
     }
+
+    let grad_data: Vec<f64> = vertex_gradients
+        .iter()
+        .flat_map(|gradient| gradient.iter().copied())
+        .collect();
+    let magnitudes: Vec<f64> = vertex_gradients
+        .iter()
+        .map(|gradient| {
+            (gradient[0] * gradient[0] + gradient[1] * gradient[1] + gradient[2] * gradient[2])
+                .sqrt()
+        })
+        .collect();
 
     let mut pd = input.clone();
     pd.point_data_mut()
@@ -81,43 +79,61 @@ pub fn scalar_gradient_on_mesh(input: &PolyData, array_name: &str) -> PolyData {
             grad_data,
             3,
         )));
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientMagnitude",
+            magnitudes,
+            1,
+        )));
     pd
 }
 
-fn solve_3x3(a: &[[f64; 3]; 3], b: &[f64; 3]) -> Option<[f64; 3]> {
-    let eps: f64 = 1e-10;
-    let ar = [
-        [a[0][0] + eps, a[0][1], a[0][2]],
-        [a[1][0], a[1][1] + eps, a[1][2]],
-        [a[2][0], a[2][1], a[2][2] + eps],
-    ];
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
 
-    let det: f64 = ar[0][0] * (ar[1][1] * ar[2][2] - ar[1][2] * ar[2][1])
-        - ar[0][1] * (ar[1][0] * ar[2][2] - ar[1][2] * ar[2][0])
-        + ar[0][2] * (ar[1][0] * ar[2][1] - ar[1][1] * ar[2][0]);
+fn triangle_gradient(input: &PolyData, values: &[f64], ids: [usize; 3]) -> Option<[f64; 3]> {
+    let [i0, i1, i2] = ids;
+    let v0 = input.points.get(i0);
+    let v1 = input.points.get(i1);
+    let v2 = input.points.get(i2);
 
-    if det.abs() < 1e-40 {
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let normal = cross(e1, e2);
+    let area2 = dot(normal, normal);
+    if area2 < 1e-20 {
         return None;
     }
 
-    let inv_det: f64 = 1.0 / det;
+    let e_opp0 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+    let e_opp1 = [v0[0] - v2[0], v0[1] - v2[1], v0[2] - v2[2]];
+    let e_opp2 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
 
-    let x: f64 = (b[0] * (ar[1][1] * ar[2][2] - ar[1][2] * ar[2][1])
-        - ar[0][1] * (b[1] * ar[2][2] - ar[1][2] * b[2])
-        + ar[0][2] * (b[1] * ar[2][1] - ar[1][1] * b[2]))
-        * inv_det;
+    let g0 = cross(normal, e_opp0);
+    let g1 = cross(normal, e_opp1);
+    let g2 = cross(normal, e_opp2);
+    let f0 = values[i0];
+    let f1 = values[i1];
+    let f2 = values[i2];
 
-    let y: f64 = (ar[0][0] * (b[1] * ar[2][2] - ar[1][2] * b[2])
-        - b[0] * (ar[1][0] * ar[2][2] - ar[1][2] * ar[2][0])
-        + ar[0][2] * (ar[1][0] * b[2] - b[1] * ar[2][0]))
-        * inv_det;
+    Some([
+        (f0 * g0[0] + f1 * g1[0] + f2 * g2[0]) / area2,
+        (f0 * g0[1] + f1 * g1[1] + f2 * g2[1]) / area2,
+        (f0 * g0[2] + f1 * g1[2] + f2 * g2[2]) / area2,
+    ])
+}
 
-    let z: f64 = (ar[0][0] * (ar[1][1] * b[2] - b[1] * ar[2][1])
-        - ar[0][1] * (ar[1][0] * b[2] - b[1] * ar[2][0])
-        + b[0] * (ar[1][0] * ar[2][1] - ar[1][1] * ar[2][0]))
-        * inv_det;
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
 
-    Some([x, y, z])
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 #[cfg(test)]

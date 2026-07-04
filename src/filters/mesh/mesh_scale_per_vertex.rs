@@ -1,5 +1,5 @@
 //! Scale mesh from each vertex's perspective (inflate/deflate).
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 pub fn inflate(mesh: &PolyData, amount: f64) -> PolyData {
     let n = mesh.points.len();
     let nm = calc_nm(mesh);
@@ -26,6 +26,9 @@ pub fn scale_along_normals_by_scalar(mesh: &PolyData, array_name: &str, scale: f
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let nm = calc_nm(mesh);
     let mut r = mesh.clone();
     let mut buf = [0.0f64];
@@ -49,6 +52,12 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
     let mut nm = vec![[0.0f64; 3]; n];
     for cell in mesh.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if !cell
+            .iter()
+            .all(|&point_id| point_id >= 0 && (point_id as usize) < n)
+        {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);

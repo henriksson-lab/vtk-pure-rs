@@ -144,7 +144,7 @@ pub fn reflect_about_plane(input: &PolyData, point: [f64; 3], normal: [f64; 3]) 
         out_verts.push_cell(cell);
     }
 
-    let mut out = PolyData::new();
+    let mut out = input.clone();
     out.points = out_points;
     out.polys = out_polys;
     out.lines = out_lines;

@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Rotate all points of a PolyData around an arbitrary axis through a center point
 /// using Rodrigues' rotation formula.
@@ -49,21 +49,9 @@ pub fn rotate_axis_angle(
         out_points.push(rotated);
     }
 
-    let mut pd = PolyData::new();
+    let mut pd = input.clone();
     pd.points = out_points;
-    pd.polys = copy_cell_array(&input.polys);
-    pd.lines = copy_cell_array(&input.lines);
-    pd.verts = copy_cell_array(&input.verts);
-    pd.strips = copy_cell_array(&input.strips);
     pd
-}
-
-fn copy_cell_array(src: &CellArray) -> CellArray {
-    let mut dst = CellArray::new();
-    for cell in src.iter() {
-        dst.push_cell(cell);
-    }
-    dst
 }
 
 #[cfg(test)]

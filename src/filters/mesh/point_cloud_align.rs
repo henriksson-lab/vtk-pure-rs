@@ -1,4 +1,4 @@
-use crate::data::{DataSet, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Align two point clouds by matching their principal axes.
 ///
@@ -20,13 +20,18 @@ pub fn pca_align(source: &PolyData, target: &PolyData) -> PolyData {
     let ta = dominant_axis(target, tc);
 
     // Compute rotation from sa to ta using Rodrigues
-    let dot = sa[0] * ta[0] + sa[1] * ta[1] + sa[2] * ta[2];
+    let dot = (sa[0] * ta[0] + sa[1] * ta[1] + sa[2] * ta[2]).clamp(-1.0, 1.0);
     let cross = [
         sa[1] * ta[2] - sa[2] * ta[1],
         sa[2] * ta[0] - sa[0] * ta[2],
         sa[0] * ta[1] - sa[1] * ta[0],
     ];
     let sin_a = (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+    let half_turn_axis = if sin_a <= 1e-10 && dot < 0.0 {
+        Some(perpendicular_axis(sa))
+    } else {
+        None
+    };
 
     let mut points = Points::<f64>::new();
     for i in 0..ns {
@@ -35,18 +40,9 @@ pub fn pca_align(source: &PolyData, target: &PolyData) -> PolyData {
 
         let rotated = if sin_a > 1e-10 {
             let k = [cross[0] / sin_a, cross[1] / sin_a, cross[2] / sin_a];
-            let cos_a = dot;
-            let kdot = k[0] * d[0] + k[1] * d[1] + k[2] * d[2];
-            let kcross = [
-                k[1] * d[2] - k[2] * d[1],
-                k[2] * d[0] - k[0] * d[2],
-                k[0] * d[1] - k[1] * d[0],
-            ];
-            [
-                d[0] * cos_a + kcross[0] * sin_a + k[0] * kdot * (1.0 - cos_a),
-                d[1] * cos_a + kcross[1] * sin_a + k[1] * kdot * (1.0 - cos_a),
-                d[2] * cos_a + kcross[2] * sin_a + k[2] * kdot * (1.0 - cos_a),
-            ]
+            rotate_rodrigues(d, k, dot, sin_a)
+        } else if let Some(k) = half_turn_axis {
+            rotate_rodrigues(d, k, -1.0, 0.0)
         } else {
             d
         };
@@ -101,6 +97,39 @@ fn dominant_axis(pd: &PolyData, center: [f64; 3]) -> [f64; 3] {
     v
 }
 
+fn rotate_rodrigues(d: [f64; 3], k: [f64; 3], cos_a: f64, sin_a: f64) -> [f64; 3] {
+    let kdot = k[0] * d[0] + k[1] * d[1] + k[2] * d[2];
+    let kcross = [
+        k[1] * d[2] - k[2] * d[1],
+        k[2] * d[0] - k[0] * d[2],
+        k[0] * d[1] - k[1] * d[0],
+    ];
+    [
+        d[0] * cos_a + kcross[0] * sin_a + k[0] * kdot * (1.0 - cos_a),
+        d[1] * cos_a + kcross[1] * sin_a + k[1] * kdot * (1.0 - cos_a),
+        d[2] * cos_a + kcross[2] * sin_a + k[2] * kdot * (1.0 - cos_a),
+    ]
+}
+
+fn perpendicular_axis(v: [f64; 3]) -> [f64; 3] {
+    let basis = if v[0].abs() < 0.9 {
+        [1.0, 0.0, 0.0]
+    } else {
+        [0.0, 1.0, 0.0]
+    };
+    let axis = [
+        v[1] * basis[2] - v[2] * basis[1],
+        v[2] * basis[0] - v[0] * basis[2],
+        v[0] * basis[1] - v[1] * basis[0],
+    ];
+    let len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+    if len > 1e-15 {
+        [axis[0] / len, axis[1] / len, axis[2] / len]
+    } else {
+        [0.0, 0.0, 1.0]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +165,24 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(pca_align(&pd, &pd).points.len(), 0);
+    }
+
+    #[test]
+    fn aligns_opposite_principal_axis() {
+        let mut src = PolyData::new();
+        src.points.push([-2.0, 0.0, 0.0]);
+        src.points.push([-1.0, 0.0, 0.0]);
+        src.points.push([0.0, 0.0, 0.0]);
+        let mut tgt = PolyData::new();
+        tgt.points.push([2.0, 0.0, 0.0]);
+        tgt.points.push([1.0, 0.0, 0.0]);
+        tgt.points.push([0.0, 0.0, 0.0]);
+
+        let result = pca_align(&src, &tgt);
+        for i in 0..src.points.len() {
+            let p = result.points.get(i);
+            let q = tgt.points.get(i);
+            assert!((p[0] - q[0]).abs() < 1e-10, "point {i}: {p:?} != {q:?}");
+        }
     }
 }

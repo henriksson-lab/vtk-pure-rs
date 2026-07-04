@@ -2,7 +2,7 @@
 use crate::data::{CellArray, PolyData};
 pub fn merge_close_components(mesh: &PolyData, max_gap: f64) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
+    if n == 0 || !max_gap.is_finite() || max_gap < 0.0 {
         return mesh.clone();
     }
     // Find connected components
@@ -69,6 +69,7 @@ pub fn merge_close_components(mesh: &PolyData, max_gap: f64) -> PolyData {
         .collect();
     // Merge components whose centroids are within max_gap
     let mut comp_parent: Vec<usize> = (0..comp_list.len()).collect();
+    let mut merge_pairs = Vec::new();
     for i in 0..comp_list.len() {
         for j in i + 1..comp_list.len() {
             let d = ((centroids[i][0] - centroids[j][0]).powi(2)
@@ -77,34 +78,32 @@ pub fn merge_close_components(mesh: &PolyData, max_gap: f64) -> PolyData {
             .sqrt();
             if d <= max_gap {
                 union2(&mut comp_parent, i, j);
+                merge_pairs.push((i, j));
             }
         }
     }
     // Build bridge edges between merged components
     let mut new_lines = CellArray::new();
-    for i in 0..comp_list.len() {
-        for j in i + 1..comp_list.len() {
-            if find2(&mut comp_parent, i) == find2(&mut comp_parent, j) && i != j {
-                // Find closest pair of vertices between components
-                let mut best_d = f64::INFINITY;
-                let mut best_a = 0;
-                let mut best_b = 0;
-                for &a in &comp_list[i] {
-                    let pa = mesh.points.get(a);
-                    for &b in &comp_list[j] {
-                        let pb = mesh.points.get(b);
-                        let d = (pa[0] - pb[0]).powi(2)
-                            + (pa[1] - pb[1]).powi(2)
-                            + (pa[2] - pb[2]).powi(2);
-                        if d < best_d {
-                            best_d = d;
-                            best_a = a;
-                            best_b = b;
-                        }
+    for (i, j) in merge_pairs {
+        if find2(&mut comp_parent, i) == find2(&mut comp_parent, j) {
+            // Find closest pair of vertices between components
+            let mut best_d = f64::INFINITY;
+            let mut best_a = 0;
+            let mut best_b = 0;
+            for &a in &comp_list[i] {
+                let pa = mesh.points.get(a);
+                for &b in &comp_list[j] {
+                    let pb = mesh.points.get(b);
+                    let d =
+                        (pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2);
+                    if d < best_d {
+                        best_d = d;
+                        best_a = a;
+                        best_b = b;
                     }
                 }
-                new_lines.push_cell(&[best_a as i64, best_b as i64]);
             }
+            new_lines.push_cell(&[best_a as i64, best_b as i64]);
         }
     }
     let mut r = mesh.clone();
@@ -178,5 +177,42 @@ mod tests {
         );
         let r = merge_close_components(&m, 5.0);
         assert!(r.lines.num_cells() >= 1);
+    }
+
+    #[test]
+    fn only_directly_close_component_pairs_are_bridged() {
+        let m = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [0.1, 0.0, 0.0],
+                [0.0, 0.1, 0.0],
+                [2.0, 0.0, 0.0],
+                [2.1, 0.0, 0.0],
+                [2.0, 0.1, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.1, 0.0, 0.0],
+                [4.0, 0.1, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5], [6, 7, 8]],
+        );
+        let r = merge_close_components(&m, 2.0);
+        assert_eq!(r.lines.num_cells(), 2);
+    }
+
+    #[test]
+    fn negative_gap_does_not_merge_components() {
+        let m = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [2.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
+        );
+        let r = merge_close_components(&m, -1.0);
+        assert_eq!(r.lines.num_cells(), 0);
     }
 }

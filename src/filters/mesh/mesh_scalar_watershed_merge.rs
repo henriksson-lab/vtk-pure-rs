@@ -6,20 +6,28 @@ pub fn merge_small_regions(mesh: &PolyData, label_array: &str, min_vertices: usi
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
-    let mut labels: Vec<usize> = (0..n)
+    let mut labels: Vec<i64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] as usize
+            buf[0] as i64
         })
         .collect();
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            let a = cell[i];
+            let b = cell[(i + 1) % nc];
+            if a >= 0 && b >= 0 {
+                let a = a as usize;
+                let b = b as usize;
+                if a >= n || b >= n {
+                    continue;
+                }
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }
@@ -30,7 +38,7 @@ pub fn merge_small_regions(mesh: &PolyData, label_array: &str, min_vertices: usi
         }
     }
     // Count region sizes
-    let mut counts: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut counts: std::collections::BTreeMap<i64, usize> = std::collections::BTreeMap::new();
     for &l in &labels {
         *counts.entry(l).or_insert(0) += 1;
     }
@@ -38,15 +46,15 @@ pub fn merge_small_regions(mesh: &PolyData, label_array: &str, min_vertices: usi
     let mut changed = true;
     while changed {
         changed = false;
-        let small: Vec<usize> = counts
+        let small: Vec<i64> = counts
             .iter()
             .filter(|(_, &c)| c < min_vertices)
             .map(|(&l, _)| l)
             .collect();
         for sl in small {
             let verts: Vec<usize> = (0..n).filter(|&i| labels[i] == sl).collect();
-            let mut neighbor_counts: std::collections::HashMap<usize, usize> =
-                std::collections::HashMap::new();
+            let mut neighbor_counts: std::collections::BTreeMap<i64, usize> =
+                std::collections::BTreeMap::new();
             for &vi in &verts {
                 for &ni in &nb[vi] {
                     if labels[ni] != sl {
@@ -54,7 +62,13 @@ pub fn merge_small_regions(mesh: &PolyData, label_array: &str, min_vertices: usi
                     }
                 }
             }
-            if let Some((&best, _)) = neighbor_counts.iter().max_by_key(|(_, &c)| c) {
+            if let Some((&best, _)) =
+                neighbor_counts
+                    .iter()
+                    .max_by(|(label_a, count_a), (label_b, count_b)| {
+                        count_a.cmp(count_b).then_with(|| label_b.cmp(label_a))
+                    })
+            {
                 for &vi in &verts {
                     labels[vi] = best;
                 }

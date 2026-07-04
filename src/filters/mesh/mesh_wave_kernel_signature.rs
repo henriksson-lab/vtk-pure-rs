@@ -14,17 +14,23 @@ pub fn wave_kernel_signature(
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
+            add_edge(cell[i], cell[(i + 1) % nc], &mut nb);
+        }
+    }
+    for cell in mesh.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(edge[0], edge[1], &mut nb);
+        }
+    }
+    for strip in mesh.strips.iter() {
+        for tri in strip.windows(3) {
+            add_edge(tri[0], tri[1], &mut nb);
+            add_edge(tri[1], tri[2], &mut nb);
+            add_edge(tri[2], tri[0], &mut nb);
         }
     }
     let ne = num_eigenvectors.min(n).max(1);
@@ -89,6 +95,30 @@ pub fn wave_kernel_signature(
             )));
     }
     result
+}
+
+fn add_edge(a: i64, b: i64, nb: &mut [Vec<usize>]) {
+    let Some(a) = valid_point_id(a, nb.len()) else {
+        return;
+    };
+    let Some(b) = valid_point_id(b, nb.len()) else {
+        return;
+    };
+    if a == b {
+        return;
+    }
+    if !nb[a].contains(&b) {
+        nb[a].push(b);
+    }
+    if !nb[b].contains(&a) {
+        nb[b].push(a);
+    }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
 }
 #[cfg(test)]
 mod tests {

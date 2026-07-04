@@ -19,6 +19,9 @@ pub fn compute_vertex_rings(input: &PolyData) -> PolyData {
         // Find faces containing this vertex
         let mut ring_edges: Vec<(i64, i64)> = Vec::new();
         for c in &cells {
+            if !cell_ids_are_valid(c, n) {
+                continue;
+            }
             for j in 0..c.len() {
                 if c[j] == vid {
                     let prev = c[(j + c.len() - 1) % c.len()];
@@ -75,6 +78,10 @@ pub fn detect_irregular_vertices(input: &PolyData, expected_valence: usize) -> P
             1,
         )));
     pd
+}
+
+fn cell_ids_are_valid(cell: &[i64], num_points: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]

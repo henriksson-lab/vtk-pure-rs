@@ -14,8 +14,16 @@ pub fn tangential_smooth(input: &PolyData, lambda: f64, iterations: usize) -> Po
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % cell.len()];
+            if a_id < 0 || b_id < 0 {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -31,6 +39,9 @@ pub fn tangential_smooth(input: &PolyData, lambda: f64, iterations: usize) -> Po
         let mut vnormals = vec![[0.0f64; 3]; n];
         for cell in input.polys.iter() {
             if cell.len() < 3 {
+                continue;
+            }
+            if !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
                 continue;
             }
             let v0 = pts[cell[0] as usize];
@@ -66,6 +77,10 @@ pub fn tangential_smooth(input: &PolyData, lambda: f64, iterations: usize) -> Po
             }
             let p = pts[i];
             let nm = vnormals[i];
+            let normal_len2 = nm[0] * nm[0] + nm[1] * nm[1] + nm[2] * nm[2];
+            if normal_len2 <= 1e-30 {
+                continue;
+            }
             let cnt = neighbors[i].len() as f64;
             let mut dx = 0.0;
             let mut dy = 0.0;

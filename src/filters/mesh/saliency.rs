@@ -13,9 +13,18 @@ pub fn mesh_saliency(input: &PolyData, fine_sigma: f64, coarse_sigma: f64) -> Po
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
+            if cell[i] < 0 || cell[(i + 1) % cell.len()] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -46,6 +55,9 @@ pub fn mesh_saliency(input: &PolyData, fine_sigma: f64, coarse_sigma: f64) -> Po
     }
 
     let smooth = |sigma: f64| -> Vec<f64> {
+        if sigma <= 0.0 {
+            return curvature.clone();
+        }
         let inv_2s2 = 1.0 / (2.0 * sigma * sigma);
         let mut result = curvature.clone();
         for _ in 0..3 {
@@ -80,6 +92,7 @@ pub fn mesh_saliency(input: &PolyData, fine_sigma: f64, coarse_sigma: f64) -> Po
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Saliency", saliency, 1,
         )));
+    pd.point_data_mut().set_active_scalars("Saliency");
     pd
 }
 

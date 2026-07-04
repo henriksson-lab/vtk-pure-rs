@@ -4,12 +4,22 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Uniform remesh to target edge length by splitting long edges and collapsing short ones.
 pub fn remesh_to_edge_length(mesh: &PolyData, target_length: f64, iterations: usize) -> PolyData {
+    if target_length <= 0.0 || iterations == 0 {
+        return mesh.clone();
+    }
+
     let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
     let mut tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
         .filter(|c| c.len() == 3)
-        .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter_map(|c| {
+            Some([
+                valid_point_id(c[0], mesh.points.len())?,
+                valid_point_id(c[1], mesh.points.len())?,
+                valid_point_id(c[2], mesh.points.len())?,
+            ])
+        })
         .collect();
 
     let high = target_length * 4.0 / 3.0;
@@ -58,12 +68,8 @@ pub fn remesh_to_edge_length(mesh: &PolyData, target_length: f64, iterations: us
         tris = new_tris;
 
         // Collapse short edges (simple: just merge to midpoint, skip if topology issue)
-        let mut collapsed = vec![false; tris.len()];
         let mut remap: Vec<usize> = (0..pts.len()).collect();
         for ti in 0..tris.len() {
-            if collapsed[ti] {
-                continue;
-            }
             let [a, b, c] = [
                 resolve(tris[ti][0], &remap),
                 resolve(tris[ti][1], &remap),
@@ -82,6 +88,11 @@ pub fn remesh_to_edge_length(mesh: &PolyData, target_length: f64, iterations: us
                     ];
                     pts[u] = mid;
                     remap[v] = u;
+                    for r in remap.iter_mut() {
+                        if *r == v {
+                            *r = u;
+                        }
+                    }
                     break;
                 }
             }
@@ -142,6 +153,10 @@ fn resolve(mut v: usize, remap: &[usize]) -> usize {
     v
 }
 
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < num_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +177,18 @@ mod tests {
         );
         let result = remesh_to_edge_length(&mesh, 1.0, 2);
         assert!(result.polys.num_cells() >= 1);
+    }
+
+    #[test]
+    fn invalid_triangles_are_skipped() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [5.0, 10.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.polys.push_cell(&[-1, 0, 1]);
+        mesh.polys.push_cell(&[0, 1, 99]);
+
+        let result = remesh_to_edge_length(&mesh, 3.0, 1);
+        assert!(result.polys.num_cells() > 0);
     }
 }

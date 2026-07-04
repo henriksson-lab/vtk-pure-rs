@@ -3,28 +3,27 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn face_visibility(mesh: &PolyData, viewpoint: [f64; 3]) -> PolyData {
     let mut data = Vec::new();
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        let ids = match valid_cell_prefix(cell, mesh.points.len()) {
+            Some(ids) => ids,
+            None => {
+                data.push(0.0);
+                continue;
+            }
+        };
+        if ids.len() < 3 {
             data.push(0.0);
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let n = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
+        let n = polygon_normal(mesh, &ids);
         let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
         if nl < 1e-15 {
             data.push(0.0);
             continue;
         }
-        let cx = (a[0] + b[0] + c[0]) / 3.0;
-        let cy = (a[1] + b[1] + c[1]) / 3.0;
-        let cz = (a[2] + b[2] + c[2]) / 3.0;
+        let centroid = polygon_centroid(mesh, &ids);
+        let cx = centroid[0];
+        let cy = centroid[1];
+        let cz = centroid[2];
         let to_view = [viewpoint[0] - cx, viewpoint[1] - cy, viewpoint[2] - cz];
         let dot = (n[0] * to_view[0] + n[1] * to_view[1] + n[2] * to_view[2]) / nl;
         data.push(if dot > 0.0 { 1.0 } else { 0.0 });
@@ -62,26 +61,17 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
     let n = mesh.points.len();
     let mut nm = vec![[0.0f64; 3]; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let fn_ = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-        for &v in cell {
-            let vi = v as usize;
-            if vi < n {
-                nm[vi][0] += fn_[0];
-                nm[vi][1] += fn_[1];
-                nm[vi][2] += fn_[2];
+        let ids = match valid_cell_prefix(cell, n) {
+            Some(ids) if ids.len() >= 3 => ids,
+            _ => {
+                continue;
             }
+        };
+        let fn_ = polygon_normal(mesh, &ids);
+        for &vi in &ids {
+            nm[vi][0] += fn_[0];
+            nm[vi][1] += fn_[1];
+            nm[vi][2] += fn_[2];
         }
     }
     for v in &mut nm {
@@ -93,6 +83,84 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     nm
+}
+
+fn polygon_centroid(mesh: &PolyData, ids: &[usize]) -> [f64; 3] {
+    let mut centroid = [0.0; 3];
+    for &id in ids {
+        let p = mesh.points.get(id);
+        centroid[0] += p[0];
+        centroid[1] += p[1];
+        centroid[2] += p[2];
+    }
+    let scale = 1.0 / ids.len() as f64;
+    [
+        centroid[0] * scale,
+        centroid[1] * scale,
+        centroid[2] * scale,
+    ]
+}
+
+fn polygon_normal(mesh: &PolyData, ids: &[usize]) -> [f64; 3] {
+    if ids.len() < 3 {
+        return [0.0; 3];
+    }
+
+    let mut common = None;
+    let mut point_id = 0;
+    let mut v1 = [0.0; 3];
+    while point_id < ids.len() - 2 {
+        let p0 = mesh.points.get(ids[point_id]);
+        let p1 = mesh.points.get(ids[point_id + 1]);
+        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        if norm_squared(v1) > 0.0 {
+            common = Some(point_id);
+            point_id += 2;
+            break;
+        }
+        point_id += 1;
+    }
+
+    let Some(common_id) = common else {
+        return [0.0; 3];
+    };
+    if point_id >= ids.len() {
+        return [0.0; 3];
+    }
+
+    let p0 = mesh.points.get(ids[common_id]);
+    let mut normal = [0.0; 3];
+    while point_id < ids.len() {
+        let p = mesh.points.get(ids[point_id]);
+        let v2 = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
+        let cross = [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+        normal[0] += cross[0];
+        normal[1] += cross[1];
+        normal[2] += cross[2];
+        v1 = v2;
+        point_id += 1;
+    }
+
+    normal
+}
+
+fn norm_squared(vector: [f64; 3]) -> f64 {
+    vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]
+}
+
+fn valid_cell_prefix(cell: &[i64], num_points: usize) -> Option<Vec<usize>> {
+    let mut ids = Vec::with_capacity(cell.len());
+    for &id in cell {
+        if id < 0 || id as usize >= num_points {
+            return None;
+        }
+        ids.push(id as usize);
+    }
+    Some(ids)
 }
 #[cfg(test)]
 mod tests {
@@ -111,6 +179,28 @@ mod tests {
             .tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 1.0);
     }
+
+    #[test]
+    fn test_face_with_initial_collinear_points() {
+        let m = PolyData::from_polygons(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [2.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            vec![vec![0, 1, 2, 3, 4]],
+        );
+        let r = face_visibility(&m, [1.0, 0.5, 10.0]);
+        let mut buf = [0.0];
+        r.cell_data()
+            .get_array("Visible")
+            .unwrap()
+            .tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
+    }
+
     #[test]
     fn test_vertex() {
         let m = PolyData::from_triangles(

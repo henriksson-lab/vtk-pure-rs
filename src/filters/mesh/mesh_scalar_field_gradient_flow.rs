@@ -7,7 +7,7 @@ pub fn gradient_flow_lines(
     max_steps: usize,
 ) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return PolyData::new(),
     };
     let n = mesh.points.len();
@@ -88,7 +88,7 @@ pub fn gradient_descent_lines(
     max_steps: usize,
 ) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return PolyData::new(),
     };
     let n = mesh.points.len();

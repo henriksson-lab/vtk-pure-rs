@@ -1,115 +1,164 @@
 //! Quadric error metric mesh simplification.
 
 use crate::data::{CellArray, Points, PolyData};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashSet};
 
 /// Simplify mesh using quadric error metrics to target face count.
 pub fn simplify_quadric(mesh: &PolyData, target_faces: usize) -> PolyData {
-    let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
+    let n = mesh.points.len();
+    let mut pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
     let mut tris: Vec<[usize; 3]> = mesh
         .polys
         .iter()
-        .filter(|c| c.len() == 3)
+        .filter(|c| c.len() == 3 && c.iter().all(|&id| id >= 0 && (id as usize) < n))
         .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+        .filter(|tri| tri[0] != tri[1] && tri[1] != tri[2] && tri[0] != tri[2])
         .collect();
 
-    let npts = pts.len();
-    let mut remap: Vec<usize> = (0..npts).collect();
-    let mut removed = vec![false; tris.len()];
+    let num_tris = tris.len();
+    if num_tris == 0 || num_tris <= target_faces {
+        return mesh.clone();
+    }
 
-    while tris.iter().filter(|_| true).count() - removed.iter().filter(|&&r| r).count()
-        > target_faces
+    // Compute per-vertex quadric matrices from incident face planes.
+    let mut quadrics = vec![[0.0f64; 10]; n];
+    for tri in &tris {
+        let q = face_quadric(&pts[tri[0]], &pts[tri[1]], &pts[tri[2]]);
+        for &v in tri {
+            add_quadric(&mut quadrics[v], &q);
+        }
+    }
+
+    let mut adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    for (ti, tri) in tris.iter().enumerate() {
+        for &v in tri {
+            adj[v].insert(ti);
+        }
+    }
+
+    let mut dead = vec![false; num_tris];
+    let mut version = vec![0u64; n];
+    let mut heap: BinaryHeap<(Reverse<u64>, u64, u64, usize, usize)> = BinaryHeap::new();
+
     {
-        // Find cheapest edge to collapse
-        let mut best_cost = f64::INFINITY;
-        let mut best_edge = (0, 0);
-        let mut best_tri = 0;
+        let mut seen: HashSet<(usize, usize)> = HashSet::new();
+        for tri in &tris {
+            for k in 0..3 {
+                let a = tri[k];
+                let b = tri[(k + 1) % 3];
+                let edge = if a < b { (a, b) } else { (b, a) };
+                if seen.insert(edge) {
+                    let cost = edge_cost(&quadrics[a], &quadrics[b], &pts[a], &pts[b]);
+                    heap.push((
+                        Reverse(cost_key(cost)),
+                        version[edge.0],
+                        version[edge.1],
+                        edge.0,
+                        edge.1,
+                    ));
+                }
+            }
+        }
+    }
 
-        for (ti, tri) in tris.iter().enumerate() {
-            if removed[ti] {
+    let mut current_faces = num_tris;
+    while current_faces > target_faces {
+        let Some((_, va, vb, a, b)) = heap.pop() else {
+            break;
+        };
+        if version[a] != va || version[b] != vb || a == b {
+            continue;
+        }
+
+        let mid = [
+            (pts[a][0] + pts[b][0]) * 0.5,
+            (pts[a][1] + pts[b][1]) * 0.5,
+            (pts[a][2] + pts[b][2]) * 0.5,
+        ];
+        pts[a] = mid;
+
+        let qb = quadrics[b];
+        add_quadric(&mut quadrics[a], &qb);
+        version[a] += 1;
+        version[b] += 1;
+
+        let shared: Vec<usize> = adj[a].intersection(&adj[b]).copied().collect();
+        for &ti in &shared {
+            if !dead[ti] {
+                dead[ti] = true;
+                current_faces -= 1;
+                for &v in &tris[ti] {
+                    if v != a && v != b {
+                        adj[v].remove(&ti);
+                    }
+                }
+            }
+        }
+
+        let b_tris: Vec<usize> = adj[b].iter().copied().collect();
+        for ti in b_tris {
+            if dead[ti] {
                 continue;
             }
-            let v = [
-                resolve(tri[0], &remap),
-                resolve(tri[1], &remap),
-                resolve(tri[2], &remap),
-            ];
-            for i in 0..3 {
-                let a = v[i];
-                let b = v[(i + 1) % 3];
-                if a == b {
+            let tri = &mut tris[ti];
+            for v in tri.iter_mut() {
+                if *v == b {
+                    *v = a;
+                }
+            }
+            if tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2] {
+                if !dead[ti] {
+                    dead[ti] = true;
+                    current_faces -= 1;
+                    for &v in &[tri[0], tri[1], tri[2]] {
+                        adj[v].remove(&ti);
+                    }
+                }
+            } else {
+                adj[a].insert(ti);
+            }
+        }
+        adj[b].clear();
+
+        let neighbors: Vec<usize> = {
+            let mut nbrs = HashSet::new();
+            for &ti in &adj[a] {
+                if dead[ti] {
                     continue;
                 }
-                let cost = edge_collapse_cost(&pts, a, b);
-                if cost < best_cost {
-                    best_cost = cost;
-                    best_edge = (a, b);
-                    best_tri = ti;
+                for &v in &tris[ti] {
+                    if v != a {
+                        nbrs.insert(v);
+                    }
                 }
             }
-        }
+            nbrs.into_iter().collect()
+        };
 
-        if best_cost.is_infinite() {
-            break;
-        }
-        let (a, b) = best_edge;
-        // Collapse b into a (move a to midpoint)
-        pts[a] = [
-            (pts[a][0] + pts[b][0]) / 2.0,
-            (pts[a][1] + pts[b][1]) / 2.0,
-            (pts[a][2] + pts[b][2]) / 2.0,
-        ];
-        remap[b] = a;
-
-        // Remove degenerate triangles
-        for ti in 0..tris.len() {
-            if removed[ti] {
-                continue;
-            }
-            let v = [
-                resolve(tris[ti][0], &remap),
-                resolve(tris[ti][1], &remap),
-                resolve(tris[ti][2], &remap),
-            ];
-            if v[0] == v[1] || v[1] == v[2] || v[2] == v[0] {
-                removed[ti] = true;
-            }
+        for &nb in &neighbors {
+            let cost = edge_cost(&quadrics[a], &quadrics[nb], &pts[a], &pts[nb]);
+            heap.push((Reverse(cost_key(cost)), version[a], version[nb], a, nb));
         }
     }
 
-    // Build output
-    let mut used = vec![false; npts];
-    let remaining: Vec<[usize; 3]> = tris
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !removed[*i])
-        .map(|(_, t)| {
-            let v = [
-                resolve(t[0], &remap),
-                resolve(t[1], &remap),
-                resolve(t[2], &remap),
-            ];
-            for &vi in &v {
-                used[vi] = true;
-            }
-            v
-        })
-        .collect();
-
-    let mut pt_map = vec![0usize; npts];
+    let mut pt_map = vec![usize::MAX; n];
     let mut new_pts = Points::<f64>::new();
-    for i in 0..npts {
-        if used[i] {
-            pt_map[i] = new_pts.len();
-            new_pts.push(pts[i]);
-        }
-    }
     let mut polys = CellArray::new();
-    for t in &remaining {
-        polys.push_cell(&[
-            pt_map[t[0]] as i64,
-            pt_map[t[1]] as i64,
-            pt_map[t[2]] as i64,
-        ]);
+    for (ti, tri) in tris.iter().enumerate() {
+        if dead[ti] {
+            continue;
+        }
+        let mapped: [i64; 3] = std::array::from_fn(|k| {
+            let v = tri[k];
+            if pt_map[v] == usize::MAX {
+                let id = new_pts.len();
+                pt_map[v] = id;
+                new_pts.push(pts[v]);
+            }
+            pt_map[v] as i64
+        });
+        polys.push_cell(&mapped);
     }
 
     let mut result = PolyData::new();
@@ -118,18 +167,75 @@ pub fn simplify_quadric(mesh: &PolyData, target_faces: usize) -> PolyData {
     result
 }
 
-fn resolve(mut v: usize, remap: &[usize]) -> usize {
-    while remap[v] != v {
-        v = remap[v];
+fn face_quadric(v0: &[f64; 3], v1: &[f64; 3], v2: &[f64; 3]) -> [f64; 10] {
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+    let mut n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len > 1e-15 {
+        n[0] /= len;
+        n[1] /= len;
+        n[2] /= len;
     }
-    v
+    let d = -(n[0] * v0[0] + n[1] * v0[1] + n[2] * v0[2]);
+    [
+        n[0] * n[0],
+        n[0] * n[1],
+        n[0] * n[2],
+        n[0] * d,
+        n[1] * n[1],
+        n[1] * n[2],
+        n[1] * d,
+        n[2] * n[2],
+        n[2] * d,
+        d * d,
+    ]
 }
 
-fn edge_collapse_cost(pts: &[[f64; 3]], a: usize, b: usize) -> f64 {
-    // Simple: edge length as cost
-    let pa = pts[a];
-    let pb = pts[b];
-    (pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)
+fn add_quadric(dest: &mut [f64; 10], src: &[f64; 10]) {
+    for i in 0..10 {
+        dest[i] += src[i];
+    }
+}
+
+fn edge_cost(qa: &[f64; 10], qb: &[f64; 10], pa: &[f64; 3], pb: &[f64; 3]) -> f64 {
+    let mid = [
+        (pa[0] + pb[0]) * 0.5,
+        (pa[1] + pb[1]) * 0.5,
+        (pa[2] + pb[2]) * 0.5,
+    ];
+    let mut q = [0.0f64; 10];
+    for i in 0..10 {
+        q[i] = qa[i] + qb[i];
+    }
+    eval_quadric(&q, &mid)
+}
+
+fn eval_quadric(q: &[f64; 10], v: &[f64; 3]) -> f64 {
+    let (x, y, z) = (v[0], v[1], v[2]);
+    q[0] * x * x
+        + 2.0 * q[1] * x * y
+        + 2.0 * q[2] * x * z
+        + 2.0 * q[3] * x
+        + q[4] * y * y
+        + 2.0 * q[5] * y * z
+        + 2.0 * q[6] * y
+        + q[7] * z * z
+        + 2.0 * q[8] * z
+        + q[9]
+}
+
+fn cost_key(cost: f64) -> u64 {
+    let finite = if cost.is_finite() {
+        cost.max(0.0)
+    } else {
+        f64::INFINITY
+    };
+    finite.to_bits()
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
+use std::cmp::Ordering;
 
 /// Cluster mesh vertices into N groups using farthest-point sampling.
 ///
@@ -27,7 +28,11 @@ pub fn vertex_cluster(input: &PolyData, n_clusters: usize) -> PolyData {
         }
         // Find farthest point
         let farthest = (0..n)
-            .max_by(|&a, &b| min_dist[a].partial_cmp(&min_dist[b]).unwrap())
+            .max_by(|&a, &b| {
+                min_dist[a]
+                    .partial_cmp(&min_dist[b])
+                    .unwrap_or(Ordering::Equal)
+            })
             .unwrap();
         seeds.push(farthest);
     }

@@ -27,23 +27,55 @@ pub fn mesh_saliency(mesh: &PolyData, scales: &[f64]) -> PolyData {
             }
         }
     }
+    let pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
+
     // Compute mean curvature approximation (Laplacian magnitude)
     let mut curvature = vec![0.0f64; n];
     for i in 0..n {
         if adj[i].is_empty() {
             continue;
         }
-        let p = mesh.points.get(i);
+        let p = pts[i];
         let k = adj[i].len() as f64;
         let mut lap = [0.0, 0.0, 0.0];
         for &j in &adj[i] {
-            let q = mesh.points.get(j);
+            let q = pts[j];
             lap[0] += q[0] - p[0];
             lap[1] += q[1] - p[1];
             lap[2] += q[2] - p[2];
         }
         curvature[i] = (lap[0] * lap[0] + lap[1] * lap[1] + lap[2] * lap[2]).sqrt() / k;
     }
+
+    let smooth = |sigma: f64| -> Vec<f64> {
+        if sigma <= 0.0 {
+            return curvature.clone();
+        }
+        let inv_2s2 = 1.0 / (2.0 * sigma * sigma);
+        let mut result = curvature.clone();
+        for _ in 0..3 {
+            let mut next = result.clone();
+            for i in 0..n {
+                if adj[i].is_empty() {
+                    continue;
+                }
+                let mut sum = result[i];
+                let mut weight_sum = 1.0;
+                for &j in &adj[i] {
+                    let d2 = (pts[i][0] - pts[j][0]).powi(2)
+                        + (pts[i][1] - pts[j][1]).powi(2)
+                        + (pts[i][2] - pts[j][2]).powi(2);
+                    let weight = (-d2 * inv_2s2).exp();
+                    sum += weight * result[j];
+                    weight_sum += weight;
+                }
+                next[i] = sum / weight_sum;
+            }
+            result = next;
+        }
+        result
+    };
+
     // Multi-scale Gaussian smoothing and difference
     let used_scales = if scales.is_empty() {
         vec![1.0, 2.0, 4.0]
@@ -52,21 +84,10 @@ pub fn mesh_saliency(mesh: &PolyData, scales: &[f64]) -> PolyData {
     };
     let mut saliency = vec![0.0f64; n];
     for &sigma in &used_scales {
-        let iters = (sigma * 3.0).ceil() as usize;
-        let mut smooth = curvature.clone();
-        for _ in 0..iters {
-            let mut next = smooth.clone();
-            for i in 0..n {
-                if adj[i].is_empty() {
-                    continue;
-                }
-                let avg: f64 = adj[i].iter().map(|&j| smooth[j]).sum::<f64>() / adj[i].len() as f64;
-                next[i] = 0.5 * smooth[i] + 0.5 * avg;
-            }
-            smooth = next;
-        }
+        let fine = smooth(sigma);
+        let coarse = smooth(2.0 * sigma);
         for i in 0..n {
-            saliency[i] += (curvature[i] - smooth[i]).abs();
+            saliency[i] += (fine[i] - coarse[i]).abs();
         }
     }
     let mut result = mesh.clone();

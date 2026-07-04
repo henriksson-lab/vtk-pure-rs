@@ -23,6 +23,10 @@ fn subdivide_once(mesh: &PolyData) -> PolyData {
         std::collections::HashMap::new();
 
     for cell in mesh.polys.iter() {
+        if !valid_point_cell(mesh, cell) {
+            new_polys.push_cell(cell);
+            continue;
+        }
         if cell.len() == 3 {
             let v = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
             let m01 = get_mid(&mut pts, &mut edge_mids, v[0], v[1]);
@@ -66,6 +70,11 @@ fn subdivide_once(mesh: &PolyData) -> PolyData {
     result.points = new_pts;
     result.polys = new_polys;
     result
+}
+
+fn valid_point_cell(mesh: &PolyData, cell: &[i64]) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < mesh.points.len())
 }
 
 fn get_mid(

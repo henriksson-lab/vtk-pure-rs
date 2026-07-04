@@ -3,15 +3,49 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn classify_curvature(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let mut angle_sum = vec![0.0f64; n];
-    for cell in mesh.polys.iter() {
+    let mut area_sum = vec![0.0f64; n];
+    let cells = surface_cells(mesh);
+    for cell in &cells {
         if cell.len() < 3 {
             continue;
         }
+        let Some(first) = valid_point_index(cell[0], n) else {
+            continue;
+        };
         let nc = cell.len();
+        for i in 1..nc - 1 {
+            let Some(second) = valid_point_index(cell[i], n) else {
+                continue;
+            };
+            let Some(third) = valid_point_index(cell[i + 1], n) else {
+                continue;
+            };
+            let a = mesh.points.get(first);
+            let b = mesh.points.get(second);
+            let c = mesh.points.get(third);
+            let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+            let cross = [
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            ];
+            let area =
+                0.5 * (cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]).sqrt();
+            area_sum[first] += area;
+            area_sum[second] += area;
+            area_sum[third] += area;
+        }
         for i in 0..nc {
-            let vi = cell[i] as usize;
-            let prev = cell[(i + nc - 1) % nc] as usize;
-            let next = cell[(i + 1) % nc] as usize;
+            let Some(vi) = valid_point_index(cell[i], n) else {
+                continue;
+            };
+            let Some(prev) = valid_point_index(cell[(i + nc - 1) % nc], n) else {
+                continue;
+            };
+            let Some(next) = valid_point_index(cell[(i + 1) % nc], n) else {
+                continue;
+            };
             let p = mesh.points.get(vi);
             let a = mesh.points.get(prev);
             let b = mesh.points.get(next);
@@ -28,7 +62,15 @@ pub fn classify_curvature(mesh: &PolyData) -> PolyData {
     }
     let gauss: Vec<f64> = angle_sum
         .iter()
-        .map(|&s| 2.0 * std::f64::consts::PI - s)
+        .enumerate()
+        .map(|(i, &s)| {
+            let defect = 2.0 * std::f64::consts::PI - s;
+            if area_sum[i] > 0.0 {
+                3.0 * defect / area_sum[i]
+            } else {
+                0.0
+            }
+        })
         .collect();
     // Classify: >eps=elliptic(1), <-eps=hyperbolic(-1), ~0=parabolic/flat(0)
     let eps = 0.01;
@@ -59,6 +101,25 @@ pub fn classify_curvature(mesh: &PolyData) -> PolyData {
         )));
     r
 }
+
+fn surface_cells(mesh: &PolyData) -> Vec<Vec<i64>> {
+    let mut cells: Vec<Vec<i64>> = mesh.polys.iter().map(|cell| cell.to_vec()).collect();
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            if i % 2 == 0 {
+                cells.push(vec![tri[0], tri[1], tri[2]]);
+            } else {
+                cells.push(vec![tri[1], tri[0], tri[2]]);
+            }
+        }
+    }
+    cells
+}
+
+fn valid_point_index(id: i64, n: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

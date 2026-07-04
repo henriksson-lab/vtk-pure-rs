@@ -113,15 +113,17 @@ pub fn add_shape_descriptor_arrays(mesh: &PolyData) -> PolyData {
 fn signed_volume(mesh: &PolyData) -> f64 {
     let mut vol = 0.0;
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(mesh, cell) {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        vol += a[0] * (b[1] * c[2] - b[2] * c[1])
-            + b[0] * (c[1] * a[2] - c[2] * a[1])
-            + c[0] * (a[1] * b[2] - a[2] * b[1]);
+        for i in 1..cell.len() - 1 {
+            let b = mesh.points.get(cell[i] as usize);
+            let c = mesh.points.get(cell[i + 1] as usize);
+            vol += a[0] * (b[1] * c[2] - b[2] * c[1])
+                + b[0] * (c[1] * a[2] - c[2] * a[1])
+                + c[0] * (a[1] * b[2] - a[2] * b[1]);
+        }
     }
     vol / 6.0
 }
@@ -133,17 +135,32 @@ fn surface_area(mesh: &PolyData) -> f64 {
             if cell.len() < 3 {
                 return 0.0;
             }
+            if !valid_cell(mesh, cell) {
+                return 0.0;
+            }
             let a = mesh.points.get(cell[0] as usize);
-            let b = mesh.points.get(cell[1] as usize);
-            let c = mesh.points.get(cell[2] as usize);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            0.5 * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
-                + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
-                + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
-            .sqrt()
+            let mut area = 0.0;
+            for i in 1..cell.len() - 1 {
+                let b = mesh.points.get(cell[i] as usize);
+                let c = mesh.points.get(cell[i + 1] as usize);
+                let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                area += 0.5
+                    * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
+                        + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
+                        + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
+                    .sqrt();
+            }
+            area
         })
         .sum()
+}
+
+fn valid_cell(mesh: &PolyData, cell: &[i64]) -> bool {
+    cell.len() >= 3
+        && cell
+            .iter()
+            .all(|&pid| pid >= 0 && (pid as usize) < mesh.points.len())
 }
 
 fn principal_extents(mesh: &PolyData) -> [f64; 3] {
@@ -169,17 +186,67 @@ fn principal_extents(mesh: &PolyData) -> [f64; 3] {
             }
         }
     }
-    // Eigenvalues approximate extents
-    let tr = cov[0][0] + cov[1][1] + cov[2][2];
-    let mut ev = [tr / 3.0; 3]; // placeholder
-                                // Use trace-based estimate
+    for row in &mut cov {
+        for v in row {
+            *v /= nf;
+        }
+    }
+    let mut ev = symmetric_eigenvalues(cov);
     ev.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    let scale = (nf).sqrt();
     [
-        ev[0].abs().sqrt() * scale * 2.0,
-        ev[1].abs().sqrt() * scale * 2.0,
-        ev[2].abs().sqrt() * scale * 2.0,
+        ev[0].max(0.0).sqrt() * 2.0,
+        ev[1].max(0.0).sqrt() * 2.0,
+        ev[2].max(0.0).sqrt() * 2.0,
     ]
+}
+
+fn symmetric_eigenvalues(mut a: [[f64; 3]; 3]) -> [f64; 3] {
+    for _ in 0..32 {
+        let mut p = 0;
+        let mut q = 1;
+        let mut max = a[0][1].abs();
+        for i in 0..3 {
+            for j in i + 1..3 {
+                if a[i][j].abs() > max {
+                    max = a[i][j].abs();
+                    p = i;
+                    q = j;
+                }
+            }
+        }
+        if max < 1e-15 {
+            break;
+        }
+
+        let theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q]);
+        let t = if theta >= 0.0 {
+            1.0 / (theta + (theta * theta + 1.0).sqrt())
+        } else {
+            -1.0 / (-theta + (theta * theta + 1.0).sqrt())
+        };
+        let c = 1.0 / (t * t + 1.0).sqrt();
+        let s = t * c;
+        let app = a[p][p];
+        let aqq = a[q][q];
+        let apq = a[p][q];
+        a[p][p] = app - t * apq;
+        a[q][q] = aqq + t * apq;
+        a[p][q] = 0.0;
+        a[q][p] = 0.0;
+
+        for r in 0..3 {
+            if r != p && r != q {
+                let arp = a[r][p];
+                let arq = a[r][q];
+                a[r][p] = c * arp - s * arq;
+                a[p][r] = a[r][p];
+                a[r][q] = s * arp + c * arq;
+                a[q][r] = a[r][q];
+            }
+        }
+    }
+
+    [a[0][0], a[1][1], a[2][2]]
 }
 
 #[cfg(test)]

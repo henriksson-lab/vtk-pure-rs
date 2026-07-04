@@ -1,15 +1,16 @@
 //! Scalar field analysis on meshes: critical points, gradient lines, level sets.
 
 use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Find critical points (minima, maxima, saddles) of a scalar field on a mesh.
 pub fn find_scalar_critical_points(mesh: &PolyData, array_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return PolyData::new(),
     };
-    let adj = build_adj(mesh, n);
+    let (adj, links) = build_link_topology(mesh, n);
     let mut buf = [0.0f64];
     let values: Vec<f64> = (0..n)
         .map(|i| {
@@ -26,32 +27,21 @@ pub fn find_scalar_critical_points(mesh: &PolyData, array_name: &str) -> PolyDat
             continue;
         }
         let vi = values[i];
-        let n_lower = adj[i].iter().filter(|&&j| values[j] < vi).count();
-        let n_higher = adj[i].iter().filter(|&&j| values[j] > vi).count();
-        let n_total = adj[i].len();
+        let lower: Vec<usize> = adj[i].iter().copied().filter(|&j| values[j] < vi).collect();
+        let higher: Vec<usize> = adj[i].iter().copied().filter(|&j| values[j] > vi).collect();
 
-        if n_lower == n_total {
+        if lower.is_empty() && !higher.is_empty() {
             // local minimum
             crit_pts.push(mesh.points.get(i));
             crit_type.push(0.0);
-        } else if n_higher == n_total {
+        } else if higher.is_empty() && !lower.is_empty() {
             // local maximum
             crit_pts.push(mesh.points.get(i));
             crit_type.push(1.0);
-        } else if n_lower > 0 && n_higher > 0 {
-            // Check for saddle: alternating lower/higher around ring
-            let mut changes = 0;
-            let ring: Vec<bool> = adj[i].iter().map(|&j| values[j] > vi).collect();
-            for k in 0..ring.len() {
-                if ring[k] != ring[(k + 1) % ring.len()] {
-                    changes += 1;
-                }
-            }
-            if changes >= 4 {
-                // saddle has ≥4 sign changes
-                crit_pts.push(mesh.points.get(i));
-                crit_type.push(2.0);
-            }
+        } else if link_components(&links[i], &higher) > 1 || link_components(&links[i], &lower) > 1
+        {
+            crit_pts.push(mesh.points.get(i));
+            crit_type.push(2.0);
         }
     }
 
@@ -70,7 +60,7 @@ pub fn find_scalar_critical_points(mesh: &PolyData, array_name: &str) -> PolyDat
 /// Extract level set (iso-contour) of a scalar field on a mesh.
 pub fn extract_level_set(mesh: &PolyData, array_name: &str, isovalue: f64) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= mesh.points.len() => a,
         _ => return PolyData::new(),
     };
     let mut buf = [0.0f64];
@@ -85,7 +75,11 @@ pub fn extract_level_set(mesh: &PolyData, array_name: &str, isovalue: f64) -> Po
     let mut lines = CellArray::new();
 
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3
+            || cell
+                .iter()
+                .any(|&id| id < 0 || id as usize >= mesh.points.len())
+        {
             continue;
         }
         let mut crossings = Vec::new();
@@ -125,7 +119,7 @@ pub fn extract_level_set(mesh: &PolyData, array_name: &str, isovalue: f64) -> Po
 pub fn scalar_gradient_on_mesh(mesh: &PolyData, array_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
     let adj = build_adj(mesh, n);
@@ -181,7 +175,13 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
+            if cell[i] < 0 || cell[(i + 1) % nc] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
             if a < n && b < n {
@@ -191,6 +191,89 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
         }
     }
     adj.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn build_link_topology(
+    mesh: &PolyData,
+    n: usize,
+) -> (Vec<Vec<usize>>, Vec<HashMap<usize, Vec<usize>>>) {
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut links: Vec<HashMap<usize, Vec<usize>>> = vec![HashMap::new(); n];
+
+    for cell in mesh.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        for i in 0..cell.len() {
+            if cell[i] < 0 || cell[(i + 1) % cell.len()] < 0 {
+                continue;
+            }
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
+        }
+
+        for i in 0..cell.len() {
+            if cell[i] < 0
+                || cell[(i + cell.len() - 1) % cell.len()] < 0
+                || cell[(i + 1) % cell.len()] < 0
+            {
+                continue;
+            }
+            let center = cell[i] as usize;
+            let prev = cell[(i + cell.len() - 1) % cell.len()] as usize;
+            let next = cell[(i + 1) % cell.len()] as usize;
+            if center >= n || prev >= n || next >= n || prev == next {
+                continue;
+            }
+            let prev_link = links[center].entry(prev).or_default();
+            if !prev_link.contains(&next) {
+                prev_link.push(next);
+            }
+            let next_link = links[center].entry(next).or_default();
+            if !next_link.contains(&prev) {
+                next_link.push(prev);
+            }
+        }
+    }
+
+    (neighbors, links)
+}
+
+fn link_components(link: &HashMap<usize, Vec<usize>>, subset: &[usize]) -> usize {
+    if subset.is_empty() {
+        return 0;
+    }
+
+    let subset_set: HashSet<usize> = subset.iter().copied().collect();
+    let mut seen = HashSet::new();
+    let mut components = 0usize;
+
+    for &start in subset {
+        if !seen.insert(start) {
+            continue;
+        }
+
+        components += 1;
+        let mut queue = VecDeque::from([start]);
+        while let Some(v) = queue.pop_front() {
+            for &next in link.get(&v).into_iter().flatten() {
+                if subset_set.contains(&next) && seen.insert(next) {
+                    queue.push_back(next);
+                }
+            }
+        }
+    }
+
+    components
 }
 
 #[cfg(test)]
@@ -271,5 +354,22 @@ mod tests {
             )));
         let result = scalar_gradient_on_mesh(&mesh, "f");
         assert!(result.point_data().get_array("Gradient").is_some());
+    }
+
+    #[test]
+    fn gradient_short_array_returns_input() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "f",
+                vec![0.0, 1.0],
+                1,
+            )));
+
+        let result = scalar_gradient_on_mesh(&mesh, "f");
+        assert!(result.point_data().get_array("Gradient").is_none());
     }
 }

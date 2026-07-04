@@ -25,8 +25,13 @@ pub fn topology_check(input: &PolyData) -> TopologyReport {
     let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
     let mut directed_edges: HashMap<(i64, i64), usize> = HashMap::new();
     let mut vertex_used = vec![false; n_verts];
+    let mut invalid_faces = 0usize;
 
     for c in &cells {
+        if !is_valid_polygon(c, n_verts) {
+            invalid_faces += 1;
+            continue;
+        }
         for i in 0..c.len() {
             let a = c[i];
             let b = c[(i + 1) % c.len()];
@@ -42,8 +47,19 @@ pub fn topology_check(input: &PolyData) -> TopologyReport {
     let n_non_manifold = edge_count.values().filter(|&&c| c > 2).count();
     let n_isolated = vertex_used.iter().filter(|&&u| !u).count();
 
-    // Check orientation: each directed edge should appear at most once
-    let is_oriented = directed_edges.values().all(|&c| c <= 1);
+    // For each interior manifold edge, adjacent polygons must traverse it in
+    // opposite directions. Boundary edges are oriented by their single face.
+    let is_oriented = edge_count.iter().all(|(&(a, b), &count)| {
+        if count > 2 {
+            return false;
+        }
+        if count == 2 {
+            directed_edges.get(&(a, b)).copied().unwrap_or(0) == 1
+                && directed_edges.get(&(b, a)).copied().unwrap_or(0) == 1
+        } else {
+            true
+        }
+    });
 
     TopologyReport {
         num_vertices: n_verts,
@@ -54,9 +70,13 @@ pub fn topology_check(input: &PolyData) -> TopologyReport {
         num_isolated_vertices: n_isolated,
         euler_characteristic: n_verts as i64 - n_edges as i64 + n_faces as i64,
         is_closed: n_boundary == 0,
-        is_manifold: n_non_manifold == 0,
-        is_oriented,
+        is_manifold: n_non_manifold == 0 && invalid_faces == 0,
+        is_oriented: is_oriented && invalid_faces == 0,
     }
+}
+
+fn is_valid_polygon(cell: &[i64], n_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
+const VERDICT_DBL_MAX: f64 = 1.0e30;
+
 /// Compute mesh quality statistics.
 ///
 /// Returns a struct with min/max/mean values for edge length,
@@ -42,10 +44,19 @@ pub fn mesh_quality(input: &PolyData) -> MeshQualityStats {
             continue;
         }
 
-        let v0 = input.points.get(cell[0] as usize);
+        let Some(i0) = valid_point_id(cell[0], input.points.len()) else {
+            continue;
+        };
+        let v0 = input.points.get(i0);
         for ti in 1..cell.len() - 1 {
-            let v1 = input.points.get(cell[ti] as usize);
-            let v2 = input.points.get(cell[ti + 1] as usize);
+            let Some(i1) = valid_point_id(cell[ti], input.points.len()) else {
+                continue;
+            };
+            let Some(i2) = valid_point_id(cell[ti + 1], input.points.len()) else {
+                continue;
+            };
+            let v1 = input.points.get(i1);
+            let v2 = input.points.get(i2);
 
             let e0 = dist(v0, v1);
             let e1 = dist(v1, v2);
@@ -61,25 +72,15 @@ pub fn mesh_quality(input: &PolyData) -> MeshQualityStats {
             max_area = max_area.max(area);
             sum_area += area;
 
-            // Aspect ratio: longest edge / (2 * sqrt(3) * inradius)
-            // Simplified: longest / shortest edge ratio
-            let longest = e0.max(e1).max(e2);
-            let shortest = e0.min(e1).min(e2);
-            let ar = if shortest > 1e-15 {
-                longest / shortest
-            } else {
-                f64::MAX
-            };
+            let ar = triangle_aspect_ratio(e0, e1, e2, area);
 
             if area < 1e-15 {
                 num_degen += 1;
             }
 
-            if ar < f64::MAX {
-                min_ar = min_ar.min(ar);
-                max_ar = max_ar.max(ar);
-                sum_ar += ar;
-            }
+            min_ar = min_ar.min(ar);
+            max_ar = max_ar.max(ar);
+            sum_ar += ar;
 
             num_tris += 1;
         }
@@ -129,23 +130,23 @@ pub fn mesh_quality_arrays(input: &PolyData) -> PolyData {
             areas.push(0.0);
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
-        let v1 = input.points.get(cell[1] as usize);
-        let v2 = input.points.get(cell[2] as usize);
+        let Some([i0, i1, i2]) = valid_triangle_ids(cell, input.points.len()) else {
+            aspect_ratios.push(0.0);
+            areas.push(0.0);
+            continue;
+        };
+        let v0 = input.points.get(i0);
+        let v1 = input.points.get(i1);
+        let v2 = input.points.get(i2);
 
         let e0 = dist(v0, v1);
         let e1 = dist(v1, v2);
         let e2 = dist(v2, v0);
-        let longest = e0.max(e1).max(e2);
-        let shortest = e0.min(e1).min(e2);
-        let ar = if shortest > 1e-15 {
-            longest / shortest
-        } else {
-            f64::MAX
-        };
+        let area = triangle_area(v0, v1, v2);
+        let ar = triangle_aspect_ratio(e0, e1, e2, area);
 
-        aspect_ratios.push(if ar < f64::MAX { ar } else { 0.0 });
-        areas.push(triangle_area(v0, v1, v2));
+        aspect_ratios.push(ar);
+        areas.push(area);
     }
 
     let mut pd = input.clone();
@@ -172,6 +173,27 @@ fn triangle_area(v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> f64 {
     let cy = e1[2] * e2[0] - e1[0] * e2[2];
     let cz = e1[0] * e2[1] - e1[1] * e2[0];
     0.5 * (cx * cx + cy * cy + cz * cz).sqrt()
+}
+
+fn triangle_aspect_ratio(e0: f64, e1: f64, e2: f64, area: f64) -> f64 {
+    if area <= 1e-15 {
+        return VERDICT_DBL_MAX;
+    }
+    let longest = e0.max(e1).max(e2);
+    let perimeter = e0 + e1 + e2;
+    longest * perimeter / (4.0 * 3.0f64.sqrt() * area)
+}
+
+fn valid_triangle_ids(cell: &[i64], num_points: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], num_points)?,
+        valid_point_id(cell[1], num_points)?,
+        valid_point_id(cell[2], num_points)?,
+    ])
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < num_points)
 }
 
 #[cfg(test)]
@@ -204,6 +226,20 @@ mod tests {
         let result = mesh_quality_arrays(&pd);
         assert!(result.cell_data().get_array("AspectRatio").is_some());
         assert!(result.cell_data().get_array("CellArea").is_some());
+    }
+
+    #[test]
+    fn vtk_triangle_aspect_ratio_not_edge_ratio() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let stats = mesh_quality(&pd);
+        let expected = (2.0f64.sqrt() * (2.0 + 2.0f64.sqrt())) / (2.0 * 3.0f64.sqrt());
+        assert!((stats.mean_aspect_ratio - expected).abs() < 1e-12);
+        assert!((stats.mean_aspect_ratio - 2.0f64.sqrt()).abs() > 1e-3);
     }
 
     #[test]

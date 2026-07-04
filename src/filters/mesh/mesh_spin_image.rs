@@ -1,5 +1,5 @@
 //! Spin image descriptor for 3D shape matching.
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 pub fn compute_spin_image(
     mesh: &PolyData,
     vertex: usize,
@@ -11,6 +11,9 @@ pub fn compute_spin_image(
         return vec![];
     }
     let iw = image_width.max(2);
+    if bin_size <= 0.0 || !bin_size.is_finite() {
+        return vec![0.0; iw * iw];
+    }
     let p = mesh.points.get(vertex);
     let nm = calc_nm(mesh);
     let ni = nm[vertex];
@@ -28,8 +31,13 @@ pub fn compute_spin_image(
             d[2] - beta * ni[2],
         ];
         let alpha = (perp[0] * perp[0] + perp[1] * perp[1] + perp[2] * perp[2]).sqrt(); // radial distance
-        let ai = ((alpha / bin_size).floor() as usize).min(iw - 1);
-        let bi = (((beta / bin_size + iw as f64 / 2.0).floor()) as usize).min(iw - 1);
+        let ai = (alpha / bin_size).floor() as isize;
+        let bi = (beta / bin_size + iw as f64 / 2.0).floor() as isize;
+        if ai < 0 || bi < 0 || ai >= iw as isize || bi >= iw as isize {
+            continue;
+        }
+        let ai = ai as usize;
+        let bi = bi as usize;
         img[ai * iw + bi] += 1.0;
     }
     img
@@ -64,9 +72,21 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        let a_id = cell[0];
+        let b_id = cell[1];
+        let c_id = cell[2];
+        if a_id < 0 || b_id < 0 || c_id < 0 {
+            continue;
+        }
+        let a_idx = a_id as usize;
+        let b_idx = b_id as usize;
+        let c_idx = c_id as usize;
+        if a_idx >= n || b_idx >= n || c_idx >= n {
+            continue;
+        }
+        let a = mesh.points.get(a_idx);
+        let b = mesh.points.get(b_idx);
+        let c = mesh.points.get(c_idx);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let fn_ = [

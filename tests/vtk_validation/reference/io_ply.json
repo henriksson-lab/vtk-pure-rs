@@ -8,5 +8,8 @@
     0.49935826659202576,
     -0.5,
     0.5
-  ]
+  ],
+  "has_normals": true,
+  "num_normal_tuples": 962,
+  "format": "ply"
 }

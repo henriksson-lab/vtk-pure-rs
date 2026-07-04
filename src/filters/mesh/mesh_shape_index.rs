@@ -4,65 +4,76 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// -1=cup, -0.5=rut, 0=saddle, 0.5=ridge, 1=cap.
 pub fn shape_index(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
-    let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
-            }
-        }
+    if n == 0 {
+        return mesh.clone();
     }
-    // Estimate shape index from Laplacian direction
-    let data: Vec<f64> = (0..n)
-        .map(|i| {
-            if nb[i].is_empty() {
-                return 0.0;
+
+    let k1_arr = mesh
+        .point_data()
+        .get_array("K1")
+        .or_else(|| mesh.point_data().get_array("Maximum_Curvature"));
+    let k2_arr = mesh
+        .point_data()
+        .get_array("K2")
+        .or_else(|| mesh.point_data().get_array("Minimum_Curvature"));
+
+    if let (Some(k1_arr), Some(k2_arr)) = (k1_arr, k2_arr) {
+        let mut data = Vec::with_capacity(n);
+        let mut k1_buf = [0.0f64];
+        let mut k2_buf = [0.0f64];
+        for i in 0..n {
+            k1_arr.tuple_as_f64(i, &mut k1_buf);
+            k2_arr.tuple_as_f64(i, &mut k2_buf);
+            data.push(shape_index_from_curvatures(k1_buf[0], k2_buf[0]));
+        }
+        return attach_shape_index(mesh, data);
+    }
+
+    let nb = build_adjacency(mesh, n);
+    let nm = calc_nm(mesh);
+    let mut data = Vec::with_capacity(n);
+    for i in 0..n {
+        if nb[i].is_empty() {
+            data.push(0.0);
+            continue;
+        }
+        let p = mesh.points.get(i);
+        let ni = nm[i];
+        let mut curvatures = Vec::with_capacity(nb[i].len());
+        for &j in &nb[i] {
+            let q = mesh.points.get(j);
+            let d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+            let dist2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+            if dist2 <= 1e-15 {
+                continue;
             }
-            let p = mesh.points.get(i);
-            let k = nb[i].len() as f64;
-            let mut avg = [0.0, 0.0, 0.0];
-            for &j in &nb[i] {
-                let q = mesh.points.get(j);
-                avg[0] += q[0];
-                avg[1] += q[1];
-                avg[2] += q[2];
-            }
-            avg[0] /= k;
-            avg[1] /= k;
-            avg[2] /= k;
-            let lap = [(avg[0] - p[0]), (avg[1] - p[1]), (avg[2] - p[2])];
-            let mag = (lap[0] * lap[0] + lap[1] * lap[1] + lap[2] * lap[2]).sqrt();
-            // Estimate sign from normal dot laplacian
-            let mut nm = [0.0f64; 3];
-            for cell in mesh.polys.iter() {
-                if cell.len() < 3 || !cell.iter().any(|&v| v as usize == i) {
-                    continue;
-                }
-                let a = mesh.points.get(cell[0] as usize);
-                let b = mesh.points.get(cell[1] as usize);
-                let c = mesh.points.get(cell[2] as usize);
-                let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-                let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-                nm[0] += e1[1] * e2[2] - e1[2] * e2[1];
-                nm[1] += e1[2] * e2[0] - e1[0] * e2[2];
-                nm[2] += e1[0] * e2[1] - e1[1] * e2[0];
-            }
-            let nl = (nm[0] * nm[0] + nm[1] * nm[1] + nm[2] * nm[2])
-                .sqrt()
-                .max(1e-15);
-            let dot = (lap[0] * nm[0] + lap[1] * nm[1] + lap[2] * nm[2]) / nl;
-            let signed_curv = mag * dot.signum();
-            (2.0 / std::f64::consts::PI) * signed_curv.atan()
-        })
-        .collect();
+            let proj = d[0] * ni[0] + d[1] * ni[1] + d[2] * ni[2];
+            curvatures.push(2.0 * proj / dist2);
+        }
+        if curvatures.is_empty() {
+            data.push(0.0);
+            continue;
+        }
+        curvatures.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let k1 = curvatures[curvatures.len() - 1];
+        let k2 = curvatures[0];
+        data.push(shape_index_from_curvatures(k1, k2));
+    }
+    attach_shape_index(mesh, data)
+}
+
+fn shape_index_from_curvatures(k1: f64, k2: f64) -> f64 {
+    let diff = k1 - k2;
+    if diff.abs() > 1e-15 {
+        (2.0 / std::f64::consts::PI) * ((k1 + k2) / diff).atan()
+    } else if (k1 + k2).abs() > 1e-15 {
+        (k1 + k2).signum()
+    } else {
+        0.0
+    }
+}
+
+fn attach_shape_index(mesh: &PolyData, data: Vec<f64>) -> PolyData {
     let mut r = mesh.clone();
     r.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -72,6 +83,62 @@ pub fn shape_index(mesh: &PolyData) -> PolyData {
         )));
     r.point_data_mut().set_active_scalars("ShapeIndex");
     r
+}
+
+fn build_adjacency(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for cell in mesh.polys.iter() {
+        let nc = cell.len();
+        if nc < 2 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for i in 0..nc {
+            let a = cell[i] as usize;
+            let b = cell[(i + 1) % nc] as usize;
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
+            }
+        }
+    }
+    nb
+}
+
+fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
+    let n = mesh.points.len();
+    let mut nm = vec![[0.0f64; 3]; n];
+    for cell in mesh.polys.iter() {
+        if cell.len() < 3 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        let a = mesh.points.get(cell[0] as usize);
+        let b = mesh.points.get(cell[1] as usize);
+        let c = mesh.points.get(cell[2] as usize);
+        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let fn_ = [
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ];
+        for &v in cell {
+            let vi = v as usize;
+            nm[vi][0] += fn_[0];
+            nm[vi][1] += fn_[1];
+            nm[vi][2] += fn_[2];
+        }
+    }
+    for v in &mut nm {
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+        if l > 1e-15 {
+            v[0] /= l;
+            v[1] /= l;
+            v[2] /= l;
+        }
+    }
+    nm
 }
 #[cfg(test)]
 mod tests {

@@ -23,6 +23,16 @@ pub fn full_tda(mesh: &PolyData, array_name: &str) -> TDAResult {
         }
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return TDAResult {
+            num_minima: 0,
+            num_maxima: 0,
+            num_saddles: 0,
+            euler_characteristic: 0,
+            persistence_pairs: vec![],
+            total_persistence: 0.0,
+        };
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -36,9 +46,7 @@ pub fn full_tda(mesh: &PolyData, array_name: &str) -> TDAResult {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            if let Some((a, b)) = valid_edge(cell[i], cell[(i + 1) % nc], n) {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }
@@ -160,6 +168,16 @@ fn union(p: &mut [usize], a: usize, b: usize) {
     if ra != rb {
         p[rb] = ra;
     }
+}
+fn valid_edge(a: i64, b: i64, number_of_points: usize) -> Option<(usize, usize)> {
+    if a >= 0 && b >= 0 {
+        let a = a as usize;
+        let b = b as usize;
+        if a < number_of_points && b < number_of_points {
+            return Some((a, b));
+        }
+    }
+    None
 }
 #[cfg(test)]
 mod tests {

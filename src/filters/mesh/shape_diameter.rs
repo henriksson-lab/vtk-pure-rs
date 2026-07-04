@@ -14,7 +14,7 @@ pub fn shape_diameter_function(input: &PolyData, num_rays: usize) -> PolyData {
     // Compute vertex normals
     let mut vnormals = vec![[0.0f64; 3]; n];
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(input, cell) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -43,21 +43,20 @@ pub fn shape_diameter_function(input: &PolyData, num_rays: usize) -> PolyData {
         }
     }
 
-    let tris: Vec<[[f64; 3]; 3]> = input
-        .polys
-        .iter()
-        .filter_map(|c| {
-            if c.len() >= 3 {
-                Some([
-                    input.points.get(c[0] as usize),
-                    input.points.get(c[1] as usize),
-                    input.points.get(c[2] as usize),
-                ])
-            } else {
-                None
-            }
-        })
-        .collect();
+    let mut tris: Vec<[[f64; 3]; 3]> = Vec::new();
+    for cell in input.polys.iter() {
+        if !valid_cell(input, cell) {
+            continue;
+        }
+        let p0 = input.points.get(cell[0] as usize);
+        for i in 1..cell.len() - 1 {
+            tris.push([
+                p0,
+                input.points.get(cell[i] as usize),
+                input.points.get(cell[i + 1] as usize),
+            ]);
+        }
+    }
 
     let rays = num_rays.max(1);
     let mut sdf = vec![0.0f64; n];
@@ -74,16 +73,29 @@ pub fn shape_diameter_function(input: &PolyData, num_rays: usize) -> PolyData {
             p[2] + inward[2] * 0.001,
         ];
 
-        let mut min_t = f64::MAX;
-        for tri in &tris {
-            if let Some(t) = ray_tri(origin, inward, tri) {
-                if t > 0.002 && t < min_t {
-                    min_t = t;
+        let ray_dirs = ray_directions(inward, rays);
+        let mut sum_t = 0.0;
+        let mut hit_count = 0usize;
+        for dir in ray_dirs {
+            let mut min_t = f64::MAX;
+            for tri in &tris {
+                if let Some(t) = ray_tri(origin, dir, tri) {
+                    if t > 0.002 && t < min_t {
+                        min_t = t;
+                    }
                 }
+            }
+            if min_t < f64::MAX {
+                sum_t += min_t;
+                hit_count += 1;
             }
         }
 
-        sdf[i] = if min_t < f64::MAX { min_t } else { 0.0 };
+        sdf[i] = if hit_count > 0 {
+            sum_t / hit_count as f64
+        } else {
+            0.0
+        };
     }
 
     let mut pd = input.clone();
@@ -94,6 +106,61 @@ pub fn shape_diameter_function(input: &PolyData, num_rays: usize) -> PolyData {
             1,
         )));
     pd
+}
+
+fn valid_cell(input: &PolyData, cell: &[i64]) -> bool {
+    cell.len() >= 3
+        && cell
+            .iter()
+            .all(|&id| id >= 0 && (id as usize) < input.points.len())
+}
+
+fn ray_directions(axis: [f64; 3], rays: usize) -> Vec<[f64; 3]> {
+    if rays <= 1 {
+        return vec![axis];
+    }
+
+    let len = (axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]).sqrt();
+    if len <= 1e-15 {
+        return vec![axis; rays];
+    }
+
+    let w = [axis[0] / len, axis[1] / len, axis[2] / len];
+    let helper = if w[2].abs() < 0.9 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+    let u0 = [
+        helper[1] * w[2] - helper[2] * w[1],
+        helper[2] * w[0] - helper[0] * w[2],
+        helper[0] * w[1] - helper[1] * w[0],
+    ];
+    let u_len = (u0[0] * u0[0] + u0[1] * u0[1] + u0[2] * u0[2]).sqrt();
+    let u = [u0[0] / u_len, u0[1] / u_len, u0[2] / u_len];
+    let v = [
+        w[1] * u[2] - w[2] * u[1],
+        w[2] * u[0] - w[0] * u[2],
+        w[0] * u[1] - w[1] * u[0],
+    ];
+
+    let cone_sin = 30.0_f64.to_radians().sin();
+    let golden_angle = std::f64::consts::PI * (3.0 - 5.0_f64.sqrt());
+    let mut dirs = Vec::with_capacity(rays);
+    dirs.push(w);
+    for k in 1..rays {
+        let frac = (k as f64 / (rays - 1).max(1) as f64).sqrt();
+        let radial = cone_sin * frac;
+        let axial = (1.0 - radial * radial).sqrt();
+        let theta = k as f64 * golden_angle;
+        let (s, c) = theta.sin_cos();
+        dirs.push([
+            w[0] * axial + (u[0] * c + v[0] * s) * radial,
+            w[1] * axial + (u[1] * c + v[1] * s) * radial,
+            w[2] * axial + (u[2] * c + v[2] * s) * radial,
+        ]);
+    }
+    dirs
 }
 
 fn ray_tri(o: [f64; 3], d: [f64; 3], tri: &[[f64; 3]; 3]) -> Option<f64> {

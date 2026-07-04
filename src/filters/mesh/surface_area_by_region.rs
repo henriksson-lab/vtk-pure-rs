@@ -15,9 +15,12 @@ pub fn surface_area_by_label(mesh: &PolyData, label_array: &str) -> Table {
         if ci >= arr.num_tuples() {
             break;
         }
+        let Some(ids) = valid_cell_point_ids(cell, mesh.points.len()) else {
+            continue;
+        };
         arr.tuple_as_f64(ci, &mut buf);
         let label = buf[0] as i64;
-        let area = tri_area(mesh, cell);
+        let area = polygon_area(mesh, &ids);
         *areas.entry(label).or_insert(0.0) += area;
     }
 
@@ -66,17 +69,23 @@ pub fn area_weighted_average_by_label(
         if ci >= lab_arr.num_tuples() {
             break;
         }
+        let Some(ids) = valid_cell_point_ids(cell, mesh.points.len()) else {
+            continue;
+        };
+        if ids.iter().any(|&pid| pid >= val_arr.num_tuples()) {
+            continue;
+        }
         lab_arr.tuple_as_f64(ci, &mut lb);
         let label = lb[0] as i64;
-        let area = tri_area(mesh, cell);
-        let avg_val: f64 = cell
+        let area = polygon_area(mesh, &ids);
+        let avg_val: f64 = ids
             .iter()
             .map(|&pid| {
-                val_arr.tuple_as_f64(pid as usize, &mut vb);
+                val_arr.tuple_as_f64(pid, &mut vb);
                 vb[0]
             })
             .sum::<f64>()
-            / cell.len() as f64;
+            / ids.len() as f64;
         let entry = weighted_sums.entry(label).or_insert((0.0, 0.0));
         entry.0 += avg_val * area;
         entry.1 += area;
@@ -101,19 +110,33 @@ pub fn area_weighted_average_by_label(
         )))
 }
 
-fn tri_area(mesh: &PolyData, cell: &[i64]) -> f64 {
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
+}
+
+fn polygon_area(mesh: &PolyData, cell: &[usize]) -> f64 {
     if cell.len() < 3 {
         return 0.0;
     }
-    let a = mesh.points.get(cell[0] as usize);
-    let b = mesh.points.get(cell[1] as usize);
-    let c = mesh.points.get(cell[2] as usize);
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    0.5 * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
-        + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
-        + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
-    .sqrt()
+
+    let p0 = mesh.points.get(cell[0]);
+    let mut area = 0.0;
+
+    for i in 1..(cell.len() - 1) {
+        let p1 = mesh.points.get(cell[i]);
+        let p2 = mesh.points.get(cell[i + 1]);
+        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+        area += 0.5
+            * ((e1[1] * e2[2] - e1[2] * e2[1]).powi(2)
+                + (e1[2] * e2[0] - e1[0] * e2[2]).powi(2)
+                + (e1[0] * e2[1] - e1[1] * e2[0]).powi(2))
+            .sqrt();
+    }
+
+    area
 }
 
 #[cfg(test)]
@@ -141,6 +164,23 @@ mod tests {
         let table = surface_area_by_label(&mesh, "r");
         assert_eq!(table.num_rows(), 2);
         assert!(table.column_by_name("AreaFraction").is_some());
+    }
+    #[test]
+    fn by_label_polygon_area_uses_full_fan() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 1.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 0.0]);
+        mesh.polys.push_cell(&[0, 1, 2, 3]);
+        mesh.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("r", vec![1.0], 1)));
+
+        let table = surface_area_by_label(&mesh, "r");
+        let area = table.column_by_name("Area").unwrap();
+        let mut buf = [0.0];
+        area.tuple_as_f64(0, &mut buf);
+        assert!((buf[0] - 1.0).abs() < 1e-10);
     }
     #[test]
     fn weighted_avg() {

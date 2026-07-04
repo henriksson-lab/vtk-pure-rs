@@ -8,7 +8,13 @@ pub fn area_by_label(mesh: &PolyData, label_array: &str) -> std::collections::Ha
     let mut buf = [0.0f64];
     let mut result = std::collections::HashMap::new();
     for (ci, cell) in mesh.polys.iter().enumerate() {
+        if ci >= arr.num_tuples() {
+            break;
+        }
         if cell.len() < 3 {
+            continue;
+        }
+        if !valid_point_cell(mesh, cell) {
             continue;
         }
         arr.tuple_as_f64(ci, &mut buf);
@@ -34,6 +40,9 @@ pub fn total_area(mesh: &PolyData) -> f64 {
     let mut total = 0.0;
     for cell in mesh.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if !valid_point_cell(mesh, cell) {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);
@@ -62,10 +71,18 @@ pub fn face_count_by_label(
     let mut buf = [0.0f64];
     let mut result = std::collections::HashMap::new();
     for ci in 0..mesh.polys.num_cells() {
+        if ci >= arr.num_tuples() {
+            break;
+        }
         arr.tuple_as_f64(ci, &mut buf);
         *result.entry(buf[0] as usize).or_insert(0) += 1;
     }
     result
+}
+
+fn valid_point_cell(mesh: &PolyData, cell: &[i64]) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < mesh.points.len())
 }
 #[cfg(test)]
 mod tests {

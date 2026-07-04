@@ -7,12 +7,17 @@ use std::collections::{HashMap, HashSet};
 /// plus all points referenced by those faces.
 pub fn extract_one_ring(input: &PolyData, vertex_id: usize) -> PolyData {
     let vid = vertex_id as i64;
+    let n_points = input.points.len();
     let mut pt_map: HashMap<i64, i64> = HashMap::new();
     let mut out_points = Points::<f64>::new();
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.iter().any(|&id| id == vid) {
+        if cell.iter().any(|&id| id == vid)
+            && cell
+                .iter()
+                .all(|&id| valid_point_index(id, n_points).is_some())
+        {
             let mapped: Vec<i64> = cell
                 .iter()
                 .map(|&id| {
@@ -35,12 +40,19 @@ pub fn extract_one_ring(input: &PolyData, vertex_id: usize) -> PolyData {
 
 /// Extract the N-ring neighborhood of a vertex.
 pub fn extract_n_ring(input: &PolyData, vertex_id: usize, n: usize) -> PolyData {
+    let n_points = input.points.len();
     let mut current_verts: HashSet<i64> = HashSet::new();
     current_verts.insert(vertex_id as i64);
 
     // Build adjacency
     let mut adj: HashMap<i64, Vec<i64>> = HashMap::new();
     for cell in input.polys.iter() {
+        if !cell
+            .iter()
+            .all(|&id| valid_point_index(id, n_points).is_some())
+        {
+            continue;
+        }
         for i in 0..cell.len() {
             let a = cell[i];
             let b = cell[(i + 1) % cell.len()];
@@ -67,7 +79,11 @@ pub fn extract_n_ring(input: &PolyData, vertex_id: usize, n: usize) -> PolyData 
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.iter().all(|&id| current_verts.contains(&id)) {
+        if cell.iter().all(|&id| current_verts.contains(&id))
+            && cell
+                .iter()
+                .all(|&id| valid_point_index(id, n_points).is_some())
+        {
             let mapped: Vec<i64> = cell
                 .iter()
                 .map(|&id| {
@@ -86,6 +102,10 @@ pub fn extract_n_ring(input: &PolyData, vertex_id: usize, n: usize) -> PolyData 
     pd.points = out_points;
     pd.polys = out_polys;
     pd
+}
+
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
 }
 
 #[cfg(test)]

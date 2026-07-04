@@ -8,7 +8,7 @@ pub fn split_tree(mesh: &PolyData, array_name: &str) -> PolyData {
 }
 fn build_merge_tree(mesh: &PolyData, array_name: &str, ascending: bool) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return PolyData::new(),
     };
     let n = mesh.points.len();
@@ -23,15 +23,17 @@ fn build_merge_tree(mesh: &PolyData, array_name: &str, ascending: bool) -> PolyD
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -41,12 +43,14 @@ fn build_merge_tree(mesh: &PolyData, array_name: &str, ascending: bool) -> PolyD
             vals[a]
                 .partial_cmp(&vals[b])
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(&b))
         });
     } else {
         sorted.sort_by(|&a, &b| {
             vals[b]
                 .partial_cmp(&vals[a])
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(&b))
         });
     }
     let mut parent: Vec<usize> = (0..n).collect();
@@ -104,6 +108,9 @@ fn union(p: &mut [usize], a: usize, b: usize) {
     if ra != rb {
         p[rb] = ra;
     }
+}
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 #[cfg(test)]
 mod tests {

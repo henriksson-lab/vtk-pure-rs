@@ -2,11 +2,19 @@
 
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    !cell.is_empty()
+        && cell
+            .iter()
+            .all(|&pid| pid >= 0 && (pid as usize) < n_points)
+}
+
 /// Segment a mesh by face normal clustering using k-means.
 ///
 /// Groups faces with similar normals into `k` segments.
 pub fn segment_by_normals(mesh: &PolyData, k: usize) -> PolyData {
     let n_cells = mesh.polys.num_cells();
+    let n_points = mesh.points.len();
     if n_cells == 0 || k == 0 {
         return mesh.clone();
     }
@@ -15,7 +23,7 @@ pub fn segment_by_normals(mesh: &PolyData, k: usize) -> PolyData {
         .polys
         .iter()
         .map(|cell| {
-            if cell.len() < 3 {
+            if cell.len() < 3 || !valid_cell(cell, n_points) {
                 return [0.0, 0.0, 1.0];
             }
             let a = mesh.points.get(cell[0] as usize);
@@ -96,17 +104,19 @@ pub fn segment_by_normals(mesh: &PolyData, k: usize) -> PolyData {
 /// are grouped together.
 pub fn segment_by_dihedral_angle(mesh: &PolyData, threshold_degrees: f64) -> PolyData {
     let n_cells = mesh.polys.num_cells();
+    let n_points = mesh.points.len();
     if n_cells == 0 {
         return mesh.clone();
     }
 
+    let threshold_degrees = threshold_degrees.clamp(0.0, 180.0);
     let cos_thresh = (threshold_degrees * std::f64::consts::PI / 180.0).cos();
     let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
 
     let normals: Vec<[f64; 3]> = all_cells
         .iter()
         .map(|cell| {
-            if cell.len() < 3 {
+            if cell.len() < 3 || !valid_cell(cell, n_points) {
                 return [0.0, 0.0, 1.0];
             }
             let a = mesh.points.get(cell[0] as usize);
@@ -133,6 +143,9 @@ pub fn segment_by_dihedral_angle(mesh: &PolyData, threshold_degrees: f64) -> Pol
         std::collections::HashMap::new();
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
+        if nc == 0 || !valid_cell(cell, n_points) {
+            continue;
+        }
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
@@ -153,6 +166,9 @@ pub fn segment_by_dihedral_angle(mesh: &PolyData, threshold_degrees: f64) -> Pol
         while let Some(ci) = queue.pop_front() {
             let cell = &all_cells[ci];
             let nc = cell.len();
+            if nc == 0 || !valid_cell(cell, n_points) {
+                continue;
+            }
             for i in 0..nc {
                 let a = cell[i] as usize;
                 let b = cell[(i + 1) % nc] as usize;

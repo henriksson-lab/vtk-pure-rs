@@ -76,12 +76,23 @@ fn signed_volume(mesh: &PolyData) -> f64 {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        vol += a[0] * (b[1] * c[2] - b[2] * c[1])
-            + b[0] * (c[1] * a[2] - c[2] * a[1])
-            + c[0] * (a[1] * b[2] - a[2] * b[1]);
+        let a_idx = cell[0] as usize;
+        if a_idx >= mesh.points.len() {
+            continue;
+        }
+        let a = mesh.points.get(a_idx);
+        for i in 1..cell.len() - 1 {
+            let b_idx = cell[i] as usize;
+            let c_idx = cell[i + 1] as usize;
+            if b_idx >= mesh.points.len() || c_idx >= mesh.points.len() {
+                continue;
+            }
+            let b = mesh.points.get(b_idx);
+            let c = mesh.points.get(c_idx);
+            vol += a[0] * (b[1] * c[2] - b[2] * c[1])
+                + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
+        }
     }
     vol / 6.0
 }

@@ -11,6 +11,9 @@ pub fn integrate_scalar(mesh: &PolyData, array_name: &str) -> f64 {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_point_scalar_cell(mesh, cell, arr.num_tuples()) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
@@ -41,6 +44,9 @@ pub fn integrate_constant(mesh: &PolyData) -> f64 {
         if cell.len() < 3 {
             continue;
         }
+        if !valid_point_cell(mesh, cell) {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
@@ -67,6 +73,9 @@ pub fn weighted_centroid(mesh: &PolyData, array_name: &str) -> [f64; 3] {
     let mut cy = 0.0;
     let mut cz = 0.0;
     let n = mesh.points.len();
+    if arr.num_tuples() < n {
+        return [0.0; 3];
+    }
     for i in 0..n {
         arr.tuple_as_f64(i, &mut buf);
         let w = buf[0].abs();
@@ -81,6 +90,16 @@ pub fn weighted_centroid(mesh: &PolyData, array_name: &str) -> [f64; 3] {
     } else {
         [0.0; 3]
     }
+}
+
+fn valid_point_cell(mesh: &PolyData, cell: &[i64]) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < mesh.points.len())
+}
+
+fn valid_point_scalar_cell(mesh: &PolyData, cell: &[i64], num_tuples: usize) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < mesh.points.len() && (id as usize) < num_tuples)
 }
 #[cfg(test)]
 mod tests {

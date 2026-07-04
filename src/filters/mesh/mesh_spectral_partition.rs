@@ -10,16 +10,7 @@ pub fn spectral_partition(mesh: &PolyData, iterations: usize) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-            }
+            add_neighbor_pair(&mut adj, n, cell[i], cell[(i + 1) % nc]);
         }
     }
     // Power iteration for Fiedler vector: find eigenvector of L orthogonal to constant vector
@@ -76,6 +67,23 @@ pub fn spectral_partition(mesh: &PolyData, iterations: usize) -> PolyData {
         )));
     result.point_data_mut().set_active_scalars("Partition");
     result
+}
+
+fn add_neighbor_pair(adj: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
+    if a_id < 0 || b_id < 0 {
+        return;
+    }
+    let a = a_id as usize;
+    let b = b_id as usize;
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
 }
 
 #[cfg(test)]

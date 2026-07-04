@@ -51,7 +51,7 @@ pub fn scalar_to_cool_warm(mesh: &PolyData, array_name: &str) -> PolyData {
 }
 pub fn scalar_to_gradient(mesh: &PolyData, array_name: &str, gradient: &[[f64; 3]]) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
@@ -72,7 +72,7 @@ pub fn scalar_to_gradient(mesh: &PolyData, array_name: &str, gradient: &[[f64; 3
     let colors: Vec<f64> = vals
         .iter()
         .flat_map(|&v| {
-            let t = (v - mn) / range * (ng - 1) as f64;
+            let t = ((v - mn) / range).clamp(0.0, 1.0) * (ng - 1) as f64;
             let i0 = (t.floor() as usize).min(ng - 2);
             let frac = t - i0 as f64;
             let c0 = gradient[i0];

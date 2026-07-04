@@ -23,6 +23,12 @@ pub fn shape_complexity(mesh: &PolyData) -> ShapeComplexity {
         if cell.len() < 3 {
             continue;
         }
+        if !cell
+            .iter()
+            .all(|&point_id| point_id >= 0 && (point_id as usize) < n)
+        {
+            continue;
+        }
         let a = mesh.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let b = mesh.points.get(cell[i] as usize);
@@ -62,14 +68,18 @@ pub fn shape_complexity(mesh: &PolyData) -> ShapeComplexity {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % nc];
+            if a_id >= 0 && b_id >= 0 {
+                let a = a_id as usize;
+                let b = b_id as usize;
+                if a < n && b < n {
+                    if !nb[a].contains(&b) {
+                        nb[a].push(b);
+                    }
+                    if !nb[b].contains(&a) {
+                        nb[b].push(a);
+                    }
                 }
             }
         }

@@ -7,16 +7,14 @@ pub fn compute_valence(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     let mut neighbors: Vec<std::collections::HashSet<usize>> =
         vec![std::collections::HashSet::new(); n];
+    for cell in mesh.lines.iter() {
+        add_open_cell_edges(cell, n, &mut neighbors);
+    }
     for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                neighbors[a].insert(b);
-                neighbors[b].insert(a);
-            }
-        }
+        add_closed_cell_edges(cell, n, &mut neighbors);
+    }
+    for cell in mesh.strips.iter() {
+        add_triangle_strip_edges(cell, n, &mut neighbors);
     }
     let data: Vec<f64> = (0..n).map(|i| neighbors[i].len() as f64).collect();
     let mut result = mesh.clone();
@@ -46,6 +44,47 @@ pub fn valence_stats(mesh: &PolyData) -> (usize, usize, f64, usize) {
     let mean = vals.iter().sum::<usize>() as f64 / n as f64;
     let irregular = vals.iter().filter(|&&v| v != 6).count(); // 6 is regular for triangulations
     (mn, mx, mean, irregular)
+}
+
+fn add_edge(a: i64, b: i64, n: usize, neighbors: &mut [std::collections::HashSet<usize>]) {
+    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
+        return;
+    };
+    if a >= n || b >= n || a == b {
+        return;
+    }
+    neighbors[a].insert(b);
+    neighbors[b].insert(a);
+}
+
+fn add_open_cell_edges(cell: &[i64], n: usize, neighbors: &mut [std::collections::HashSet<usize>]) {
+    for edge in cell.windows(2) {
+        add_edge(edge[0], edge[1], n, neighbors);
+    }
+}
+
+fn add_closed_cell_edges(
+    cell: &[i64],
+    n: usize,
+    neighbors: &mut [std::collections::HashSet<usize>],
+) {
+    if cell.len() < 3 {
+        return;
+    }
+    add_open_cell_edges(cell, n, neighbors);
+    add_edge(cell[cell.len() - 1], cell[0], n, neighbors);
+}
+
+fn add_triangle_strip_edges(
+    cell: &[i64],
+    n: usize,
+    neighbors: &mut [std::collections::HashSet<usize>],
+) {
+    for tri in cell.windows(3) {
+        add_edge(tri[0], tri[1], n, neighbors);
+        add_edge(tri[1], tri[2], n, neighbors);
+        add_edge(tri[2], tri[0], n, neighbors);
+    }
 }
 
 #[cfg(test)]

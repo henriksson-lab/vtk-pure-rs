@@ -14,7 +14,7 @@ pub fn ambient_occlusion(input: &PolyData, num_rays: usize) -> PolyData {
     // Compute vertex normals
     let mut vnormals = vec![[0.0f64; 3]; n];
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(cell, n) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -44,21 +44,7 @@ pub fn ambient_occlusion(input: &PolyData, num_rays: usize) -> PolyData {
     }
 
     // Collect triangles for ray testing
-    let tris: Vec<[[f64; 3]; 3]> = input
-        .polys
-        .iter()
-        .filter_map(|c| {
-            if c.len() >= 3 {
-                Some([
-                    input.points.get(c[0] as usize),
-                    input.points.get(c[1] as usize),
-                    input.points.get(c[2] as usize),
-                ])
-            } else {
-                None
-            }
-        })
-        .collect();
+    let tris = collect_triangles(input);
 
     let rays = num_rays.max(4);
     let mut visibility = vec![0.0f64; n];
@@ -98,7 +84,15 @@ pub fn ambient_occlusion(input: &PolyData, num_rays: usize) -> PolyData {
             ];
             let mut hit = false;
             for tri in &tris {
-                if ray_tri(offset, dir, tri) {
+                if tri.contains(&i) {
+                    continue;
+                }
+                let tri_pts = [
+                    input.points.get(tri[0]),
+                    input.points.get(tri[1]),
+                    input.points.get(tri[2]),
+                ];
+                if ray_tri(offset, dir, &tri_pts) {
                     hit = true;
                     break;
                 }
@@ -165,6 +159,23 @@ fn normalize(v: [f64; 3]) -> [f64; 3] {
     } else {
         [1.0, 0.0, 0.0]
     }
+}
+
+fn collect_triangles(input: &PolyData) -> Vec<[usize; 3]> {
+    let mut triangles = Vec::new();
+    for cell in input.polys.iter() {
+        if !valid_cell(cell, input.points.len()) {
+            continue;
+        }
+        for i in 1..cell.len() - 1 {
+            triangles.push([cell[0] as usize, cell[i] as usize, cell[i + 1] as usize]);
+        }
+    }
+    triangles
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]

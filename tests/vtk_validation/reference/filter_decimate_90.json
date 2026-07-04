@@ -9,6 +9,8 @@
     -0.4986238181591034,
     0.4986238181591034
   ],
+  "has_normals": true,
+  "num_normal_tuples": 1614,
   "target_reduction": 0.9,
   "input_cells": 32256
 }

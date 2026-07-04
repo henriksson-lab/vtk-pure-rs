@@ -4,9 +4,13 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_gradient_magnitude(mesh: &PolyData, scalar_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
+    if n == 0 {
+        return mesh.clone();
+    }
     let mut vals = vec![0.0f64; n];
     let mut buf = [0.0f64];
     for i in 0..n {
@@ -17,15 +21,17 @@ pub fn scalar_gradient_magnitude(mesh: &PolyData, scalar_name: &str) -> PolyData
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !adj[a].contains(&b) {
+                adj[a].push(b);
+            }
+            if !adj[b].contains(&a) {
+                adj[b].push(a);
             }
         }
     }
@@ -61,13 +67,22 @@ pub fn scalar_gradient_magnitude(mesh: &PolyData, scalar_name: &str) -> PolyData
             (gx * gx + gy * gy + gz * gz).sqrt()
         })
         .collect();
-    let out = format!("{}_gradmag", scalar_name);
     let mut result = mesh.clone();
     result
         .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(&out, grad, 1)));
-    result.point_data_mut().set_active_scalars(&out);
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "GradientMagnitude",
+            grad,
+            1,
+        )));
     result
+        .point_data_mut()
+        .set_active_scalars("GradientMagnitude");
+    result
+}
+
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 
 #[cfg(test)]
@@ -86,6 +101,6 @@ mod tests {
                 1,
             )));
         let r = scalar_gradient_magnitude(&mesh, "f");
-        assert!(r.point_data().get_array("f_gradmag").is_some());
+        assert!(r.point_data().get_array("GradientMagnitude").is_some());
     }
 }

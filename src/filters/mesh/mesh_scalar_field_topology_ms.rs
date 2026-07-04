@@ -2,12 +2,12 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn morse_smale_regions(mesh: &PolyData, array_name: &str) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == mesh.points.len() => a,
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..arr.num_tuples())
+    let vals: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
@@ -17,15 +17,17 @@ pub fn morse_smale_regions(mesh: &PolyData, array_name: &str) -> PolyData {
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
-                }
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], n) else {
+                continue;
+            };
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
             }
         }
     }
@@ -93,6 +95,9 @@ pub fn morse_smale_regions(mesh: &PolyData, array_name: &str) -> PolyData {
         )));
     r.point_data_mut().set_active_scalars("MSRegion");
     r
+}
+fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&idx| idx < num_points)
 }
 #[cfg(test)]
 mod tests {

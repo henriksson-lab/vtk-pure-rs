@@ -2,7 +2,7 @@
 
 use crate::data::{CellArray, Points, PolyData};
 
-/// Extract cells whose average point scalar is within [lo, hi].
+/// Extract cells whose point scalars are all within [lo, hi].
 pub fn select_cells_by_scalar_range(
     mesh: &PolyData,
     array_name: &str,
@@ -11,7 +11,7 @@ pub fn select_cells_by_scalar_range(
 ) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
-        _ => return mesh.clone(),
+        _ => return PolyData::new(),
     };
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..arr.num_tuples())
@@ -27,12 +27,16 @@ pub fn select_cells_by_scalar_range(
         if cell.is_empty() {
             continue;
         }
-        let avg: f64 = cell
+        if !cell
             .iter()
-            .map(|&v| vals.get(v as usize).copied().unwrap_or(0.0))
-            .sum::<f64>()
-            / cell.len() as f64;
-        if avg >= lo && avg <= hi {
+            .all(|&v| v >= 0 && (v as usize) < vals.len() && (v as usize) < mesh.points.len())
+        {
+            continue;
+        }
+        if cell
+            .iter()
+            .all(|&v| vals[v as usize] >= lo && vals[v as usize] <= hi)
+        {
             for &v in cell {
                 used[v as usize] = true;
             }
@@ -68,12 +72,12 @@ pub fn select_points_by_scalar_range(
 ) -> PolyData {
     let arr = match mesh.point_data().get_array(array_name) {
         Some(a) if a.num_components() == 1 => a,
-        _ => return mesh.clone(),
+        _ => return PolyData::new(),
     };
     let mut buf = [0.0f64];
     let mut pts = Points::<f64>::new();
     let mut verts = CellArray::new();
-    for i in 0..arr.num_tuples() {
+    for i in 0..arr.num_tuples().min(mesh.points.len()) {
         arr.tuple_as_f64(i, &mut buf);
         if buf[0] >= lo && buf[0] <= hi {
             let idx = pts.len();
@@ -110,7 +114,7 @@ mod tests {
                 1,
             )));
         let result = select_cells_by_scalar_range(&mesh, "s", 0.0, 5.0);
-        assert_eq!(result.polys.num_cells(), 1); // only first tri has avg <= 5
+        assert_eq!(result.polys.num_cells(), 1); // only first tri has all point scalars <= 5
     }
     #[test]
     fn test_select_points() {
@@ -126,5 +130,60 @@ mod tests {
             )));
         let result = select_points_by_scalar_range(&mesh, "s", 3.0, 7.0);
         assert_eq!(result.points.len(), 1);
+    }
+
+    #[test]
+    fn missing_scalar_returns_empty() {
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+
+        assert_eq!(
+            select_cells_by_scalar_range(&mesh, "missing", 0.0, 1.0)
+                .polys
+                .num_cells(),
+            0
+        );
+        assert_eq!(
+            select_points_by_scalar_range(&mesh, "missing", 0.0, 1.0)
+                .points
+                .len(),
+            0
+        );
+    }
+
+    #[test]
+    fn cells_with_missing_point_scalar_are_skipped() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![0.5, 0.5],
+                1,
+            )));
+
+        let result = select_cells_by_scalar_range(&mesh, "s", 0.0, 1.0);
+        assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn cell_requires_all_point_scalars_in_range() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![0.0, 0.5, 2.5],
+                1,
+            )));
+
+        let result = select_cells_by_scalar_range(&mesh, "s", 0.0, 1.0);
+        assert_eq!(result.polys.num_cells(), 0);
     }
 }

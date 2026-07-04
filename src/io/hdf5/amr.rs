@@ -7,7 +7,7 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 use crate::types::VtkError;
 use std::path::Path;
 
-use crate::types::AmrLevelInfo;
+use super::types::AmrLevelInfo;
 
 /// AMR dataset read from HDF5.
 #[derive(Debug)]

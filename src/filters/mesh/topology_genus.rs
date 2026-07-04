@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::data::PolyData;
 
@@ -14,9 +14,15 @@ pub struct TopologyResult {
     /// Euler characteristic: V - E + F.
     pub euler_characteristic: i64,
     /// Genus computed from Euler's formula for closed orientable surfaces:
-    /// V - E + F = 2(1 - g), so g = 1 - (V - E + F) / 2.
+    /// V - E + F = 2(c - g), so g = c - (V - E + F) / 2.
     /// Only meaningful for closed manifold surfaces.
     pub genus: i64,
+    /// Number of polygon-connected surface components.
+    pub components: usize,
+    /// Number of boundary edges.
+    pub boundary_edges: usize,
+    /// Number of non-manifold edges.
+    pub non_manifold_edges: usize,
 }
 
 /// Compute the genus of a mesh using Euler's formula.
@@ -28,23 +34,30 @@ pub struct TopologyResult {
 /// closed manifold surface (no boundary edges, no non-manifold edges).
 pub fn compute_genus(input: &PolyData) -> TopologyResult {
     let v: usize = input.points.len();
-    let f: usize = input.polys.num_cells();
+    let cells: Vec<Vec<i64>> = input
+        .polys
+        .iter()
+        .filter(|cell| is_valid_polygon(cell, v))
+        .map(|cell| cell.to_vec())
+        .collect();
+    let f: usize = cells.len();
 
     // Count unique edges
-    let mut edge_set: HashMap<(i64, i64), bool> = HashMap::new();
-    for cell in input.polys.iter() {
+    let mut edge_set: HashMap<(i64, i64), usize> = HashMap::new();
+    for cell in &cells {
         let n: usize = cell.len();
         for i in 0..n {
             let a: i64 = cell[i];
             let b: i64 = cell[(i + 1) % n];
             let key = if a < b { (a, b) } else { (b, a) };
-            edge_set.entry(key).or_insert(true);
+            *edge_set.entry(key).or_insert(0) += 1;
         }
     }
 
     let e: usize = edge_set.len();
     let chi: i64 = v as i64 - e as i64 + f as i64;
-    let g: i64 = 1 - chi / 2;
+    let components = count_components(&cells);
+    let g: i64 = components as i64 - chi / 2;
 
     TopologyResult {
         vertices: v,
@@ -52,7 +65,51 @@ pub fn compute_genus(input: &PolyData) -> TopologyResult {
         faces: f,
         euler_characteristic: chi,
         genus: g,
+        components,
+        boundary_edges: edge_set.values().filter(|&&count| count == 1).count(),
+        non_manifold_edges: edge_set.values().filter(|&&count| count > 2).count(),
     }
+}
+
+fn count_components(cells: &[Vec<i64>]) -> usize {
+    let mut point_cells: HashMap<i64, Vec<usize>> = HashMap::new();
+    for (cell_id, cell) in cells.iter().enumerate() {
+        for &point_id in cell {
+            point_cells.entry(point_id).or_default().push(cell_id);
+        }
+    }
+
+    let mut visited = vec![false; cells.len()];
+    let mut components = 0usize;
+    for start in 0..cells.len() {
+        if visited[start] {
+            continue;
+        }
+        components += 1;
+        let mut stack = vec![start];
+        while let Some(cell_id) = stack.pop() {
+            if visited[cell_id] {
+                continue;
+            }
+            visited[cell_id] = true;
+            let mut adjacent = HashSet::new();
+            for &point_id in &cells[cell_id] {
+                if let Some(ids) = point_cells.get(&point_id) {
+                    adjacent.extend(ids.iter().copied());
+                }
+            }
+            for next in adjacent {
+                if !visited[next] {
+                    stack.push(next);
+                }
+            }
+        }
+    }
+    components
+}
+
+fn is_valid_polygon(cell: &[i64], n_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 #[cfg(test)]

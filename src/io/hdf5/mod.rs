@@ -1,4 +1,3 @@
-#![allow(unexpected_cfgs)]
 #[cfg(feature = "amr")]
 pub mod amr;
 #[cfg(feature = "cgns")]

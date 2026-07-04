@@ -2,6 +2,9 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn voronoi_partition(mesh: &PolyData, seeds: &[[f64; 3]]) -> PolyData {
     let n = mesh.points.len();
+    if seeds.is_empty() {
+        return mesh.clone();
+    }
     let labels: Vec<f64> = (0..n)
         .map(|i| {
             let p = mesh.points.get(i);
@@ -28,7 +31,17 @@ pub fn voronoi_partition(mesh: &PolyData, seeds: &[[f64; 3]]) -> PolyData {
     r
 }
 pub fn voronoi_partition_by_vertices(mesh: &PolyData, seed_indices: &[usize]) -> PolyData {
-    let seeds: Vec<[f64; 3]> = seed_indices.iter().map(|&i| mesh.points.get(i)).collect();
+    let n = mesh.points.len();
+    let seeds: Vec<[f64; 3]> = seed_indices
+        .iter()
+        .filter_map(|&i| {
+            if i < n {
+                Some(mesh.points.get(i))
+            } else {
+                None
+            }
+        })
+        .collect();
     voronoi_partition(mesh, &seeds)
 }
 #[cfg(test)]

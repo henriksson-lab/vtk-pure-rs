@@ -11,6 +11,9 @@ pub fn smooth_scalar(
         _ => return mesh.clone(),
     };
     let n = mesh.points.len();
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let mut vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
@@ -59,6 +62,9 @@ pub fn smooth_scalar_preserve_range(
         Some(a) if a.num_components() == 1 => a,
         _ => return mesh.clone(),
     };
+    if arr.num_tuples() != mesh.points.len() {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let orig: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {

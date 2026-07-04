@@ -16,10 +16,10 @@ pub fn sdf_from_oriented_points(
         return ImageData::with_dimensions(dimensions[0], dimensions[1], dimensions[2]);
     }
 
-    let normals_arr = input.point_data().get_array("Normals");
-    let has_normals = normals_arr
-        .map(|a| a.num_components() == 3)
-        .unwrap_or(false);
+    let normals_arr = input
+        .point_data()
+        .get_array("Normals")
+        .filter(|a| a.num_components() == 3 && a.num_tuples() >= n);
 
     let bb = input.bounds();
     let origin = [bb.x_min - padding, bb.y_min - padding, bb.z_min - padding];
@@ -48,8 +48,7 @@ pub fn sdf_from_oriented_points(
                 ];
                 if let Some((idx, d2)) = tree.nearest(p) {
                     let d = d2.sqrt();
-                    let sign = if has_normals {
-                        let narr = normals_arr.unwrap();
+                    let sign = if let Some(narr) = normals_arr {
                         narr.tuple_as_f64(idx, &mut nbuf);
                         let dp = (p[0] - pts[idx][0]) * nbuf[0]
                             + (p[1] - pts[idx][1]) * nbuf[1]

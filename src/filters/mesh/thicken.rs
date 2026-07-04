@@ -1,4 +1,5 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::types::Scalar;
 
 /// Thicken a surface mesh into a solid by extruding along normals.
 ///
@@ -15,7 +16,7 @@ pub fn thicken(input: &PolyData, thickness: f64) -> PolyData {
     // Compute vertex normals
     let mut vnormals = vec![[0.0f64; 3]; n];
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3 || !valid_cell(cell, n) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -69,11 +70,16 @@ pub fn thicken(input: &PolyData, thickness: f64) -> PolyData {
 
     // Outer faces (same winding)
     for cell in input.polys.iter() {
-        out_polys.push_cell(cell);
+        if valid_cell(cell, n) {
+            out_polys.push_cell(cell);
+        }
     }
 
     // Inner faces (reversed winding)
     for cell in input.polys.iter() {
+        if !valid_cell(cell, n) {
+            continue;
+        }
         let mut rev: Vec<i64> = cell.iter().map(|&id| id + n as i64).collect();
         rev.reverse();
         out_polys.push_cell(&rev);
@@ -81,16 +87,22 @@ pub fn thicken(input: &PolyData, thickness: f64) -> PolyData {
 
     // Side faces at boundary edges
     let mut edge_count = std::collections::HashMap::new();
+    let mut oriented_edges = Vec::new();
     for cell in input.polys.iter() {
+        if !valid_cell(cell, n) {
+            continue;
+        }
         for i in 0..cell.len() {
             let a = cell[i];
             let b = cell[(i + 1) % cell.len()];
             let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0usize) += 1;
+            oriented_edges.push((a, b));
         }
     }
-    for (&(a, b), &count) in &edge_count {
-        if count == 1 {
+    for (a, b) in oriented_edges {
+        let key = if a < b { (a, b) } else { (b, a) };
+        if edge_count[&key] == 1 {
             // Boundary edge: create quad connecting outer and inner
             out_polys.push_cell(&[a, b, b + n as i64, a + n as i64]);
         }
@@ -99,7 +111,137 @@ pub fn thicken(input: &PolyData, thickness: f64) -> PolyData {
     let mut pd = PolyData::new();
     pd.points = out_pts;
     pd.polys = out_polys;
+    *pd.field_data_mut() = input.field_data().clone();
+    duplicate_point_data(input, &mut pd);
     pd
+}
+
+fn valid_cell(cell: &[i64], number_of_points: usize) -> bool {
+    cell.len() >= 3
+        && cell
+            .iter()
+            .all(|&id| id >= 0 && (id as usize) < number_of_points)
+}
+
+fn duplicate_point_data(input: &PolyData, output: &mut PolyData) {
+    let n = input.points.len();
+    let input_point_data = input.point_data();
+
+    let active_scalars = input_point_data
+        .scalars()
+        .map(|array| array.name().to_string());
+    let active_vectors = input_point_data
+        .vectors()
+        .map(|array| array.name().to_string());
+    let active_normals = input_point_data
+        .normals()
+        .map(|array| array.name().to_string());
+    let active_tcoords = input_point_data
+        .tcoords()
+        .map(|array| array.name().to_string());
+    let active_tensors = input_point_data
+        .tensors()
+        .map(|array| array.name().to_string());
+    let active_global_ids = input_point_data
+        .global_ids()
+        .map(|array| array.name().to_string());
+    let active_pedigree_ids = input_point_data
+        .pedigree_ids()
+        .map(|array| array.name().to_string());
+    let active_edge_flags = input_point_data
+        .edge_flags()
+        .map(|array| array.name().to_string());
+    let active_tangents = input_point_data
+        .tangents()
+        .map(|array| array.name().to_string());
+    let active_rational_weights = input_point_data
+        .rational_weights()
+        .map(|array| array.name().to_string());
+    let active_higher_order_degrees = input_point_data
+        .higher_order_degrees()
+        .map(|array| array.name().to_string());
+    let active_process_ids = input_point_data
+        .process_ids()
+        .map(|array| array.name().to_string());
+
+    for ai in 0..input_point_data.num_arrays() {
+        if let Some(array) = input_point_data.get_array_by_index(ai) {
+            if array.num_tuples() != n {
+                continue;
+            }
+            let point_ids: Vec<usize> = (0..n).chain(0..n).collect();
+            output
+                .point_data_mut()
+                .add_array(copy_array_tuples(array, &point_ids));
+        }
+    }
+
+    let output_point_data = output.point_data_mut();
+    if let Some(name) = active_scalars {
+        output_point_data.set_active_scalars(&name);
+    }
+    if let Some(name) = active_vectors {
+        output_point_data.set_active_vectors(&name);
+    }
+    if let Some(name) = active_normals {
+        output_point_data.set_active_normals(&name);
+    }
+    if let Some(name) = active_tcoords {
+        output_point_data.set_active_tcoords(&name);
+    }
+    if let Some(name) = active_tensors {
+        output_point_data.set_active_tensors(&name);
+    }
+    if let Some(name) = active_global_ids {
+        output_point_data.set_active_global_ids(&name);
+    }
+    if let Some(name) = active_pedigree_ids {
+        output_point_data.set_active_pedigree_ids(&name);
+    }
+    if let Some(name) = active_edge_flags {
+        output_point_data.set_active_edge_flags(&name);
+    }
+    if let Some(name) = active_tangents {
+        output_point_data.set_active_tangents(&name);
+    }
+    if let Some(name) = active_rational_weights {
+        output_point_data.set_active_rational_weights(&name);
+    }
+    if let Some(name) = active_higher_order_degrees {
+        output_point_data.set_active_higher_order_degrees(&name);
+    }
+    if let Some(name) = active_process_ids {
+        output_point_data.set_active_process_ids(&name);
+    }
+}
+
+fn copy_array_tuples(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
+    macro_rules! copy_typed {
+        ($arr:expr, $variant:path) => {{
+            $variant(copy_typed_array($arr, tuple_ids))
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(a) => copy_typed!(a, AnyDataArray::F32),
+        AnyDataArray::F64(a) => copy_typed!(a, AnyDataArray::F64),
+        AnyDataArray::I8(a) => copy_typed!(a, AnyDataArray::I8),
+        AnyDataArray::I16(a) => copy_typed!(a, AnyDataArray::I16),
+        AnyDataArray::I32(a) => copy_typed!(a, AnyDataArray::I32),
+        AnyDataArray::I64(a) => copy_typed!(a, AnyDataArray::I64),
+        AnyDataArray::U8(a) => copy_typed!(a, AnyDataArray::U8),
+        AnyDataArray::U16(a) => copy_typed!(a, AnyDataArray::U16),
+        AnyDataArray::U32(a) => copy_typed!(a, AnyDataArray::U32),
+        AnyDataArray::U64(a) => copy_typed!(a, AnyDataArray::U64),
+    }
+}
+
+fn copy_typed_array<T: Scalar>(array: &DataArray<T>, tuple_ids: &[usize]) -> DataArray<T> {
+    let mut output = DataArray::new(array.name(), array.num_components());
+    for &tuple_id in tuple_ids {
+        output.push_tuple(array.tuple(tuple_id));
+    }
+    output
 }
 
 #[cfg(test)]
@@ -150,5 +292,50 @@ mod tests {
         let pd = PolyData::new();
         let result = thicken(&pd, 1.0);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn preserves_field_data() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.5, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.field_data_mut()
+            .add_array(AnyDataArray::I32(DataArray::from_vec(
+                "source_id",
+                vec![42],
+                1,
+            )));
+
+        let result = thicken(&pd, 0.2);
+        assert!(result.field_data().get_array("source_id").is_some());
+    }
+
+    #[test]
+    fn skips_degenerate_polygon_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let result = thicken(&pd, 0.2);
+        assert!(result.polys.iter().all(|cell| cell.len() >= 3));
+    }
+
+    #[test]
+    fn side_faces_keep_boundary_edge_orientation() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[2, 1, 0]);
+
+        let result = thicken(&pd, 0.2);
+        assert_eq!(result.polys.cell(2), &[2, 1, 4, 5]);
+        assert_eq!(result.polys.cell(3), &[1, 0, 3, 4]);
+        assert_eq!(result.polys.cell(4), &[0, 2, 5, 3]);
     }
 }

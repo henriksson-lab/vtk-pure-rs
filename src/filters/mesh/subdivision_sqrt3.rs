@@ -9,15 +9,14 @@ use std::collections::HashMap;
 /// for some applications.
 pub fn subdivide_sqrt3(input: &PolyData) -> PolyData {
     let n = input.points.len();
-    let tris: Vec<[i64; 3]> = input
-        .polys
-        .iter()
-        .filter(|c| c.len() >= 3)
-        .map(|c| [c[0], c[1], c[2]])
-        .collect();
-
-    if tris.is_empty() {
-        return PolyData::new();
+    let mut tris = Vec::new();
+    let mut passthrough = Vec::new();
+    for cell in input.polys.iter() {
+        if cell.len() == 3 && valid_cell(cell, n) {
+            tris.push([cell[0], cell[1], cell[2]]);
+        } else {
+            passthrough.push(cell.to_vec());
+        }
     }
 
     let mut out_pts = Points::<f64>::new();
@@ -26,7 +25,6 @@ pub fn subdivide_sqrt3(input: &PolyData) -> PolyData {
     }
 
     // Insert centroids
-    let centroid_start = out_pts.len();
     let mut centroid_ids: Vec<i64> = Vec::with_capacity(tris.len());
     for tri in &tris {
         let v0 = input.points.get(tri[0] as usize);
@@ -53,6 +51,9 @@ pub fn subdivide_sqrt3(input: &PolyData) -> PolyData {
     }
 
     let mut out_polys = CellArray::new();
+    for cell in &passthrough {
+        out_polys.push_cell(cell);
+    }
 
     // For each original edge shared by two triangles, create 2 new triangles
     // connecting the centroids to the edge endpoints
@@ -73,6 +74,11 @@ pub fn subdivide_sqrt3(input: &PolyData) -> PolyData {
     pd.points = out_pts;
     pd.polys = out_polys;
     pd
+}
+
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| usize::try_from(id).ok().is_some_and(|id| id < n_points))
 }
 
 #[cfg(test)]
@@ -112,5 +118,33 @@ mod tests {
         let pd = PolyData::new();
         let result = subdivide_sqrt3(&pd);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn non_triangle_is_passed_through() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let result = subdivide_sqrt3(&pd);
+        assert_eq!(result.points.len(), 4);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.polys.iter().next().unwrap(), &[0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn invalid_triangle_is_passed_through() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 99]);
+
+        let result = subdivide_sqrt3(&pd);
+        assert_eq!(result.points.len(), 2);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.polys.iter().next().unwrap(), &[0, 1, 99]);
     }
 }

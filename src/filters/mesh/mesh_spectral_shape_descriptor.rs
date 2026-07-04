@@ -2,22 +2,27 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn shape_dna(mesh: &PolyData, num_eigenvalues: usize, iterations: usize) -> Vec<f64> {
     let n = mesh.points.len();
-    if n < 3 {
+    if n < 2 {
         return vec![];
     }
     let ne = num_eigenvalues.min(n).max(1);
+    let iters = iterations.max(1);
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !nb[a].contains(&b) {
-                    nb[a].push(b);
-                }
-                if !nb[b].contains(&a) {
-                    nb[b].push(a);
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % nc];
+            if a_id >= 0 && b_id >= 0 {
+                let a = a_id as usize;
+                let b = b_id as usize;
+                if a < n && b < n {
+                    if !nb[a].contains(&b) {
+                        nb[a].push(b);
+                    }
+                    if !nb[b].contains(&a) {
+                        nb[b].push(a);
+                    }
                 }
             }
         }
@@ -28,8 +33,7 @@ pub fn shape_dna(mesh: &PolyData, num_eigenvalues: usize, iterations: usize) -> 
         let mut v: Vec<f64> = (0..n)
             .map(|i| (i as f64 * 0.73 + ei as f64 * 1.37).sin())
             .collect();
-        let mut eigenvalue = 0.0;
-        for _ in 0..iterations {
+        for _ in 0..iters {
             let mut lv = vec![0.0f64; n];
             for i in 0..n {
                 if nb[i].is_empty() {
@@ -51,9 +55,16 @@ pub fn shape_dna(mesh: &PolyData, num_eigenvalues: usize, iterations: usize) -> 
                 }
             }
             let norm = lv.iter().map(|x| x * x).sum::<f64>().sqrt().max(1e-15);
-            eigenvalue = lv.iter().zip(v.iter()).map(|(l, vi)| l * vi).sum::<f64>();
             v = lv.iter().map(|x| x / norm).collect();
         }
+        let mut lv = vec![0.0f64; n];
+        for i in 0..n {
+            lv[i] = nb[i].len() as f64 * v[i];
+            for &j in &nb[i] {
+                lv[i] -= v[j];
+            }
+        }
+        let eigenvalue = lv.iter().zip(v.iter()).map(|(l, vi)| l * vi).sum::<f64>();
         eigenvalues.push(eigenvalue);
         eigvecs.push(v);
     }
@@ -61,7 +72,6 @@ pub fn shape_dna(mesh: &PolyData, num_eigenvalues: usize, iterations: usize) -> 
 }
 pub fn attach_shape_dna(mesh: &PolyData, num_eigenvalues: usize, iterations: usize) -> PolyData {
     let eigenvalues = shape_dna(mesh, num_eigenvalues, iterations);
-    let data: Vec<f64> = eigenvalues.iter().copied().collect();
     // Store as field data (one value per eigenvalue, not per vertex)
     // For simplicity, store first eigenvalue as uniform point scalar
     let n = mesh.points.len();
@@ -74,6 +84,7 @@ pub fn attach_shape_dna(mesh: &PolyData, num_eigenvalues: usize, iterations: usi
             uniform,
             1,
         )));
+    r.point_data_mut().set_active_scalars("ShapeDNA_0");
     r
 }
 pub fn shape_distance(dna_a: &[f64], dna_b: &[f64]) -> f64 {

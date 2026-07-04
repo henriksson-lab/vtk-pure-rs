@@ -25,6 +25,9 @@ pub fn orient(input: &PolyData) -> PolyData {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
         let n = end - start;
+        if n < 3 {
+            continue;
+        }
         for i in 0..n {
             let a = conn[start + i];
             let b = conn[start + if i + 1 < n { i + 1 } else { 0 }];
@@ -53,6 +56,10 @@ pub fn orient(input: &PolyData) -> PolyData {
         if state[start_ci] != 0 {
             continue;
         }
+        if (offsets[start_ci + 1] - offsets[start_ci]) < 3 {
+            state[start_ci] = 1;
+            continue;
+        }
         state[start_ci] = 1; // keep
         queue.push_back(start_ci);
 
@@ -61,6 +68,9 @@ pub fn orient(input: &PolyData) -> PolyData {
             let s = offsets[ci] as usize;
             let e = offsets[ci + 1] as usize;
             let n = e - s;
+            if n < 3 {
+                continue;
+            }
 
             for i in 0..n {
                 let a = conn[s + i];
@@ -163,6 +173,21 @@ mod tests {
         let edge_forward_in_c0 = has_directed_edge(c0, 1, 2);
         let edge_forward_in_c1 = has_directed_edge(c1, 1, 2);
         assert_ne!(edge_forward_in_c0, edge_forward_in_c1);
+    }
+
+    #[test]
+    fn preserves_degenerate_polygon_cells() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[]);
+        pd.polys.push_cell(&[0]);
+        pd.polys.push_cell(&[0, 1]);
+
+        let result = orient(&pd);
+        assert_eq!(result.polys.cell(0), &[]);
+        assert_eq!(result.polys.cell(1), &[0]);
+        assert_eq!(result.polys.cell(2), &[0, 1]);
     }
 
     fn has_directed_edge(cell: &[i64], a: i64, b: i64) -> bool {

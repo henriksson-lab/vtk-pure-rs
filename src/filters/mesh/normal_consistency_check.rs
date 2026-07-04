@@ -23,6 +23,9 @@ pub fn check_normal_consistency(input: &PolyData) -> ConsistencyResult {
 
     for (ci, cell) in input.polys.iter().enumerate() {
         let n: usize = cell.len();
+        if n < 2 {
+            continue;
+        }
         for i in 0..n {
             let u: i64 = cell[i];
             let v: i64 = cell[(i + 1) % n];
@@ -30,8 +33,6 @@ pub fn check_normal_consistency(input: &PolyData) -> ConsistencyResult {
         }
     }
 
-    // For each undirected edge {u,v}, check: if edge (u,v) has faces and edge (v,u) has faces,
-    // that is consistent. If edge (u,v) has >1 face (both use same direction), that is inconsistent.
     let mut inconsistent: usize = 0;
     let mut visited: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
 
@@ -43,15 +44,8 @@ pub fn check_normal_consistency(input: &PolyData) -> ConsistencyResult {
         let fwd: usize = edge_map.get(&(u, v)).map_or(0, |v| v.len());
         let rev: usize = edge_map.get(&(v, u)).map_or(0, |v| v.len());
 
-        // Consistent: exactly one face in each direction (fwd==1, rev==1)
-        // Boundary: only one direction has faces (fwd==1, rev==0 or vice versa) - ok
-        // Inconsistent: same direction has 2+ faces, or both directions have 2+ faces
-        if fwd >= 2 || rev >= 2 {
-            inconsistent += 1;
-        } else if fwd == 1 && rev == 1 {
-            // This is the consistent manifold case - fine
-        }
-        // fwd==1, rev==0 or fwd==0, rev==1 is a boundary edge - fine
+        inconsistent += fwd.saturating_sub(1) * fwd / 2;
+        inconsistent += rev.saturating_sub(1) * rev / 2;
     }
 
     ConsistencyResult {
@@ -70,6 +64,9 @@ pub fn add_consistency_cell_data(input: &PolyData) -> PolyData {
 
     for (ci, cell) in input.polys.iter().enumerate() {
         let n: usize = cell.len();
+        if n < 2 {
+            continue;
+        }
         for i in 0..n {
             let u: i64 = cell[i];
             let v: i64 = cell[(i + 1) % n];
@@ -80,12 +77,20 @@ pub fn add_consistency_cell_data(input: &PolyData) -> PolyData {
     let num_cells: usize = input.polys.num_cells();
     let mut consistent: Vec<f64> = vec![1.0; num_cells];
 
-    // For each directed edge, if the same direction is used by 2+ faces,
-    // mark those faces as inconsistent.
-    for ((_u, _v), cells) in &edge_map {
-        if cells.len() >= 2 {
-            for &ci in cells {
-                consistent[ci] = 0.0;
+    let mut visited: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+    for &(u, v) in edge_map.keys() {
+        let key = if u < v { (u, v) } else { (v, u) };
+        if !visited.insert(key) {
+            continue;
+        }
+        for cells in [edge_map.get(&(u, v)), edge_map.get(&(v, u))]
+            .into_iter()
+            .flatten()
+        {
+            if cells.len() >= 2 {
+                for &ci in cells {
+                    consistent[ci] = 0.0;
+                }
             }
         }
     }

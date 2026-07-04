@@ -1,11 +1,14 @@
 //! Histogram equalization of a scalar point data array.
 use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn histogram_equalize_scalar(mesh: &PolyData, array_name: &str, bins: usize) -> PolyData {
+    let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
-    let n = arr.num_tuples();
+    if n == 0 {
+        return mesh.clone();
+    }
     let bins = bins.max(2);
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)

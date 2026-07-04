@@ -4,8 +4,9 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_quantize(mesh: &PolyData, scalar_name: &str, n_levels: usize) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
     let nl = n_levels.max(2);
     let mut vals = Vec::with_capacity(n);
@@ -16,15 +17,18 @@ pub fn scalar_quantize(mesh: &PolyData, scalar_name: &str, n_levels: usize) -> P
     }
     let vmin = vals.iter().cloned().fold(f64::INFINITY, f64::min);
     let vmax = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let range = (vmax - vmin).max(1e-15);
-    let quantized: Vec<f64> = vals
-        .iter()
-        .map(|&v| {
-            let t = (v - vmin) / range;
-            let level = (t * nl as f64).floor().min((nl - 1) as f64);
-            vmin + (level + 0.5) * range / nl as f64
-        })
-        .collect();
+    let range = vmax - vmin;
+    let quantized: Vec<f64> = if range.abs() < 1e-15 {
+        vec![vmin; n]
+    } else {
+        vals.iter()
+            .map(|&v| {
+                let t = (v - vmin) / range;
+                let level = (t * nl as f64).floor().min((nl - 1) as f64);
+                vmin + (level + 0.5) * range / nl as f64
+            })
+            .collect()
+    };
     let out = format!("{}_quantized", scalar_name);
     let mut result = mesh.clone();
     result

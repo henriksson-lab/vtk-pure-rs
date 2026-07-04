@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, PolyData};
 
 /// Bilateral scalar smoothing: smooth a scalar field while preserving edges.
 ///
@@ -12,9 +12,17 @@ pub fn bilateral_scalar_smooth(
     iterations: usize,
 ) -> PolyData {
     let n = input.points.len();
+    if sigma_spatial <= 0.0
+        || sigma_value <= 0.0
+        || !sigma_spatial.is_finite()
+        || !sigma_value.is_finite()
+    {
+        return input.clone();
+    }
+
     let arr = match input.point_data().get_array(array_name) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
+        _ => return input.clone(),
     };
 
     let mut buf = [0.0f64];
@@ -27,9 +35,18 @@ pub fn bilateral_scalar_smooth(
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
+            if cell[i] < 0 || cell[(i + 1) % cell.len()] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -50,8 +67,8 @@ pub fn bilateral_scalar_smooth(
             }
             let p = input.points.get(i);
             let vi = values[i];
-            let mut sum = 0.0;
-            let mut sum_w = 0.0;
+            let mut sum = vi;
+            let mut sum_w = 1.0;
 
             for &j in &neighbors[i] {
                 let q = input.points.get(j);
@@ -70,7 +87,7 @@ pub fn bilateral_scalar_smooth(
     }
 
     let mut pd = input.clone();
-    let mut attrs = crate::data::DataSetAttributes::new();
+    let mut attrs = DataSetAttributes::new();
     for i in 0..input.point_data().num_arrays() {
         let a = input.point_data().get_array_by_index(i).unwrap();
         if a.name() == array_name {
@@ -83,8 +100,48 @@ pub fn bilateral_scalar_smooth(
             attrs.add_array(a.clone());
         }
     }
+    copy_active_attributes(input.point_data(), &mut attrs);
     *pd.point_data_mut() = attrs;
     pd
+}
+
+fn copy_active_attributes(source: &DataSetAttributes, target: &mut DataSetAttributes) {
+    if let Some(array) = source.scalars() {
+        target.set_active_scalars(array.name());
+    }
+    if let Some(array) = source.vectors() {
+        target.set_active_vectors(array.name());
+    }
+    if let Some(array) = source.normals() {
+        target.set_active_normals(array.name());
+    }
+    if let Some(array) = source.tcoords() {
+        target.set_active_tcoords(array.name());
+    }
+    if let Some(array) = source.tensors() {
+        target.set_active_tensors(array.name());
+    }
+    if let Some(array) = source.global_ids() {
+        target.set_active_global_ids(array.name());
+    }
+    if let Some(array) = source.pedigree_ids() {
+        target.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = source.edge_flags() {
+        target.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = source.tangents() {
+        target.set_active_tangents(array.name());
+    }
+    if let Some(array) = source.rational_weights() {
+        target.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = source.higher_order_degrees() {
+        target.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = source.process_ids() {
+        target.set_active_process_ids(array.name());
+    }
 }
 
 #[cfg(test)]
@@ -134,6 +191,47 @@ mod tests {
         assert!(buf[0] < 30.0);
         arr.tuple_as_f64(4, &mut buf);
         assert!(buf[0] > 70.0);
+    }
+
+    #[test]
+    fn includes_center_sample() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![0.0, 10.0],
+                1,
+            )));
+
+        let result = bilateral_scalar_smooth(&pd, "s", 10.0, 10.0, 1);
+        let arr = result.point_data().get_array("s").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert!(buf[0] > 0.0 && buf[0] < 10.0, "val={}", buf[0]);
+        arr.tuple_as_f64(1, &mut buf);
+        assert!(buf[0] > 0.0 && buf[0] < 10.0, "val={}", buf[0]);
+    }
+
+    #[test]
+    fn preserves_active_scalar_role() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "s",
+                vec![0.0, 10.0],
+                1,
+            )));
+        pd.point_data_mut().set_active_scalars("s");
+
+        let result = bilateral_scalar_smooth(&pd, "s", 10.0, 10.0, 1);
+
+        assert_eq!(result.point_data().scalars().unwrap().name(), "s");
     }
 
     #[test]

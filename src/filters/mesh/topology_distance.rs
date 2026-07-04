@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 use std::collections::VecDeque;
 
 /// Compute topological distance (hop count) from source vertices.
@@ -11,24 +11,12 @@ pub fn topological_distance(input: &PolyData, sources: &[usize]) -> PolyData {
         return input.clone();
     }
 
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !adj[a].contains(&b) {
-                adj[a].push(b);
-            }
-            if !adj[b].contains(&a) {
-                adj[b].push(a);
-            }
-        }
-    }
+    let adj = build_adjacency(input);
 
     let mut dist = vec![-1.0f64; n];
     let mut queue = VecDeque::new();
     for &s in sources {
-        if s < n {
+        if s < n && dist[s] < 0.0 {
             dist[s] = 0.0;
             queue.push_back(s);
         }
@@ -64,20 +52,7 @@ pub fn eccentricity(input: &PolyData, max_vertices: usize) -> PolyData {
         return input.clone();
     }
 
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); input.points.len()];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !adj[a].contains(&b) {
-                adj[a].push(b);
-            }
-            if !adj[b].contains(&a) {
-                adj[b].push(a);
-            }
-        }
-    }
-
+    let adj = build_adjacency(input);
     let total = input.points.len();
     let mut ecc = vec![0.0f64; total];
 
@@ -107,6 +82,77 @@ pub fn eccentricity(input: &PolyData, max_vertices: usize) -> PolyData {
             1,
         )));
     pd
+}
+
+fn build_adjacency(input: &PolyData) -> Vec<Vec<usize>> {
+    let n = input.points.len();
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+    add_closed_cell_edges(&input.polys, n, &mut adj);
+    add_open_cell_edges(&input.lines, n, &mut adj);
+    add_strip_edges(&input.strips, n, &mut adj);
+    adj
+}
+
+fn add_closed_cell_edges(cells: &CellArray, n_points: usize, adj: &mut [Vec<usize>]) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, n_points) else {
+            continue;
+        };
+        if indices.len() < 3 {
+            continue;
+        }
+        for i in 0..indices.len() {
+            add_edge(adj, indices[i], indices[(i + 1) % indices.len()]);
+        }
+    }
+}
+
+fn add_open_cell_edges(cells: &CellArray, n_points: usize, adj: &mut [Vec<usize>]) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, n_points) else {
+            continue;
+        };
+        for edge in indices.windows(2) {
+            add_edge(adj, edge[0], edge[1]);
+        }
+    }
+}
+
+fn add_strip_edges(cells: &CellArray, n_points: usize, adj: &mut [Vec<usize>]) {
+    for cell in cells.iter() {
+        let Some(indices) = valid_cell_indices(cell, n_points) else {
+            continue;
+        };
+        for tri in indices.windows(3) {
+            add_edge(adj, tri[0], tri[1]);
+            add_edge(adj, tri[1], tri[2]);
+            add_edge(adj, tri[2], tri[0]);
+        }
+    }
+}
+
+fn add_edge(adj: &mut [Vec<usize>], a: usize, b: usize) {
+    if a == b {
+        return;
+    }
+    if !adj[a].contains(&b) {
+        adj[a].push(b);
+    }
+    if !adj[b].contains(&a) {
+        adj[b].push(a);
+    }
+}
+
+fn valid_cell_indices(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| {
+            if id >= 0 && (id as usize) < n_points {
+                Some(id as usize)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -158,5 +204,41 @@ mod tests {
         let pd = PolyData::new();
         let result = topological_distance(&pd, &[0]);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn line_cells_are_open_paths() {
+        let mut pd = PolyData::new();
+        for i in 0..3 {
+            pd.points.push([i as f64, 0.0, 0.0]);
+        }
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let result = topological_distance(&pd, &[0]);
+        let arr = result
+            .point_data()
+            .get_array("TopologicalDistance")
+            .unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 2.0);
+    }
+
+    #[test]
+    fn triangle_strips_use_triangle_edges_not_closed_strip_loop() {
+        let mut pd = PolyData::new();
+        for i in 0..4 {
+            pd.points.push([i as f64, 0.0, 0.0]);
+        }
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let result = topological_distance(&pd, &[0]);
+        let arr = result
+            .point_data()
+            .get_array("TopologicalDistance")
+            .unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(3, &mut buf);
+        assert_eq!(buf[0], 2.0);
     }
 }

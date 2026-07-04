@@ -4,11 +4,11 @@ use crate::data::{Points, PolyData};
 
 /// Warp mesh vertices by a vector point data array.
 pub fn warp_by_vector(mesh: &PolyData, array_name: &str, scale: f64) -> PolyData {
+    let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 3 => a,
+        Some(a) if a.num_components() == 3 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
-    let n = mesh.points.len();
     let mut pts = Points::<f64>::new();
     let mut buf = [0.0f64; 3];
     for i in 0..n {
@@ -27,12 +27,12 @@ pub fn warp_by_vector(mesh: &PolyData, array_name: &str, scale: f64) -> PolyData
 
 /// Warp mesh vertices along their normals by a scalar array.
 pub fn warp_by_scalar(mesh: &PolyData, array_name: &str, scale: f64) -> PolyData {
+    let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
         _ => return mesh.clone(),
     };
-    let n = mesh.points.len();
-    let normals = compute_normals(mesh);
+    let normals = point_normals(mesh);
     let mut pts = Points::<f64>::new();
     let mut buf = [0.0f64];
     for i in 0..n {
@@ -64,37 +64,24 @@ pub fn warp_by_function(mesh: &PolyData, f: impl Fn([f64; 3]) -> [f64; 3]) -> Po
     result
 }
 
-fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
+fn point_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
     let n = mesh.points.len();
-    let mut nm = vec![[0.0; 3]; n];
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
+    if let Some(normals) = mesh
+        .point_data()
+        .normals()
+        .or_else(|| mesh.point_data().get_array("Normals"))
+        .filter(|a| a.num_components() == 3 && a.num_tuples() >= n)
+    {
+        let mut out = Vec::with_capacity(n);
+        let mut buf = [0.0f64; 3];
+        for i in 0..n {
+            normals.tuple_as_f64(i, &mut buf);
+            out.push(buf);
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
-        let fn_ = [
-            (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]),
-            (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]),
-            (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]),
-        ];
-        for &pid in cell {
-            let idx = pid as usize;
-            for c in 0..3 {
-                nm[idx][c] += fn_[c];
-            }
-        }
+        return out;
     }
-    for n in &mut nm {
-        let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-        if len > 1e-15 {
-            for c in 0..3 {
-                n[c] /= len;
-            }
-        }
-    }
-    nm
+
+    vec![[0.0, 0.0, 1.0]; n]
 }
 
 #[cfg(test)]
@@ -119,5 +106,46 @@ mod tests {
         let m = PolyData::from_points(vec![[1.0, 0.0, 0.0]]);
         let result = warp_by_function(&m, |p| [0.0, 0.0, p[0]]);
         assert!((result.points.get(0)[2] - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn scalar_warp_uses_active_normals() {
+        let mut m = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", vec![2.0], 1)));
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "n",
+                vec![1.0, 0.0, 0.0],
+                3,
+            )));
+        m.point_data_mut().set_active_normals("n");
+
+        let result = warp_by_scalar(&m, "s", 0.5);
+        assert_eq!(result.points.get(0), [1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn scalar_warp_defaults_to_z_normal() {
+        let mut m = PolyData::from_points(vec![[0.0, 0.0, 1.0]]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("s", vec![2.0], 1)));
+
+        let result = warp_by_scalar(&m, "s", 0.5);
+        assert_eq!(result.points.get(0), [0.0, 0.0, 2.0]);
+    }
+
+    #[test]
+    fn short_vector_array_returns_input_clone() {
+        let mut m = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "disp",
+                vec![0.0, 0.0, 1.0],
+                3,
+            )));
+
+        let result = warp_by_vector(&m, "disp", 1.0);
+        assert_eq!(result.points.get(1), [1.0, 0.0, 0.0]);
     }
 }

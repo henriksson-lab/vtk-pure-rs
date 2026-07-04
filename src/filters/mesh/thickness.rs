@@ -9,7 +9,12 @@ pub fn estimate_thickness(mesh: &PolyData) -> PolyData {
         return mesh.clone();
     }
     let normals = compute_normals(mesh);
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
+    let all_cells: Vec<Vec<i64>> = mesh
+        .polys
+        .iter()
+        .filter(|cell| valid_cell(cell, n))
+        .map(|c| c.to_vec())
+        .collect();
 
     let mut thickness = Vec::with_capacity(n);
     for i in 0..n {
@@ -25,11 +30,13 @@ pub fn estimate_thickness(mesh: &PolyData) -> PolyData {
                 continue;
             } // skip self
             let a = mesh.points.get(cell[0] as usize);
-            let b = mesh.points.get(cell[1] as usize);
-            let c = mesh.points.get(cell[2] as usize);
-            if let Some(t) = ray_tri(p, dir, a, b, c) {
-                if t > 0.01 && t < min_t {
-                    min_t = t;
+            for triangle_id in 1..cell.len() - 1 {
+                let b = mesh.points.get(cell[triangle_id] as usize);
+                let c = mesh.points.get(cell[triangle_id + 1] as usize);
+                if let Some(t) = ray_tri(p, dir, a, b, c) {
+                    if t > 0.01 && t < min_t {
+                        min_t = t;
+                    }
                 }
             }
         }
@@ -78,7 +85,7 @@ fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
     let n = mesh.points.len();
     let mut nm = vec![[0.0; 3]; n];
     for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
+        if cell.len() < 3 || !valid_cell(cell, n) {
             continue;
         }
         let a = mesh.points.get(cell[0] as usize);
@@ -105,6 +112,11 @@ fn compute_normals(mesh: &PolyData) -> Vec<[f64; 3]> {
         }
     }
     nm
+}
+
+fn valid_cell(cell: &[i64], number_of_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| id >= 0 && (id as usize) < number_of_points)
 }
 
 fn ray_tri(o: [f64; 3], d: [f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> Option<f64> {

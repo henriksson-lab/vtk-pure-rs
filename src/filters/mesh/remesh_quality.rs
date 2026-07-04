@@ -5,6 +5,10 @@ use crate::data::{CellArray, Points, PolyData};
 /// Remesh to achieve a target edge length by splitting long edges and
 /// collapsing short edges.
 pub fn remesh_to_target_length(mesh: &PolyData, target_length: f64, iterations: usize) -> PolyData {
+    if target_length <= 0.0 || iterations == 0 {
+        return mesh.clone();
+    }
+
     let mut pts: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
     let mut tris: Vec<[usize; 3]> = mesh
         .polys

@@ -1,6 +1,6 @@
 //! Extract mesh patches: connected subsets by region, boundary, or selection.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 
 /// Extract faces within a geodesic radius of a seed face.
 pub fn extract_face_patch(mesh: &PolyData, seed_face: usize, max_hops: usize) -> PolyData {
@@ -14,9 +14,16 @@ pub fn extract_face_patch(mesh: &PolyData, seed_face: usize, max_hops: usize) ->
         std::collections::HashMap::new();
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
             edge_adj.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -34,9 +41,16 @@ pub fn extract_face_patch(mesh: &PolyData, seed_face: usize, max_hops: usize) ->
         }
         let cell = &all_cells[ci];
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
             if let Some(nbs) = edge_adj.get(&(a.min(b), a.max(b))) {
                 for &ni in nbs {
                     if !visited[ni] {
@@ -91,9 +105,16 @@ pub fn extract_n_largest_components(mesh: &PolyData, n: usize) -> PolyData {
         std::collections::HashMap::new();
     for (ci, cell) in all_cells.iter().enumerate() {
         let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
+            let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                continue;
+            };
             edge_adj.entry((a.min(b), a.max(b))).or_default().push(ci);
         }
     }
@@ -113,9 +134,16 @@ pub fn extract_n_largest_components(mesh: &PolyData, n: usize) -> PolyData {
             count += 1;
             let cell = &all_cells[ci];
             let nc = cell.len();
+            if nc < 2 {
+                continue;
+            }
             for i in 0..nc {
-                let a = cell[i] as usize;
-                let b = cell[(i + 1) % nc] as usize;
+                let Some(a) = valid_point_id(cell[i], mesh.points.len()) else {
+                    continue;
+                };
+                let Some(b) = valid_point_id(cell[(i + 1) % nc], mesh.points.len()) else {
+                    continue;
+                };
                 if let Some(nbs) = edge_adj.get(&(a.min(b), a.max(b))) {
                     for &ni in nbs {
                         if labels[ni] == usize::MAX {
@@ -143,24 +171,145 @@ fn extract_cells(mesh: &PolyData, all_cells: &[Vec<i64>], selected: &[usize]) ->
     let mut pts = Points::<f64>::new();
     let mut polys = CellArray::new();
     let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut old_point_ids = Vec::new();
+    let mut kept_cell_ids = Vec::new();
+    let n_points = mesh.points.len();
     for &ci in selected {
         let cell = &all_cells[ci];
         let mut ids = Vec::new();
+        let mut valid_cell = true;
         for &pid in cell {
-            let old = pid as usize;
+            let Some(old) = valid_point_id(pid, n_points) else {
+                valid_cell = false;
+                break;
+            };
             let idx = *pt_map.entry(old).or_insert_with(|| {
                 let i = pts.len();
                 pts.push(mesh.points.get(old));
+                old_point_ids.push(old);
                 i
             });
             ids.push(idx as i64);
         }
-        polys.push_cell(&ids);
+        if valid_cell && ids.len() >= 3 {
+            polys.push_cell(&ids);
+            kept_cell_ids.push(ci);
+        }
     }
     let mut result = PolyData::new();
     result.points = pts;
     result.polys = polys;
+    copy_point_data(mesh, &mut result, &old_point_ids);
+    copy_cell_data(mesh, &mut result, &kept_cell_ids);
     result
+}
+
+fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
+fn copy_point_data(source: &PolyData, target: &mut PolyData, old_point_ids: &[usize]) {
+    let source_data = source.point_data();
+    let target_data = target.point_data_mut();
+    for i in 0..source_data.num_arrays() {
+        let Some(array) = source_data.get_array_by_index(i) else {
+            continue;
+        };
+        if let Some(subset) = subset_array(array, old_point_ids) {
+            let name = subset.name().to_string();
+            target_data.add_array(subset);
+            copy_active_attribute(source_data, target_data, &name);
+        }
+    }
+}
+
+fn copy_cell_data(source: &PolyData, target: &mut PolyData, selected: &[usize]) {
+    let source_data = source.cell_data();
+    let target_data = target.cell_data_mut();
+    for i in 0..source_data.num_arrays() {
+        let Some(array) = source_data.get_array_by_index(i) else {
+            continue;
+        };
+        if let Some(subset) = subset_array(array, selected) {
+            let name = subset.name().to_string();
+            target_data.add_array(subset);
+            copy_active_attribute(source_data, target_data, &name);
+        }
+    }
+}
+
+fn subset_array(array: &AnyDataArray, tuple_ids: &[usize]) -> Option<AnyDataArray> {
+    macro_rules! subset_variant {
+        ($variant:ident) => {{
+            let AnyDataArray::$variant(a) = array else {
+                unreachable!();
+            };
+            let nc = a.num_components();
+            let mut data = Vec::with_capacity(tuple_ids.len() * nc);
+            for &tuple_id in tuple_ids {
+                if tuple_id >= a.num_tuples() {
+                    return None;
+                }
+                data.extend_from_slice(a.tuple(tuple_id));
+            }
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                a.name(),
+                data,
+                nc,
+            )))
+        }};
+    }
+    match array {
+        AnyDataArray::F32(_) => subset_variant!(F32),
+        AnyDataArray::F64(_) => subset_variant!(F64),
+        AnyDataArray::I8(_) => subset_variant!(I8),
+        AnyDataArray::I16(_) => subset_variant!(I16),
+        AnyDataArray::I32(_) => subset_variant!(I32),
+        AnyDataArray::I64(_) => subset_variant!(I64),
+        AnyDataArray::U8(_) => subset_variant!(U8),
+        AnyDataArray::U16(_) => subset_variant!(U16),
+        AnyDataArray::U32(_) => subset_variant!(U32),
+        AnyDataArray::U64(_) => subset_variant!(U64),
+    }
+}
+
+fn copy_active_attribute(source: &DataSetAttributes, target: &mut DataSetAttributes, name: &str) {
+    if source.scalars().map(|a| a.name()) == Some(name) {
+        target.set_active_scalars(name);
+    }
+    if source.vectors().map(|a| a.name()) == Some(name) {
+        target.set_active_vectors(name);
+    }
+    if source.normals().map(|a| a.name()) == Some(name) {
+        target.set_active_normals(name);
+    }
+    if source.tcoords().map(|a| a.name()) == Some(name) {
+        target.set_active_tcoords(name);
+    }
+    if source.tensors().map(|a| a.name()) == Some(name) {
+        target.set_active_tensors(name);
+    }
+    if source.global_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_global_ids(name);
+    }
+    if source.pedigree_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_pedigree_ids(name);
+    }
+    if source.edge_flags().map(|a| a.name()) == Some(name) {
+        target.set_active_edge_flags(name);
+    }
+    if source.tangents().map(|a| a.name()) == Some(name) {
+        target.set_active_tangents(name);
+    }
+    if source.rational_weights().map(|a| a.name()) == Some(name) {
+        target.set_active_rational_weights(name);
+    }
+    if source.higher_order_degrees().map(|a| a.name()) == Some(name) {
+        target.set_active_higher_order_degrees(name);
+    }
+    if source.process_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_process_ids(name);
+    }
 }
 
 #[cfg(test)]
@@ -208,6 +357,10 @@ mod tests {
             )));
         let result = extract_by_cell_value(&mesh, "region", 1.0, 0.01);
         assert_eq!(result.polys.num_cells(), 1);
+        let arr = result.cell_data().get_array("region").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 1.0);
     }
     #[test]
     fn largest_components() {
@@ -228,5 +381,16 @@ mod tests {
         let result = extract_n_largest_components(&mesh, 1);
         // Largest component has 2 faces (sharing edge 0-1)
         assert!(result.polys.num_cells() >= 1);
+    }
+
+    #[test]
+    fn malformed_cells_do_not_panic() {
+        let mut mesh =
+            PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        mesh.polys.push_cell(&[0, -1, 99]);
+
+        let result = extract_face_patch(&mesh, 0, 1);
+        assert_eq!(result.points.len(), 0);
+        assert_eq!(result.polys.num_cells(), 0);
     }
 }

@@ -9,7 +9,7 @@ pub fn compute_signed_volume(input: &PolyData) -> f64 {
     let mut total: f64 = 0.0;
 
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(cell, input.points.len()) {
             continue;
         }
         let p0 = input.points.get(cell[0] as usize);
@@ -32,6 +32,10 @@ pub fn compute_signed_volume(input: &PolyData) -> f64 {
 /// Compute the absolute volume of a closed triangular mesh.
 pub fn compute_volume(input: &PolyData) -> f64 {
     compute_signed_volume(input).abs()
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]

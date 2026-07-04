@@ -27,8 +27,12 @@ pub fn paint_sphere_brush(
         let d2 =
             (p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2);
         if d2 <= r2 {
-            let falloff = 1.0 - (d2 / r2).sqrt();
-            data.push(old * (1.0 - blend * falloff) + value * blend * falloff);
+            if radius <= 0.0 {
+                data.push(old * (1.0 - blend) + value * blend);
+            } else {
+                let falloff = 1.0 - (d2 / r2).sqrt();
+                data.push(old * (1.0 - blend * falloff) + value * blend * falloff);
+            }
         } else {
             data.push(old);
         }
@@ -137,5 +141,17 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(0, &mut buf);
         assert_eq!(buf[0], 5.0);
+    }
+
+    #[test]
+    fn zero_radius_brush_paints_exact_center() {
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        let result = paint_sphere_brush(&mesh, "color", [0.0, 0.0, 0.0], 0.0, 3.0, 1.0);
+        let arr = result.point_data().get_array("color").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 3.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

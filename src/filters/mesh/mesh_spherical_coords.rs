@@ -32,7 +32,10 @@ pub fn spherical_coords(mesh: &PolyData) -> PolyData {
         } else {
             0.0
         };
-        let phi = dy.atan2(dx);
+        let mut phi = dy.atan2(dx);
+        if phi < 0.0 {
+            phi += 2.0 * std::f64::consts::PI;
+        }
         r_data.push(r);
         theta_data.push(theta);
         phi_data.push(phi);

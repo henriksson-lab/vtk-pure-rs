@@ -2,12 +2,12 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 pub fn scalar_clamp(mesh: &PolyData, scalar_name: &str, min_val: f64, max_val: f64) -> PolyData {
+    let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 => a,
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
         None => return mesh.clone(),
         _ => return mesh.clone(),
     };
-    let n = arr.num_tuples();
     let mut vals = Vec::with_capacity(n);
     let mut buf = [0.0f64];
     for i in 0..n {

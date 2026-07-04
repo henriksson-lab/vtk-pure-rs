@@ -10,6 +10,9 @@ pub fn transfer_scalars_nearest(
         _ => return target.clone(),
     };
     let sn = source.points.len();
+    if arr.num_tuples() != sn {
+        return target.clone();
+    }
     let tn = target.points.len();
     let mut buf = [0.0f64];
     let svals: Vec<f64> = (0..arr.num_tuples())
@@ -54,6 +57,9 @@ pub fn transfer_scalars_idw(
         _ => return target.clone(),
     };
     let sn = source.points.len();
+    if arr.num_tuples() != sn {
+        return target.clone();
+    }
     let tn = target.points.len();
     let mut buf = [0.0f64];
     let svals: Vec<f64> = (0..arr.num_tuples())

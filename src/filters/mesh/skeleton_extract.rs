@@ -27,6 +27,9 @@ pub fn extract_skeleton(input: &PolyData, iterations: usize, contraction_weight:
     let mut neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for cell in input.polys.iter() {
         let len: usize = cell.len();
+        if len < 2 || !valid_cell(cell, n) {
+            continue;
+        }
         for j in 0..len {
             let a: usize = cell[j] as usize;
             let b: usize = cell[(j + 1) % len] as usize;
@@ -37,6 +40,9 @@ pub fn extract_skeleton(input: &PolyData, iterations: usize, contraction_weight:
 
     // Also include edges from lines if present
     for cell in input.lines.iter() {
+        if !valid_cell(cell, n) {
+            continue;
+        }
         for j in 0..(cell.len().saturating_sub(1)) {
             let a: usize = cell[j] as usize;
             let b: usize = cell[j + 1] as usize;
@@ -84,6 +90,10 @@ pub fn extract_skeleton(input: &PolyData, iterations: usize, contraction_weight:
     }
 
     output
+}
+
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.iter().all(|&id| id >= 0 && (id as usize) < n_points)
 }
 
 /// Compute the total edge length of a PolyData mesh (sum of all polygon edge lengths).

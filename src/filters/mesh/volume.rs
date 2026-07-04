@@ -7,16 +7,16 @@ use crate::data::PolyData;
 pub fn signed_volume(input: &PolyData) -> f64 {
     let mut vol = 0.0;
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(cell, input.points.len()) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
         for i in 1..cell.len() - 1 {
             let v1 = input.points.get(cell[i] as usize);
             let v2 = input.points.get(cell[i + 1] as usize);
-            vol += v0[0] * (v1[1] * v2[2] - v2[1] * v1[2])
-                - v1[0] * (v0[1] * v2[2] - v2[1] * v0[2])
-                + v2[0] * (v0[1] * v1[2] - v1[1] * v0[2]);
+            vol += v0[0] * (v1[1] * v2[2] - v1[2] * v2[1])
+                + v0[1] * (v1[2] * v2[0] - v1[0] * v2[2])
+                + v0[2] * (v1[0] * v2[1] - v1[1] * v2[0]);
         }
     }
     vol / 6.0
@@ -26,7 +26,7 @@ pub fn signed_volume(input: &PolyData) -> f64 {
 pub fn surface_area(input: &PolyData) -> f64 {
     let mut area = 0.0;
     for cell in input.polys.iter() {
-        if cell.len() < 3 {
+        if !valid_cell(cell, input.points.len()) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -56,6 +56,10 @@ pub fn compactness(input: &PolyData) -> f64 {
     } else {
         0.0
     }
+}
+
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]

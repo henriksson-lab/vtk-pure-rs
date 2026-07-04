@@ -17,10 +17,11 @@ struct SsaoUniforms {
     intensity: f32,
     num_samples: f32,
     blur: f32,
+    _pad0: f32,
     texel_size: [f32; 2],
     near: f32,
     far: f32,
-    _padding: [f32; 2],
+    _pad1: [f32; 2],
     // 32 sample kernel positions (hemisphere)
     samples: [[f32; 4]; 32],
 }
@@ -278,10 +279,11 @@ impl SsaoPass {
             intensity: config.intensity,
             num_samples: config.num_samples as f32,
             blur: if config.blur { 1.0 } else { 0.0 },
+            _pad0: 0.0,
             texel_size: [1.0 / width as f32, 1.0 / height as f32],
             near,
             far,
-            _padding: [0.0; 2],
+            _pad1: [0.0; 2],
             samples,
         };
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));

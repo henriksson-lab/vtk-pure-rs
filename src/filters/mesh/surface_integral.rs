@@ -6,8 +6,8 @@ use crate::data::PolyData;
 /// Returns the total integral.
 pub fn surface_integral(input: &PolyData, array_name: &str) -> f64 {
     let arr = match input.point_data().get_array(array_name) {
-        Some(a) => a,
-        None => return 0.0,
+        Some(a) if a.num_components() == 1 => a,
+        _ => return 0.0,
     };
 
     let mut total = 0.0;
@@ -15,6 +15,11 @@ pub fn surface_integral(input: &PolyData, array_name: &str) -> f64 {
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
+            continue;
+        }
+        if !cell.iter().all(|&id| {
+            id >= 0 && (id as usize) < input.points.len() && (id as usize) < arr.num_tuples()
+        }) {
             continue;
         }
         let v0 = input.points.get(cell[0] as usize);
@@ -52,33 +57,40 @@ pub fn surface_flux(input: &PolyData, vector_name: &str) -> f64 {
         if cell.len() < 3 {
             continue;
         }
-        let v0 = input.points.get(cell[0] as usize);
-        let v1 = input.points.get(cell[1] as usize);
-        let v2 = input.points.get(cell[2] as usize);
-
-        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-        // Area-weighted normal (not normalized)
-        let n = [
-            e1[1] * e2[2] - e1[2] * e2[1],
-            e1[2] * e2[0] - e1[0] * e2[2],
-            e1[0] * e2[1] - e1[1] * e2[0],
-        ];
-
-        // Average vector over triangle
-        let mut avg = [0.0; 3];
-        for &id in &[cell[0], cell[1], cell[2]] {
-            arr.tuple_as_f64(id as usize, &mut buf);
-            avg[0] += buf[0];
-            avg[1] += buf[1];
-            avg[2] += buf[2];
+        if !cell.iter().all(|&id| {
+            id >= 0 && (id as usize) < input.points.len() && (id as usize) < arr.num_tuples()
+        }) {
+            continue;
         }
-        avg[0] /= 3.0;
-        avg[1] /= 3.0;
-        avg[2] /= 3.0;
+        let v0 = input.points.get(cell[0] as usize);
+        for i in 1..cell.len() - 1 {
+            let v1 = input.points.get(cell[i] as usize);
+            let v2 = input.points.get(cell[i + 1] as usize);
 
-        // Flux = (avg_vector · area_normal) * 0.5
-        total += 0.5 * (avg[0] * n[0] + avg[1] * n[1] + avg[2] * n[2]);
+            let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+            let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+            // Area-weighted normal (not normalized)
+            let n = [
+                e1[1] * e2[2] - e1[2] * e2[1],
+                e1[2] * e2[0] - e1[0] * e2[2],
+                e1[0] * e2[1] - e1[1] * e2[0],
+            ];
+
+            // Average vector over triangle
+            let mut avg = [0.0; 3];
+            for &id in &[cell[0], cell[i], cell[i + 1]] {
+                arr.tuple_as_f64(id as usize, &mut buf);
+                avg[0] += buf[0];
+                avg[1] += buf[1];
+                avg[2] += buf[2];
+            }
+            avg[0] /= 3.0;
+            avg[1] /= 3.0;
+            avg[2] /= 3.0;
+
+            // Flux = (avg_vector . area_normal) * 0.5
+            total += 0.5 * (avg[0] * n[0] + avg[1] * n[1] + avg[2] * n[2]);
+        }
     }
     total
 }
@@ -132,6 +144,25 @@ mod tests {
 
         let flux = surface_flux(&pd, "v");
         assert!((flux - 0.5).abs() < 1e-10); // area=0.5, normal=+Z, v·n=1
+    }
+
+    #[test]
+    fn flux_uses_full_polygon_fan() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "v",
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                3,
+            )));
+
+        let flux = surface_flux(&pd, "v");
+        assert!((flux - 1.0).abs() < 1e-10);
     }
 
     #[test]

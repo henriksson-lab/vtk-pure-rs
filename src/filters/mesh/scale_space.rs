@@ -13,8 +13,8 @@ pub fn difference_of_gaussians_mesh(
 ) -> PolyData {
     let n = input.points.len();
     let arr = match input.point_data().get_array(array_name) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
+        _ => return input.clone(),
     };
     if n == 0 {
         return input.clone();
@@ -22,9 +22,18 @@ pub fn difference_of_gaussians_mesh(
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
+            if cell[i] < 0 || cell[(i + 1) % cell.len()] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -87,9 +96,18 @@ pub fn detect_scale_space_features(
     let n = input.points.len();
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
+            if cell[i] < 0 || cell[(i + 1) % cell.len()] < 0 {
+                continue;
+            }
             let a = cell[i] as usize;
             let b = cell[(i + 1) % cell.len()] as usize;
+            if a >= n || b >= n {
+                continue;
+            }
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }

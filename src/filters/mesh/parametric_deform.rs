@@ -11,10 +11,16 @@ pub fn sine_deform(
     deform_axis: usize,
 ) -> PolyData {
     let n = mesh.points.len();
+    let axis = axis.min(2);
+    let deform_axis = deform_axis.min(2);
     let mut new_pts = Points::<f64>::new();
     for i in 0..n {
         let mut p = mesh.points.get(i);
-        let phase = 2.0 * std::f64::consts::PI * p[axis] / wavelength;
+        let phase = if wavelength.abs() <= 1e-15 {
+            0.0
+        } else {
+            2.0 * std::f64::consts::PI * p[axis] / wavelength
+        };
         p[deform_axis] += amplitude * phase.sin();
         new_pts.push(p);
     }
@@ -29,6 +35,7 @@ pub fn taper_deform(mesh: &PolyData, axis: usize, start_scale: f64, end_scale: f
     if n == 0 {
         return mesh.clone();
     }
+    let axis = axis.min(2);
 
     let mut min_v = f64::MAX;
     let mut max_v = f64::MIN;
@@ -126,5 +133,16 @@ mod tests {
             let r = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
             assert!(r > 0.5 && r <= 1.0, "r={r}");
         }
+    }
+
+    #[test]
+    fn clamps_deform_axes() {
+        let mesh = PolyData::from_points(vec![[1.0, 2.0, 3.0]]);
+
+        let sine = sine_deform(&mesh, 99, 1.0, 0.0, 99);
+        assert_eq!(sine.points.get(0), [1.0, 2.0, 3.0]);
+
+        let taper = taper_deform(&mesh, 99, 1.0, 2.0);
+        assert_eq!(taper.points.len(), 1);
     }
 }

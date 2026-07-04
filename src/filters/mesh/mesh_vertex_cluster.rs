@@ -28,23 +28,36 @@ pub fn vertex_cluster(mesh: &PolyData, grid_size: f64) -> PolyData {
     }
     let mut pts = Points::<f64>::new();
     let mut cluster_to_pt = std::collections::HashMap::new();
-    for (_, &(id, sum, count)) in &cell_map {
+    let mut clusters: Vec<(usize, [f64; 3], usize)> = cell_map.values().copied().collect();
+    clusters.sort_by_key(|&(id, _, _)| id);
+    for (id, sum, count) in clusters {
         let c = count as f64;
         cluster_to_pt.insert(id, pts.len());
         pts.push([sum[0] / c, sum[1] / c, sum[2] / c]);
     }
     let mut polys = CellArray::new();
     for cell in mesh.polys.iter() {
-        let mapped: Vec<i64> = cell
-            .iter()
-            .map(|&v| {
-                let cluster = vertex_to_cluster[v as usize];
-                *cluster_to_pt.get(&cluster).unwrap() as i64
-            })
-            .collect();
+        let mut mapped = Vec::with_capacity(cell.len());
+        let mut valid = true;
+        for &v in cell {
+            if v < 0 {
+                valid = false;
+                break;
+            }
+            let vi = v as usize;
+            if vi >= n {
+                valid = false;
+                break;
+            }
+            let cluster = vertex_to_cluster[vi];
+            mapped.push(*cluster_to_pt.get(&cluster).unwrap() as i64);
+        }
+        if !valid {
+            continue;
+        }
         // Skip degenerate cells
         let unique: std::collections::HashSet<i64> = mapped.iter().copied().collect();
-        if unique.len() >= 3 {
+        if unique.len() == mapped.len() && unique.len() >= 3 {
             polys.push_cell(&mapped);
         }
     }

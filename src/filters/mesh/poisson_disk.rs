@@ -1,4 +1,4 @@
-use crate::data::{CellArray, KdTree, Points, PolyData};
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, KdTree, Points, PolyData};
 
 /// Poisson-disk subsampling of a point set.
 ///
@@ -11,47 +11,128 @@ pub fn poisson_disk_sample(input: &PolyData, min_distance: f64) -> PolyData {
     }
 
     let pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
-    let d2 = min_distance * min_distance;
+    let mut selected: Vec<usize> = Vec::new();
+    let mut already_processed = vec![false; n];
+    let locator = KdTree::build(&pts);
 
-    let mut selected: Vec<[f64; 3]> = Vec::new();
-    let mut rejected = vec![false; n];
-
-    // Process in random-ish order (use point index shuffled by hash)
+    // Process in a shuffled candidate order, matching VTK's dart-throwing flow.
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by_key(|&i| {
-        let p = pts[i];
-        ((p[0] * 73856093.0) as i64 ^ (p[1] * 19349663.0) as i64 ^ (p[2] * 83492791.0) as i64)
-            .wrapping_abs()
-    });
-
-    for &idx in &order {
-        if rejected[idx] {
-            continue;
-        }
-        let p = pts[idx];
-
-        // Check against all selected points
-        let too_close = selected
-            .iter()
-            .any(|&s| (p[0] - s[0]).powi(2) + (p[1] - s[1]).powi(2) + (p[2] - s[2]).powi(2) < d2);
-
-        if !too_close {
-            selected.push(p);
-        }
+    let mut rng_state = 1u64;
+    for i in (1..n).rev() {
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let j = (rng_state >> 33) as usize % (i + 1);
+        order.swap(i, j);
     }
 
+    for &idx in &order {
+        if !already_processed[idx] {
+            selected.push(idx);
+            for (neighbor, _) in locator.find_within_radius(pts[idx], min_distance) {
+                already_processed[neighbor] = true;
+            }
+        }
+    }
+    selected.sort_unstable();
+
     let mut out_pts = Points::<f64>::new();
-    let mut out_verts = CellArray::new();
-    for p in &selected {
-        let idx = out_pts.len() as i64;
-        out_pts.push(*p);
-        out_verts.push_cell(&[idx]);
+    for &src_idx in &selected {
+        out_pts.push(pts[src_idx]);
     }
 
     let mut pd = PolyData::new();
     pd.points = out_pts;
-    pd.verts = out_verts;
+    copy_point_data(input, &mut pd, &selected);
     pd
+}
+
+fn copy_point_data(input: &PolyData, output: &mut PolyData, selected: &[usize]) {
+    for array in input.point_data().iter() {
+        if array.num_tuples() != input.points.len() {
+            continue;
+        }
+        let Some(subset) = subset_array(array, selected) else {
+            continue;
+        };
+        let name = subset.name().to_string();
+        output.point_data_mut().add_array(subset);
+        copy_active_attribute(input.point_data(), output.point_data_mut(), &name);
+    }
+}
+
+fn subset_array(array: &AnyDataArray, selected: &[usize]) -> Option<AnyDataArray> {
+    macro_rules! subset_variant {
+        ($variant:ident) => {{
+            let AnyDataArray::$variant(a) = array else {
+                unreachable!();
+            };
+            let nc = a.num_components();
+            let mut data = Vec::with_capacity(selected.len() * nc);
+            for &idx in selected {
+                if idx >= a.num_tuples() {
+                    return None;
+                }
+                data.extend_from_slice(a.tuple(idx));
+            }
+            Some(AnyDataArray::$variant(DataArray::from_vec(
+                a.name(),
+                data,
+                nc,
+            )))
+        }};
+    }
+    match array {
+        AnyDataArray::F32(_) => subset_variant!(F32),
+        AnyDataArray::F64(_) => subset_variant!(F64),
+        AnyDataArray::I8(_) => subset_variant!(I8),
+        AnyDataArray::I16(_) => subset_variant!(I16),
+        AnyDataArray::I32(_) => subset_variant!(I32),
+        AnyDataArray::I64(_) => subset_variant!(I64),
+        AnyDataArray::U8(_) => subset_variant!(U8),
+        AnyDataArray::U16(_) => subset_variant!(U16),
+        AnyDataArray::U32(_) => subset_variant!(U32),
+        AnyDataArray::U64(_) => subset_variant!(U64),
+    }
+}
+
+fn copy_active_attribute(source: &DataSetAttributes, target: &mut DataSetAttributes, name: &str) {
+    if source.scalars().map(|a| a.name()) == Some(name) {
+        target.set_active_scalars(name);
+    }
+    if source.vectors().map(|a| a.name()) == Some(name) {
+        target.set_active_vectors(name);
+    }
+    if source.normals().map(|a| a.name()) == Some(name) {
+        target.set_active_normals(name);
+    }
+    if source.tcoords().map(|a| a.name()) == Some(name) {
+        target.set_active_tcoords(name);
+    }
+    if source.tensors().map(|a| a.name()) == Some(name) {
+        target.set_active_tensors(name);
+    }
+    if source.global_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_global_ids(name);
+    }
+    if source.pedigree_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_pedigree_ids(name);
+    }
+    if source.edge_flags().map(|a| a.name()) == Some(name) {
+        target.set_active_edge_flags(name);
+    }
+    if source.tangents().map(|a| a.name()) == Some(name) {
+        target.set_active_tangents(name);
+    }
+    if source.rational_weights().map(|a| a.name()) == Some(name) {
+        target.set_active_rational_weights(name);
+    }
+    if source.higher_order_degrees().map(|a| a.name()) == Some(name) {
+        target.set_active_higher_order_degrees(name);
+    }
+    if source.process_ids().map(|a| a.name()) == Some(name) {
+        target.set_active_process_ids(name);
+    }
 }
 
 #[cfg(test)]
@@ -87,6 +168,7 @@ mod tests {
         pd.points.push([0.0, 0.0, 0.0]);
         let result = poisson_disk_sample(&pd, 1.0);
         assert_eq!(result.points.len(), 1);
+        assert_eq!(result.verts.num_cells(), 0);
     }
 
     #[test]
@@ -94,5 +176,17 @@ mod tests {
         let pd = PolyData::new();
         let result = poisson_disk_sample(&pd, 1.0);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn zero_radius_uses_locator_and_discards_duplicates() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+
+        let result = poisson_disk_sample(&pd, 0.0);
+
+        assert_eq!(result.points.len(), 2);
     }
 }

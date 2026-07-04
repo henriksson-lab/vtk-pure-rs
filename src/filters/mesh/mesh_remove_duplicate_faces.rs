@@ -1,5 +1,5 @@
 //! Remove duplicate faces (faces with same vertex set regardless of order).
-use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, PolyData};
 use crate::types::Scalar;
 
 pub fn remove_duplicate_faces(mesh: &PolyData) -> PolyData {
@@ -47,6 +47,7 @@ fn remap_cell_data(input: &PolyData, old_poly_ids: &[usize], output: &mut PolyDa
                 .add_array(remap_array(array, &old_cell_ids));
         }
     }
+    restore_active_attributes(output.cell_data_mut(), input.cell_data());
 }
 
 fn remap_array(array: &AnyDataArray, old_cell_ids: &[usize]) -> AnyDataArray {
@@ -76,6 +77,45 @@ fn remap_typed_array<T: Scalar>(array: &DataArray<T>, old_cell_ids: &[usize]) ->
         data.extend_from_slice(array.tuple(old_cell_id));
     }
     DataArray::from_vec(array.name(), data, array.num_components())
+}
+
+fn restore_active_attributes(output: &mut DataSetAttributes, input: &DataSetAttributes) {
+    if let Some(name) = input.scalars().map(|a| a.name()) {
+        output.set_active_scalars(name);
+    }
+    if let Some(name) = input.vectors().map(|a| a.name()) {
+        output.set_active_vectors(name);
+    }
+    if let Some(name) = input.normals().map(|a| a.name()) {
+        output.set_active_normals(name);
+    }
+    if let Some(name) = input.tcoords().map(|a| a.name()) {
+        output.set_active_tcoords(name);
+    }
+    if let Some(name) = input.tensors().map(|a| a.name()) {
+        output.set_active_tensors(name);
+    }
+    if let Some(name) = input.global_ids().map(|a| a.name()) {
+        output.set_active_global_ids(name);
+    }
+    if let Some(name) = input.pedigree_ids().map(|a| a.name()) {
+        output.set_active_pedigree_ids(name);
+    }
+    if let Some(name) = input.edge_flags().map(|a| a.name()) {
+        output.set_active_edge_flags(name);
+    }
+    if let Some(name) = input.tangents().map(|a| a.name()) {
+        output.set_active_tangents(name);
+    }
+    if let Some(name) = input.rational_weights().map(|a| a.name()) {
+        output.set_active_rational_weights(name);
+    }
+    if let Some(name) = input.higher_order_degrees().map(|a| a.name()) {
+        output.set_active_higher_order_degrees(name);
+    }
+    if let Some(name) = input.process_ids().map(|a| a.name()) {
+        output.set_active_process_ids(name);
+    }
 }
 
 #[cfg(test)]

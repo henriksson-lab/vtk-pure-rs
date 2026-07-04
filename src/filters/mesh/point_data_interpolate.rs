@@ -14,6 +14,9 @@ pub fn interpolate_nearest(input: &PolyData, target: &PolyData, array_name: &str
     let nc: usize = arr.num_components();
     let src_n: usize = input.points.len();
     let tgt_n: usize = target.points.len();
+    if src_n == 0 || arr.num_tuples() < src_n {
+        return target.clone();
+    }
 
     let mut out_data: Vec<f64> = Vec::with_capacity(tgt_n * nc);
     let mut buf: Vec<f64> = vec![0.0; nc];

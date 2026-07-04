@@ -9,6 +9,9 @@ pub fn scalar_to_vertex_color(mesh: &PolyData, scalar_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
+    if n != mesh.points.len() {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {
@@ -46,6 +49,9 @@ pub fn scalar_to_grayscale(mesh: &PolyData, scalar_name: &str) -> PolyData {
         _ => return mesh.clone(),
     };
     let n = arr.num_tuples();
+    if n != mesh.points.len() {
+        return mesh.clone();
+    }
     let mut buf = [0.0f64];
     let vals: Vec<f64> = (0..n)
         .map(|i| {

@@ -69,6 +69,9 @@ pub fn gradient_vector_field(mesh: &PolyData, scalar_array: &str) -> PolyData {
     };
     let n = mesh.points.len();
     let mut buf = [0.0f64];
+    if arr.num_tuples() < n {
+        return mesh.clone();
+    }
     let vals: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
@@ -81,7 +84,13 @@ pub fn gradient_vector_field(mesh: &PolyData, scalar_array: &str) -> PolyData {
         if cell.len() != 3 {
             continue;
         }
+        if cell[0] < 0 || cell[1] < 0 || cell[2] < 0 {
+            continue;
+        }
         let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+        if ids.iter().any(|&id| id >= n) {
+            continue;
+        }
         let p = [
             mesh.points.get(ids[0]),
             mesh.points.get(ids[1]),
@@ -100,20 +109,20 @@ pub fn gradient_vector_field(mesh: &PolyData, scalar_array: &str) -> PolyData {
         }
         let df1 = vals[ids[1]] - vals[ids[0]];
         let df2 = vals[ids[2]] - vals[ids[0]];
-        let pe2 = [
-            (nm[1] * e2[2] - nm[2] * e2[1]) / a2,
-            (nm[2] * e2[0] - nm[0] * e2[2]) / a2,
-            (nm[0] * e2[1] - nm[1] * e2[0]) / a2,
+        let e2_cross_nm = [
+            (e2[1] * nm[2] - e2[2] * nm[1]) / a2,
+            (e2[2] * nm[0] - e2[0] * nm[2]) / a2,
+            (e2[0] * nm[1] - e2[1] * nm[0]) / a2,
         ];
-        let pe1 = [
+        let nm_cross_e1 = [
             (nm[1] * e1[2] - nm[2] * e1[1]) / a2,
             (nm[2] * e1[0] - nm[0] * e1[2]) / a2,
             (nm[0] * e1[1] - nm[1] * e1[0]) / a2,
         ];
         let g = [
-            df1 * pe2[0] - df2 * pe1[0],
-            df1 * pe2[1] - df2 * pe1[1],
-            df1 * pe2[2] - df2 * pe1[2],
+            df1 * e2_cross_nm[0] + df2 * nm_cross_e1[0],
+            df1 * e2_cross_nm[1] + df2 * nm_cross_e1[1],
+            df1 * e2_cross_nm[2] + df2 * nm_cross_e1[2],
         ];
         for &vi in &ids {
             grad[vi][0] += g[0];
@@ -146,9 +155,16 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
         if cell.len() < 3 {
             continue;
         }
-        let a = mesh.points.get(cell[0] as usize);
-        let b = mesh.points.get(cell[1] as usize);
-        let c = mesh.points.get(cell[2] as usize);
+        if cell[0] < 0 || cell[1] < 0 || cell[2] < 0 {
+            continue;
+        }
+        let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+        if ids.iter().any(|&id| id >= n) {
+            continue;
+        }
+        let a = mesh.points.get(ids[0]);
+        let b = mesh.points.get(ids[1]);
+        let c = mesh.points.get(ids[2]);
         let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let fn_ = [
@@ -157,8 +173,8 @@ fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
             e1[0] * e2[1] - e1[1] * e2[0],
         ];
         for &v in cell {
-            let vi = v as usize;
-            if vi < n {
+            if v >= 0 && (v as usize) < n {
+                let vi = v as usize;
                 nm[vi][0] += fn_[0];
                 nm[vi][1] += fn_[1];
                 nm[vi][2] += fn_[2];

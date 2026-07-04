@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 /// Simplify mesh by removing vertices below a curvature threshold.
 ///
-/// Flat vertices (low Laplacian magnitude) are removed and their
-/// adjacent triangles are retriangulated. Preserves sharp features.
+/// Flat vertices (low Laplacian magnitude) are removed by discarding
+/// incident triangles and compacting the surviving points. Preserves sharp features.
 pub fn simplify_flat_vertices(input: &PolyData, curvature_threshold: f64) -> PolyData {
     let n = input.points.len();
     if n == 0 {
@@ -13,9 +13,16 @@ pub fn simplify_flat_vertices(input: &PolyData, curvature_threshold: f64) -> Pol
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % cell.len()], n) else {
+                continue;
+            };
             if !neighbors[a].contains(&b) {
                 neighbors[a].push(b);
             }
@@ -55,9 +62,16 @@ pub fn simplify_flat_vertices(input: &PolyData, curvature_threshold: f64) -> Pol
     // Keep all boundary vertices
     let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
     for cell in input.polys.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
         for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+            let Some(a) = valid_point_id(cell[i], n) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % cell.len()], n) else {
+                continue;
+            };
             let key = if a < b { (a, b) } else { (b, a) };
             *edge_count.entry(key).or_insert(0) += 1;
         }
@@ -75,13 +89,20 @@ pub fn simplify_flat_vertices(input: &PolyData, curvature_threshold: f64) -> Pol
     let mut out_polys = CellArray::new();
 
     for cell in input.polys.iter() {
-        if cell.iter().all(|&id| keep[id as usize]) {
+        if cell.len() < 3 {
+            continue;
+        }
+        if cell
+            .iter()
+            .all(|&id| valid_point_id(id, n).is_some_and(|pt_id| keep[pt_id]))
+        {
             let mapped: Vec<i64> = cell
                 .iter()
                 .map(|&id| {
-                    *pt_map.entry(id as usize).or_insert_with(|| {
+                    let pt_id = valid_point_id(id, n).expect("validated point id");
+                    *pt_map.entry(pt_id).or_insert_with(|| {
                         let idx = out_pts.len() as i64;
-                        out_pts.push(pts[id as usize]);
+                        out_pts.push(pts[pt_id]);
                         idx
                     })
                 })
@@ -94,6 +115,14 @@ pub fn simplify_flat_vertices(input: &PolyData, curvature_threshold: f64) -> Pol
     pd.points = out_pts;
     pd.polys = out_polys;
     pd
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

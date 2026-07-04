@@ -1,5 +1,8 @@
 //! Octree-based vertex clustering for LOD generation.
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
+use crate::types::Scalar;
+use std::collections::{HashMap, HashSet};
+
 pub fn octree_cluster(mesh: &PolyData, max_depth: usize) -> PolyData {
     let n = mesh.points.len();
     if n == 0 {
@@ -26,49 +29,222 @@ pub fn octree_cluster(mesh: &PolyData, max_depth: usize) -> PolyData {
         size[1] / cells_per_axis as f64,
         size[2] / cells_per_axis as f64,
     ];
-    let mut grid: std::collections::HashMap<(usize, usize, usize), ([f64; 3], usize)> =
-        std::collections::HashMap::new();
+    if !cs.iter().all(|value| value.is_finite() && *value > 0.0) {
+        return mesh.clone();
+    }
+    let mut grid: HashMap<(usize, usize, usize), usize> = HashMap::new();
+    let mut clusters: Vec<([f64; 3], usize)> = Vec::new();
+    let mut cluster_points: Vec<Vec<usize>> = Vec::new();
     let mut remap = vec![0usize; n];
     for i in 0..n {
         let p = mesh.points.get(i);
-        let gx = ((p[0] - mn[0]) / cs[0]).floor() as usize;
-        let gy = ((p[1] - mn[1]) / cs[1]).floor() as usize;
-        let gz = ((p[2] - mn[2]) / cs[2]).floor() as usize;
-        let e = grid.entry((gx, gy, gz)).or_insert(([0.0, 0.0, 0.0], 0));
-        e.0[0] += p[0];
-        e.0[1] += p[1];
-        e.0[2] += p[2];
-        e.1 += 1;
+        let key = octree_key(p, mn, cs, cells_per_axis);
+        let idx = *grid.entry(key).or_insert_with(|| {
+            let idx = clusters.len();
+            clusters.push(([0.0, 0.0, 0.0], 0));
+            cluster_points.push(Vec::new());
+            idx
+        });
+        clusters[idx].0[0] += p[0];
+        clusters[idx].0[1] += p[1];
+        clusters[idx].0[2] += p[2];
+        clusters[idx].1 += 1;
+        cluster_points[idx].push(i);
+        remap[i] = idx;
     }
     let mut pts = Points::<f64>::new();
-    let mut key_to_idx: std::collections::HashMap<(usize, usize, usize), usize> =
-        std::collections::HashMap::new();
-    for (&k, v) in &grid {
-        let c = v.1 as f64;
-        let idx = pts.len();
-        pts.push([v.0[0] / c, v.0[1] / c, v.0[2] / c]);
-        key_to_idx.insert(k, idx);
-    }
-    for i in 0..n {
-        let p = mesh.points.get(i);
-        let gx = ((p[0] - mn[0]) / cs[0]).floor() as usize;
-        let gy = ((p[1] - mn[1]) / cs[1]).floor() as usize;
-        let gz = ((p[2] - mn[2]) / cs[2]).floor() as usize;
-        remap[i] = key_to_idx[&(gx, gy, gz)];
-    }
-    let mut polys = CellArray::new();
-    for cell in mesh.polys.iter() {
-        let mapped: Vec<i64> = cell.iter().map(|&v| remap[v as usize] as i64).collect();
-        let unique: std::collections::HashSet<i64> = mapped.iter().copied().collect();
-        if unique.len() >= 3 {
-            polys.push_cell(&mapped);
-        }
+    for (sum, count) in clusters {
+        let c = count as f64;
+        pts.push([sum[0] / c, sum[1] / c, sum[2] / c]);
     }
     let mut r = PolyData::new();
     r.points = pts;
-    r.polys = polys;
+    let mut old_cell_ids = Vec::new();
+    let mut old_offset = 0usize;
+    r.verts = remap_cell_array(&mesh.verts, &remap, 1, old_offset, &mut old_cell_ids);
+    old_offset += mesh.verts.num_cells();
+    r.lines = remap_cell_array(&mesh.lines, &remap, 2, old_offset, &mut old_cell_ids);
+    old_offset += mesh.lines.num_cells();
+    r.polys = remap_cell_array(&mesh.polys, &remap, 3, old_offset, &mut old_cell_ids);
+    old_offset += mesh.polys.num_cells();
+    r.strips = remap_cell_array(&mesh.strips, &remap, 3, old_offset, &mut old_cell_ids);
+    remap_point_data(mesh, &cluster_points, &mut r);
+    remap_cell_data(mesh, &old_cell_ids, &mut r);
+    *r.field_data_mut() = mesh.field_data().clone();
     r
 }
+
+fn remap_cell_array(
+    cells: &CellArray,
+    remap: &[usize],
+    min_unique: usize,
+    old_offset: usize,
+    old_cell_ids: &mut Vec<usize>,
+) -> CellArray {
+    let mut out = CellArray::new();
+    for (cell_id, cell) in cells.iter().enumerate() {
+        let mut mapped = Vec::with_capacity(cell.len());
+        let mut valid = true;
+        for &point_id in cell {
+            if point_id < 0 || point_id as usize >= remap.len() {
+                valid = false;
+                break;
+            }
+            mapped.push(remap[point_id as usize] as i64);
+        }
+        if valid && mapped.iter().copied().collect::<HashSet<_>>().len() >= min_unique {
+            out.push_cell(&mapped);
+            old_cell_ids.push(old_offset + cell_id);
+        }
+    }
+    out
+}
+
+fn remap_point_data(input: &PolyData, clusters: &[Vec<usize>], output: &mut PolyData) {
+    for array in input.point_data().iter() {
+        if array.num_tuples() == input.points.len() {
+            output
+                .point_data_mut()
+                .add_array(average_cluster_array(array, clusters));
+        }
+    }
+    copy_active_attributes(input.point_data(), output.point_data_mut());
+}
+
+fn average_cluster_array(array: &AnyDataArray, clusters: &[Vec<usize>]) -> AnyDataArray {
+    macro_rules! average {
+        ($array:expr, $variant:ident) => {
+            AnyDataArray::$variant(average_typed_cluster_array($array, clusters))
+        };
+    }
+
+    match array {
+        AnyDataArray::F32(array) => average!(array, F32),
+        AnyDataArray::F64(array) => average!(array, F64),
+        AnyDataArray::I8(array) => average!(array, I8),
+        AnyDataArray::I16(array) => average!(array, I16),
+        AnyDataArray::I32(array) => average!(array, I32),
+        AnyDataArray::I64(array) => average!(array, I64),
+        AnyDataArray::U8(array) => average!(array, U8),
+        AnyDataArray::U16(array) => average!(array, U16),
+        AnyDataArray::U32(array) => average!(array, U32),
+        AnyDataArray::U64(array) => average!(array, U64),
+    }
+}
+
+fn average_typed_cluster_array<T: Scalar>(
+    array: &DataArray<T>,
+    clusters: &[Vec<usize>],
+) -> DataArray<T> {
+    let num_components = array.num_components();
+    let mut data = Vec::with_capacity(clusters.len() * num_components);
+    for points in clusters {
+        for component in 0..num_components {
+            let sum: f64 = points
+                .iter()
+                .map(|&point_id| array.tuple(point_id)[component].to_f64())
+                .sum();
+            data.push(T::from_f64(sum / points.len() as f64));
+        }
+    }
+    DataArray::from_vec(array.name(), data, num_components)
+}
+
+fn remap_cell_data(input: &PolyData, old_cell_ids: &[usize], output: &mut PolyData) {
+    for array in input.cell_data().iter() {
+        if array.num_tuples() == input.total_cells() {
+            output
+                .cell_data_mut()
+                .add_array(select_cell_tuples(array, old_cell_ids));
+        }
+    }
+    copy_active_attributes(input.cell_data(), output.cell_data_mut());
+}
+
+fn select_cell_tuples(array: &AnyDataArray, old_cell_ids: &[usize]) -> AnyDataArray {
+    macro_rules! select {
+        ($array:expr, $variant:ident) => {
+            AnyDataArray::$variant(select_typed_cell_tuples($array, old_cell_ids))
+        };
+    }
+
+    match array {
+        AnyDataArray::F32(array) => select!(array, F32),
+        AnyDataArray::F64(array) => select!(array, F64),
+        AnyDataArray::I8(array) => select!(array, I8),
+        AnyDataArray::I16(array) => select!(array, I16),
+        AnyDataArray::I32(array) => select!(array, I32),
+        AnyDataArray::I64(array) => select!(array, I64),
+        AnyDataArray::U8(array) => select!(array, U8),
+        AnyDataArray::U16(array) => select!(array, U16),
+        AnyDataArray::U32(array) => select!(array, U32),
+        AnyDataArray::U64(array) => select!(array, U64),
+    }
+}
+
+fn select_typed_cell_tuples<T: Scalar>(
+    array: &DataArray<T>,
+    old_cell_ids: &[usize],
+) -> DataArray<T> {
+    let mut data = Vec::with_capacity(old_cell_ids.len() * array.num_components());
+    for &old_cell_id in old_cell_ids {
+        data.extend_from_slice(array.tuple(old_cell_id));
+    }
+    DataArray::from_vec(array.name(), data, array.num_components())
+}
+
+fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(array) = input.scalars() {
+        output.set_active_scalars(array.name());
+    }
+    if let Some(array) = input.vectors() {
+        output.set_active_vectors(array.name());
+    }
+    if let Some(array) = input.normals() {
+        output.set_active_normals(array.name());
+    }
+    if let Some(array) = input.tcoords() {
+        output.set_active_tcoords(array.name());
+    }
+    if let Some(array) = input.tensors() {
+        output.set_active_tensors(array.name());
+    }
+    if let Some(array) = input.global_ids() {
+        output.set_active_global_ids(array.name());
+    }
+    if let Some(array) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = input.edge_flags() {
+        output.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = input.tangents() {
+        output.set_active_tangents(array.name());
+    }
+    if let Some(array) = input.rational_weights() {
+        output.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = input.process_ids() {
+        output.set_active_process_ids(array.name());
+    }
+}
+
+fn octree_key(
+    p: [f64; 3],
+    mn: [f64; 3],
+    cs: [f64; 3],
+    cells_per_axis: usize,
+) -> (usize, usize, usize) {
+    (
+        (((p[0] - mn[0]) / cs[0]).floor() as usize).min(cells_per_axis - 1),
+        (((p[1] - mn[1]) / cs[1]).floor() as usize).min(cells_per_axis - 1),
+        (((p[2] - mn[2]) / cs[2]).floor() as usize).min(cells_per_axis - 1),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +256,19 @@ mod tests {
         );
         let r = octree_cluster(&m, 2);
         assert!(r.points.len() <= 3);
+    }
+
+    #[test]
+    fn skips_invalid_and_degenerate_cells() {
+        let mut m = PolyData::new();
+        m.points.push([0.0, 0.0, 0.0]);
+        m.points.push([0.1, 0.0, 0.0]);
+        m.points.push([0.0, 0.1, 0.0]);
+        m.points.push([1.0, 0.0, 0.0]);
+        m.polys.push_cell(&[0, 1, 2]);
+        m.polys.push_cell(&[0, -1, 3]);
+
+        let r = octree_cluster(&m, 1);
+        assert_eq!(r.polys.num_cells(), 0);
     }
 }

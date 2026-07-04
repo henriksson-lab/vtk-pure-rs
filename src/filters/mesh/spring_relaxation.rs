@@ -1,4 +1,5 @@
 use crate::data::{Points, PolyData};
+use std::collections::HashSet;
 
 /// Spring-mass relaxation: treat edges as springs.
 ///
@@ -18,11 +19,14 @@ pub fn spring_relaxation(
     }
 
     let mut edges: Vec<(usize, usize, f64)> = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
+        let Some(ids) = valid_cell_point_ids(cell, n) else {
+            continue;
+        };
+        for i in 0..ids.len() {
+            let a = ids[i];
+            let b = ids[(i + 1) % ids.len()];
             let key = if a < b { (a, b) } else { (b, a) };
             if seen.insert(key) {
                 let pa = input.points.get(a);
@@ -83,6 +87,12 @@ pub fn spring_relaxation(
     pd
 }
 
+fn valid_cell_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
+    cell.iter()
+        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +126,18 @@ mod tests {
         let pd = PolyData::new();
         let result = spring_relaxation(&pd, 1.0, 0.1, 0.9, 10);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn invalid_cell_ids_are_ignored() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, -1, 1]);
+        pd.polys.push_cell(&[0, 2, 1]);
+
+        let result = spring_relaxation(&pd, 0.5, 0.1, 0.9, 1);
+        assert_eq!(result.points.get(0), [0.0, 0.0, 0.0]);
+        assert_eq!(result.points.get(1), [1.0, 0.0, 0.0]);
     }
 }

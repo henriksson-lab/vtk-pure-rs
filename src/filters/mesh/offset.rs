@@ -1,4 +1,4 @@
-use crate::data::{CellArray, DataArray, Points, PolyData};
+use crate::data::{DataArray, Points, PolyData};
 
 /// Offset a mesh surface by moving each vertex along its normal by a given distance.
 ///
@@ -18,20 +18,56 @@ pub fn offset_surface_simple(input: &PolyData, distance: f64) -> PolyData {
         if cell.len() < 3 {
             continue;
         }
+        if !cell.iter().all(|&id| valid_point_index(id, npts).is_some()) {
+            continue;
+        }
         let p0 = input.points.get(cell[0] as usize);
-        let p1 = input.points.get(cell[1] as usize);
-        let p2 = input.points.get(cell[2] as usize);
-        let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-        let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
-        let nx: f64 = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny: f64 = e1[2] * e2[0] - e1[0] * e2[2];
-        let nz: f64 = e1[0] * e2[1] - e1[1] * e2[0];
+        for i in 1..cell.len() - 1 {
+            let p1 = input.points.get(cell[i] as usize);
+            let p2 = input.points.get(cell[i + 1] as usize);
+            let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+            let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+            let nx: f64 = e1[1] * e2[2] - e1[2] * e2[1];
+            let ny: f64 = e1[2] * e2[0] - e1[0] * e2[2];
+            let nz: f64 = e1[0] * e2[1] - e1[1] * e2[0];
 
-        for &vid in cell.iter() {
-            let v: usize = vid as usize;
-            normals[v][0] += nx;
-            normals[v][1] += ny;
-            normals[v][2] += nz;
+            for &vid in &[cell[0], cell[i], cell[i + 1]] {
+                let v: usize = vid as usize;
+                normals[v][0] += nx;
+                normals[v][1] += ny;
+                normals[v][2] += nz;
+            }
+        }
+    }
+
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            if !tri.iter().all(|&id| valid_point_index(id, npts).is_some()) {
+                continue;
+            }
+            let p0 = input.points.get(tri[0] as usize);
+            let p1 = input.points.get(tri[1] as usize);
+            let p2 = input.points.get(tri[2] as usize);
+            let e1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+            let e2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+            let nx: f64 = e1[1] * e2[2] - e1[2] * e2[1];
+            let ny: f64 = e1[2] * e2[0] - e1[0] * e2[2];
+            let nz: f64 = e1[0] * e2[1] - e1[1] * e2[0];
+
+            for &vid in &tri {
+                let v: usize = vid as usize;
+                normals[v][0] += nx;
+                normals[v][1] += ny;
+                normals[v][2] += nz;
+            }
         }
     }
 
@@ -44,7 +80,7 @@ pub fn offset_surface_simple(input: &PolyData, distance: f64) -> PolyData {
         let (ux, uy, uz) = if len > 1e-15 {
             (n[0] / len, n[1] / len, n[2] / len)
         } else {
-            (0.0, 0.0, 1.0)
+            (0.0, 0.0, 0.0)
         };
         let p = input.points.get(i);
         out_points.push([
@@ -55,20 +91,21 @@ pub fn offset_surface_simple(input: &PolyData, distance: f64) -> PolyData {
         normal_arr.push_tuple(&[ux, uy, uz]);
     }
 
-    let mut output = PolyData::new();
+    let mut output = input.clone();
     output.points = out_points;
-    output.polys = input.polys.clone();
-    output.verts = input.verts.clone();
-    output.lines = input.lines.clone();
-    output.strips = input.strips.clone();
     output.point_data_mut().add_array(normal_arr.into());
     output.point_data_mut().set_active_normals("Normals");
     output
 }
 
+fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(id).ok().filter(|&id| id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::CellArray;
 
     fn make_triangle() -> PolyData {
         let mut points: Points<f64> = Points::new();
@@ -111,5 +148,15 @@ mod tests {
         let result = offset_surface_simple(&tri, 1.0);
         assert_eq!(result.polys.num_cells(), 1);
         assert_eq!(result.points.len(), 3);
+    }
+
+    #[test]
+    fn isolated_point_does_not_move() {
+        let mut pd = PolyData::new();
+        pd.points.push([1.0, 2.0, 3.0]);
+
+        let result = offset_surface_simple(&pd, 1.0);
+
+        assert_eq!(result.points.get(0), [1.0, 2.0, 3.0]);
     }
 }

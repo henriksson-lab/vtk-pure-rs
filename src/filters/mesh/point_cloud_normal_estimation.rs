@@ -80,6 +80,7 @@ pub fn estimate_point_cloud_normals(input: &PolyData, k_neighbors: usize) -> Pol
             normal_data,
             3,
         )));
+    pd.point_data_mut().set_active_normals("Normals");
     pd
 }
 

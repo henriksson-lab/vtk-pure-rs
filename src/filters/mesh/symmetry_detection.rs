@@ -12,7 +12,8 @@ pub struct SymmetryPlane {
 
 /// Detect the best reflection symmetry plane for a mesh.
 ///
-/// Tests candidate planes through the centroid aligned with principal axes.
+/// Tests candidate planes through the centroid aligned with coordinate and
+/// diagonal axes.
 pub fn detect_symmetry_plane(mesh: &PolyData) -> Option<SymmetryPlane> {
     let n = mesh.points.len();
     if n < 3 {
@@ -69,6 +70,18 @@ pub fn symmetry_score(pts: &[[f64; 3]], plane_point: [f64; 3], plane_normal: [f6
     if n < 2 {
         return 0.0;
     }
+    let len = (plane_normal[0] * plane_normal[0]
+        + plane_normal[1] * plane_normal[1]
+        + plane_normal[2] * plane_normal[2])
+        .sqrt();
+    if len < 1e-15 {
+        return 0.0;
+    }
+    let plane_normal = [
+        plane_normal[0] / len,
+        plane_normal[1] / len,
+        plane_normal[2] / len,
+    ];
 
     // Reflect all points across the plane
     let reflected: Vec<[f64; 3]> = pts
@@ -97,17 +110,20 @@ pub fn symmetry_score(pts: &[[f64; 3]], plane_point: [f64; 3], plane_normal: [f6
     }
     let mean_dist = total_dist / n as f64;
 
-    // Compute mesh diameter for normalization
-    let mut max_d = 0.0f64;
-    for i in 0..n.min(50) {
-        for j in i + 1..n.min(50) {
-            let d = (pts[i][0] - pts[j][0]).powi(2)
-                + (pts[i][1] - pts[j][1]).powi(2)
-                + (pts[i][2] - pts[j][2]).powi(2);
-            max_d = max_d.max(d);
+    // Compute mesh diameter for normalization from the bounding box diagonal.
+    let mut min_pt = pts[0];
+    let mut max_pt = pts[0];
+    for p in &pts[1..] {
+        for j in 0..3 {
+            min_pt[j] = min_pt[j].min(p[j]);
+            max_pt[j] = max_pt[j].max(p[j]);
         }
     }
-    let diameter = max_d.sqrt().max(1e-15);
+    let diameter = ((max_pt[0] - min_pt[0]).powi(2)
+        + (max_pt[1] - min_pt[1]).powi(2)
+        + (max_pt[2] - min_pt[2]).powi(2))
+    .sqrt()
+    .max(1e-15);
 
     (1.0 - mean_dist / diameter).max(0.0)
 }
@@ -120,6 +136,18 @@ pub fn visualize_symmetry(
     plane_normal: [f64; 3],
 ) -> PolyData {
     let n = mesh.points.len();
+    let len = (plane_normal[0] * plane_normal[0]
+        + plane_normal[1] * plane_normal[1]
+        + plane_normal[2] * plane_normal[2])
+        .sqrt();
+    if len < 1e-15 {
+        return mesh.clone();
+    }
+    let plane_normal = [
+        plane_normal[0] / len,
+        plane_normal[1] / len,
+        plane_normal[2] / len,
+    ];
     let pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
 
     let reflected: Vec<[f64; 3]> = pts

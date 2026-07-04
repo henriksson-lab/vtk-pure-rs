@@ -32,13 +32,41 @@ pub fn merge_close_vertices(mesh: &PolyData, tolerance: f64) -> PolyData {
     result.points = pts;
     let mut kept_cell_ids = Vec::new();
     let mut cell_offset = 0usize;
-    result.verts = remap_cell_array(&mesh.verts, &map, n, 1, cell_offset, &mut kept_cell_ids);
+    result.verts = remap_cell_array(
+        &mesh.verts,
+        &map,
+        n,
+        CellKind::Verts,
+        cell_offset,
+        &mut kept_cell_ids,
+    );
     cell_offset += mesh.verts.num_cells();
-    result.lines = remap_cell_array(&mesh.lines, &map, n, 2, cell_offset, &mut kept_cell_ids);
+    result.lines = remap_cell_array(
+        &mesh.lines,
+        &map,
+        n,
+        CellKind::Lines,
+        cell_offset,
+        &mut kept_cell_ids,
+    );
     cell_offset += mesh.lines.num_cells();
-    result.polys = remap_cell_array(&mesh.polys, &map, n, 3, cell_offset, &mut kept_cell_ids);
+    result.polys = remap_cell_array(
+        &mesh.polys,
+        &map,
+        n,
+        CellKind::Polys,
+        cell_offset,
+        &mut kept_cell_ids,
+    );
     cell_offset += mesh.polys.num_cells();
-    result.strips = remap_cell_array(&mesh.strips, &map, n, 3, cell_offset, &mut kept_cell_ids);
+    result.strips = remap_cell_array(
+        &mesh.strips,
+        &map,
+        n,
+        CellKind::Strips,
+        cell_offset,
+        &mut kept_cell_ids,
+    );
     copy_point_data(
         mesh.point_data(),
         result.point_data_mut(),
@@ -55,11 +83,19 @@ pub fn merge_close_vertices(mesh: &PolyData, tolerance: f64) -> PolyData {
     result
 }
 
+#[derive(Clone, Copy)]
+enum CellKind {
+    Verts,
+    Lines,
+    Polys,
+    Strips,
+}
+
 fn remap_cell_array(
     cells: &CellArray,
     point_map: &[usize],
     num_input_points: usize,
-    min_unique: usize,
+    kind: CellKind,
     old_cell_offset: usize,
     old_cell_ids: &mut Vec<usize>,
 ) -> CellArray {
@@ -77,13 +113,40 @@ fn remap_cell_array(
         let Some(mapped) = mapped else {
             continue;
         };
-        let unique: std::collections::HashSet<i64> = mapped.iter().copied().collect();
-        if unique.len() >= min_unique {
+        if valid_mapped_cell(&mapped, kind) {
             out.push_cell(&mapped);
             old_cell_ids.push(old_cell_offset + cell_id);
         }
     }
     out
+}
+
+fn valid_mapped_cell(cell: &[i64], kind: CellKind) -> bool {
+    match kind {
+        CellKind::Verts => !cell.is_empty(),
+        CellKind::Lines => {
+            cell.len() >= 2
+                && cell.windows(2).all(|edge| edge[0] != edge[1])
+                && has_at_least_unique_points(cell, 2)
+        }
+        CellKind::Polys => {
+            cell.len() >= 3
+                && has_at_least_unique_points(cell, 3)
+                && cell.windows(2).all(|edge| edge[0] != edge[1])
+                && cell.first() != cell.last()
+        }
+        CellKind::Strips => {
+            cell.len() >= 3
+                && cell
+                    .windows(3)
+                    .all(|tri| tri[0] != tri[1] && tri[1] != tri[2] && tri[2] != tri[0])
+        }
+    }
+}
+
+fn has_at_least_unique_points(cell: &[i64], min_unique: usize) -> bool {
+    let unique: std::collections::HashSet<i64> = cell.iter().copied().collect();
+    unique.len() >= min_unique
 }
 
 fn copy_point_data(
@@ -203,5 +266,34 @@ mod tests {
         mesh.polys = polys;
         let r = merge_close_vertices(&mesh, 0.01);
         assert_eq!(r.points.len(), 3); // 0 and 1 merged
+    }
+
+    #[test]
+    fn drops_polys_degenerated_by_vertex_merge() {
+        let mut mesh = PolyData::new();
+        let mut pts = Points::<f64>::new();
+        pts.push([0.0, 0.0, 0.0]);
+        pts.push([0.001, 0.0, 0.0]);
+        pts.push([1.0, 0.0, 0.0]);
+        mesh.points = pts;
+        mesh.polys.push_cell(&[0, 1, 2]);
+
+        let r = merge_close_vertices(&mesh, 0.01);
+        assert_eq!(r.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn drops_strips_degenerated_by_vertex_merge() {
+        let mut mesh = PolyData::new();
+        let mut pts = Points::<f64>::new();
+        pts.push([0.0, 0.0, 0.0]);
+        pts.push([0.001, 0.0, 0.0]);
+        pts.push([1.0, 0.0, 0.0]);
+        pts.push([1.0, 1.0, 0.0]);
+        mesh.points = pts;
+        mesh.strips.push_cell(&[0, 1, 2, 3]);
+
+        let r = merge_close_vertices(&mesh, 0.01);
+        assert_eq!(r.strips.num_cells(), 0);
     }
 }

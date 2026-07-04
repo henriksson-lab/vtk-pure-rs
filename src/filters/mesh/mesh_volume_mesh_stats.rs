@@ -39,8 +39,12 @@ pub fn compute_volume_mesh_stats(mesh: &PolyData) -> VolumeMeshStats {
         cy /= nf;
         cz /= nf;
     }
-    let nf = mesh.polys.num_cells();
+    let mut nf = 0usize;
     for cell in mesh.polys.iter() {
+        if !valid_cell(cell, nv) {
+            continue;
+        }
+        nf += 1;
         let nc = cell.len();
         for i in 0..nc {
             let a = cell[i] as usize;
@@ -66,12 +70,16 @@ pub fn compute_volume_mesh_stats(mesh: &PolyData) -> VolumeMeshStats {
     }
     vol = vol.abs() / 6.0;
     let ne = ec.len();
-    let boundary = ec.values().filter(|&&c| c == 1).count();
+    let is_closed = nf > 0 && ec.values().all(|&c| c == 2);
     let euler = nv as isize - ne as isize + nf as isize;
-    let diag = ((mx[0] - mn[0]).powi(2) + (mx[1] - mn[1]).powi(2) + (mx[2] - mn[2]).powi(2)).sqrt();
-    let dims = [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
-    let max_dim = dims[0].max(dims[1]).max(dims[2]).max(1e-15);
-    let min_dim = dims[0].min(dims[1]).min(dims[2]).max(1e-15);
+    let aspect_ratio = if nv > 0 {
+        let dims = [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
+        let max_dim = dims[0].max(dims[1]).max(dims[2]).max(1e-15);
+        let min_dim = dims[0].min(dims[1]).min(dims[2]).max(1e-15);
+        max_dim / min_dim
+    } else {
+        0.0
+    };
     let compact = if area > 1e-15 {
         36.0 * std::f64::consts::PI * vol * vol / (area * area * area)
     } else {
@@ -88,12 +96,15 @@ pub fn compute_volume_mesh_stats(mesh: &PolyData) -> VolumeMeshStats {
         surface_area: area,
         volume: vol,
         compactness: compact,
-        aspect_ratio: max_dim / min_dim,
+        aspect_ratio,
         bounds: (mn, mx),
         centroid: [cx, cy, cz],
-        is_closed: boundary == 0,
+        is_closed,
         euler,
     }
+}
+fn valid_cell(cell: &[i64], num_points: usize) -> bool {
+    cell.len() >= 3 && cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 #[cfg(test)]
 mod tests {

@@ -26,7 +26,9 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
             if cell.len() != 3 {
                 continue;
             }
-            let idx: [usize; 3] = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
+            let Some(idx) = triangle_point_ids(cell, n) else {
+                continue;
+            };
             let p: [[f64; 3]; 3] = [
                 output.points.get(idx[0]),
                 output.points.get(idx[1]),
@@ -67,9 +69,8 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
         // Build per-vertex neighbor map with weights
         let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
         for (&(a, b), &w) in &weights {
-            let w_clamped: f64 = w.max(0.0); // clamp negative cotangent weights
-            adj[a].push((b, w_clamped));
-            adj[b].push((a, w_clamped));
+            adj[a].push((b, w));
+            adj[b].push((a, w));
         }
 
         let mut new_positions: Vec<[f64; 3]> = Vec::with_capacity(n);
@@ -110,6 +111,22 @@ pub fn smooth_cotangent(input: &PolyData, iterations: usize, lambda: f64) -> Pol
     }
 
     output
+}
+
+fn triangle_point_ids(cell: &[i64], n: usize) -> Option<[usize; 3]> {
+    Some([
+        valid_point_id(cell[0], n)?,
+        valid_point_id(cell[1], n)?,
+        valid_point_id(cell[2], n)?,
+    ])
+}
+
+fn valid_point_id(id: i64, n: usize) -> Option<usize> {
+    if id >= 0 && (id as usize) < n {
+        Some(id as usize)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

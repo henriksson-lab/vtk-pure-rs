@@ -1,4 +1,4 @@
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 
 /// Compute the minimum spanning tree of the mesh edge graph.
 ///
@@ -12,22 +12,30 @@ pub fn minimum_spanning_tree(input: &PolyData) -> PolyData {
 
     let mut edges: Vec<(f64, usize, usize)> = Vec::new();
     let mut seen = std::collections::HashSet::new();
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            let key = if a < b { (a, b) } else { (b, a) };
-            if seen.insert(key) {
-                let pa = input.points.get(a);
-                let pb = input.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                edges.push((d, a, b));
-            }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            add_edge(input, edge[0], edge[1], &mut seen, &mut edges);
         }
     }
-    edges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    for cell in input.polys.iter() {
+        for i in 0..cell.len() {
+            add_edge(
+                input,
+                cell[i],
+                cell[(i + 1) % cell.len()],
+                &mut seen,
+                &mut edges,
+            );
+        }
+    }
+    for strip in input.strips.iter() {
+        for tri in strip.windows(3) {
+            add_edge(input, tri[0], tri[1], &mut seen, &mut edges);
+            add_edge(input, tri[1], tri[2], &mut seen, &mut edges);
+            add_edge(input, tri[2], tri[0], &mut seen, &mut edges);
+        }
+    }
+    edges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     // Union-find
     let mut parent: Vec<usize> = (0..n).collect();
@@ -61,6 +69,30 @@ pub fn minimum_spanning_tree(input: &PolyData) -> PolyData {
     pd.points = input.points.clone();
     pd.lines = out_lines;
     pd
+}
+
+fn add_edge(
+    input: &PolyData,
+    a: i64,
+    b: i64,
+    seen: &mut std::collections::HashSet<(usize, usize)>,
+    edges: &mut Vec<(f64, usize, usize)>,
+) {
+    let n = input.points.len();
+    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
+        return;
+    };
+    if a == b || a >= n || b >= n {
+        return;
+    }
+    let key = if a < b { (a, b) } else { (b, a) };
+    if seen.insert(key) {
+        let pa = input.points.get(a);
+        let pb = input.points.get(b);
+        let d =
+            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
+        edges.push((d, a, b));
+    }
 }
 
 /// Compute the total weight (length) of the MST.
@@ -109,5 +141,18 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(minimum_spanning_tree(&pd).lines.num_cells(), 0);
+    }
+
+    #[test]
+    fn line_cells_contribute_edges() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let mst = minimum_spanning_tree(&pd);
+        assert_eq!(mst.lines.num_cells(), 2);
+        assert!((mst_weight(&pd) - 2.0).abs() < 1e-10);
     }
 }

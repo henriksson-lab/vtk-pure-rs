@@ -36,6 +36,7 @@ pub fn map_to_sphere(mesh: &PolyData) -> PolyData {
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("UV", uvs, 2)));
+    result.point_data_mut().set_active_tcoords("UV");
     result
 }
 /// Compute sphericity (how close to a sphere: 1.0 = perfect sphere).

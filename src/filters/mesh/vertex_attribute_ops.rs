@@ -8,41 +8,17 @@ pub fn copy_array(mesh: &PolyData, src_name: &str, dst_name: &str) -> PolyData {
         Some(a) => a,
         None => return mesh.clone(),
     };
-    let nc = arr.num_components();
-    let mut buf = vec![0.0f64; nc];
-    let mut data = Vec::with_capacity(arr.num_tuples() * nc);
-    for i in 0..arr.num_tuples() {
-        arr.tuple_as_f64(i, &mut buf);
-        data.extend_from_slice(&buf);
-    }
     let mut result = mesh.clone();
     result
         .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(dst_name, data, nc)));
+        .add_array(arr.clone_with_name(dst_name));
     result
 }
 
 /// Remove a point data array by name.
 pub fn remove_array(mesh: &PolyData, name: &str) -> PolyData {
     let mut result = mesh.clone();
-    // Rebuild point data without the named array
-    let pd = mesh.point_data();
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..pd.num_arrays() {
-        if let Some(arr) = pd.get_array_by_index(i) {
-            if arr.name() != name {
-                let nc = arr.num_components();
-                let mut buf = vec![0.0f64; nc];
-                let mut data = Vec::with_capacity(arr.num_tuples() * nc);
-                for j in 0..arr.num_tuples() {
-                    arr.tuple_as_f64(j, &mut buf);
-                    data.extend_from_slice(&buf);
-                }
-                new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(arr.name(), data, nc)));
-            }
-        }
-    }
-    // We can't replace point_data directly, so add to the result
+    result.point_data_mut().remove_array(name);
     result
 }
 
@@ -151,6 +127,17 @@ mod tests {
         let result = combine_arrays(&m, "x", "y", "xy");
         let arr = result.point_data().get_array("xy").unwrap();
         assert_eq!(arr.num_components(), 2);
+    }
+    #[test]
+    fn remove() {
+        let mut m = PolyData::from_points(vec![[0.0; 3]; 1]);
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("a", vec![1.0], 1)));
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec("b", vec![2.0], 1)));
+        let result = remove_array(&m, "a");
+        assert!(result.point_data().get_array("a").is_none());
+        assert!(result.point_data().get_array("b").is_some());
     }
     #[test]
     fn extract() {

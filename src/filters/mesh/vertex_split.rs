@@ -1,5 +1,6 @@
-use crate::data::{CellArray, Points, PolyData};
-use std::collections::HashMap;
+use crate::data::{AnyDataArray, DataArray, DataSetAttributes, PolyData};
+use crate::types::Scalar;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Split a vertex into multiple copies, one per adjacent face group.
 ///
@@ -13,8 +14,14 @@ pub fn split_vertex(input: &PolyData, vertex_id: usize) -> PolyData {
         return input.clone();
     }
 
-    // Find faces containing this vertex
-    let cells: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
+    let mut cells: Vec<Vec<i64>> = Vec::new();
+    let mut old_poly_ids: Vec<usize> = Vec::new();
+    for (poly_id, cell) in input.polys.iter().enumerate() {
+        if valid_cell_points(cell, n) {
+            old_poly_ids.push(poly_id);
+            cells.push(cell.to_vec());
+        }
+    }
     let face_indices: Vec<usize> = cells
         .iter()
         .enumerate()
@@ -26,45 +33,27 @@ pub fn split_vertex(input: &PolyData, vertex_id: usize) -> PolyData {
         return input.clone();
     }
 
-    // Group faces by adjacency through edges NOT involving the split vertex
     let mut face_adj: HashMap<usize, Vec<usize>> = HashMap::new();
     for &fi in &face_indices {
         for &fj in &face_indices {
             if fi >= fj {
                 continue;
             }
-            // Check if fi and fj share an edge that doesn't include vid
-            let shared = cells[fi].iter().any(|&a| {
-                a != vid
-                    && cells[fj].iter().any(|&b| {
-                        b != vid && {
-                            let ci = &cells[fi];
-                            let cj = &cells[fj];
-                            ci.windows(2)
-                                .chain(std::iter::once(&[ci[ci.len() - 1], ci[0]][..]))
-                                .any(|e| {
-                                    (e[0] == a && e[1] != vid && cj.contains(&e[1]))
-                                        || (e[1] == a && e[0] != vid && cj.contains(&e[0]))
-                                })
-                        }
-                    })
-            });
-            if shared {
+            if share_non_split_edge(&cells[fi], &cells[fj], vid) {
                 face_adj.entry(fi).or_default().push(fj);
                 face_adj.entry(fj).or_default().push(fi);
             }
         }
     }
 
-    // BFS to find connected groups
-    let mut visited = std::collections::HashSet::new();
+    let mut visited = HashSet::new();
     let mut groups: Vec<Vec<usize>> = Vec::new();
     for &fi in &face_indices {
         if visited.contains(&fi) {
             continue;
         }
         let mut group = Vec::new();
-        let mut queue = std::collections::VecDeque::new();
+        let mut queue = VecDeque::new();
         queue.push_back(fi);
         visited.insert(fi);
         while let Some(f) = queue.pop_front() {
@@ -86,11 +75,12 @@ pub fn split_vertex(input: &PolyData, vertex_id: usize) -> PolyData {
 
     let mut out_pts = input.points.clone();
     let mut new_cells = cells.clone();
+    let mut old_point_ids: Vec<usize> = (0..n).collect();
 
-    // First group keeps original vertex, others get copies
     for group in groups.iter().skip(1) {
         let new_vid = out_pts.len() as i64;
         out_pts.push(input.points.get(vertex_id));
+        old_point_ids.push(vertex_id);
         for &fi in group {
             for v in &mut new_cells[fi] {
                 if *v == vid {
@@ -100,15 +90,151 @@ pub fn split_vertex(input: &PolyData, vertex_id: usize) -> PolyData {
         }
     }
 
-    let mut out_polys = CellArray::new();
+    let mut pd = input.clone();
+    pd.points = out_pts;
+    pd.polys.clear();
     for c in &new_cells {
-        out_polys.push_cell(c);
+        pd.polys.push_cell(c);
+    }
+    copy_point_data(input, &old_point_ids, &mut pd);
+    remap_cell_data(input, &old_poly_ids, &mut pd);
+    pd
+}
+
+fn valid_cell_points(cell: &[i64], num_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| usize::try_from(id).ok().is_some_and(|idx| idx < num_points))
+}
+
+fn share_non_split_edge(a: &[i64], b: &[i64], split_id: i64) -> bool {
+    if a.len() < 2 || b.len() < 2 {
+        return false;
+    }
+    let b_edges: HashSet<(i64, i64)> = closed_edges(b, split_id).collect();
+    closed_edges(a, split_id).any(|edge| b_edges.contains(&edge))
+}
+
+fn closed_edges(cell: &[i64], split_id: i64) -> impl Iterator<Item = (i64, i64)> + '_ {
+    cell.iter()
+        .zip(cell.iter().cycle().skip(1))
+        .take(cell.len())
+        .filter_map(move |(&a, &b)| {
+            if a == split_id || b == split_id {
+                None
+            } else if a < b {
+                Some((a, b))
+            } else {
+                Some((b, a))
+            }
+        })
+}
+
+fn copy_point_data(input: &PolyData, old_point_ids: &[usize], output: &mut PolyData) {
+    output.point_data_mut().clear();
+    for array in input.point_data().field_data().iter() {
+        if array.num_tuples() == input.points.len() {
+            output
+                .point_data_mut()
+                .add_array(remap_array(array, old_point_ids));
+        }
+    }
+    copy_active_attributes(input.point_data(), output.point_data_mut());
+}
+
+fn remap_array(array: &AnyDataArray, old_point_ids: &[usize]) -> AnyDataArray {
+    macro_rules! remap {
+        ($arr:expr, $variant:ident) => {
+            AnyDataArray::$variant(remap_typed_array($arr, old_point_ids))
+        };
+    }
+    match array {
+        AnyDataArray::F32(a) => remap!(a, F32),
+        AnyDataArray::F64(a) => remap!(a, F64),
+        AnyDataArray::I8(a) => remap!(a, I8),
+        AnyDataArray::I16(a) => remap!(a, I16),
+        AnyDataArray::I32(a) => remap!(a, I32),
+        AnyDataArray::I64(a) => remap!(a, I64),
+        AnyDataArray::U8(a) => remap!(a, U8),
+        AnyDataArray::U16(a) => remap!(a, U16),
+        AnyDataArray::U32(a) => remap!(a, U32),
+        AnyDataArray::U64(a) => remap!(a, U64),
+    }
+}
+
+fn remap_typed_array<T: Scalar>(array: &DataArray<T>, old_point_ids: &[usize]) -> DataArray<T> {
+    let nc = array.num_components();
+    let mut data = Vec::with_capacity(old_point_ids.len() * nc);
+    for &old_id in old_point_ids {
+        data.extend_from_slice(array.tuple(old_id));
+    }
+    DataArray::from_vec(array.name(), data, nc)
+}
+
+fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
+    if let Some(array) = input.scalars() {
+        output.set_active_scalars(array.name());
+    }
+    if let Some(array) = input.vectors() {
+        output.set_active_vectors(array.name());
+    }
+    if let Some(array) = input.normals() {
+        output.set_active_normals(array.name());
+    }
+    if let Some(array) = input.tcoords() {
+        output.set_active_tcoords(array.name());
+    }
+    if let Some(array) = input.tensors() {
+        output.set_active_tensors(array.name());
+    }
+    if let Some(array) = input.global_ids() {
+        output.set_active_global_ids(array.name());
+    }
+    if let Some(array) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = input.edge_flags() {
+        output.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = input.tangents() {
+        output.set_active_tangents(array.name());
+    }
+    if let Some(array) = input.rational_weights() {
+        output.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = input.process_ids() {
+        output.set_active_process_ids(array.name());
+    }
+}
+
+fn remap_cell_data(input: &PolyData, old_poly_ids: &[usize], output: &mut PolyData) {
+    if input.cell_data().num_arrays() == 0 {
+        return;
     }
 
-    let mut pd = PolyData::new();
-    pd.points = out_pts;
-    pd.polys = out_polys;
-    pd
+    let mut old_cell_ids = Vec::with_capacity(output.total_cells());
+    old_cell_ids.extend(0..input.verts.num_cells());
+
+    let line_offset = input.verts.num_cells();
+    old_cell_ids.extend(line_offset..line_offset + input.lines.num_cells());
+
+    let poly_offset = input.verts.num_cells() + input.lines.num_cells();
+    old_cell_ids.extend(old_poly_ids.iter().map(|&poly_id| poly_offset + poly_id));
+
+    let strip_offset = poly_offset + input.polys.num_cells();
+    old_cell_ids.extend(strip_offset..strip_offset + input.strips.num_cells());
+
+    output.cell_data_mut().clear();
+    for array in input.cell_data().field_data().iter() {
+        if array.num_tuples() == input.total_cells() {
+            output
+                .cell_data_mut()
+                .add_array(remap_array(array, &old_cell_ids));
+        }
+    }
+    copy_active_attributes(input.cell_data(), output.cell_data_mut());
 }
 
 #[cfg(test)]
@@ -157,5 +283,42 @@ mod tests {
         let pd = PolyData::new();
         let result = split_vertex(&pd, 0);
         assert_eq!(result.polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn split_drops_invalid_polys_and_remaps_cell_data() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([-1.0, 0.0, 0.0]);
+        pd.points.push([0.0, -1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+        pd.polys.push_cell(&[0, 99, 3]);
+        pd.polys.push_cell(&[0, 3, 4]);
+        pd.cell_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "CellIds",
+                vec![10.0, 20.0, 30.0],
+                1,
+            )));
+
+        let result = split_vertex(&pd, 0);
+
+        assert_eq!(result.points.len(), 6);
+        assert_eq!(result.polys.num_cells(), 2);
+        for cell in result.polys.iter() {
+            assert!(cell
+                .iter()
+                .all(|&id| id >= 0 && (id as usize) < result.points.len()));
+        }
+
+        let cell_ids = result.cell_data().get_array("CellIds").unwrap();
+        assert_eq!(cell_ids.num_tuples(), 2);
+        let mut value = [0.0f64];
+        cell_ids.tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 10.0);
+        cell_ids.tuple_as_f64(1, &mut value);
+        assert_eq!(value[0], 30.0);
     }
 }

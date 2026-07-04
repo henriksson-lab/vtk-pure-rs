@@ -1,4 +1,4 @@
-use crate::data::{Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Taubin smoothing: alternating positive/negative Laplacian steps.
 ///
@@ -14,25 +14,14 @@ pub fn taubin_smooth(input: &PolyData, lambda: f64, mu: f64, iterations: usize) 
     }
 
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
+    add_cell_array_neighbors(&input.lines, n, false, &mut neighbors);
+    add_cell_array_neighbors(&input.polys, n, true, &mut neighbors);
+    add_strip_neighbors(&input.strips, n, &mut neighbors);
 
     let mut pts: Vec<[f64; 3]> = (0..n).map(|i| input.points.get(i)).collect();
 
     for _ in 0..iterations {
-        // Lambda step (shrink)
         pts = laplacian_step(&pts, &neighbors, lambda);
-        // Mu step (inflate)
         pts = laplacian_step(&pts, &neighbors, mu);
     }
 
@@ -43,6 +32,75 @@ pub fn taubin_smooth(input: &PolyData, lambda: f64, mu: f64, iterations: usize) 
     let mut pd = input.clone();
     pd.points = points;
     pd
+}
+
+fn add_cell_array_neighbors(
+    cells: &CellArray,
+    n_points: usize,
+    closed: bool,
+    neighbors: &mut [Vec<usize>],
+) {
+    for cell in cells.iter() {
+        if cell.len() < 2 {
+            continue;
+        }
+        let edge_count = if closed { cell.len() } else { cell.len() - 1 };
+        for i in 0..edge_count {
+            let Some(a) = valid_point_id(cell[i], n_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[(i + 1) % cell.len()], n_points) else {
+                continue;
+            };
+            if a == b {
+                continue;
+            }
+            if !neighbors[a].contains(&b) {
+                neighbors[a].push(b);
+            }
+            if !neighbors[b].contains(&a) {
+                neighbors[b].push(a);
+            }
+        }
+    }
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id).ok().filter(|&idx| idx < n_points)
+}
+
+fn add_strip_neighbors(cells: &CellArray, n_points: usize, neighbors: &mut [Vec<usize>]) {
+    for cell in cells.iter() {
+        if cell.len() < 3 {
+            continue;
+        }
+        for i in 0..cell.len() - 2 {
+            let Some(a) = valid_point_id(cell[i], n_points) else {
+                continue;
+            };
+            let Some(b) = valid_point_id(cell[i + 1], n_points) else {
+                continue;
+            };
+            let Some(c) = valid_point_id(cell[i + 2], n_points) else {
+                continue;
+            };
+            add_edge(a, b, neighbors);
+            add_edge(b, c, neighbors);
+            add_edge(c, a, neighbors);
+        }
+    }
+}
+
+fn add_edge(a: usize, b: usize, neighbors: &mut [Vec<usize>]) {
+    if a == b {
+        return;
+    }
+    if !neighbors[a].contains(&b) {
+        neighbors[a].push(b);
+    }
+    if !neighbors[b].contains(&a) {
+        neighbors[b].push(a);
+    }
 }
 
 fn laplacian_step(pts: &[[f64; 3]], neighbors: &[Vec<usize>], factor: f64) -> Vec<[f64; 3]> {

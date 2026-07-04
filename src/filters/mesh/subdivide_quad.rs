@@ -12,6 +12,10 @@ pub fn subdivide_quads(input: &PolyData) -> PolyData {
 
     for cell in input.polys.iter() {
         if cell.len() == 4 {
+            if !valid_cell(cell, input.points.len()) {
+                out_polys.push_cell(cell);
+                continue;
+            }
             let a = cell[0];
             let b = cell[1];
             let c = cell[2];
@@ -64,6 +68,11 @@ fn get_mid(a: i64, b: i64, pts: &mut Points<f64>, cache: &mut HashMap<(i64, i64)
     })
 }
 
+fn valid_cell(cell: &[i64], n_points: usize) -> bool {
+    cell.iter()
+        .all(|&id| usize::try_from(id).ok().is_some_and(|id| id < n_points))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +121,18 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(subdivide_quads(&pd).polys.num_cells(), 0);
+    }
+
+    #[test]
+    fn invalid_quad_is_passed_through() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 99]);
+
+        let result = subdivide_quads(&pd);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.points.len(), 3);
     }
 }

@@ -1,4 +1,6 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, KdTree, Points, PolyData};
+use crate::data::{
+    AnyDataArray, CellArray, DataArray, DataSetAttributes, KdTree, Points, PolyData,
+};
 
 /// Detect outliers in a point cloud using statistical analysis.
 ///
@@ -63,6 +65,7 @@ pub fn remove_outliers(input: &PolyData, k: usize, n_sigma: f64) -> PolyData {
     let n = input.points.len();
     let mut out_pts = Points::<f64>::new();
     let mut out_verts = CellArray::new();
+    let mut kept_point_ids = Vec::new();
     let mut buf = [0.0f64];
 
     for i in 0..n {
@@ -71,13 +74,98 @@ pub fn remove_outliers(input: &PolyData, k: usize, n_sigma: f64) -> PolyData {
             let idx = out_pts.len() as i64;
             out_pts.push(input.points.get(i));
             out_verts.push_cell(&[idx]);
+            kept_point_ids.push(i);
         }
     }
 
     let mut pd = PolyData::new();
     pd.points = out_pts;
     pd.verts = out_verts;
+    *pd.point_data_mut() = subset_point_data(input.point_data(), &kept_point_ids, n);
     pd
+}
+
+fn subset_point_data(
+    input: &DataSetAttributes,
+    point_ids: &[usize],
+    number_of_input_points: usize,
+) -> DataSetAttributes {
+    let mut output = DataSetAttributes::new();
+
+    for array in input.iter() {
+        if array.num_tuples() == number_of_input_points {
+            output.add_array(subset_array_tuples(array, point_ids));
+        }
+    }
+
+    if let Some(array) = input.scalars() {
+        output.set_active_scalars(array.name());
+    }
+    if let Some(array) = input.vectors() {
+        output.set_active_vectors(array.name());
+    }
+    if let Some(array) = input.normals() {
+        output.set_active_normals(array.name());
+    }
+    if let Some(array) = input.tcoords() {
+        output.set_active_tcoords(array.name());
+    }
+    if let Some(array) = input.tensors() {
+        output.set_active_tensors(array.name());
+    }
+    if let Some(array) = input.global_ids() {
+        output.set_active_global_ids(array.name());
+    }
+    if let Some(array) = input.pedigree_ids() {
+        output.set_active_pedigree_ids(array.name());
+    }
+    if let Some(array) = input.edge_flags() {
+        output.set_active_edge_flags(array.name());
+    }
+    if let Some(array) = input.tangents() {
+        output.set_active_tangents(array.name());
+    }
+    if let Some(array) = input.rational_weights() {
+        output.set_active_rational_weights(array.name());
+    }
+    if let Some(array) = input.higher_order_degrees() {
+        output.set_active_higher_order_degrees(array.name());
+    }
+    if let Some(array) = input.process_ids() {
+        output.set_active_process_ids(array.name());
+    }
+
+    output
+}
+
+fn subset_array_tuples(array: &AnyDataArray, point_ids: &[usize]) -> AnyDataArray {
+    macro_rules! subset {
+        ($array:expr, $variant:ident) => {{
+            let number_of_components = $array.num_components();
+            let mut values = Vec::with_capacity(point_ids.len() * number_of_components);
+            for &point_id in point_ids {
+                values.extend_from_slice($array.tuple(point_id));
+            }
+            AnyDataArray::$variant(DataArray::from_vec(
+                $array.name(),
+                values,
+                number_of_components,
+            ))
+        }};
+    }
+
+    match array {
+        AnyDataArray::F32(a) => subset!(a, F32),
+        AnyDataArray::F64(a) => subset!(a, F64),
+        AnyDataArray::I8(a) => subset!(a, I8),
+        AnyDataArray::I16(a) => subset!(a, I16),
+        AnyDataArray::I32(a) => subset!(a, I32),
+        AnyDataArray::I64(a) => subset!(a, I64),
+        AnyDataArray::U8(a) => subset!(a, U8),
+        AnyDataArray::U16(a) => subset!(a, U16),
+        AnyDataArray::U32(a) => subset!(a, U32),
+        AnyDataArray::U64(a) => subset!(a, U64),
+    }
 }
 
 #[cfg(test)]

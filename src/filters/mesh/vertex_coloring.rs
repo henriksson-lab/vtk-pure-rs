@@ -4,6 +4,10 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Color vertices by position using a checkerboard pattern.
 pub fn checkerboard_color(mesh: &PolyData, cell_size: f64) -> PolyData {
+    if !cell_size.is_finite() || cell_size <= 0.0 {
+        return mesh.clone();
+    }
+
     let n = mesh.points.len();
     let mut rgb = Vec::with_capacity(n * 3);
     for i in 0..n {
@@ -104,20 +108,49 @@ fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (f64, f64, f64) {
     }
 }
 
-fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut a: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for c in m.polys.iter() {
-        let nc = c.len();
+fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
+    for cell in mesh.polys.iter() {
+        let nc = cell.len();
         for i in 0..nc {
-            let x = c[i] as usize;
-            let y = c[(i + 1) % nc] as usize;
+            let x = cell[i] as usize;
+            let y = cell[(i + 1) % nc] as usize;
             if x < n && y < n {
-                a[x].insert(y);
-                a[y].insert(x);
+                adj[x].insert(y);
+                adj[y].insert(x);
             }
         }
     }
-    a.into_iter().map(|s| s.into_iter().collect()).collect()
+    for strip in mesh.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_triangle_edges(&mut adj, &tri, n);
+        }
+    }
+    adj.into_iter().map(|s| s.into_iter().collect()).collect()
+}
+
+fn add_triangle_edges(
+    adj: &mut [std::collections::HashSet<usize>],
+    tri: &[i64; 3],
+    npoints: usize,
+) {
+    if tri.iter().any(|&id| id < 0 || id as usize >= npoints) {
+        return;
+    }
+    for i in 0..3 {
+        let x = tri[i] as usize;
+        let y = tri[(i + 1) % 3] as usize;
+        adj[x].insert(y);
+        adj[y].insert(x);
+    }
 }
 
 #[cfg(test)]
@@ -129,6 +162,14 @@ mod tests {
         let result = checkerboard_color(&mesh, 1.0);
         assert!(result.point_data().get_array("RGB").is_some());
     }
+
+    #[test]
+    fn checker_invalid_cell_size_is_noop() {
+        let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0]]);
+        let result = checkerboard_color(&mesh, 0.0);
+        assert!(result.point_data().get_array("RGB").is_none());
+    }
+
     #[test]
     fn rainbow() {
         let mesh = PolyData::from_points(vec![[0.0; 3]; 5]);
@@ -138,28 +179,26 @@ mod tests {
     }
     #[test]
     fn curv_color() {
-        let mesh = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 1.0],
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [-1.0, 0.0, 0.0],
-                [0.0, -1.0, 0.0],
-                [0.0, 0.0, -1.0],
-            ],
-            vec![
-                [0, 1, 2],
-                [0, 2, 3],
-                [0, 3, 4],
-                [0, 4, 1],
-                [5, 2, 1],
-                [5, 3, 2],
-                [5, 4, 3],
-                [5, 1, 4],
-            ],
+        let mesh = crate::filters::core::sources::sphere::sphere(
+            &crate::filters::core::sources::sphere::SphereParams::default(),
         );
         let result = color_by_curvature(&mesh);
         assert!(result.point_data().get_array("Curvature").is_some());
         assert!(result.point_data().get_array("RGB").is_some());
+    }
+
+    #[test]
+    fn curvature_color_uses_triangle_strips() {
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([0.0, 1.0, 1.0]);
+        mesh.strips.push_cell(&[0, 1, 2]);
+
+        let result = color_by_curvature(&mesh);
+        let arr = result.point_data().get_array("Curvature").unwrap();
+        let mut val = [0.0; 1];
+        arr.tuple_as_f64(0, &mut val);
+        assert!(val[0] > 0.0);
     }
 }

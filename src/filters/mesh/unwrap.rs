@@ -8,7 +8,8 @@ use crate::data::{AnyDataArray, DataArray, DataSet, PolyData};
 pub fn unwrap_to_uv(input: &PolyData) -> PolyData {
     let tc = input
         .point_data()
-        .get_array("TCoords")
+        .tcoords()
+        .or_else(|| input.point_data().get_array("TCoords"))
         .or_else(|| input.point_data().get_array("UV"))
         .or_else(|| input.point_data().get_array("AtlasUV"));
 
@@ -18,6 +19,9 @@ pub fn unwrap_to_uv(input: &PolyData) -> PolyData {
     };
 
     let n = input.points.len();
+    if arr.num_tuples() < n {
+        return input.clone();
+    }
     let mut points = crate::data::Points::<f64>::new();
     let mut buf = [0.0f64; 2];
 
@@ -37,8 +41,10 @@ pub fn unwrap_to_uv(input: &PolyData) -> PolyData {
 pub fn uv_distortion(input: &PolyData) -> PolyData {
     let tc = input
         .point_data()
-        .get_array("TCoords")
-        .or_else(|| input.point_data().get_array("UV"));
+        .tcoords()
+        .or_else(|| input.point_data().get_array("TCoords"))
+        .or_else(|| input.point_data().get_array("UV"))
+        .or_else(|| input.point_data().get_array("AtlasUV"));
 
     let arr = match tc {
         Some(a) if a.num_components() == 2 => a,
@@ -50,6 +56,13 @@ pub fn uv_distortion(input: &PolyData) -> PolyData {
 
     for cell in input.polys.iter() {
         if cell.len() < 3 {
+            distortion.push(1.0);
+            continue;
+        }
+        if cell
+            .iter()
+            .any(|&pid| pid as usize >= input.points.len() || pid as usize >= arr.num_tuples())
+        {
             distortion.push(1.0);
             continue;
         }

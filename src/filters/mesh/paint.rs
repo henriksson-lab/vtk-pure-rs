@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, DataArray, KdTree, PolyData};
+use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Paint a scalar value onto mesh vertices within a sphere.
 ///
@@ -96,9 +96,13 @@ pub fn paint_sphere_smooth(
         let d2 =
             (p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2);
         if d2 <= r2 {
-            let t = 1.0 - (d2 / r2).sqrt(); // falloff
-            let t = t * t * (3.0 - 2.0 * t); // smoothstep
-            values[i] = values[i] * (1.0 - t) + value * t;
+            if radius <= 0.0 {
+                values[i] = value;
+            } else {
+                let t = 1.0 - (d2 / r2).sqrt(); // falloff
+                let t = t * t * (3.0 - 2.0 * t); // smoothstep
+                values[i] = values[i] * (1.0 - t) + value * t;
+            }
         }
     }
 
@@ -185,5 +189,20 @@ mod tests {
         let pd = PolyData::new();
         let result = paint_sphere(&pd, "p", [0.0; 3], 1.0, 1.0);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn smooth_zero_radius_paints_exact_center() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+
+        let result = paint_sphere_smooth(&pd, "p", [0.0, 0.0, 0.0], 0.0, 7.0);
+        let arr = result.point_data().get_array("p").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 7.0);
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

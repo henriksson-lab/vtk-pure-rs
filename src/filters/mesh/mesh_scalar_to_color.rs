@@ -4,9 +4,13 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_to_color(mesh: &PolyData, scalar_name: &str) -> PolyData {
     let n = mesh.points.len();
     let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) => a,
+        Some(a) if a.num_components() == 1 => a,
         None => return mesh.clone(),
+        _ => return mesh.clone(),
     };
+    if arr.num_tuples() != n {
+        return mesh.clone();
+    }
     let mut vals = Vec::with_capacity(n);
     let mut buf = [0.0f64];
     for i in 0..n {
@@ -67,5 +71,24 @@ mod tests {
         assert!(r.point_data().get_array("ColorR").is_some());
         assert!(r.point_data().get_array("ColorG").is_some());
         assert!(r.point_data().get_array("ColorB").is_some());
+    }
+
+    #[test]
+    fn rejects_vector_arrays() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 1.0, 0.5, 1.0, 1.0, 0.0],
+                2,
+            )));
+
+        let r = scalar_to_color(&mesh, "val");
+        assert!(r.point_data().get_array("ColorR").is_none());
+        assert!(r.point_data().get_array("ColorG").is_none());
+        assert!(r.point_data().get_array("ColorB").is_none());
     }
 }

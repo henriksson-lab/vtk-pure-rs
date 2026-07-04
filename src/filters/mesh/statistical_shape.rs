@@ -13,12 +13,13 @@ pub fn mean_shape(meshes: &[&PolyData]) -> PolyData {
     if n == 0 {
         return meshes[0].clone();
     }
+    assert!(
+        meshes.iter().all(|mesh| mesh.points.len() == n),
+        "all shapes must have the same number of points"
+    );
 
     let mut avg = vec![[0.0; 3]; n];
     for mesh in meshes {
-        if mesh.points.len() != n {
-            continue;
-        }
         for i in 0..n {
             let p = mesh.points.get(i);
             for c in 0..3 {
@@ -44,13 +45,14 @@ pub fn shape_variance(meshes: &[&PolyData]) -> PolyData {
         return PolyData::new();
     }
     let n = meshes[0].points.len();
+    assert!(
+        meshes.iter().all(|mesh| mesh.points.len() == n),
+        "all shapes must have the same number of points"
+    );
     let mean = mean_shape(meshes);
 
     let mut variance = vec![0.0f64; n];
     for mesh in meshes {
-        if mesh.points.len() != n {
-            continue;
-        }
         for i in 0..n {
             let p = mesh.points.get(i);
             let m = mean.points.get(i);
@@ -75,58 +77,25 @@ pub fn shape_variance(meshes: &[&PolyData]) -> PolyData {
 
 /// Compute Procrustes distance between two shapes.
 ///
-/// Measures shape difference after optimal alignment (translation + uniform scale).
+/// Measures shape difference after optimal alignment (translation, rotation,
+/// and uniform scale).
 pub fn procrustes_distance(a: &PolyData, b: &PolyData) -> f64 {
-    let n = a.points.len().min(b.points.len());
-    if n == 0 {
-        return 0.0;
-    }
-
-    // Compute centroids
-    let mut ca = [0.0; 3];
-    let mut cb = [0.0; 3];
-    for i in 0..n {
-        let pa = a.points.get(i);
-        let pb = b.points.get(i);
-        for c in 0..3 {
-            ca[c] += pa[c];
-            cb[c] += pb[c];
-        }
-    }
-    for c in 0..3 {
-        ca[c] /= n as f64;
-        cb[c] /= n as f64;
-    }
-
-    // Compute scale
-    let mut scale_a = 0.0;
-    let mut scale_b = 0.0;
-    for i in 0..n {
-        let pa = a.points.get(i);
-        let pb = b.points.get(i);
-        scale_a += (pa[0] - ca[0]).powi(2) + (pa[1] - ca[1]).powi(2) + (pa[2] - ca[2]).powi(2);
-        scale_b += (pb[0] - cb[0]).powi(2) + (pb[1] - cb[1]).powi(2) + (pb[2] - cb[2]).powi(2);
-    }
-    let sa = scale_a.sqrt().max(1e-15);
-    let sb = scale_b.sqrt().max(1e-15);
-
-    // Compute distance after centering and scaling
-    let mut dist = 0.0;
-    for i in 0..n {
-        let pa = a.points.get(i);
-        let pb = b.points.get(i);
-        for c in 0..3 {
-            let va = (pa[c] - ca[c]) / sa;
-            let vb = (pb[c] - cb[c]) / sb;
-            dist += (va - vb).powi(2);
-        }
-    }
-    (dist / n as f64).sqrt()
+    assert_eq!(
+        a.points.len(),
+        b.points.len(),
+        "shapes must have the same number of points"
+    );
+    crate::filters::mesh::procrustes::procrustes_distance(a, b)
 }
 
 /// Compute displacement vectors between two shapes.
 pub fn shape_displacement(from: &PolyData, to: &PolyData) -> PolyData {
-    let n = from.points.len().min(to.points.len());
+    assert_eq!(
+        from.points.len(),
+        to.points.len(),
+        "shapes must have the same number of points"
+    );
+    let n = from.points.len();
     let mut disp = Vec::with_capacity(n * 3);
     let mut mag = Vec::with_capacity(n);
     for i in 0..n {
@@ -180,6 +149,13 @@ mod tests {
             d < 0.01,
             "same shape scaled should have small Procrustes distance, got {d}"
         );
+    }
+    #[test]
+    fn procrustes_handles_rotation() {
+        let a = PolyData::from_points(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+        let b = PolyData::from_points(vec![[10.0, 20.0, 0.0], [10.0, 21.0, 0.0], [9.0, 20.0, 0.0]]);
+        let d = procrustes_distance(&a, &b);
+        assert!(d < 0.01, "rotated shape should align, got {d}");
     }
     #[test]
     fn displacement() {

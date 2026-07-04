@@ -157,8 +157,12 @@ impl TextureAtlas {
             let tw = tex.width;
             let th = tex.height;
 
+            if tw > atlas_w || th > atlas_h {
+                return false;
+            }
+
             // Check if we need a new shelf
-            if shelf_x + tw + padding > atlas_w {
+            if shelf_x > 0 && shelf_x + tw + padding > atlas_w {
                 shelf_y += shelf_height + padding;
                 shelf_x = 0;
                 shelf_height = 0;
@@ -342,6 +346,25 @@ mod tests {
             !atlas.pack(),
             "128x128 texture should not fit in 64x64 atlas"
         );
+    }
+
+    #[test]
+    fn atlas_rejects_texture_wider_than_atlas() {
+        let wide = Texture::from_rgba(vec![255; 128 * 4], 128, 1);
+        let mut atlas = TextureAtlas::new(64);
+        atlas.add("wide", &wide);
+        assert!(!atlas.pack(), "128x1 texture should not fit in 64x64 atlas");
+    }
+
+    #[test]
+    fn atlas_accepts_exact_width_texture() {
+        let exact = Texture::from_rgba(vec![255; 64 * 4], 64, 1);
+        let mut atlas = TextureAtlas::new(64);
+        atlas.add("exact", &exact);
+        assert!(atlas.pack(), "64x1 texture should fit in 64x64 atlas");
+        let region = atlas.region("exact").unwrap();
+        assert_eq!(region.u_min, 0.0);
+        assert_eq!(region.u_max, 1.0);
     }
 
     #[test]

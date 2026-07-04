@@ -17,9 +17,9 @@ pub fn noise_displacement(input: &PolyData, amplitude: f64, seed: u64) -> PolyDa
         return output;
     }
 
-    // Try to get normals from point data
     let normals_arr = input.point_data().get_array("Normals");
-    let has_normals: bool = normals_arr.is_some() && normals_arr.unwrap().num_components() == 3;
+    let normals_arr = normals_arr.filter(|arr| arr.num_components() == 3 && arr.num_tuples() >= n);
+    let has_normals: bool = normals_arr.is_some();
 
     // If no normals, compute centroid for fallback direction
     let mut centroid = [0.0f64; 3];
@@ -142,5 +142,21 @@ mod tests {
         let pd = PolyData::new();
         let result = noise_displacement(&pd, 1.0, 0);
         assert_eq!(result.points.len(), 0);
+    }
+
+    #[test]
+    fn short_normals_fall_back_to_centroid_direction() {
+        let mut pd = PolyData::new();
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([-1.0, 0.0, 0.0]);
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals",
+                vec![0.0, 0.0, 1.0],
+                3,
+            )));
+
+        let result = noise_displacement(&pd, 0.25, 7);
+        assert_eq!(result.points.len(), 2);
     }
 }

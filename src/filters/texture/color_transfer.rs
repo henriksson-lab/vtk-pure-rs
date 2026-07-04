@@ -17,7 +17,7 @@ impl ColorTransferFunction {
     pub fn add_point(&mut self, value: f64, r: f32, g: f32, b: f32) {
         self.points.retain(|point| point.0 != value);
         self.points.push((value, r, g, b));
-        self.points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        self.points.sort_by(|a, b| a.0.total_cmp(&b.0));
     }
 
     /// Map a scalar value to an RGB color.

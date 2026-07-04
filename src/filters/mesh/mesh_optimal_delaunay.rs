@@ -5,6 +5,8 @@ pub fn odt_smooth(mesh: &PolyData, iterations: usize) -> PolyData {
     if n == 0 {
         return mesh.clone();
     }
+    let triangles = surface_triangles(mesh);
+    let strip_triangles = triangle_strip_triangles(mesh);
     let mut nb: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();
     for cell in mesh.polys.iter() {
@@ -29,6 +31,17 @@ pub fn odt_smooth(mesh: &PolyData, iterations: usize) -> PolyData {
             }
         }
     }
+    for tri in &strip_triangles {
+        for &(a, b) in &[(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+            if !nb[a].contains(&b) {
+                nb[a].push(b);
+            }
+            if !nb[b].contains(&a) {
+                nb[b].push(a);
+            }
+            *ec.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        }
+    }
     let mut boundary: std::collections::HashSet<usize> = std::collections::HashSet::new();
     for (&(a, b), &c) in &ec {
         if c == 1 {
@@ -47,17 +60,10 @@ pub fn odt_smooth(mesh: &PolyData, iterations: usize) -> PolyData {
             // Use area-weighted circumcenter of adjacent triangles as target
             let mut target = [0.0, 0.0, 0.0];
             let mut total_area = 0.0;
-            for cell in mesh.polys.iter() {
-                if cell.len() != 3 {
+            for ids in &triangles {
+                if !ids.contains(&i) {
                     continue;
                 }
-                if !cell.iter().any(|&v| v >= 0 && v as usize == i) {
-                    continue;
-                }
-                if cell.iter().any(|&v| v < 0 || v as usize >= n) {
-                    continue;
-                }
-                let ids = [cell[0] as usize, cell[1] as usize, cell[2] as usize];
                 let p = [prev[ids[0]], prev[ids[1]], prev[ids[2]]];
                 let e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
                 let e2 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
@@ -114,6 +120,58 @@ pub fn odt_smooth(mesh: &PolyData, iterations: usize) -> PolyData {
     }
     r
 }
+
+fn surface_triangles(mesh: &PolyData) -> Vec<[usize; 3]> {
+    let n = mesh.points.len();
+    let mut triangles = Vec::new();
+    for cell in mesh.polys.iter() {
+        if cell.len() == 3 {
+            let Some(ids) = valid_triangle_ids(cell, n) else {
+                continue;
+            };
+            triangles.push(ids);
+        }
+    }
+    triangles.extend(triangle_strip_triangles(mesh));
+    triangles
+}
+
+fn triangle_strip_triangles(mesh: &PolyData) -> Vec<[usize; 3]> {
+    let n = mesh.points.len();
+    let mut triangles = Vec::new();
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            let Some(ids) = valid_triangle_ids(tri, n) else {
+                continue;
+            };
+            if i % 2 == 0 {
+                triangles.push(ids);
+            } else {
+                triangles.push([ids[1], ids[0], ids[2]]);
+            }
+        }
+    }
+    triangles
+}
+
+fn valid_triangle_ids(cell: &[i64], n_points: usize) -> Option<[usize; 3]> {
+    let ids = [
+        valid_point_id(*cell.first()?, n_points)?,
+        valid_point_id(*cell.get(1)?, n_points)?,
+        valid_point_id(*cell.get(2)?, n_points)?,
+    ];
+    if ids[0] == ids[1] || ids[1] == ids[2] || ids[2] == ids[0] {
+        return None;
+    }
+    Some(ids)
+}
+
+fn valid_point_id(point_id: i64, n_points: usize) -> Option<usize> {
+    usize::try_from(point_id)
+        .ok()
+        .filter(|&point_id| point_id < n_points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +188,22 @@ mod tests {
             vec![[0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4]],
         );
         let r = odt_smooth(&m, 10);
+        assert_eq!(r.points.len(), 5);
+    }
+
+    #[test]
+    fn strips_contribute_to_boundary_and_targets() {
+        let mut m = PolyData::new();
+        m.points = crate::data::Points::from_vec(vec![
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [2.0, 2.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ]);
+        m.strips.push_cell(&[0, 1, 4, 3, 2, 0]);
+
+        let r = odt_smooth(&m, 1);
         assert_eq!(r.points.len(), 5);
     }
 }

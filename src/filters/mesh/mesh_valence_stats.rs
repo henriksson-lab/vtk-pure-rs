@@ -1,29 +1,11 @@
 //! Compute vertex valence (degree) and store as scalar data.
 use crate::data::{AnyDataArray, DataArray, PolyData};
+use std::collections::{BTreeMap, HashSet};
 
 pub fn valence_stats(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
-    if n == 0 {
-        return mesh.clone();
-    }
-    let mut valence = vec![0u32; n];
-    let mut seen: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if seen[a].insert(b) {
-                    valence[a] += 1;
-                }
-                if seen[b].insert(a) {
-                    valence[b] += 1;
-                }
-            }
-        }
-    }
-    let data: Vec<f64> = valence.iter().map(|&v| v as f64).collect();
+    let seen = build_vertex_neighbors(mesh, n);
+    let data: Vec<f64> = seen.iter().map(|s| s.len() as f64).collect();
     let mut result = mesh.clone();
     result
         .point_data_mut()
@@ -34,27 +16,62 @@ pub fn valence_stats(mesh: &PolyData) -> PolyData {
 
 pub fn valence_histogram(mesh: &PolyData) -> Vec<(u32, usize)> {
     let n = mesh.points.len();
-    let mut valence = vec![0u32; n];
-    let mut seen: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                seen[a].insert(b);
-                seen[b].insert(a);
-            }
-        }
-    }
-    for i in 0..n {
-        valence[i] = seen[i].len() as u32;
-    }
-    let mut hist = std::collections::BTreeMap::new();
-    for &v in &valence {
+    let seen = build_vertex_neighbors(mesh, n);
+    let mut hist = BTreeMap::new();
+    for v in seen.iter().map(|s| s.len() as u32) {
         *hist.entry(v).or_insert(0usize) += 1;
     }
     hist.into_iter().collect()
+}
+
+fn build_vertex_neighbors(mesh: &PolyData, n: usize) -> Vec<HashSet<usize>> {
+    let mut seen: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    add_poly_edges(&mesh.polys, n, &mut seen);
+    add_triangle_strip_edges(&mesh.strips, n, &mut seen);
+    add_line_edges(&mesh.lines, n, &mut seen);
+    seen
+}
+
+fn add_poly_edges(cells: &crate::data::CellArray, n: usize, seen: &mut [HashSet<usize>]) {
+    for cell in cells.iter() {
+        if cell.len() < 2 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for i in 0..cell.len() {
+            add_edge(cell[i] as usize, cell[(i + 1) % cell.len()] as usize, seen);
+        }
+    }
+}
+
+fn add_triangle_strip_edges(cells: &crate::data::CellArray, n: usize, seen: &mut [HashSet<usize>]) {
+    for cell in cells.iter() {
+        if cell.len() < 3 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for tri in cell.windows(3) {
+            add_edge(tri[0] as usize, tri[1] as usize, seen);
+            add_edge(tri[1] as usize, tri[2] as usize, seen);
+            add_edge(tri[2] as usize, tri[0] as usize, seen);
+        }
+    }
+}
+
+fn add_line_edges(cells: &crate::data::CellArray, n: usize, seen: &mut [HashSet<usize>]) {
+    for cell in cells.iter() {
+        if cell.len() < 2 || !cell.iter().all(|&id| id >= 0 && (id as usize) < n) {
+            continue;
+        }
+        for edge in cell.windows(2) {
+            add_edge(edge[0] as usize, edge[1] as usize, seen);
+        }
+    }
+}
+
+fn add_edge(a: usize, b: usize, seen: &mut [HashSet<usize>]) {
+    if a != b {
+        seen[a].insert(b);
+        seen[b].insert(a);
+    }
 }
 
 #[cfg(test)]
