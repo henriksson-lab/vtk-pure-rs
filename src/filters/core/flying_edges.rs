@@ -19,8 +19,9 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
     let nxm1 = nx - 1;
     let n_rows = ny * nz;
     let n_voxel_rows = (ny - 1) * (nz - 1);
-    // Only use parallel for grids larger than ~100^3 (1M voxels)
-    let use_par = nxm1 * n_rows > 1_000_000;
+    // Match VTK's preference for threaded image-data contouring once row work
+    // is large enough to amortize rayon scheduling.
+    let use_par = nxm1 * n_rows >= 100_000;
 
     // ====== PASS 1: Classify x-edges + trim ranges ======
     let mut x_cases: Vec<u8> = vec![0; nxm1 * n_rows];

@@ -7,7 +7,7 @@ use crate::data::{CellArray, PolyData};
 pub fn triangulate(input: &PolyData) -> PolyData {
     // Fast path: if already all triangles and no strips, just clone
     let has_strips = !input.strips.is_empty();
-    let all_tri = input.polys.is_empty() || input.polys.iter().all(|c| c.len() == 3);
+    let all_tri = input.polys.is_empty() || all_cells_are_size(&input.polys, 3);
     if all_tri && !has_strips {
         return input.clone();
     }
@@ -35,12 +35,27 @@ pub fn triangulate(input: &PolyData) -> PolyData {
 fn triangulate_cells(polys: &CellArray) -> CellArray {
     // Fast path: if all cells are already triangles, return a clone directly.
     // This matches VTK's TriangleFilter behavior which is a no-op on triangle meshes.
-    let all_triangles = polys.iter().all(|cell| cell.len() == 3);
-    if all_triangles {
+    if all_cells_are_size(polys, 3) {
         return polys.clone();
     }
 
-    let mut out = CellArray::new();
+    let mut out_cells = 0usize;
+    let mut out_conn_len = 0usize;
+    for cell in polys.iter() {
+        if cell.len() >= 3 {
+            let n = cell.len() - 2;
+            out_cells += n;
+            out_conn_len += n * 3;
+        }
+    }
+
+    if out_cells == 0 {
+        return CellArray::new();
+    }
+
+    let mut offsets = Vec::with_capacity(out_cells + 1);
+    let mut conn = Vec::with_capacity(out_conn_len);
+    offsets.push(0i64);
 
     for cell in polys.iter() {
         if cell.len() < 3 {
@@ -49,20 +64,32 @@ fn triangulate_cells(polys: &CellArray) -> CellArray {
         }
         if cell.len() == 3 {
             // Already a triangle
-            out.push_cell(cell);
+            conn.extend_from_slice(cell);
+            offsets.push(conn.len() as i64);
         } else {
             // Fan triangulation from vertex 0
             for i in 1..cell.len() - 1 {
-                out.push_cell(&[cell[0], cell[i], cell[i + 1]]);
+                conn.extend_from_slice(&[cell[0], cell[i], cell[i + 1]]);
+                offsets.push(conn.len() as i64);
             }
         }
     }
 
-    out
+    CellArray::from_raw(offsets, conn)
 }
 
 fn decompose_strips(strips: &CellArray) -> CellArray {
-    let mut out = CellArray::new();
+    let out_cells: usize = strips
+        .iter()
+        .map(|strip| strip.len().saturating_sub(2))
+        .sum();
+    if out_cells == 0 {
+        return CellArray::new();
+    }
+
+    let mut offsets = Vec::with_capacity(out_cells + 1);
+    let mut conn = Vec::with_capacity(out_cells * 3);
+    offsets.push(0i64);
 
     for strip in strips.iter() {
         if strip.len() < 3 {
@@ -70,15 +97,23 @@ fn decompose_strips(strips: &CellArray) -> CellArray {
         }
         for i in 0..strip.len() - 2 {
             if i % 2 == 0 {
-                out.push_cell(&[strip[i], strip[i + 1], strip[i + 2]]);
+                conn.extend_from_slice(&[strip[i], strip[i + 1], strip[i + 2]]);
             } else {
                 // Flip winding for odd triangles to maintain consistent orientation
-                out.push_cell(&[strip[i + 1], strip[i], strip[i + 2]]);
+                conn.extend_from_slice(&[strip[i + 1], strip[i], strip[i + 2]]);
             }
+            offsets.push(conn.len() as i64);
         }
     }
 
-    out
+    CellArray::from_raw(offsets, conn)
+}
+
+fn all_cells_are_size(cells: &CellArray, size: i64) -> bool {
+    cells
+        .offsets()
+        .windows(2)
+        .all(|pair| pair[1] - pair[0] == size)
 }
 
 #[cfg(test)]

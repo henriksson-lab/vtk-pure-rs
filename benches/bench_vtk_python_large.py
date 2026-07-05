@@ -1,6 +1,38 @@
 """Benchmark VTK C++ (via Python bindings) — larger workloads for fair comparison."""
+import resource
 import time
 import vtk
+
+
+def current_rss_kib():
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except OSError:
+        return None
+    return None
+
+
+def peak_rss_kib():
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+
+def format_kib(value):
+    if value is None:
+        return "n/a"
+    if value >= 1024:
+        return f"{value / 1024:.1f} MiB"
+    return f"{value} KiB"
+
+
+def format_peak_delta(before, after):
+    if before is None or after is None:
+        return "n/a"
+    if after >= before:
+        return f"+{format_kib(after - before)}"
+    return format_kib(after)
 
 
 def make_sphere(resolution):
@@ -33,6 +65,9 @@ def make_image_data(size):
 
 
 def bench(name, iterations, func):
+    rss_before = current_rss_kib()
+    peak_before = peak_rss_kib()
+
     func()  # warmup
     start = time.perf_counter()
     for _ in range(iterations):
@@ -43,7 +78,14 @@ def bench(name, iterations, func):
         per_str = f"{per_iter * 1000:.2f} ms"
     else:
         per_str = f"{per_iter * 1_000_000:.1f} us"
-    print(f"  {name:<35} {per_str:>10} ({iterations} iters)")
+    rss_after = current_rss_kib()
+    peak_after = peak_rss_kib()
+    print(
+        f"  {name:<35} {per_str:>10}  "
+        f"rss {format_kib(rss_after):>9}  "
+        f"peak {format_peak_delta(peak_before, peak_after):>9} "
+        f"({iterations} iters)"
+    )
 
 
 def main():

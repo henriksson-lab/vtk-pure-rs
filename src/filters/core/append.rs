@@ -48,19 +48,27 @@ pub fn append(inputs: &[&PolyData]) -> PolyData {
 }
 
 fn merge_cells(inputs: &[&PolyData], get: impl Fn(&PolyData) -> &CellArray) -> CellArray {
-    let total_cells: usize = inputs.iter().map(|p| get(p).num_cells()).sum();
+    let cell_arrays: Vec<&CellArray> = inputs.iter().map(|p| get(p)).collect();
+    let total_cells: usize = cell_arrays.iter().map(|cells| cells.num_cells()).sum();
     if total_cells == 0 {
         return CellArray::new();
     }
 
-    let total_conn: usize = inputs.iter().map(|p| get(p).connectivity_len()).sum();
+    let total_conn: usize = cell_arrays
+        .iter()
+        .map(|cells| cells.connectivity_len())
+        .sum();
     let mut offsets = Vec::with_capacity(total_cells + 1);
     let mut conn = Vec::with_capacity(total_conn);
     offsets.push(0i64);
 
     let mut pt_off: i64 = 0;
-    for &input in inputs {
-        let cells = get(input);
+    for (&input, cells) in inputs.iter().zip(cell_arrays) {
+        if cells.is_empty() {
+            pt_off += input.points.len() as i64;
+            continue;
+        }
+
         let src_conn = cells.connectivity();
         if pt_off == 0 {
             conn.extend_from_slice(src_conn);
@@ -199,7 +207,11 @@ fn concat_array_ranges(
                 unreachable!();
             };
             let nc = first_array.num_components();
-            let mut data = Vec::new();
+            let total_tuples: usize = ranges
+                .iter()
+                .map(|&(start, end)| end.saturating_sub(start))
+                .sum();
+            let mut data = Vec::with_capacity(total_tuples * nc);
             for (range_idx, &(start, end)) in ranges.iter().enumerate() {
                 if start == end {
                     continue;

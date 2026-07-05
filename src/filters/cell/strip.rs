@@ -36,7 +36,7 @@ pub fn to_triangle_strips_with_maximum_length(input: &PolyData, maximum_length: 
         return output;
     }
 
-    let mut edge_tris: HashMap<(i64, i64), [usize; 2]> = HashMap::with_capacity(nt * 3);
+    let mut edge_tris: HashMap<u64, [usize; 2]> = HashMap::with_capacity(nt * 3);
     for (ti, tri) in tri_verts.iter().enumerate() {
         for edge in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
             let key = edge_key(edge.0, edge.1);
@@ -95,7 +95,7 @@ pub fn to_triangle_strips_with_maximum_length(input: &PolyData, maximum_length: 
 
 fn find_start_edge(
     _tri_verts: &[[i64; 3]],
-    edge_tris: &HashMap<(i64, i64), [usize; 2]>,
+    edge_tris: &HashMap<u64, [usize; 2]>,
     visited: &[bool],
     tri: [i64; 3],
 ) -> Option<([i64; 3], usize)> {
@@ -124,7 +124,7 @@ fn append_triangle(strip: &mut Vec<i64>, tri: [i64; 3]) {
 
 fn find_unvisited_neighbor(
     tri_verts: &[[i64; 3]],
-    edge_tris: &HashMap<(i64, i64), [usize; 2]>,
+    edge_tris: &HashMap<u64, [usize; 2]>,
     visited: &[bool],
     a: i64,
     b: i64,
@@ -144,12 +144,13 @@ fn find_unvisited_neighbor(
     None
 }
 
-fn edge_key(a: i64, b: i64) -> (i64, i64) {
-    if a < b {
-        (a, b)
+fn edge_key(a: i64, b: i64) -> u64 {
+    let (lo, hi) = if a < b {
+        (a as u64, b as u64)
     } else {
-        (b, a)
-    }
+        (b as u64, a as u64)
+    };
+    (lo << 32) | hi
 }
 
 fn strip_lines(lines: &CellArray, maximum_length: usize) -> CellArray {

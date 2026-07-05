@@ -1,6 +1,5 @@
 use crate::data::{CellArray, DataArray, ImageData, Points, PolyData};
 use rayon::prelude::*;
-use std::collections::HashMap;
 
 /// Extract an isosurface from scalar data on an ImageData grid using marching cubes.
 ///
@@ -27,7 +26,9 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
     let mut nrm_flat: Vec<f64> = Vec::with_capacity(est * 9);
     let mut scalar_values: Vec<f64> = Vec::with_capacity(est * 3);
     let mut conn: Vec<i64> = Vec::with_capacity(est * 3);
-    let mut locator: HashMap<[u64; 3], usize> = HashMap::with_capacity(est * 3);
+    let mut x_edges = vec![-1i32; (nx - 1) * ny * dims[2]];
+    let mut y_edges = vec![-1i32; nx * (ny - 1) * dims[2]];
+    let mut z_edges = vec![-1i32; nx * ny * (dims[2] - 1)];
 
     // Iterate over all cells (voxels)
     for k in 0..dims[2] - 1 {
@@ -108,6 +109,17 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
                 let mut edge_verts = [0usize; 12];
                 for edge in 0..12 {
                     if edge_flags & (1 << edge) != 0 {
+                        let (axis, edge_idx) = edge_cache_key(edge, i, j, k, nx, ny);
+                        let cached = match axis {
+                            0 => x_edges[edge_idx],
+                            1 => y_edges[edge_idx],
+                            _ => z_edges[edge_idx],
+                        };
+                        if cached >= 0 {
+                            edge_verts[edge] = cached as usize;
+                            continue;
+                        }
+
                         let (e0, e1) = EDGE_VERTICES[edge];
                         for &ec in &[e0, e1] {
                             if !grad_computed[ec] {
@@ -148,15 +160,16 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
                             [0.0, 0.0, 1.0]
                         };
 
-                        edge_verts[edge] = insert_unique_point(
-                            &mut locator,
-                            &mut pts_flat,
-                            &mut nrm_flat,
-                            &mut scalar_values,
-                            p,
-                            normal,
-                            iso_value,
-                        );
+                        let idx = pts_flat.len() / 3;
+                        pts_flat.extend_from_slice(&p);
+                        nrm_flat.extend_from_slice(&normal);
+                        scalar_values.push(iso_value);
+                        match axis {
+                            0 => x_edges[edge_idx] = idx as i32,
+                            1 => y_edges[edge_idx] = idx as i32,
+                            _ => z_edges[edge_idx] = idx as i32,
+                        }
+                        edge_verts[edge] = idx;
                     }
                 }
 
@@ -201,33 +214,22 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
     pd
 }
 
-fn insert_unique_point(
-    locator: &mut HashMap<[u64; 3], usize>,
-    pts_flat: &mut Vec<f64>,
-    nrm_flat: &mut Vec<f64>,
-    scalar_values: &mut Vec<f64>,
-    p: [f64; 3],
-    normal: [f64; 3],
-    scalar: f64,
-) -> usize {
-    let key = [coord_key(p[0]), coord_key(p[1]), coord_key(p[2])];
-    if let Some(&idx) = locator.get(&key) {
-        return idx;
-    }
-
-    let idx = pts_flat.len() / 3;
-    pts_flat.extend_from_slice(&p);
-    nrm_flat.extend_from_slice(&normal);
-    scalar_values.push(scalar);
-    locator.insert(key, idx);
-    idx
-}
-
-fn coord_key(x: f64) -> u64 {
-    if x == 0.0 {
-        0.0f64.to_bits()
-    } else {
-        x.to_bits()
+#[inline(always)]
+fn edge_cache_key(edge: usize, i: usize, j: usize, k: usize, nx: usize, ny: usize) -> (u8, usize) {
+    match edge {
+        0 => (0, (k * ny + j) * (nx - 1) + i),
+        1 => (1, (k * (ny - 1) + j) * nx + i + 1),
+        2 => (0, (k * ny + j + 1) * (nx - 1) + i),
+        3 => (1, (k * (ny - 1) + j) * nx + i),
+        4 => (0, ((k + 1) * ny + j) * (nx - 1) + i),
+        5 => (1, ((k + 1) * (ny - 1) + j) * nx + i + 1),
+        6 => (0, ((k + 1) * ny + j + 1) * (nx - 1) + i),
+        7 => (1, ((k + 1) * (ny - 1) + j) * nx + i),
+        8 => (2, (k * ny + j) * nx + i),
+        9 => (2, (k * ny + j) * nx + i + 1),
+        10 => (2, (k * ny + j + 1) * nx + i + 1),
+        11 => (2, (k * ny + j + 1) * nx + i),
+        _ => unreachable!(),
     }
 }
 

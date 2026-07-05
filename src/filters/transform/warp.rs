@@ -1,4 +1,4 @@
-use crate::data::{DataSet, PolyData};
+use crate::data::{AnyDataArray, DataSet, PolyData};
 
 /// Warp mesh vertices along the surface normal by the active scalar value.
 ///
@@ -17,9 +17,35 @@ pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
     };
 
     let n = input.num_points();
+    let pts = output.points.as_flat_slice_mut();
+
+    match (normals, scalars) {
+        (Some(AnyDataArray::F64(normals)), AnyDataArray::F64(scalars))
+            if normals.num_components() == 3 && scalars.num_components() == 1 =>
+        {
+            let normals = normals.as_slice();
+            let scalars = scalars.as_slice();
+            for i in 0..n {
+                let p = i * 3;
+                let d = scalars[i] * scale_factor;
+                pts[p] += normals[p] * d;
+                pts[p + 1] += normals[p + 1] * d;
+                pts[p + 2] += normals[p + 2] * d;
+            }
+            return output;
+        }
+        (None, AnyDataArray::F64(scalars)) if scalars.num_components() == 1 => {
+            let scalars = scalars.as_slice();
+            for i in 0..n {
+                pts[i * 3 + 2] += scalars[i] * scale_factor;
+            }
+            return output;
+        }
+        _ => {}
+    }
+
     let mut nbuf = [0.0f64; 3];
     let mut sbuf = [0.0f64];
-    let pts = output.points.as_flat_slice_mut();
 
     for i in 0..n {
         if let Some(normals) = normals {

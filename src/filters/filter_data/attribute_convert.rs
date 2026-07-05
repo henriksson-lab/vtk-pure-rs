@@ -15,6 +15,12 @@ pub fn cell_data_to_point_data(input: &PolyData) -> PolyData {
             None => continue,
         };
 
+        if let AnyDataArray::F64(arr) = arr {
+            pd.point_data_mut()
+                .add_array(cell_data_f64_to_point_data(input, arr).into());
+            continue;
+        }
+
         let nc = arr.num_components();
         let mut sums = vec![0.0f64; n_points * nc];
         let mut counts = vec![0u32; n_points];
@@ -89,6 +95,12 @@ pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
             None => continue,
         };
 
+        if let AnyDataArray::F64(arr) = arr {
+            pd.cell_data_mut()
+                .add_array(point_data_f64_to_cell_data(input, arr).into());
+            continue;
+        }
+
         let nc = arr.num_components();
         let mut cell_values = Vec::with_capacity(total_cells * nc);
         let mut buf = vec![0.0f64; nc];
@@ -128,6 +140,166 @@ pub fn point_data_to_cell_data(input: &PolyData) -> PolyData {
     }
 
     pd
+}
+
+fn cell_data_f64_to_point_data(input: &PolyData, arr: &DataArray<f64>) -> DataArray<f64> {
+    let n_points = input.points.len();
+    let nc = arr.num_components();
+    if nc == 1 {
+        return cell_scalar_f64_to_point_data(input, arr);
+    }
+    let values = arr.as_slice();
+    let mut sums = vec![0.0f64; n_points * nc];
+    let mut counts = vec![0u32; n_points];
+    let mut cell_idx = 0usize;
+    let num_tuples = arr.num_tuples();
+    let cell_arrays: [&crate::data::CellArray; 4] =
+        [&input.verts, &input.lines, &input.polys, &input.strips];
+
+    for cells in &cell_arrays {
+        let offsets = cells.offsets();
+        let connectivity = cells.connectivity();
+        for ci in 0..cells.num_cells() {
+            if cell_idx >= num_tuples {
+                break;
+            }
+            let tuple = &values[cell_idx * nc..(cell_idx + 1) * nc];
+            let cs = offsets[ci] as usize;
+            let ce = offsets[ci + 1] as usize;
+            for &point_id in &connectivity[cs..ce] {
+                let point_id = point_id as usize;
+                let out = &mut sums[point_id * nc..(point_id + 1) * nc];
+                for c in 0..nc {
+                    out[c] += tuple[c];
+                }
+                counts[point_id] += 1;
+            }
+            cell_idx += 1;
+        }
+    }
+
+    for (point_id, &count) in counts.iter().enumerate() {
+        if count == 0 {
+            continue;
+        }
+        let inv = 1.0 / count as f64;
+        for value in &mut sums[point_id * nc..(point_id + 1) * nc] {
+            *value *= inv;
+        }
+    }
+
+    DataArray::from_vec(arr.name(), sums, nc)
+}
+
+fn point_data_f64_to_cell_data(input: &PolyData, arr: &DataArray<f64>) -> DataArray<f64> {
+    let total_cells = input.verts.num_cells()
+        + input.lines.num_cells()
+        + input.polys.num_cells()
+        + input.strips.num_cells();
+    let nc = arr.num_components();
+    if nc == 1 {
+        return point_scalar_f64_to_cell_data(input, arr);
+    }
+    let values = arr.as_slice();
+    let mut cell_values = Vec::with_capacity(total_cells * nc);
+    let mut avg = vec![0.0f64; nc];
+    let cell_arrays: [&crate::data::CellArray; 4] =
+        [&input.verts, &input.lines, &input.polys, &input.strips];
+
+    for cells in &cell_arrays {
+        let offsets = cells.offsets();
+        let connectivity = cells.connectivity();
+        for ci in 0..cells.num_cells() {
+            let cs = offsets[ci] as usize;
+            let ce = offsets[ci + 1] as usize;
+            avg.fill(0.0);
+            for &point_id in &connectivity[cs..ce] {
+                let point_id = point_id as usize;
+                let tuple = &values[point_id * nc..(point_id + 1) * nc];
+                for c in 0..nc {
+                    avg[c] += tuple[c];
+                }
+            }
+            let num_points = ce - cs;
+            if num_points > 0 {
+                let inv = 1.0 / num_points as f64;
+                for value in &mut avg {
+                    *value *= inv;
+                }
+            }
+            cell_values.extend_from_slice(&avg);
+        }
+    }
+
+    DataArray::from_vec(arr.name(), cell_values, nc)
+}
+
+fn cell_scalar_f64_to_point_data(input: &PolyData, arr: &DataArray<f64>) -> DataArray<f64> {
+    let mut sums = vec![0.0f64; input.points.len()];
+    let mut counts = vec![0u32; input.points.len()];
+    let values = arr.as_slice();
+    let mut cell_idx = 0usize;
+    let cell_arrays: [&crate::data::CellArray; 4] =
+        [&input.verts, &input.lines, &input.polys, &input.strips];
+
+    for cells in &cell_arrays {
+        let offsets = cells.offsets();
+        let connectivity = cells.connectivity();
+        for ci in 0..cells.num_cells() {
+            if cell_idx >= values.len() {
+                break;
+            }
+            let value = values[cell_idx];
+            let cs = offsets[ci] as usize;
+            let ce = offsets[ci + 1] as usize;
+            for &point_id in &connectivity[cs..ce] {
+                let point_id = point_id as usize;
+                sums[point_id] += value;
+                counts[point_id] += 1;
+            }
+            cell_idx += 1;
+        }
+    }
+
+    for (value, &count) in sums.iter_mut().zip(&counts) {
+        if count > 0 {
+            *value /= count as f64;
+        }
+    }
+
+    DataArray::from_vec(arr.name(), sums, 1)
+}
+
+fn point_scalar_f64_to_cell_data(input: &PolyData, arr: &DataArray<f64>) -> DataArray<f64> {
+    let total_cells = input.verts.num_cells()
+        + input.lines.num_cells()
+        + input.polys.num_cells()
+        + input.strips.num_cells();
+    let values = arr.as_slice();
+    let mut cell_values = Vec::with_capacity(total_cells);
+    let cell_arrays: [&crate::data::CellArray; 4] =
+        [&input.verts, &input.lines, &input.polys, &input.strips];
+
+    for cells in &cell_arrays {
+        let offsets = cells.offsets();
+        let connectivity = cells.connectivity();
+        for ci in 0..cells.num_cells() {
+            let cs = offsets[ci] as usize;
+            let ce = offsets[ci + 1] as usize;
+            let mut sum = 0.0;
+            for &point_id in &connectivity[cs..ce] {
+                sum += values[point_id as usize];
+            }
+            let num_points = ce - cs;
+            cell_values.push(if num_points > 0 {
+                sum / num_points as f64
+            } else {
+                0.0
+            });
+        }
+    }
+
+    DataArray::from_vec(arr.name(), cell_values, 1)
 }
 
 #[cfg(test)]

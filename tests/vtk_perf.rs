@@ -9,15 +9,51 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-fn load_perf_ref() -> HashMap<String, f64> {
-    let path = "tests/vtk_validation/reference/perf_vtk_cpp.json";
-    let content = std::fs::read_to_string(path).unwrap_or_else(|_| panic!("missing {path}"));
-    let map: HashMap<String, f64> = serde_json::from_str(&content).unwrap();
-    map
+#[derive(Debug, Clone, Copy)]
+struct PerfRef {
+    time_s: f64,
+    rss_kib: Option<u64>,
 }
 
-fn bench_ms<T>(f: impl Fn() -> T, n: usize) -> f64 {
-    let n = n.max(50);
+#[derive(Debug, Clone, Copy)]
+struct BenchResult {
+    median_ms: f64,
+    rss_kib: Option<u64>,
+    peak_delta_kib: Option<u64>,
+}
+
+fn load_perf_ref() -> HashMap<String, PerfRef> {
+    let path = "tests/vtk_validation/reference/perf_vtk_cpp.json";
+    let content = std::fs::read_to_string(path).unwrap_or_else(|_| panic!("missing {path}"));
+    let raw: HashMap<String, serde_json::Value> = serde_json::from_str(&content).unwrap();
+    raw.into_iter()
+        .map(|(key, value)| {
+            let perf_ref = match value {
+                serde_json::Value::Number(n) => PerfRef {
+                    time_s: n.as_f64().unwrap(),
+                    rss_kib: None,
+                },
+                serde_json::Value::Object(obj) => PerfRef {
+                    time_s: obj
+                        .get("time_s")
+                        .or_else(|| obj.get("seconds"))
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or_else(|| panic!("{key}: missing time_s")),
+                    rss_kib: obj
+                        .get("rss_kib")
+                        .or_else(|| obj.get("peak_rss_kib"))
+                        .and_then(|v| v.as_u64()),
+                },
+                _ => panic!("{key}: unsupported perf reference value"),
+            };
+            (key, perf_ref)
+        })
+        .collect()
+}
+
+fn bench_ms<T>(f: impl Fn() -> T, n: usize) -> BenchResult {
+    let n = bench_iterations(n);
+    let rss_before = rss_sample();
     std::hint::black_box(f()); // warmup
     let mut times = Vec::with_capacity(n);
     for _ in 0..n {
@@ -28,13 +64,19 @@ fn bench_ms<T>(f: impl Fn() -> T, n: usize) -> f64 {
         times.push(elapsed);
     }
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    times[times.len() / 2] * 1000.0
+    let rss_after = rss_sample();
+    BenchResult {
+        median_ms: times[times.len() / 2] * 1000.0,
+        rss_kib: rss_after.current_kib,
+        peak_delta_kib: peak_delta(rss_before, rss_after),
+    }
 }
 
 /// Bench with separate setup (run once) and body (timed per iteration).
-fn bench_with_setup<S, T>(setup: impl Fn() -> S, body: impl Fn(&S) -> T, n: usize) -> f64 {
-    let n = n.max(50);
+fn bench_with_setup<S, T>(setup: impl Fn() -> S, body: impl Fn(&S) -> T, n: usize) -> BenchResult {
+    let n = bench_iterations(n);
     let input = setup();
+    let rss_before = rss_sample();
     std::hint::black_box(body(&input)); // warmup
     let mut times = Vec::with_capacity(n);
     for _ in 0..n {
@@ -45,7 +87,79 @@ fn bench_with_setup<S, T>(setup: impl Fn() -> S, body: impl Fn(&S) -> T, n: usiz
         times.push(elapsed);
     }
     times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    times[times.len() / 2] * 1000.0
+    let rss_after = rss_sample();
+    BenchResult {
+        median_ms: times[times.len() / 2] * 1000.0,
+        rss_kib: rss_after.current_kib,
+        peak_delta_kib: peak_delta(rss_before, rss_after),
+    }
+}
+
+fn bench_iterations(default: usize) -> usize {
+    std::env::var("VTK_PERF_ITERS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|&value| value > 0)
+        .unwrap_or_else(|| default.max(50))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RssSample {
+    current_kib: Option<u64>,
+    peak_kib: Option<u64>,
+}
+
+fn rss_sample() -> RssSample {
+    RssSample {
+        current_kib: proc_status_kib("VmRSS:"),
+        peak_kib: proc_status_kib("VmHWM:"),
+    }
+}
+
+fn peak_delta(before: RssSample, after: RssSample) -> Option<u64> {
+    match (before.peak_kib, after.peak_kib) {
+        (Some(before), Some(after)) if after >= before => Some(after - before),
+        _ => None,
+    }
+}
+
+fn proc_status_kib(label: &str) -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix(label) {
+            return rest.split_whitespace().next()?.parse().ok();
+        }
+    }
+    None
+}
+
+fn opt_u64_json(value: Option<u64>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn print_perf_result(key: &str, rust: BenchResult, vtk_ref: PerfRef, ratio: f64) {
+    let vtk_ms = vtk_ref.time_s * 1000.0;
+    println!(
+        "  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x, rss: {:?} KiB, peak_delta: {:?} KiB",
+        key, rust.median_ms, vtk_ms, ratio, rust.rss_kib, rust.peak_delta_kib
+    );
+    println!(
+        "PERF_JSON {{\"algorithm\":\"{}\",\"rust_ms\":{:.6},\"vtk_ms\":{:.6},\"speed_ratio\":{:.6},\"rust_rss_kib\":{},\"rust_peak_delta_kib\":{},\"vtk_rss_kib\":{},\"rss_ratio\":{},\"parity\":\"covered-by-vtk_validation\"}}",
+        key,
+        rust.median_ms,
+        vtk_ms,
+        ratio,
+        opt_u64_json(rust.rss_kib),
+        opt_u64_json(rust.peak_delta_kib),
+        opt_u64_json(vtk_ref.rss_kib),
+        vtk_ref
+            .rss_kib
+            .and_then(|vtk_rss| rust.rss_kib.map(|rust_rss| rust_rss as f64 / vtk_rss.max(1) as f64))
+            .map(|ratio| format!("{ratio:.6}"))
+            .unwrap_or_else(|| "null".to_string())
+    );
 }
 
 use vtk_pure_rs::data::*;
@@ -67,18 +181,16 @@ macro_rules! perf_test {
         #[test]
         fn $name() {
             let ref_data = load_perf_ref();
-            let vtk_ms = ref_data[$key] * 1000.0;
-            let our_ms = bench_ms(|| $body, 30);
-            let ratio = our_ms / vtk_ms.max(0.001);
-            println!(
-                "  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x",
-                $key, our_ms, vtk_ms, ratio
-            );
+            let vtk_ref = ref_data[$key];
+            let rust = bench_ms(|| $body, 30);
+            let vtk_ms = vtk_ref.time_s * 1000.0;
+            let ratio = rust.median_ms / vtk_ms.max(0.001);
+            print_perf_result($key, rust, vtk_ref, ratio);
             assert!(
                 ratio < $max_ratio,
                 "{}: {:.2}ms is {:.1}x slower than VTK {:.2}ms (max allowed: {}x)",
                 $key,
-                our_ms,
+                rust.median_ms,
                 ratio,
                 vtk_ms,
                 $max_ratio
@@ -94,18 +206,16 @@ macro_rules! perf_test_setup {
         #[test]
         fn $name() {
             let ref_data = load_perf_ref();
-            let vtk_ms = ref_data[$key] * 1000.0;
-            let our_ms = bench_with_setup(|| $setup, |$inp| $body, 50);
-            let ratio = our_ms / vtk_ms.max(0.001);
-            println!(
-                "  {} — ours: {:.2}ms, VTK: {:.2}ms, ratio: {:.2}x",
-                $key, our_ms, vtk_ms, ratio
-            );
+            let vtk_ref = ref_data[$key];
+            let rust = bench_with_setup(|| $setup, |$inp| $body, 50);
+            let vtk_ms = vtk_ref.time_s * 1000.0;
+            let ratio = rust.median_ms / vtk_ms.max(0.001);
+            print_perf_result($key, rust, vtk_ref, ratio);
             assert!(
                 ratio < $max_ratio,
                 "{}: {:.2}ms is {:.1}x slower than VTK {:.2}ms (max allowed: {}x)",
                 $key,
-                our_ms,
+                rust.median_ms,
                 ratio,
                 vtk_ms,
                 $max_ratio

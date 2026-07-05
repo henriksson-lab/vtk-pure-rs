@@ -1,5 +1,6 @@
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 use crate::types::Scalar;
+use std::collections::HashMap;
 
 /// Parameters for cleaning PolyData.
 pub struct CleanParams {
@@ -97,7 +98,12 @@ pub fn clean(input: &PolyData, params: &CleanParams) -> PolyData {
 
 fn merge_point_representatives(points: &Points<f64>, tolerance: f64) -> Vec<usize> {
     let n = points.len();
-    let tol2 = tolerance.max(0.0) * tolerance.max(0.0);
+    let tolerance = tolerance.max(0.0);
+    if tolerance == 0.0 {
+        return merge_exact_point_representatives(points);
+    }
+
+    let tol2 = tolerance * tolerance;
     let pts = points.as_flat_slice();
     let mut reps = vec![0usize; n];
 
@@ -116,6 +122,39 @@ fn merge_point_representatives(points: &Points<f64>, tolerance: f64) -> Vec<usiz
         }
     }
     reps
+}
+
+fn merge_exact_point_representatives(points: &Points<f64>) -> Vec<usize> {
+    let n = points.len();
+    let pts = points.as_flat_slice();
+    let mut reps = vec![0usize; n];
+    let mut first_by_point = HashMap::with_capacity(n);
+
+    for i in 0..n {
+        let bi = i * 3;
+        let Some(key) = exact_point_key(pts[bi], pts[bi + 1], pts[bi + 2]) else {
+            reps[i] = i;
+            continue;
+        };
+        let rep = *first_by_point.entry(key).or_insert(i);
+        reps[i] = rep;
+    }
+
+    reps
+}
+
+fn exact_point_key(x: f64, y: f64, z: f64) -> Option<(u64, u64, u64)> {
+    fn key_coord(v: f64) -> Option<u64> {
+        if v.is_nan() {
+            None
+        } else if v == 0.0 {
+            Some(0.0f64.to_bits())
+        } else {
+            Some(v.to_bits())
+        }
+    }
+
+    Some((key_coord(x)?, key_coord(y)?, key_coord(z)?))
 }
 
 /// Remap cell point indices and optionally remove degenerate cells.
@@ -291,6 +330,21 @@ mod tests {
         // Both triangles should reference the same 3 points
         assert_eq!(result.polys.cell(0), &[0, 1, 2]);
         assert_eq!(result.polys.cell(1), &[0, 1, 2]);
+    }
+
+    #[test]
+    fn exact_merge_matches_zero_tolerance_distance_semantics() {
+        let pd = Points::from_vec(vec![
+            [0.0, -0.0, 0.0],
+            [-0.0, 0.0, -0.0],
+            [f64::NAN, 0.0, 0.0],
+            [f64::NAN, 0.0, 0.0],
+        ]);
+
+        let reps = merge_point_representatives(&pd, 0.0);
+        assert_eq!(reps[0], reps[1]);
+        assert_eq!(reps[2], 2);
+        assert_eq!(reps[3], 3);
     }
 
     #[test]

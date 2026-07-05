@@ -9,6 +9,7 @@ Each timing runs the VTK C++ operation 50 times and takes the median.
 
 import vtk
 import json
+import resource
 import time
 import os
 import tempfile
@@ -16,8 +17,50 @@ import tempfile
 REF_DIR = os.path.join(os.path.dirname(__file__), "reference")
 
 
+class PerfEntry(float):
+    def __new__(cls, time_s, rss_kib=None, peak_delta_kib=None):
+        obj = float.__new__(cls, time_s)
+        obj.time_s = float(time_s)
+        obj.rss_kib = rss_kib
+        obj.peak_delta_kib = peak_delta_kib
+        return obj
+
+    def to_json(self):
+        return {
+            "time_s": self.time_s,
+            "rss_kib": self.rss_kib,
+            "peak_delta_kib": self.peak_delta_kib,
+        }
+
+
+def current_rss_kib():
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except OSError:
+        return None
+    return None
+
+
+def peak_rss_kib():
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+
+def load_perf_entry(value):
+    if isinstance(value, dict):
+        return PerfEntry(
+            value["time_s"],
+            value.get("rss_kib"),
+            value.get("peak_delta_kib"),
+        )
+    return PerfEntry(float(value))
+
+
 def bench(fn, n=50):
-    """Run fn n times, return median time in seconds."""
+    """Run fn n times, return median time and RSS metadata."""
+    peak_before = peak_rss_kib()
     fn()  # warmup
     times = []
     for _ in range(n):
@@ -25,7 +68,11 @@ def bench(fn, n=50):
         fn()
         times.append(time.perf_counter() - t0)
     times.sort()
-    return times[len(times) // 2]
+    peak_after = peak_rss_kib()
+    peak_delta = None
+    if peak_before is not None and peak_after is not None and peak_after >= peak_before:
+        peak_delta = peak_after - peak_before
+    return PerfEntry(times[len(times) // 2], current_rss_kib(), peak_delta)
 
 
 def make_sphere(theta=32, phi=32):
@@ -45,7 +92,7 @@ def make_sphere_128():
 perf_path = os.path.join(REF_DIR, "perf_vtk_cpp.json")
 if os.path.exists(perf_path):
     with open(perf_path) as f:
-        perf = json.load(f)
+        perf = {key: load_perf_entry(value) for key, value in json.load(f).items()}
 else:
     perf = {}
 
@@ -430,5 +477,5 @@ print(f"  tube_large: {perf['tube_large']*1000:.3f}ms")
 
 # Save
 with open(perf_path, "w") as f:
-    json.dump(perf, f, indent=2)
+    json.dump({key: value.to_json() for key, value in perf.items()}, f, indent=2)
 print(f"\nSaved {len(perf)} entries to {perf_path}")

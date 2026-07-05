@@ -1,4 +1,7 @@
 use std::hint::black_box;
+
+mod rss;
+
 use vtk_pure_rs::data::ImageData;
 use vtk_pure_rs::data::PolyData;
 use vtk_pure_rs::filters::core::sources::sphere::{sphere, SphereParams};
@@ -82,6 +85,7 @@ fn main() {
 }
 
 fn bench<F: FnMut()>(name: &str, iterations: u32, mut f: F) {
+    let rss_before = rss::sample();
     f(); // warmup
     let start = std::time::Instant::now();
     for _ in 0..iterations {
@@ -94,5 +98,13 @@ fn bench<F: FnMut()>(name: &str, iterations: u32, mut f: F) {
     } else {
         format!("{:.1} us", per_iter.as_secs_f64() * 1_000_000.0)
     };
-    println!("  {:<35} {:>10} ({} iters)", name, per_str, iterations);
+    let rss_after = rss::sample();
+    println!(
+        "  {:<35} {:>10}  rss {:>9}  peak {:>9} ({} iters)",
+        name,
+        per_str,
+        rss::format_kib(rss_after.current_kib),
+        rss::format_peak_delta(rss_before, rss_after),
+        iterations
+    );
 }

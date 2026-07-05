@@ -1,4 +1,5 @@
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Clip a PolyData by a plane defined by a point and normal.
 ///
@@ -6,7 +7,7 @@ use crate::data::{CellArray, Points, PolyData};
 /// Triangles that cross the plane are split, generating new vertices on the plane.
 pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
     let mut points = input.points.clone();
-    let mut point_locator = PointLocator::from_points(&points);
+    let mut point_locator = PointLocator::default();
     let mut verts = CellArray::new();
     let mut lines = CellArray::new();
     let mut polys = CellArray::new();
@@ -117,37 +118,30 @@ pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> Po
 
 #[derive(Default)]
 struct PointLocator {
-    points: Vec<[f64; 3]>,
+    edge_points: HashMap<(i64, i64), i64>,
 }
 
 impl PointLocator {
-    fn from_points(points: &Points<f64>) -> Self {
-        let mut locator = Self::default();
-        for i in 0..points.len() {
-            locator.points.push(points.get(i));
-        }
-        locator
-    }
-
-    fn insert_unique_point(&mut self, points: &mut Points<f64>, point: [f64; 3]) -> i64 {
-        if let Some((id, _)) = self
-            .points
-            .iter()
-            .enumerate()
-            .find(|(_, existing)| same_point(**existing, point))
-        {
-            return id as i64;
+    fn insert_edge_point(
+        &mut self,
+        points: &mut Points<f64>,
+        edge: [i64; 2],
+        point: [f64; 3],
+    ) -> i64 {
+        let key = if edge[0] <= edge[1] {
+            (edge[0], edge[1])
+        } else {
+            (edge[1], edge[0])
+        };
+        if let Some(&id) = self.edge_points.get(&key) {
+            return id;
         }
 
         let id = points.len() as i64;
         points.push(point);
-        self.points.push(point);
+        self.edge_points.insert(key, id);
         id
     }
-}
-
-fn same_point(a: [f64; 3], b: [f64; 3]) -> bool {
-    (a[0] - b[0]).abs() <= 1e-12 && (a[1] - b[1]).abs() <= 1e-12 && (a[2] - b[2]).abs() <= 1e-12
 }
 
 fn signed_distance(p: [f64; 3], origin: [f64; 3], normal: [f64; 3]) -> f64 {
@@ -186,7 +180,7 @@ fn clip_polyline_segment(
                 pi[1] + t * (pj[1] - pi[1]),
                 pi[2] + t * (pj[2] - pi[2]),
             ];
-            let new_id = point_locator.insert_unique_point(all_points, intersection);
+            let new_id = point_locator.insert_edge_point(all_points, ids, intersection);
             if i_in {
                 vec![ids[0], new_id]
             } else {
@@ -298,7 +292,7 @@ fn clip_polygon(
                 pi[1] + t * (pj[1] - pi[1]),
                 pi[2] + t * (pj[2] - pi[2]),
             ];
-            let new_id = point_locator.insert_unique_point(all_points, intersection);
+            let new_id = point_locator.insert_edge_point(all_points, [vi, vj], intersection);
             result.push(new_id);
         }
     }

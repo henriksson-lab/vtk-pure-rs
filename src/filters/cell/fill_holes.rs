@@ -18,12 +18,11 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
     let conn = work_polys.connectivity();
     let nc = work_polys.num_cells();
 
-    // Sorted-edge approach: collect all directed edges, sort, find boundary edges.
-    // Boundary = edges appearing exactly once when canonicalized (a < b).
-    // ~3x faster than HashMap for large meshes.
+    // Bucket edges by their lower endpoint, then sort only each small point
+    // bucket. This is the same boundary criterion as VTK's "no edge neighbor"
+    // check, but avoids a global sort across every mesh edge.
     let np = input.points.len();
-    let total_edges = conn.len(); // each connectivity entry contributes one edge
-    let mut edges: Vec<(u64, i64, i64)> = Vec::with_capacity(total_edges); // (canonical_key, a, b)
+    let mut edge_counts_by_lower = vec![0usize; np];
 
     for ci in 0..nc {
         let start = offsets[ci] as usize;
@@ -38,33 +37,57 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
             if a < 0 || b < 0 || a as usize >= np || b as usize >= np || a == b {
                 continue;
             }
-            let key = if a < b {
-                (a as u64) << 32 | b as u64
+            let (lo, _) = if a < b {
+                (a as usize, b as usize)
             } else {
-                (b as u64) << 32 | a as u64
+                (b as usize, a as usize)
             };
-            edges.push((key, a, b));
+            edge_counts_by_lower[lo] += 1;
         }
     }
-    edges.sort_unstable_by_key(|e| e.0);
 
-    // Find boundary edges (canonical key appears exactly once).
+    let mut edges_by_lower: Vec<Vec<(usize, usize, usize)>> = edge_counts_by_lower
+        .into_iter()
+        .map(Vec::with_capacity)
+        .collect();
+
+    for ci in 0..nc {
+        let start = offsets[ci] as usize;
+        let end = offsets[ci + 1] as usize;
+        let n = end - start;
+        if n < 3 {
+            continue;
+        }
+        for i in 0..n {
+            let a = conn[start + i];
+            let b = conn[start + if i + 1 < n { i + 1 } else { 0 }];
+            if a < 0 || b < 0 || a as usize >= np || b as usize >= np || a == b {
+                continue;
+            }
+            let a = a as usize;
+            let b = b as usize;
+            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+            edges_by_lower[lo].push((hi, a, b));
+        }
+    }
+
     let mut boundary_edges: Vec<(usize, usize)> = Vec::new();
     let mut has_boundary = false;
-    let ne = edges.len();
-    let mut i = 0;
-    while i < ne {
-        let key = edges[i].0;
-        let mut count = 0usize;
-        let start_i = i;
-        while i < ne && edges[i].0 == key {
-            count += 1;
+    for bucket in &mut edges_by_lower {
+        bucket.sort_unstable_by_key(|edge| edge.0);
+        let mut i = 0;
+        while i < bucket.len() {
+            let hi = bucket[i].0;
+            let start_i = i;
             i += 1;
-        }
-        if count == 1 {
-            let (_, a, b) = edges[start_i];
-            boundary_edges.push((a as usize, b as usize));
-            has_boundary = true;
+            while i < bucket.len() && bucket[i].0 == hi {
+                i += 1;
+            }
+            if i - start_i == 1 {
+                let (_, a, b) = bucket[start_i];
+                boundary_edges.push((a, b));
+                has_boundary = true;
+            }
         }
     }
 
@@ -100,16 +123,26 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
             }
             loop_pts.push(current as i64);
 
-            let unvisited: Vec<usize> = edge_ids_by_vertex[current]
-                .iter()
-                .copied()
-                .filter(|&edge_id| !visited[edge_id])
-                .collect();
-            if unvisited.len() != 1 {
+            let mut next_edge = None;
+            let mut unvisited_count = 0usize;
+            for &edge_id in &edge_ids_by_vertex[current] {
+                if !visited[edge_id] {
+                    next_edge = Some(edge_id);
+                    unvisited_count += 1;
+                    if unvisited_count > 1 {
+                        break;
+                    }
+                }
+            }
+            let Some(next_edge) = next_edge else {
+                valid = false;
+                break;
+            };
+            if unvisited_count != 1 {
                 valid = false;
                 break;
             }
-            current_edge = unvisited[0];
+            current_edge = next_edge;
             let (a, b) = boundary_edges[current_edge];
             current = if a == current { b } else { a };
         }

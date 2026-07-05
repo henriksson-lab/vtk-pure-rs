@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::data::PolyData;
+use crate::data::{Points, PolyData};
 
 const COS_EDGE_ANGLE: f64 = 0.9659258262890683; // cos(15 degrees), VTK default EdgeAngle.
 
@@ -13,37 +13,35 @@ pub fn smooth(
 ) -> PolyData {
     let mut output = input.clone();
     let n = output.points.len();
-    if n == 0 || iterations == 0 {
+    if n == 0 || iterations == 0 || relaxation_factor == 0.0 {
         return output;
     }
 
     let neighbors = build_smoothing_neighbors(input, n, fix_boundary);
+    let (neighbor_offsets, neighbor_ids) = flatten_neighbors(&neighbors);
     let factor = relaxation_factor;
 
-    // Work directly on flat f64 buffer for cache efficiency
-    let mut pos: Vec<f64> = Vec::with_capacity(n * 3);
-    for i in 0..n {
-        let p = output.points.get(i);
-        pos.extend_from_slice(&p);
-    }
+    // Work directly on flat f64 buffers for cache efficiency.
+    let mut pos = input.points.as_flat_slice().to_vec();
     for _ in 0..iterations {
         for i in 0..n {
-            let nbrs = &neighbors[i];
-            if nbrs.is_empty() {
+            let start = neighbor_offsets[i];
+            let end = neighbor_offsets[i + 1];
+            if start == end {
                 continue;
             }
 
             let mut ax = 0.0f64;
             let mut ay = 0.0f64;
             let mut az = 0.0f64;
-            for &nb in nbrs {
+            for &nb in &neighbor_ids[start..end] {
                 unsafe {
                     ax += *pos.get_unchecked(nb * 3);
                     ay += *pos.get_unchecked(nb * 3 + 1);
                     az += *pos.get_unchecked(nb * 3 + 2);
                 }
             }
-            let inv = 1.0 / nbrs.len() as f64;
+            let inv = 1.0 / (end - start) as f64;
             ax *= inv;
             ay *= inv;
             az *= inv;
@@ -55,12 +53,7 @@ pub fn smooth(
         }
     }
 
-    // Write back
-    for i in 0..n {
-        output
-            .points
-            .set(i, [pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]]);
-    }
+    output.points = Points::from_flat_vec(pos);
     output
 }
 
@@ -111,7 +104,8 @@ fn build_smoothing_neighbors(input: &PolyData, n: usize, fix_boundary: bool) -> 
         }
     }
 
-    let mut edge_count: HashMap<(usize, usize), usize> = HashMap::new();
+    let edge_capacity = input.polys.connectivity_len() + input.strips.connectivity_len() * 3;
+    let mut edge_count: HashMap<(usize, usize), usize> = HashMap::with_capacity(edge_capacity);
     for cell in input.polys.iter() {
         add_polygon_edges(cell, n, &mut edge_count, &mut all_neighbors);
     }
@@ -168,6 +162,17 @@ fn build_smoothing_neighbors(input: &PolyData, n: usize, fix_boundary: bool) -> 
     }
 
     smooth_neighbors
+}
+
+fn flatten_neighbors(neighbors: &[Vec<usize>]) -> (Vec<usize>, Vec<usize>) {
+    let mut offsets = Vec::with_capacity(neighbors.len() + 1);
+    let mut ids = Vec::with_capacity(neighbors.iter().map(Vec::len).sum());
+    offsets.push(0);
+    for nbrs in neighbors {
+        ids.extend_from_slice(nbrs);
+        offsets.push(ids.len());
+    }
+    (offsets, ids)
 }
 
 fn add_polygon_edges(
@@ -304,6 +309,22 @@ mod tests {
         );
         let result = smooth(&pd, 0, 0.5, false);
         assert_eq!(result.points.get(0), pd.points.get(0));
+    }
+
+    #[test]
+    fn zero_relaxation_noop() {
+        let pd = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [2.0, 2.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.5, 0.5, 0.0],
+            ],
+            vec![[0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]],
+        );
+        let result = smooth(&pd, 10, 0.0, false);
+        assert_eq!(result, pd);
     }
 
     #[test]

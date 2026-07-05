@@ -2,6 +2,7 @@
 
 A pure Rust reimplementation of [VTK 9.6](https://vtk.org/) (The Visualization Toolkit). Translated from the C++ VTK 9.6.0 source ([Kitware/VTK@`00f9418c`](https://github.com/Kitware/VTK/commit/00f9418ca61fa2d3cd75ae78c3978b18fdce12f2)). Not an FFI binding — a ground-up Rust implementation of VTK's core concepts.
 
+* 2026-07-05: Proper benchmarking started. Regressions being fixed. This will likely take a week
 * 2027-07-04: Each file has passed two runs of audit without complaints
 * 2026-06-24: A proper audit is taking place
 
@@ -32,18 +33,167 @@ But:
 
 ## Performance vs VTK C++ 9.6
 
-Benchmarked 141 operations against VTK C++ 9.6. **On average 17% faster than C++** (0.83x ratio).
+Tracked 141 benchmark operations against VTK C++ 9.6; 141 completed in the latest captured run. Average speed ratio: **10.82x** (Rust time / VTK time; lower is better).
+
+RSS is recorded from `/proc/self/status` where available. Average RSS ratio over 141 comparable operations: **0.94x** (Rust RSS / VTK RSS; lower is better).
 
 | Category | Count | % |
-|---|---|---|
-| **Faster than C++** | **109** | **77%** |
-| Within 2x | 23 | 16% |
-| 2-3x slower | 5 | 4% |
-| >3x slower | 4 | 3% |
+|---|---:|---:|
+| Faster than C++ | 9 | 6% |
+| Within 2x | 7 | 5% |
+| 2-3x slower | 10 | 7% |
+| >3x slower | 115 | 82% |
+| Not captured in latest run | 0 | n/a |
 
-Biggest wins: signed_distance (32x), poly_data_distance (36x), boolean_union (6x), normals (10x), reflect (11x), shrink_large (10x), connectivity_large (7x), surface_nets (7x).
+| Algorithm | Parity | Rust ms | VTK ms | Speed ratio | Rust RSS | VTK RSS | RSS ratio | Rust peak delta |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| append_10_small | reference fixture: filter_append | 0.690 | 0.259 | 2.66x | 53.8 MiB | 178.3 MiB | 0.30x | 46.6 MiB |
+| append_3 | reference fixture: filter_append | 3.07 | 0.058 | 53.18x | 98.2 MiB | 178.5 MiB | 0.55x | 91.4 MiB |
+| append_5_large | reference fixture: filter_append | 22.55 | 0.600 | 37.59x | 8.1 MiB | 184.9 MiB | 0.04x | 12.8 MiB |
+| arrow | reference fixture: source_arrow | 0.168 | 0.348 | 0.48x | 13.8 MiB | 177.5 MiB | 0.08x | 6.9 MiB |
+| boolean_union | reference fixture: filter_boolean_union | 173.8 | 276.5 | 0.63x | 274.1 MiB | 188.3 MiB | 1.46x | 271.6 MiB |
+| butterfly_1 | reference fixture: filter_butterfly_1 | 58.47 | 4.14 | 14.13x | 250.3 MiB | 180.3 MiB | 1.39x | 242.2 MiB |
+| byu_roundtrip | reference fixture: io_byu | 19.04 | 3.16 | 6.02x | 170.3 MiB | 179.2 MiB | 0.95x | 163.9 MiB |
+| calculator | reference fixture: filter_calculator | 0.180 | 0.734 | 0.24x | 20.9 MiB | 181.1 MiB | 0.12x | 14.4 MiB |
+| catmull_clark_1 | reference fixture: filter_catmull_clark_1 | 33.57 | 5.42 | 6.20x | 218.1 MiB | 180.3 MiB | 1.21x | 210.9 MiB |
+| cell_centers | reference fixture: filter_cell_centers | 1.07 | 0.224 | 4.76x | 56.6 MiB | 178.6 MiB | 0.32x | 53.9 MiB |
+| cell_centers_large | reference fixture: filter_cell_centers | 15.23 | 2.87 | 5.31x | 168.5 MiB | 181.7 MiB | 0.93x | 135.3 MiB |
+| cell_quality | reference fixture: filter_cell_quality | 2.10 | 0.442 | 4.74x | 78.0 MiB | 179.1 MiB | 0.44x | 72.9 MiB |
+| cell_quality_large | reference fixture: filter_cell_quality | 33.10 | 4.27 | 7.75x | 215.6 MiB | 180.8 MiB | 1.19x | 181.1 MiB |
+| cell_size | reference fixture: filter_cell_size | 1.12 | 0.226 | 4.98x | 54.7 MiB | 179.4 MiB | 0.31x | 54.2 MiB |
+| cell_size_large | reference fixture: filter_cell_size | 17.76 | 2.50 | 7.11x | 171.1 MiB | 181.6 MiB | 0.94x | 127.9 MiB |
+| cell_to_point_data | reference fixture: filter_cell_to_point_data | 1.97 | 0.225 | 8.75x | 7.5 MiB | 182.2 MiB | 0.04x | 320 KiB |
+| center_of_mass | reference fixture: filter_center_of_mass | 0.923 | 0.052 | 17.89x | 53.8 MiB | 183.7 MiB | 0.29x | 53.9 MiB |
+| clean | reference fixture: filter_clean | 6.66 | 0.738 | 9.03x | 22.5 MiB | 180.9 MiB | 0.12x | 15.6 MiB |
+| clean_3x_large | reference fixture: filter_clean | 190.0 | 16.37 | 11.61x | 8.5 MiB | 186.6 MiB | 0.05x | 26.6 MiB |
+| clean_large | reference fixture: filter_clean | 125.7 | 11.84 | 10.62x | 21.3 MiB | 185.0 MiB | 0.12x | 25.7 MiB |
+| clip | reference fixture: filter_clip_plane | 9.19 | 0.654 | 14.05x | 134.4 MiB | 179.6 MiB | 0.75x | 123.4 MiB |
+| clip_closed | reference fixture: filter_clip_closed | 7.12 | 0.477 | 14.94x | 116.5 MiB | 181.8 MiB | 0.64x | 119.2 MiB |
+| clip_large | reference fixture: filter_clip_plane | 32.24 | 7.31 | 4.41x | 9.7 MiB | 182.3 MiB | 0.05x | 2.6 MiB |
+| collision | reference fixture: filter_collision | 13.32 | 3.98 | 3.34x | 144.0 MiB | 180.6 MiB | 0.80x | 134.7 MiB |
+| cone_32 | reference fixture: source_cone_32 | 0.074 | 0.049 | 1.53x | 18.1 MiB | 175.9 MiB | 0.10x | 6.9 MiB |
+| connectivity | reference fixture: filter_connectivity | 0.719 | 0.142 | 5.07x | 58.6 MiB | 179.7 MiB | 0.33x | 48.9 MiB |
+| connectivity_large | reference fixture: filter_connectivity_large | 86.30 | 17.70 | 4.87x | 272.5 MiB | 192.0 MiB | 1.42x | 262.8 MiB |
+| contour_32 | reference fixture: filter_contour | 10.77 | 0.712 | 15.13x | 7.6 MiB | 179.0 MiB | 0.04x | 1.6 MiB |
+| cube | reference fixture: source_cube | 0.064 | 0.051 | 1.25x | 14.0 MiB | 176.2 MiB | 0.08x | 3.8 MiB |
+| curvatures_gaussian | reference fixture: filter_curvatures_gaussian | 14.43 | 0.315 | 45.82x | 156.5 MiB | 179.1 MiB | 0.87x | 142.5 MiB |
+| curvatures_large | reference fixture: filter_curvatures_large | 258.2 | 12.45 | 20.73x | 263.0 MiB | 181.1 MiB | 1.45x | 239.4 MiB |
+| curvatures_mean | reference fixture: filter_curvatures_mean | 14.70 | 0.811 | 18.12x | 152.2 MiB | 179.1 MiB | 0.85x | 137.8 MiB |
+| cylinder_32 | reference fixture: source_cylinder_32 | 0.097 | 0.058 | 1.67x | 13.8 MiB | 176.5 MiB | 0.08x | 6.6 MiB |
+| decimate_50 | reference fixture: filter_decimate_50 | 37.54 | 3.56 | 10.56x | 217.8 MiB | 180.0 MiB | 1.21x | 212.5 MiB |
+| decimate_50_large | reference fixture: filter_decimate_50 | 465.5 | 62.84 | 7.41x | 291.0 MiB | 184.7 MiB | 1.58x | 258.7 MiB |
+| decimate_75 | reference fixture: filter_decimate_75 | 55.20 | 5.07 | 10.88x | 249.1 MiB | 180.0 MiB | 1.38x | 232.5 MiB |
+| decimate_90 | reference fixture: filter_decimate_90 | 65.11 | 6.48 | 10.05x | 237.2 MiB | 180.0 MiB | 1.32x | 245.7 MiB |
+| delaunay_1000 | reference fixture: filter_delaunay_2d | 639.8 | 40.41 | 15.83x | 288.1 MiB | 179.4 MiB | 1.61x | 278.9 MiB |
+| delaunay_500 | reference fixture: filter_delaunay_500 | 256.9 | 15.78 | 16.28x | 280.2 MiB | 179.4 MiB | 1.56x | 265.4 MiB |
+| densify | reference fixture: filter_densify | 8.40 | 0.582 | 14.43x | 121.2 MiB | 179.2 MiB | 0.68x | 116.3 MiB |
+| depth_sort | reference fixture: filter_depth_sort | 2.39 | 0.251 | 9.53x | 98.5 MiB | 178.5 MiB | 0.55x | 70.1 MiB |
+| depth_sort_large | reference fixture: filter_depth_sort | 42.73 | 2.86 | 14.96x | 223.4 MiB | 181.0 MiB | 1.23x | 171.1 MiB |
+| dihedral_angles | reference fixture: filter_dihedral_angles | 7.94 | 0.465 | 17.09x | 121.5 MiB | 178.0 MiB | 0.68x | 95.1 MiB |
+| disk_32 | reference fixture: source_disk | 0.179 | 0.079 | 2.26x | 51.3 MiB | 177.8 MiB | 0.29x | 26.0 MiB |
+| distance_to_origin | reference fixture: filter_distance_to_origin | 0.124 | 0.792 | 0.16x | 34.8 MiB | 177.9 MiB | 0.20x | 9.2 MiB |
+| elevation | reference fixture: filter_elevation | 0.196 | 0.036 | 5.52x | 52.2 MiB | 178.1 MiB | 0.29x | 11.5 MiB |
+| elevation_large | reference fixture: filter_elevation | 2.99 | 0.234 | 12.79x | 116.1 MiB | 178.6 MiB | 0.65x | 55.0 MiB |
+| extract_cells_half | reference fixture: filter_extract_cells_half | 4.99 | 0.338 | 14.75x | 112.8 MiB | 185.9 MiB | 0.61x | 73.2 MiB |
+| extract_edges | reference fixture: filter_extract_edges | 13.75 | 1.15 | 11.91x | 149.4 MiB | 180.2 MiB | 0.83x | 93.6 MiB |
+| extract_edges_large | reference fixture: filter_extract_edges | 230.6 | 20.57 | 11.21x | 280.5 MiB | 185.5 MiB | 1.51x | 215.6 MiB |
+| extract_largest | reference fixture: filter_extract_largest | 11.96 | 1.11 | 10.73x | 151.2 MiB | 179.6 MiB | 0.84x | 90.1 MiB |
+| extrude | reference fixture: filter_extrude | 1.17 | 0.147 | 7.95x | 92.0 MiB | 178.1 MiB | 0.52x | 31.6 MiB |
+| fe_128 | reference fixture: filter_fe_128 | 239.7 | 5.73 | 41.86x | 255.2 MiB | 181.3 MiB | 1.41x | 223.3 MiB |
+| fe_64 | reference fixture: filter_fe_64 | 35.00 | 1.09 | 32.12x | 9.6 MiB | 180.2 MiB | 0.05x | 4.1 MiB |
+| feature_edges_boundary | reference fixture: filter_feature_edges | 9.19 | 0.652 | 14.11x | 141.5 MiB | 179.6 MiB | 0.79x | 47.4 MiB |
+| feature_edges_large | reference fixture: filter_feature_edges | 151.4 | 8.72 | 17.36x | 277.5 MiB | 182.0 MiB | 1.52x | 176.4 MiB |
+| fill_holes | reference fixture: filter_fill_holes | 6.09 | 0.532 | 11.44x | 9.7 MiB | 181.3 MiB | 0.05x | 4.1 MiB |
+| fill_holes_large | reference fixture: filter_fill_holes | 240.7 | 3.77 | 63.84x | 12.7 MiB | 185.3 MiB | 0.07x | 7.1 MiB |
+| glyph_10 | reference fixture: filter_glyph | 1.01 | 0.115 | 8.71x | 120.6 MiB | 178.7 MiB | 0.67x | 5.9 MiB |
+| glyph_100 | reference fixture: filter_glyph | 4.78 | 0.654 | 7.31x | 141.5 MiB | 179.4 MiB | 0.79x | 14.3 MiB |
+| glyph_50 | reference fixture: filter_glyph | 4.63 | 0.505 | 9.17x | 143.4 MiB | 192.0 MiB | 0.75x | 16.1 MiB |
+| gradient | reference fixture: filter_gradient | 10.34 | 1.62 | 6.37x | 169.9 MiB | 185.6 MiB | 0.92x | 42.9 MiB |
+| hausdorff | reference fixture: filter_hausdorff | 11.81 | 2.02 | 5.85x | 173.7 MiB | 179.3 MiB | 0.97x | 46.4 MiB |
+| hausdorff_large | reference fixture: filter_hausdorff | 306.9 | 61.21 | 5.01x | 281.2 MiB | 186.0 MiB | 1.51x | 157.8 MiB |
+| hedgehog | reference fixture: filter_hedgehog | 3.56 | 0.081 | 43.79x | 144.0 MiB | 180.1 MiB | 0.80x | 9.1 MiB |
+| hull_200 | reference fixture: filter_hull_200 | 7.18 | 0.479 | 14.99x | 174.3 MiB | 180.7 MiB | 0.96x | 32.8 MiB |
+| linear_subdiv_1 | reference fixture: filter_subdivide_1 | 27.26 | 1.63 | 16.76x | 218.1 MiB | 179.7 MiB | 1.21x | 84.7 MiB |
+| mask_points_3 | reference fixture: filter_mask_points_3 | 0.236 | 0.092 | 2.58x | 144.0 MiB | 178.1 MiB | 0.81x | 320 KiB |
+| mass_properties | reference fixture: filter_mass_properties | 0.861 | 0.145 | 5.95x | 149.0 MiB | 178.8 MiB | 0.83x | 5.0 MiB |
+| mass_properties_large | reference fixture: filter_mass_properties | 14.54 | 2.33 | 6.23x | 203.4 MiB | 180.2 MiB | 1.13x | 55.0 MiB |
+| mc_128 | reference fixture: filter_mc_128 | 678.7 | 32.66 | 20.78x | 264.1 MiB | 181.7 MiB | 1.45x | 147.0 MiB |
+| mc_64 | reference fixture: filter_mc_64 | 78.64 | 7.35 | 10.70x | 6.9 MiB | 179.8 MiB | 0.04x | 6.9 MiB |
+| mirror | reference fixture: filter_mirror | 2.02 | 0.922 | 2.19x | 167.4 MiB | 181.0 MiB | 0.92x | 17.9 MiB |
+| mirror_large | reference fixture: filter_mirror | 34.07 | 13.92 | 2.45x | 238.8 MiB | 183.7 MiB | 1.30x | 82.2 MiB |
+| normals | reference fixture: filter_normals | 1.88 | 1.10 | 1.71x | 169.5 MiB | 179.4 MiB | 0.95x | 17.1 MiB |
+| normals_large | reference fixture: filter_normals | 31.45 | 14.21 | 2.21x | 232.2 MiB | 181.2 MiB | 1.28x | 68.7 MiB |
+| obj_large | reference fixture: io_obj | 526.5 | 59.24 | 8.89x | 264.9 MiB | 181.4 MiB | 1.46x | 122.8 MiB |
+| offset_surface | reference fixture: filter_offset_surface | 1.65 | 0.091 | 18.14x | 170.0 MiB | 186.2 MiB | 0.91x | 2.6 MiB |
+| orient_normals | validation test: filter_orient_consistent | 9.71 | 1.44 | 6.74x | 195.0 MiB | 183.7 MiB | 1.06x | 25.7 MiB |
+| outline | reference fixture: filter_outline | 0.115 | 0.076 | 1.52x | 170.2 MiB | 178.8 MiB | 0.95x | 640 KiB |
+| pipeline_normals_smooth | reference fixture: filter_normals | 315.0 | 32.28 | 9.76x | 282.6 MiB | 180.3 MiB | 1.57x | 114.9 MiB |
+| plane_32 | reference fixture: source_plane_32x32 | 0.925 | 0.100 | 9.26x | 171.8 MiB | 177.8 MiB | 0.97x | 1.7 MiB |
+| ply_large | reference fixture: io_ply | 133.9 | 17.29 | 7.75x | 278.1 MiB | 182.5 MiB | 1.52x | 107.0 MiB |
+| ply_roundtrip | reference fixture: io_ply | 8.02 | 1.39 | 5.78x | 196.2 MiB | 179.1 MiB | 1.10x | 25.1 MiB |
+| point_density | reference fixture: filter_point_density | 12.41 | 1.00 | 12.41x | 208.1 MiB | 177.6 MiB | 1.17x | 37.0 MiB |
+| point_to_cell_data | reference fixture: filter_point_to_cell_data | 2.23 | 0.214 | 10.40x | 7.8 MiB | 182.2 MiB | 0.04x | 1.6 MiB |
+| poly_data_distance | reference fixture: filter_poly_data_distance | 227.3 | 30.46 | 7.46x | 277.7 MiB | 182.3 MiB | 1.52x | 110.7 MiB |
+| probe_100 | reference fixture: filter_probe | 7.52 | 0.538 | 13.96x | 201.5 MiB | 179.7 MiB | 1.12x | 27.2 MiB |
+| quadric_clustering | reference fixture: filter_quadric_clustering | 2.93 | 1.07 | 2.72x | 207.8 MiB | 185.0 MiB | 1.12x | 13.8 MiB |
+| quadric_clustering_large | reference fixture: filter_quadric_clustering | 49.92 | 7.20 | 6.93x | 267.5 MiB | 189.7 MiB | 1.41x | 71.3 MiB |
+| quadric_decimate_50 | reference fixture: filter_decimate_50 | 37.75 | 3.83 | 9.85x | 240.3 MiB | 180.1 MiB | 1.33x | 65.4 MiB |
+| quadric_decimate_50_large | reference fixture: filter_decimate_50 | 439.5 | 74.28 | 5.92x | 289.3 MiB | 192.1 MiB | 1.51x | 92.3 MiB |
+| reflect | reference fixture: filter_reflect | 4.24 | 4.13 | 1.03x | 220.3 MiB | 179.9 MiB | 1.22x | 18.5 MiB |
+| reflect_large | reference fixture: filter_reflect | 74.33 | 23.24 | 3.20x | 275.0 MiB | 183.6 MiB | 1.50x | 71.6 MiB |
+| reverse_sense | reference fixture: filter_reverse_sense | 0.815 | 0.090 | 9.08x | 207.8 MiB | 178.3 MiB | 1.17x | 1.9 MiB |
+| reverse_sense_large | reference fixture: filter_reverse_sense | 14.12 | 1.26 | 11.24x | 230.0 MiB | 181.1 MiB | 1.27x | 21.9 MiB |
+| ribbon | reference fixture: filter_ribbon | 0.056 | 0.105 | 0.54x | 207.8 MiB | 183.7 MiB | 1.13x | 0 KiB |
+| rotation_extrude | validation test: filter_rotation_extrude_test | 0.148 | 0.215 | 0.69x | 209.6 MiB | 178.1 MiB | 1.18x | 1.9 MiB |
+| ruled_surface | reference fixture: filter_ruled_surface | 0.057 | 1.00 | 0.06x | 209.6 MiB | 178.3 MiB | 1.18x | 320 KiB |
+| separate_cells | reference fixture: filter_separate_cells | 2.40 | 0.806 | 2.97x | 224.7 MiB | 179.1 MiB | 1.25x | 15.1 MiB |
+| shrink | reference fixture: filter_shrink | 2.37 | 0.648 | 3.65x | 219.1 MiB | 178.6 MiB | 1.23x | 8.8 MiB |
+| shrink_large | reference fixture: filter_shrink | 48.81 | 10.60 | 4.60x | 272.5 MiB | 180.9 MiB | 1.51x | 54.7 MiB |
+| signed_distance_32 | reference fixture: filter_signed_distance | 223.8 | 188.8 | 1.19x | 260.5 MiB | 180.6 MiB | 1.44x | 66.3 MiB |
+| silhouette | reference fixture: filter_silhouette | 10.46 | 1.00 | 10.46x | 232.2 MiB | 179.7 MiB | 1.29x | 12.2 MiB |
+| slice | reference fixture: filter_slice | 2.39 | 0.442 | 5.39x | 206.2 MiB | 183.7 MiB | 1.12x | 5.0 MiB |
+| slice_large | reference fixture: filter_slice | 19.67 | 1.15 | 17.11x | 7.2 MiB | 187.2 MiB | 0.04x | 2.8 MiB |
+| smooth_20 | reference fixture: filter_smooth_20 | 25.95 | 1.15 | 22.62x | 19.8 MiB | 179.2 MiB | 0.11x | 20.9 MiB |
+| smooth_20_constrained | reference fixture: filter_smooth_20 | 22.60 | 1.15 | 19.72x | 19.2 MiB | 181.0 MiB | 0.11x | 20.6 MiB |
+| smooth_20_large | reference fixture: filter_smooth_20 | 347.4 | 19.41 | 17.90x | 21.0 MiB | 180.9 MiB | 0.12x | 22.2 MiB |
+| smooth_50 | reference fixture: filter_smooth_50 | 46.83 | 1.81 | 25.89x | 19.8 MiB | 179.1 MiB | 0.11x | 20.9 MiB |
+| smooth_50_large | reference fixture: filter_smooth_50 | 601.2 | 30.90 | 19.46x | 21.0 MiB | 181.1 MiB | 0.12x | 16.0 MiB |
+| sphere_128x128 | reference fixture: source_sphere_128x128 | 12.40 | 1.31 | 9.46x | 258.1 MiB | 178.8 MiB | 1.44x | 25.9 MiB |
+| sphere_32x32 | reference fixture: source_sphere_32x32 | 0.766 | 0.093 | 8.20x | 234.4 MiB | 177.6 MiB | 1.32x | 2.2 MiB |
+| sphere_64x64 | reference fixture: source_sphere_64x64 | 3.13 | 0.364 | 8.58x | 241.0 MiB | 177.5 MiB | 1.36x | 6.6 MiB |
+| spline | reference fixture: filter_spline | 0.023 | 0.043 | 0.54x | 239.1 MiB | 178.1 MiB | 1.34x | 0 KiB |
+| stl_large | reference fixture: io_stl | 231.5 | 22.58 | 10.25x | 280.5 MiB | 184.0 MiB | 1.52x | 46.0 MiB |
+| stl_roundtrip | reference fixture: io_stl | 19.22 | 1.63 | 11.79x | 255.6 MiB | 179.8 MiB | 1.42x | 21.2 MiB |
+| subdivide_1 | reference fixture: filter_subdivide_1 | 45.07 | 3.33 | 13.52x | 272.2 MiB | 181.2 MiB | 1.50x | 34.0 MiB |
+| subdivide_2 | reference fixture: filter_subdivide_2 | 230.4 | 16.12 | 14.29x | 274.6 MiB | 189.7 MiB | 1.45x | 35.0 MiB |
+| surface_nets_32 | reference fixture: filter_surface_nets_32 | 69.43 | 16.78 | 4.14x | 276.2 MiB | 180.6 MiB | 1.53x | 27.5 MiB |
+| texture_map_sphere | reference fixture: filter_texture_map_sphere | 0.435 | 0.185 | 2.35x | 259.4 MiB | 177.8 MiB | 1.46x | 1.2 MiB |
+| threshold | reference fixture: filter_threshold | 2.38 | 0.198 | 12.01x | 259.4 MiB | 179.8 MiB | 1.44x | 0 KiB |
+| topology_analysis | reference fixture: filter_topology_analysis | 5.04 | 0.722 | 6.98x | 254.4 MiB | 179.9 MiB | 1.41x | 640 KiB |
+| topology_analysis_large | reference fixture: filter_topology_analysis | 89.86 | 8.45 | 10.64x | 276.9 MiB | 182.0 MiB | 1.52x | 17.8 MiB |
+| transform | reference fixture: filter_transform_translate | 1.19 | 0.103 | 11.53x | 253.7 MiB | 179.7 MiB | 1.41x | 0 KiB |
+| transform_large | reference fixture: filter_transform_large | 7.87 | 0.335 | 23.50x | 267.5 MiB | 189.7 MiB | 1.41x | 7.5 MiB |
+| triangle_strips | reference fixture: filter_triangle_strips | 4.32 | 0.350 | 12.35x | 12.8 MiB | 178.5 MiB | 0.07x | 6.6 MiB |
+| triangle_strips_large | reference fixture: filter_triangle_strips | 60.14 | 4.40 | 13.67x | 13.8 MiB | 180.9 MiB | 0.08x | 5.0 MiB |
+| triangulate | reference fixture: filter_triangulate | 0.292 | 0.039 | 7.56x | 267.5 MiB | 177.6 MiB | 1.51x | 320 KiB |
+| triangulate_large | reference fixture: filter_triangulate | 0.884 | 0.058 | 15.16x | 8.4 MiB | 179.5 MiB | 0.05x | 320 KiB |
+| tube | reference fixture: filter_tube | 0.323 | 0.057 | 5.63x | 267.8 MiB | 178.4 MiB | 1.50x | 320 KiB |
+| tube_large | reference fixture: filter_tube | 1.45 | 0.257 | 5.66x | 268.1 MiB | 192.3 MiB | 1.39x | 640 KiB |
+| validate | reference fixture: filter_validate | 2.73 | 0.790 | 3.46x | 268.1 MiB | 177.9 MiB | 1.51x | 320 KiB |
+| voronoi_200 | reference fixture: filter_voronoi_2d | 27.35 | 10.00 | 2.74x | 276.2 MiB | 179.1 MiB | 1.54x | 8.4 MiB |
+| voxel_grid | reference fixture: filter_voxel_grid | 2.71 | 5.06 | 0.54x | 268.4 MiB | 177.4 MiB | 1.51x | 640 KiB |
+| vtk_large | reference fixture: io_vtk_large | 378.0 | 65.87 | 5.74x | 289.3 MiB | 181.9 MiB | 1.59x | 23.2 MiB |
+| vtk_roundtrip | reference fixture: io_vtk_roundtrip | 36.92 | 4.13 | 8.95x | 268.1 MiB | 179.7 MiB | 1.49x | 9.7 MiB |
+| vtp_large | reference fixture: io_vtp | 441.4 | 58.33 | 7.57x | 279.9 MiB | 183.9 MiB | 1.52x | 22.9 MiB |
+| vtp_roundtrip | reference fixture: io_vtp | 41.16 | 4.36 | 9.43x | 268.1 MiB | 181.2 MiB | 1.48x | 9.4 MiB |
+| warp_scalar | reference fixture: filter_warp_scalar | 3.23 | 0.111 | 29.16x | 272.5 MiB | 179.7 MiB | 1.52x | 4.1 MiB |
+| windowed_sinc_20 | reference fixture: filter_windowed_sinc | 19.35 | 1.38 | 14.07x | 267.8 MiB | 177.9 MiB | 1.50x | 5.0 MiB |
 
-Uses `Arc<Vec<T>>` copy-on-write storage for zero-copy clone (matching VTK's `ShallowCopy` semantics), `target-cpu=native`, and rayon parallelism for flying edges.
+Benchmark command:
+
+```bash
+cargo test --test vtk_perf --features filters-smooth,filters-transform,filters-subdivide,filters-cell,filters-statistics,filters-texture,filters-flow,filters-boolean,filters-data,filters-distance -- --nocapture
+```
 
 ## Test Coverage
 

@@ -40,7 +40,67 @@ pub fn slice_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> P
             continue;
         }
 
-        let mut crossings = Vec::<[f64; 3]>::new();
+        if n == 3 {
+            let mut crossings = [[0.0; 3]; 3];
+            let mut num_crossings = 0usize;
+            let mut valid_cell = true;
+
+            for edge in 0..3 {
+                let i = edge;
+                let j = if edge + 1 < 3 { edge + 1 } else { 0 };
+                if cell[i] < 0 || cell[j] < 0 {
+                    valid_cell = false;
+                    break;
+                }
+                let ai = cell[i] as usize;
+                let aj = cell[j] as usize;
+                if ai >= np || aj >= np {
+                    valid_cell = false;
+                    break;
+                }
+
+                let di = dists[ai];
+                let dj = dists[aj];
+                let bi = ai * 3;
+                let bj = aj * 3;
+                let pi = [pts[bi], pts[bi + 1], pts[bi + 2]];
+                let pj = [pts[bj], pts[bj + 1], pts[bj + 2]];
+                let on_i = di.abs() < 1e-10;
+                let on_j = dj.abs() < 1e-10;
+
+                if on_i && on_j {
+                    push_unique_point_fixed(&mut crossings, &mut num_crossings, pi);
+                    push_unique_point_fixed(&mut crossings, &mut num_crossings, pj);
+                } else if on_i {
+                    push_unique_point_fixed(&mut crossings, &mut num_crossings, pi);
+                } else if on_j {
+                    push_unique_point_fixed(&mut crossings, &mut num_crossings, pj);
+                } else if (di > 0.0) != (dj > 0.0) {
+                    let t = di / (di - dj);
+                    push_unique_point_fixed(
+                        &mut crossings,
+                        &mut num_crossings,
+                        [
+                            pi[0] + t * (pj[0] - pi[0]),
+                            pi[1] + t * (pj[1] - pi[1]),
+                            pi[2] + t * (pj[2] - pi[2]),
+                        ],
+                    );
+                }
+            }
+
+            if valid_cell && num_crossings == 2 {
+                let idx = (pts_flat.len() / 3) as i64;
+                pts_flat.extend_from_slice(&crossings[0]);
+                pts_flat.extend_from_slice(&crossings[1]);
+                line_conn.push(idx);
+                line_conn.push(idx + 1);
+                line_off.push(line_conn.len() as i64);
+            }
+            continue;
+        }
+
+        let mut crossings = Vec::<[f64; 3]>::with_capacity(4);
         let mut valid_cell = true;
 
         for i in 0..n {
@@ -108,6 +168,21 @@ fn push_unique_point(points: &mut Vec<[f64; 3]>, point: [f64; 3]) {
             && (p[2] - point[2]).abs() < 1e-10
     }) {
         points.push(point);
+    }
+}
+
+fn push_unique_point_fixed(points: &mut [[f64; 3]; 3], len: &mut usize, point: [f64; 3]) {
+    for existing in points.iter().take(*len) {
+        if (existing[0] - point[0]).abs() < 1e-10
+            && (existing[1] - point[1]).abs() < 1e-10
+            && (existing[2] - point[2]).abs() < 1e-10
+        {
+            return;
+        }
+    }
+    if *len < points.len() {
+        points[*len] = point;
+        *len += 1;
     }
 }
 
