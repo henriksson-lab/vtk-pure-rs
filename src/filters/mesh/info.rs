@@ -5,35 +5,16 @@ use std::collections::{HashMap, HashSet};
 ///
 /// For a closed orientable surface, this equals 2 - 2*genus.
 /// A sphere has Euler characteristic 2, a torus has 0.
-pub fn euler_characteristic(input: &PolyData) -> i64 {
-    let v = input.points.len() as i64;
-    let mut f = 0i64;
+///
+/// Single implementation lives in [`crate::filters::mesh::mesh_genus`].
+pub use crate::filters::mesh::mesh_genus::euler_characteristic;
 
-    // Count unique edges
-    let mut edges: HashSet<(i64, i64)> = HashSet::new();
-    for cell in input.polys.iter() {
-        if !is_valid_polygon(&cell, input.points.len()) {
-            continue;
-        }
-        f += 1;
-        for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            edges.insert(key);
-        }
-    }
-    let e = edges.len() as i64;
-
-    v - e + f
-}
-
-/// Estimate the genus of a closed surface from its Euler characteristic.
-/// genus = (2 - chi) / 2 where chi = V - E + F.
-pub fn genus(input: &PolyData) -> i64 {
-    let chi = euler_characteristic(input);
-    (2 - chi) / 2
-}
+/// Estimate the genus of a surface from its Euler characteristic.
+///
+/// Single implementation lives in [`crate::filters::mesh::mesh_genus`]; it
+/// accounts for connected components and boundary loops
+/// (`V - E + F = 2c - 2g - b`), not just `(2 - chi) / 2`.
+pub use crate::filters::mesh::mesh_genus::genus;
 
 /// Count the number of boundary loops (holes) in a mesh.
 pub fn count_boundary_loops(input: &PolyData) -> usize {
@@ -95,17 +76,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn single_triangle() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.0, 1.0, 0.0]);
-        pd.polys.push_cell(&[0, 1, 2]);
-
-        assert_eq!(euler_characteristic(&pd), 1); // V=3, E=3, F=1
-    }
-
-    #[test]
     fn tetrahedron_surface() {
         let mut pd = PolyData::new();
         pd.points.push([0.0, 0.0, 0.0]);
@@ -146,7 +116,9 @@ mod tests {
         pd.points.push([1.0, 0.0, 0.0]);
         pd.polys.push_cell(&[0, 1, 99]);
 
-        assert_eq!(euler_characteristic(&pd), 2);
+        // The invalid polygon contributes no faces or edges, and points that no
+        // valid polygon references are not part of the surface complex.
+        assert_eq!(euler_characteristic(&pd), 0);
         assert_eq!(count_boundary_loops(&pd), 0);
     }
 }

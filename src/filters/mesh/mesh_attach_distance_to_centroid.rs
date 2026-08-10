@@ -52,18 +52,23 @@ pub fn distance_to_origin(mesh: &PolyData) -> PolyData {
     r.point_data_mut().set_active_scalars("DistToOrigin");
     r
 }
+/// Distance from every point to a coordinate axis through the origin, stored as
+/// "DistToXAxis" / "DistToYAxis" / "DistToZAxis".
+///
+/// Thin wrapper over the general
+/// [`crate::filters::mesh::mesh_distance_to_axis::distance_to_axis`], which
+/// takes an arbitrary axis line; this only names the result per axis.
 pub fn distance_to_axis(mesh: &PolyData, axis: usize) -> PolyData {
-    let n = mesh.points.len();
-    let data: Vec<f64> = (0..n)
-        .map(|i| {
-            let p = mesh.points.get(i);
-            match axis {
-                0 => (p[1] * p[1] + p[2] * p[2]).sqrt(),
-                1 => (p[0] * p[0] + p[2] * p[2]).sqrt(),
-                _ => (p[0] * p[0] + p[1] * p[1]).sqrt(),
-            }
-        })
-        .collect();
+    let direction = match axis {
+        0 => [1.0, 0.0, 0.0],
+        1 => [0.0, 1.0, 0.0],
+        _ => [0.0, 0.0, 1.0],
+    };
+    let computed = super::mesh_distance_to_axis::distance_to_axis(mesh, [0.0, 0.0, 0.0], direction);
+    let data: Vec<f64> = match computed.point_data().get_array("AxisDistance") {
+        Some(array) => array.to_f64_vec(),
+        None => Vec::new(),
+    };
     let name = match axis {
         0 => "DistToXAxis",
         1 => "DistToYAxis",

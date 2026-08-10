@@ -81,10 +81,13 @@ pub fn molecule(
     r.lines = lines;
     r
 }
+/// Ball-and-stick H2O with the physical bond length (0.9584 A) and H-O-H angle.
+///
+/// Thin wrapper over the parameterised
+/// [`crate::filters::core::sources::water_molecule::water_molecule`], which is
+/// the single implementation; it lays the molecule out in the x-z plane.
 pub fn water_molecule() -> PolyData {
-    let atoms = [[0.0, 0.0, 0.0], [0.757, 0.586, 0.0], [-0.757, 0.586, 0.0]];
-    let radii = [0.4, 0.25, 0.25]; // O, H, H
-    molecule(&atoms, &radii, &[(0, 1), (0, 2)], 6)
+    super::water_molecule::water_molecule(0.9584, 0.25, 6)
 }
 pub fn methane_molecule() -> PolyData {
     let t = 1.0 / 3.0f64.sqrt();

@@ -1,82 +1,22 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 
 /// Compute per-face (cell) normals via cross product and add as cell data.
 ///
 /// For each polygon, accumulates edge fan cross products and normalizes the
 /// result, matching vtkPolygon::ComputeNormal's handling of polygon cells.
 /// Adds a 3-component "FaceNormals" array to cell data.
+///
+/// Thin wrapper over the single implementation in
+/// [`crate::filters::mesh::normals_from_faces::compute_face_normals`], which
+/// uses VTK's `"Normals"` array name; this entry point keeps the
+/// `"FaceNormals"` name it has always produced.
 pub fn compute_face_normals(input: &PolyData) -> PolyData {
-    let mut normals: Vec<f64> = Vec::new();
-
-    for cell in input.polys.iter() {
-        let normal = polygon_normal(input, cell);
-        normals.extend_from_slice(&normal);
+    let mut pd = crate::filters::mesh::normals_from_faces::compute_face_normals(input);
+    if let Some(mut arr) = pd.cell_data_mut().remove_array("Normals") {
+        arr.set_name("FaceNormals");
+        pd.cell_data_mut().add_array(arr);
     }
-
-    let mut pd = input.clone();
-    pd.cell_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "FaceNormals",
-            normals,
-            3,
-        )));
     pd
-}
-
-fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
-    if cell.len() < 3 {
-        return [0.0, 0.0, 0.0];
-    }
-
-    let mut common = None;
-    let mut point_id = 0;
-    let mut v1 = [0.0; 3];
-    while point_id < cell.len() - 2 {
-        let p0 = input.points.get(cell[point_id] as usize);
-        let p1 = input.points.get(cell[point_id + 1] as usize);
-        v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
-        if squared_norm(v1) > 0.0 {
-            common = Some(point_id);
-            point_id += 2;
-            break;
-        }
-        point_id += 1;
-    }
-
-    let Some(common_id) = common else {
-        return [0.0, 0.0, 0.0];
-    };
-    if point_id >= cell.len() {
-        return [0.0, 0.0, 0.0];
-    }
-
-    let p0 = input.points.get(cell[common_id] as usize);
-    let mut n = [0.0; 3];
-    while point_id < cell.len() {
-        let p = input.points.get(cell[point_id] as usize);
-        let v2 = [p[0] - p0[0], p[1] - p0[1], p[2] - p0[2]];
-        let cross = [
-            v1[1] * v2[2] - v1[2] * v2[1],
-            v1[2] * v2[0] - v1[0] * v2[2],
-            v1[0] * v2[1] - v1[1] * v2[0],
-        ];
-        n[0] += cross[0];
-        n[1] += cross[1];
-        n[2] += cross[2];
-        v1 = v2;
-        point_id += 1;
-    }
-
-    let len = squared_norm(n).sqrt();
-    if len > 0.0 {
-        [n[0] / len, n[1] / len, n[2] / len]
-    } else {
-        [0.0, 0.0, 0.0]
-    }
-}
-
-fn squared_norm(v: [f64; 3]) -> f64 {
-    v[0] * v[0] + v[1] * v[1] + v[2] * v[2]
 }
 
 #[cfg(test)]

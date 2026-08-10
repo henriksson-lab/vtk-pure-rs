@@ -1,5 +1,4 @@
-use crate::data::{CellArray, DataArray, Points, PolyData};
-use std::f64::consts::PI;
+use crate::data::PolyData;
 
 /// Parameters for generating a torus.
 pub struct TorusParams {
@@ -28,66 +27,27 @@ impl Default for TorusParams {
 }
 
 /// Generate a torus in the XY plane as PolyData with smooth normals.
+///
+/// Thin wrapper around [`crate::filters::core::sources::parametric::torus`],
+/// the single implementation of `vtkParametricTorus` +
+/// `vtkParametricFunctionSource` (u, v in [0, 2*PI], `JoinU = JoinV = 1`,
+/// anti-clockwise ordering, triangulated output with normals and texture
+/// coordinates). The result is translated to `center`, which VTK's parametric
+/// function has no equivalent of and which leaves the normals unchanged.
 pub fn torus(params: &TorusParams) -> PolyData {
-    let n_ring = params.ring_resolution.max(3);
-    let n_cs = params.cross_section_resolution.max(3);
-    let r_ring = params.ring_radius;
-    let r_cs = params.cross_section_radius;
-    let cx = params.center[0];
-    let cy = params.center[1];
-    let cz = params.center[2];
-
-    let mut points = Points::new();
-    let mut normals = DataArray::<f64>::new("Normals", 3);
-    let mut polys = CellArray::new();
-
-    // Generate vertices and normals
-    for i in 0..n_ring {
-        let theta = 2.0 * PI * i as f64 / n_ring as f64;
-        let cos_t = theta.cos();
-        let sin_t = theta.sin();
-
-        for j in 0..n_cs {
-            let phi = 2.0 * PI * j as f64 / n_cs as f64;
-            let cos_p = phi.cos();
-            let sin_p = phi.sin();
-
-            let r = r_ring + r_cs * cos_p;
-            let x = cx + r * sin_t;
-            let y = cy + r * cos_t;
-            let z = cz + r_cs * sin_p;
-
-            points.push([x, y, z]);
-
-            // Normal points outward from the tube center
-            let nx = cos_p * sin_t;
-            let ny = cos_p * cos_t;
-            let nz = sin_p;
-            normals.push_tuple(&[nx, ny, nz]);
+    let mut pd = crate::filters::core::sources::parametric::torus_uv(
+        params.ring_radius,
+        params.cross_section_radius,
+        params.ring_resolution,
+        params.cross_section_resolution,
+    );
+    let [cx, cy, cz] = params.center;
+    if cx != 0.0 || cy != 0.0 || cz != 0.0 {
+        for i in 0..pd.points.len() {
+            let p = pd.points.get(i);
+            pd.points.set(i, [cx + p[0], cy + p[1], cz + p[2]]);
         }
     }
-
-    // Generate quad faces
-    for i in 0..n_ring {
-        let i_next = (i + 1) % n_ring;
-        for j in 0..n_cs {
-            let j_next = (j + 1) % n_cs;
-
-            let a = (i * n_cs + j) as i64;
-            let b = (i * n_cs + j_next) as i64;
-            let c = (i_next * n_cs + j_next) as i64;
-            let d = (i_next * n_cs + j) as i64;
-
-            polys.push_cell(&[a, b, c, d]);
-        }
-    }
-
-    let mut pd = PolyData::new();
-    pd.points = points;
-    pd.polys = polys;
-    pd.point_data_mut()
-        .add_array(crate::data::AnyDataArray::F64(normals));
-    pd.point_data_mut().set_active_normals("Normals");
     pd
 }
 
@@ -98,8 +58,10 @@ mod tests {
     #[test]
     fn default_torus() {
         let pd = torus(&TorusParams::default());
+        // vtkParametricFunctionSource samples UResolution x VResolution points.
         assert_eq!(pd.points.len(), 32 * 16);
-        assert_eq!(pd.polys.num_cells(), 32 * 16);
+        // JoinU = JoinV = 1 -> PtsU * PtsV quads, two triangles each.
+        assert_eq!(pd.polys.num_cells(), 32 * 16 * 2);
     }
 
     #[test]
@@ -110,7 +72,7 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(pd.points.len(), 12);
-        assert_eq!(pd.polys.num_cells(), 12);
+        assert_eq!(pd.polys.num_cells(), 4 * 3 * 2);
     }
 
     #[test]

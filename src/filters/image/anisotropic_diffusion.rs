@@ -127,7 +127,10 @@ mod tests {
                 1,
             )));
 
-        let result = anisotropic_diffusion(&img, "v", 10.0, 0.1, 10);
+        // `kappa` is VTK's DiffusionThreshold: a neighbour only diffuses when the
+        // value difference is *below* it. The spike differs from its neighbours by
+        // 40, so the threshold has to exceed that for any smoothing to happen.
+        let result = anisotropic_diffusion(&img, "v", 100.0, 0.1, 10);
         let arr = result.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
         arr.tuple_as_f64(2, &mut buf);

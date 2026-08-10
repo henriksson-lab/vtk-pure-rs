@@ -1,22 +1,28 @@
-//! Robust mesh boolean operations using winding number classification.
+//! Robust mesh boolean operations built on point-in-mesh classification.
 //!
-//! Provides union, intersection, and difference operations that handle
-//! coplanar faces and near-degenerate configurations better than the
-//! basic boolean module.
+//! Provides union and intersection operations that classify whole cells by a
+//! majority vote over their vertices; the difference operation is re-exported
+//! from [`crate::filters::mesh::boolean_difference`].
 
 use crate::data::{CellArray, Points, PolyData};
 
-/// Classify each vertex of mesh A as inside/outside mesh B using
-/// generalized winding number.
+/// Classify each vertex of mesh A as inside/outside mesh B.
+///
+/// Boolean view of the single implementation in
+/// [`crate::filters::mesh::mesh_mesh_boolean_classify::classify_vertices`],
+/// which attaches the same classification as an "InsideRef" point array.
 pub fn classify_vertices(mesh_a: &PolyData, mesh_b: &PolyData) -> Vec<bool> {
-    let na = mesh_a.points.len();
-    let tris_b = collect_triangles(mesh_b);
-
-    (0..na)
+    let n = mesh_a.points.len();
+    let classified =
+        crate::filters::mesh::mesh_mesh_boolean_classify::classify_vertices(mesh_a, mesh_b);
+    let Some(arr) = classified.point_data().get_array("InsideRef") else {
+        return vec![false; n];
+    };
+    let mut buf = [0.0f64];
+    (0..n)
         .map(|i| {
-            let p = mesh_a.points.get(i);
-            let wn = generalized_winding_number(p, &tris_b);
-            wn.abs() > 0.5
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0] > 0.5
         })
         .collect()
 }
@@ -46,16 +52,11 @@ pub fn boolean_intersection(a: &PolyData, b: &PolyData) -> PolyData {
 }
 
 /// Boolean difference: A minus B.
-pub fn boolean_difference(a: &PolyData, b: &PolyData) -> PolyData {
-    let inside_b = classify_vertices(a, b);
-    let inside_a = classify_vertices(b, a);
-
-    let mut result = extract_cells_by_vertex_flag(a, &inside_b, false);
-    let mut inner_boundary = extract_cells_by_vertex_flag(b, &inside_a, true);
-    reverse_polys(&mut inner_boundary);
-    append_mesh(&mut result, &inner_boundary);
-    result
-}
+///
+/// Re-exported from [`crate::filters::mesh::boolean_difference`], which holds
+/// the single implementation (per-cell centroid classification, matching
+/// `vtkBooleanOperationPolyDataFilter`).
+pub use crate::filters::mesh::boolean_difference::boolean_difference;
 
 fn extract_cells_by_vertex_flag(mesh: &PolyData, flags: &[bool], keep_flagged: bool) -> PolyData {
     let mut pts = Points::<f64>::new();
@@ -110,71 +111,6 @@ fn append_mesh(target: &mut PolyData, source: &PolyData) {
     }
 }
 
-type Triangle = [[f64; 3]; 3];
-
-fn collect_triangles(mesh: &PolyData) -> Vec<Triangle> {
-    let mut tris = Vec::new();
-    let npts = mesh.points.len();
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if cell.iter().any(|&id| id < 0 || id as usize >= npts) {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            tris.push([a, b, c]);
-        }
-    }
-    tris
-}
-
-fn reverse_polys(mesh: &mut PolyData) {
-    let mut reversed = CellArray::new();
-    for cell in mesh.polys.iter() {
-        let ids: Vec<i64> = cell.iter().rev().copied().collect();
-        reversed.push_cell(&ids);
-    }
-    mesh.polys = reversed;
-}
-
-fn generalized_winding_number(point: [f64; 3], triangles: &[Triangle]) -> f64 {
-    let mut wn = 0.0;
-    for tri in triangles {
-        wn += solid_angle(point, tri);
-    }
-    wn / (4.0 * std::f64::consts::PI)
-}
-
-fn solid_angle(p: [f64; 3], tri: &Triangle) -> f64 {
-    let a = [tri[0][0] - p[0], tri[0][1] - p[1], tri[0][2] - p[2]];
-    let b = [tri[1][0] - p[0], tri[1][1] - p[1], tri[1][2] - p[2]];
-    let c = [tri[2][0] - p[0], tri[2][1] - p[1], tri[2][2] - p[2]];
-
-    let la = (a[0] * a[0] + a[1] * a[1] + a[2] * a[2]).sqrt();
-    let lb = (b[0] * b[0] + b[1] * b[1] + b[2] * b[2]).sqrt();
-    let lc = (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt();
-
-    if la < 1e-15 || lb < 1e-15 || lc < 1e-15 {
-        return 0.0;
-    }
-
-    let det = a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
-        + a[2] * (b[0] * c[1] - b[1] * c[0]);
-    let ab = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-    let ac = a[0] * c[0] + a[1] * c[1] + a[2] * c[2];
-    let bc = b[0] * c[0] + b[1] * c[1] + b[2] * c[2];
-    let denom = la * lb * lc + ab * lc + ac * lb + bc * la;
-
-    if denom.abs() < 1e-15 {
-        return 0.0;
-    }
-    2.0 * det.atan2(denom)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,16 +160,6 @@ mod tests {
         let b = make_cube(1.0, 0.0, 0.0, 2.0);
         let result = boolean_union(&a, &b);
         assert!(result.polys.num_cells() > 0);
-    }
-
-    #[test]
-    fn difference() {
-        let a = make_cube(0.0, 0.0, 0.0, 2.0);
-        let b = make_cube(1.0, 0.0, 0.0, 2.0);
-        let result = boolean_difference(&a, &b);
-        assert!(result.polys.num_cells() > 0);
-        // Should keep some faces from A that are outside B
-        assert!(result.polys.num_cells() <= a.polys.num_cells());
     }
 
     #[test]

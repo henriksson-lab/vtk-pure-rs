@@ -4,9 +4,9 @@ use super::curvature_simple;
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute discrete Gaussian curvature via angle deficit.
-pub fn gaussian_curvature(mesh: &PolyData) -> PolyData {
-    curvature_simple::gaussian_curvature(mesh)
-}
+///
+/// Single implementation lives in [`crate::filters::mesh::curvature_simple`].
+pub use crate::filters::mesh::curvature_simple::gaussian_curvature;
 
 /// Compute discrete mean curvature via Laplacian magnitude.
 pub fn mean_curvature_magnitude(mesh: &PolyData) -> PolyData {

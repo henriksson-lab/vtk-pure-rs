@@ -20,53 +20,10 @@ pub fn repair_mesh(mesh: &PolyData, merge_tolerance: f64, min_component_faces: u
 
 /// Remove degenerate triangles (zero area or duplicate vertices).
 pub fn remove_degenerate_triangles(mesh: &PolyData) -> PolyData {
-    let mut polys = CellArray::new();
-    let mut kept_polys = Vec::new();
-    for (poly_id, cell) in mesh.polys.iter().enumerate() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if !cell_ids_are_valid(cell, mesh.points.len()) {
-            continue;
-        }
-        // Check for duplicate vertices
-        let mut ok = true;
-        for i in 0..cell.len() {
-            for j in i + 1..cell.len() {
-                if cell[i] == cell[j] {
-                    ok = false;
-                    break;
-                }
-            }
-            if !ok {
-                break;
-            }
-        }
-        if !ok {
-            continue;
-        }
-
-        // Check for zero area (for triangles)
-        if cell.len() == 3 {
-            let a = mesh.points.get(cell[0] as usize);
-            let b = mesh.points.get(cell[1] as usize);
-            let c = mesh.points.get(cell[2] as usize);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let nx = e1[1] * e2[2] - e1[2] * e2[1];
-            let ny = e1[2] * e2[0] - e1[0] * e2[2];
-            let nz = e1[0] * e2[1] - e1[1] * e2[0];
-            if nx * nx + ny * ny + nz * nz < 1e-20 {
-                continue;
-            }
-        }
-        polys.push_cell(cell);
-        kept_polys.push(poly_id);
-    }
-    let mut result = mesh.clone();
-    result.polys = polys;
-    remap_cell_data_for_kept_polys(mesh, &kept_polys, &mut result);
-    result
+    // Thin wrapper over the single implementation, which takes the area
+    // threshold as a parameter. The historical threshold here was
+    // |2 * area|^2 < 1e-20, i.e. area < 5e-11.
+    super::collapse_degenerate::remove_degenerate_triangles(mesh, 5e-11)
 }
 
 /// Merge vertices closer than tolerance.
@@ -351,24 +308,6 @@ fn remap_point_data_by_indices(input: &PolyData, kept_points: &[usize], output: 
         }
     }
     copy_active_attributes(input.point_data(), output.point_data_mut());
-}
-
-fn remap_cell_data_for_kept_polys(input: &PolyData, kept_polys: &[usize], output: &mut PolyData) {
-    let total_cells = input.total_cells();
-    let poly_offset = input.verts.num_cells() + input.lines.num_cells();
-    let mut kept = Vec::with_capacity(
-        input.verts.num_cells()
-            + input.lines.num_cells()
-            + kept_polys.len()
-            + input.strips.num_cells(),
-    );
-
-    kept.extend(0..poly_offset);
-    kept.extend(kept_polys.iter().map(|&poly_id| poly_offset + poly_id));
-    let strip_offset = poly_offset + input.polys.num_cells();
-    kept.extend(strip_offset..total_cells);
-
-    remap_cell_data_by_indices(input, &kept, output);
 }
 
 fn remap_cell_data_by_indices(input: &PolyData, kept_cells: &[usize], output: &mut PolyData) {

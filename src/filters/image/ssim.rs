@@ -4,6 +4,12 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 ///
 /// Returns a per-pixel SSIM map and the mean SSIM value.
 /// SSIM combines luminance, contrast, and structure comparison.
+///
+/// The regularization constants follow `vtkImageSSIM`'s automatic range mode:
+/// per component, `L` is the larger of the two input ranges, `c1 = 0.0001 L^2`
+/// and `c2 = 0.0009 L^2`. As VTK documents for that mode, a degenerate input
+/// (both images constant, so `L = 0`) makes both constants vanish and the SSIM
+/// comes out NaN.
 pub fn image_ssim(a: &ImageData, b: &ImageData, scalars: &str, radius: usize) -> (ImageData, f64) {
     let aa = match a.point_data().get_array(scalars) {
         Some(x) => x,
@@ -195,23 +201,20 @@ mod tests {
 
     #[test]
     fn different_images_lower() {
+        // Both images have to carry some range: with two constant images the
+        // automatic range is 0, which zeroes c1/c2 and gives NaN (as VTK warns).
+        // A ramp along x compared against a ramp along y is uncorrelated.
         let mut a = ImageData::with_dimensions(5, 5, 1);
+        let a_values: Vec<f64> = (0..25).map(|i| (i % 5) as f64 * 10.0).collect();
         a.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "v",
-                vec![0.0; 25],
-                1,
-            )));
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", a_values, 1)));
         let mut b = ImageData::with_dimensions(5, 5, 1);
+        let b_values: Vec<f64> = (0..25).map(|i| (i / 5) as f64 * 10.0).collect();
         b.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "v",
-                vec![255.0; 25],
-                1,
-            )));
+            .add_array(AnyDataArray::F64(DataArray::from_vec("v", b_values, 1)));
 
         let (_, mean) = image_ssim(&a, &b, "v", 1);
-        assert!(mean < 0.5);
+        assert!(mean < 0.5, "mean SSIM {mean} should be well below 1");
     }
 
     #[test]

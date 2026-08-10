@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
 use crate::data::{Points, PolyData};
+use rayon::prelude::*;
 
 const COS_EDGE_ANGLE: f64 = 0.9659258262890683; // cos(15 degrees), VTK default EdgeAngle.
+const SMOOTH_PAR_MIN_POINTS: usize = 4096;
+const SMOOTH_PAR_CHUNK_POINTS: usize = 256;
 
 /// Laplacian smoothing of a PolyData mesh.
 pub fn smooth(
@@ -21,36 +24,19 @@ pub fn smooth(
     let (neighbor_offsets, neighbor_ids) = flatten_neighbors(&neighbors);
     let factor = relaxation_factor;
 
-    // Work directly on flat f64 buffers for cache efficiency.
+    // Work directly on flat f64 buffers for cache efficiency. Each smoothing
+    // iteration reads from the previous coordinates and writes the next ones;
+    // updating in-place makes the result order-dependent and over-smooths.
     let mut pos = input.points.as_flat_slice().to_vec();
+    let mut next = vec![0.0; pos.len()];
+    let use_parallel = n >= SMOOTH_PAR_MIN_POINTS;
     for _ in 0..iterations {
-        for i in 0..n {
-            let start = neighbor_offsets[i];
-            let end = neighbor_offsets[i + 1];
-            if start == end {
-                continue;
-            }
-
-            let mut ax = 0.0f64;
-            let mut ay = 0.0f64;
-            let mut az = 0.0f64;
-            for &nb in &neighbor_ids[start..end] {
-                unsafe {
-                    ax += *pos.get_unchecked(nb * 3);
-                    ay += *pos.get_unchecked(nb * 3 + 1);
-                    az += *pos.get_unchecked(nb * 3 + 2);
-                }
-            }
-            let inv = 1.0 / (end - start) as f64;
-            ax *= inv;
-            ay *= inv;
-            az *= inv;
-
-            let base = i * 3;
-            pos[base] += factor * (ax - pos[base]);
-            pos[base + 1] += factor * (ay - pos[base + 1]);
-            pos[base + 2] += factor * (az - pos[base + 2]);
+        if use_parallel {
+            smooth_iteration_par(&pos, &mut next, &neighbor_offsets, &neighbor_ids, factor);
+        } else {
+            smooth_iteration(&pos, &mut next, &neighbor_offsets, &neighbor_ids, factor);
         }
+        std::mem::swap(&mut pos, &mut next);
     }
 
     output.points = Points::from_flat_vec(pos);
@@ -65,6 +51,104 @@ pub fn smooth_par(
     fix_boundary: bool,
 ) -> PolyData {
     smooth(input, iterations, relaxation_factor, fix_boundary)
+}
+
+fn smooth_iteration(
+    pos: &[f64],
+    next: &mut [f64],
+    neighbor_offsets: &[usize],
+    neighbor_ids: &[usize],
+    factor: f64,
+) {
+    for i in 0..neighbor_offsets.len() - 1 {
+        smooth_point(
+            i,
+            &mut next[i * 3..i * 3 + 3],
+            pos,
+            neighbor_offsets,
+            neighbor_ids,
+            factor,
+        );
+    }
+}
+
+fn smooth_iteration_par(
+    pos: &[f64],
+    next: &mut [f64],
+    neighbor_offsets: &[usize],
+    neighbor_ids: &[usize],
+    factor: f64,
+) {
+    next.par_chunks_mut(SMOOTH_PAR_CHUNK_POINTS * 3)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let first_point = chunk_idx * SMOOTH_PAR_CHUNK_POINTS;
+            for (local_idx, dst) in chunk.chunks_mut(3).enumerate() {
+                smooth_point(
+                    first_point + local_idx,
+                    dst,
+                    pos,
+                    neighbor_offsets,
+                    neighbor_ids,
+                    factor,
+                );
+            }
+        });
+}
+
+#[inline(always)]
+fn smooth_point(
+    i: usize,
+    dst: &mut [f64],
+    pos: &[f64],
+    neighbor_offsets: &[usize],
+    neighbor_ids: &[usize],
+    factor: f64,
+) {
+    let base = i * 3;
+    let start = neighbor_offsets[i];
+    let end = neighbor_offsets[i + 1];
+    if start == end {
+        dst[0] = pos[base];
+        dst[1] = pos[base + 1];
+        dst[2] = pos[base + 2];
+        return;
+    }
+
+    let mut ax = 0.0f64;
+    let mut ay = 0.0f64;
+    let mut az = 0.0f64;
+    let degree = end - start;
+    if degree == 6 {
+        unsafe {
+            for k in 0..6 {
+                let nb = *neighbor_ids.get_unchecked(start + k) * 3;
+                ax += *pos.get_unchecked(nb);
+                ay += *pos.get_unchecked(nb + 1);
+                az += *pos.get_unchecked(nb + 2);
+            }
+        }
+    } else {
+        for &nb in &neighbor_ids[start..end] {
+            unsafe {
+                ax += *pos.get_unchecked(nb * 3);
+                ay += *pos.get_unchecked(nb * 3 + 1);
+                az += *pos.get_unchecked(nb * 3 + 2);
+            }
+        }
+    }
+    let inv = if degree == 6 {
+        1.0 / 6.0
+    } else {
+        1.0 / degree as f64
+    };
+    ax *= inv;
+    ay *= inv;
+    az *= inv;
+
+    dst[0] = pos[base] + factor * (ax - pos[base]);
+    dst[1] = pos[base + 1] + factor * (ay - pos[base + 1]);
+    dst[2] = pos[base + 2] + factor * (az - pos[base + 2]);
 }
 
 fn build_smoothing_neighbors(input: &PolyData, n: usize, fix_boundary: bool) -> Vec<Vec<usize>> {

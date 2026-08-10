@@ -40,7 +40,6 @@ pub mod merge_points;
 pub mod obb_dicer;
 pub mod offset_surface;
 pub mod parallel_for;
-pub mod piece_request;
 pub mod poly_data_silhouette;
 pub mod poly_data_summary;
 pub mod probe;

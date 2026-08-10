@@ -13,38 +13,18 @@ pub fn diameter(mesh: &PolyData) -> f64 {
     }
     max_d.sqrt()
 }
+/// Farthest pair of vertices, returning `(0, 0, 0.0)` when fewer than two points.
+///
+/// Thin wrapper over [`crate::filters::mesh::closest_pair::farthest_pair`].
 pub fn farthest_pair(mesh: &PolyData) -> (usize, usize, f64) {
-    let n = mesh.points.len();
-    let mut best = (0, 0, 0.0f64);
-    for i in 0..n {
-        let pi = mesh.points.get(i);
-        for j in i + 1..n {
-            let pj = mesh.points.get(j);
-            let d = (pi[0] - pj[0]).powi(2) + (pi[1] - pj[1]).powi(2) + (pi[2] - pj[2]).powi(2);
-            if d > best.2 {
-                best = (i, j, d);
-            }
-        }
-    }
-    (best.0, best.1, best.2.sqrt())
+    crate::filters::mesh::closest_pair::farthest_pair(mesh).unwrap_or((0, 0, 0.0))
 }
+
+/// Closest pair of vertices, returning `(0, 0, 0.0)` when fewer than two points.
+///
+/// Thin wrapper over [`crate::filters::mesh::closest_pair::closest_pair`].
 pub fn closest_pair(mesh: &PolyData) -> (usize, usize, f64) {
-    let n = mesh.points.len();
-    if n < 2 {
-        return (0, 0, 0.0);
-    }
-    let mut best = (0, 1, f64::INFINITY);
-    for i in 0..n {
-        let pi = mesh.points.get(i);
-        for j in i + 1..n {
-            let pj = mesh.points.get(j);
-            let d = (pi[0] - pj[0]).powi(2) + (pi[1] - pj[1]).powi(2) + (pi[2] - pj[2]).powi(2);
-            if d < best.2 {
-                best = (i, j, d);
-            }
-        }
-    }
-    (best.0, best.1, best.2.sqrt())
+    crate::filters::mesh::closest_pair::closest_pair(mesh).unwrap_or((0, 0, 0.0))
 }
 pub fn average_nearest_neighbor_distance(mesh: &PolyData) -> f64 {
     let n = mesh.points.len();

@@ -88,30 +88,89 @@ impl StlWriter {
         header[..len].copy_from_slice(&name_bytes[..len]);
         w.write_all(&header)?;
 
-        let triangles = stl_triangles(data);
-        let num_triangles = triangles.len() as u32;
+        let num_triangles = count_stl_triangles(data) as u32;
         w.write_all(&num_triangles.to_le_bytes())?;
 
-        // Write triangles
-        for tri in triangles {
-            let n = triangle_normal(tri[0], tri[1], tri[2]);
-
-            // Normal (3 x f32 LE)
-            for &v in &n {
-                w.write_all(&(v as f32).to_le_bytes())?;
+        for strip in data.strips.iter() {
+            if strip.len() < 3 {
+                continue;
             }
-            // Vertices (3 x 3 x f32 LE)
-            for p in &tri {
-                for &v in p {
-                    w.write_all(&(v as f32).to_le_bytes())?;
+            for i in 0..strip.len() - 2 {
+                let ids = if i % 2 == 0 {
+                    [strip[i], strip[i + 1], strip[i + 2]]
+                } else {
+                    [strip[i + 1], strip[i], strip[i + 2]]
+                };
+                write_binary_triangle(
+                    w,
+                    [
+                        data.points.get(ids[0] as usize),
+                        data.points.get(ids[1] as usize),
+                        data.points.get(ids[2] as usize),
+                    ],
+                )?;
+            }
+        }
+
+        for cell in data.polys.iter() {
+            if cell.len() < 3 {
+                continue;
+            }
+            if cell.len() == 3 {
+                write_binary_triangle(
+                    w,
+                    [
+                        data.points.get(cell[0] as usize),
+                        data.points.get(cell[1] as usize),
+                        data.points.get(cell[2] as usize),
+                    ],
+                )?;
+            } else {
+                for [i0, i1, i2] in triangulate_polygon_cell(data, cell) {
+                    write_binary_triangle(
+                        w,
+                        [
+                            data.points.get(i0 as usize),
+                            data.points.get(i1 as usize),
+                            data.points.get(i2 as usize),
+                        ],
+                    )?;
                 }
             }
-            // Attribute byte count
-            w.write_all(&0u16.to_le_bytes())?;
         }
 
         Ok(())
     }
+}
+
+fn count_stl_triangles(data: &PolyData) -> usize {
+    data.strips
+        .iter()
+        .map(|strip| strip.len().saturating_sub(2))
+        .sum::<usize>()
+        + data
+            .polys
+            .iter()
+            .map(|cell| cell.len().saturating_sub(2))
+            .sum::<usize>()
+}
+
+fn write_binary_triangle<W: Write>(w: &mut W, tri: [[f64; 3]; 3]) -> Result<(), VtkError> {
+    let n = triangle_normal(tri[0], tri[1], tri[2]);
+    let mut record = [0u8; 50];
+    let mut off = 0usize;
+    for &v in &n {
+        record[off..off + 4].copy_from_slice(&(v as f32).to_le_bytes());
+        off += 4;
+    }
+    for p in &tri {
+        for &v in p {
+            record[off..off + 4].copy_from_slice(&(v as f32).to_le_bytes());
+            off += 4;
+        }
+    }
+    w.write_all(&record)?;
+    Ok(())
 }
 
 fn stl_triangles(data: &PolyData) -> Vec<[[f64; 3]; 3]> {

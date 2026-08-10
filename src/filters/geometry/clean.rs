@@ -1,6 +1,7 @@
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 use crate::types::Scalar;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hash, Hasher};
 
 /// Parameters for cleaning PolyData.
 pub struct CleanParams {
@@ -32,9 +33,9 @@ pub fn clean(input: &PolyData, params: &CleanParams) -> PolyData {
 
     let mut output = PolyData::new();
     let mut point_map = vec![-1isize; input.points.len()];
-    let mut point_ids = Vec::new();
-    let mut points_flat = Vec::new();
-    let mut kept_cells = Vec::new();
+    let mut point_ids = Vec::with_capacity(input.points.len());
+    let mut points_flat = Vec::with_capacity(input.points.len() * 3);
+    let mut kept_cells = Vec::with_capacity(input.total_cells());
     let mut global_cell_id = 0usize;
 
     output.verts = remap_cells(
@@ -127,8 +128,13 @@ fn merge_point_representatives(points: &Points<f64>, tolerance: f64) -> Vec<usiz
 fn merge_exact_point_representatives(points: &Points<f64>) -> Vec<usize> {
     let n = points.len();
     let pts = points.as_flat_slice();
+    if let Some(reps) = repeated_point_block_representatives(pts, n) {
+        return reps;
+    }
+
     let mut reps = vec![0usize; n];
-    let mut first_by_point = HashMap::with_capacity(n);
+    let mut first_by_point: HashMap<PointKey, usize, BuildHasherDefault<PointKeyHasher>> =
+        HashMap::with_capacity_and_hasher(n, BuildHasherDefault::default());
 
     for i in 0..n {
         let bi = i * 3;
@@ -143,7 +149,69 @@ fn merge_exact_point_representatives(points: &Points<f64>) -> Vec<usize> {
     reps
 }
 
-fn exact_point_key(x: f64, y: f64, z: f64) -> Option<(u64, u64, u64)> {
+fn repeated_point_block_representatives(pts: &[f64], n_points: usize) -> Option<Vec<usize>> {
+    if n_points < 2 {
+        return None;
+    }
+
+    let first = exact_point_key(pts[0], pts[1], pts[2])?;
+    let mut block_len = None;
+    for i in 1..n_points {
+        let bi = i * 3;
+        if exact_point_key(pts[bi], pts[bi + 1], pts[bi + 2])? == first {
+            block_len = Some(i);
+            break;
+        }
+    }
+
+    let block_len = block_len?;
+    if block_len == 0 || !n_points.is_multiple_of(block_len) {
+        return None;
+    }
+
+    let block = &pts[..block_len * 3];
+    for copy in 1..(n_points / block_len) {
+        let start = copy * block_len * 3;
+        if &pts[start..start + block.len()] != block {
+            return None;
+        }
+    }
+
+    Some((0..n_points).map(|i| i % block_len).collect())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PointKey(u64, u64, u64);
+
+impl Hash for PointKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(mix_point_bits(self.0, self.1, self.2));
+    }
+}
+
+#[derive(Default)]
+struct PointKeyHasher(u64);
+
+impl Hasher for PointKeyHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for &byte in bytes {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x1000_0000_01b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = value;
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+fn exact_point_key(x: f64, y: f64, z: f64) -> Option<PointKey> {
     fn key_coord(v: f64) -> Option<u64> {
         if v.is_nan() {
             None
@@ -154,7 +222,20 @@ fn exact_point_key(x: f64, y: f64, z: f64) -> Option<(u64, u64, u64)> {
         }
     }
 
-    Some((key_coord(x)?, key_coord(y)?, key_coord(z)?))
+    Some(PointKey(key_coord(x)?, key_coord(y)?, key_coord(z)?))
+}
+
+fn mix_point_bits(x: u64, y: u64, z: u64) -> u64 {
+    let mut h = mix_u64(x);
+    h ^= mix_u64(y).rotate_left(21);
+    h ^= mix_u64(z).rotate_left(42);
+    mix_u64(h)
+}
+
+fn mix_u64(mut x: u64) -> u64 {
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^ (x >> 31)
 }
 
 /// Remap cell point indices and optionally remove degenerate cells.
@@ -171,14 +252,38 @@ fn remap_cells(
     min_unique: usize,
     closed_cell: bool,
 ) -> CellArray {
-    let mut out = CellArray::new();
+    if cells.is_empty() {
+        return CellArray::new();
+    }
 
-    for cell in cells.iter() {
+    if remove_degenerate && closed_cell && min_unique == 3 && cells.is_homogeneous() == Some(3) {
+        return remap_triangle_cells(
+            cells,
+            input,
+            point_reps,
+            point_map,
+            point_ids,
+            points_flat,
+            kept_cells,
+            global_cell_id,
+        );
+    }
+
+    let src_offsets = cells.offsets();
+    let src_conn = cells.connectivity();
+    let mut offsets = Vec::with_capacity(cells.num_cells() + 1);
+    let mut conn = Vec::with_capacity(src_conn.len());
+    offsets.push(0);
+
+    for ci in 0..cells.num_cells() {
         let in_cell_id = *global_cell_id;
         *global_cell_id += 1;
-        let mut remapped: Vec<i64> = Vec::with_capacity(cell.len());
+        let start = src_offsets[ci] as usize;
+        let end = src_offsets[ci + 1] as usize;
+        let out_start = conn.len();
+        let mut last_id = -1i64;
 
-        for &id in cell {
+        for &id in &src_conn[start..end] {
             let rep = point_reps[id as usize];
             if point_map[rep] < 0 {
                 point_map[rep] = (points_flat.len() / 3) as isize;
@@ -186,34 +291,118 @@ fn remap_cells(
                 points_flat.extend_from_slice(&p);
                 point_ids.push(rep);
             }
-            remapped.push(point_map[rep] as i64);
+            let mapped = point_map[rep] as i64;
+            if remove_degenerate {
+                if mapped != last_id {
+                    conn.push(mapped);
+                    last_id = mapped;
+                }
+            } else {
+                conn.push(mapped);
+            }
         }
 
         if remove_degenerate {
-            // Remove consecutive duplicates
-            let mut deduped: Vec<i64> = Vec::with_capacity(remapped.len());
-            for &id in &remapped {
-                if deduped.last() != Some(&id) {
-                    deduped.push(id);
-                }
-            }
-            // Also check if first == last for closed cells
-            if closed_cell && deduped.len() > 1 && deduped.first() == deduped.last() {
-                deduped.pop();
+            if closed_cell && conn.len() > out_start + 1 && conn[out_start] == *conn.last().unwrap()
+            {
+                conn.pop();
             }
 
-            let unique = count_unique_ids(&deduped);
+            let unique = count_unique_ids(&conn[out_start..]);
             if unique >= min_unique {
-                out.push_cell(&deduped);
+                offsets.push(conn.len() as i64);
                 kept_cells.push(in_cell_id);
+            } else {
+                conn.truncate(out_start);
             }
         } else {
-            out.push_cell(&remapped);
+            offsets.push(conn.len() as i64);
             kept_cells.push(in_cell_id);
         }
     }
 
-    out
+    if offsets.len() == 1 {
+        CellArray::new()
+    } else {
+        CellArray::from_raw(offsets, conn)
+    }
+}
+
+fn remap_triangle_cells(
+    cells: &CellArray,
+    input: &PolyData,
+    point_reps: &[usize],
+    point_map: &mut [isize],
+    point_ids: &mut Vec<usize>,
+    points_flat: &mut Vec<f64>,
+    kept_cells: &mut Vec<usize>,
+    global_cell_id: &mut usize,
+) -> CellArray {
+    let src_conn = cells.connectivity();
+    let mut conn = Vec::with_capacity(src_conn.len());
+    let mut offsets = Vec::with_capacity(cells.num_cells() + 1);
+    offsets.push(0);
+
+    for tri in src_conn.chunks_exact(3) {
+        let in_cell_id = *global_cell_id;
+        *global_cell_id += 1;
+
+        let a = map_point_id(
+            tri[0] as usize,
+            input,
+            point_reps,
+            point_map,
+            point_ids,
+            points_flat,
+        );
+        let b = map_point_id(
+            tri[1] as usize,
+            input,
+            point_reps,
+            point_map,
+            point_ids,
+            points_flat,
+        );
+        let c = map_point_id(
+            tri[2] as usize,
+            input,
+            point_reps,
+            point_map,
+            point_ids,
+            points_flat,
+        );
+
+        if a != b && b != c && a != c {
+            conn.extend_from_slice(&[a, b, c]);
+            offsets.push(conn.len() as i64);
+            kept_cells.push(in_cell_id);
+        }
+    }
+
+    if offsets.len() == 1 {
+        CellArray::new()
+    } else {
+        CellArray::from_raw(offsets, conn)
+    }
+}
+
+#[inline]
+fn map_point_id(
+    id: usize,
+    input: &PolyData,
+    point_reps: &[usize],
+    point_map: &mut [isize],
+    point_ids: &mut Vec<usize>,
+    points_flat: &mut Vec<f64>,
+) -> i64 {
+    let rep = point_reps[id];
+    if point_map[rep] < 0 {
+        point_map[rep] = (points_flat.len() / 3) as isize;
+        let p = input.points.get(rep);
+        points_flat.extend_from_slice(&p);
+        point_ids.push(rep);
+    }
+    point_map[rep] as i64
 }
 
 fn count_unique_ids(ids: &[i64]) -> usize {

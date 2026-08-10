@@ -190,16 +190,29 @@ fn make_triangles(
 
 /// Generate a torus as a parametric surface.
 pub fn torus(major_radius: f64, minor_radius: f64, resolution: usize) -> PolyData {
+    torus_uv(major_radius, minor_radius, resolution, resolution)
+}
+
+/// Generate a torus with independent u/v resolutions.
+///
+/// This is `vtkParametricTorus` evaluated through `vtkParametricFunctionSource`:
+/// u, v in [0, 2*PI], `JoinU = JoinV = 1`, no twists, anti-clockwise ordering.
+pub(crate) fn torus_uv(
+    ring_radius: f64,
+    cross_section_radius: f64,
+    u_resolution: usize,
+    v_resolution: usize,
+) -> PolyData {
     let pi2 = 2.0 * std::f64::consts::PI;
     parametric_function_with_topology(
         |u, v| {
-            let r = major_radius + minor_radius * v.cos();
-            [r * u.sin(), r * u.cos(), minor_radius * v.sin()]
+            let r = ring_radius + cross_section_radius * v.cos();
+            [r * u.sin(), r * u.cos(), cross_section_radius * v.sin()]
         },
         [0.0, pi2],
         [0.0, pi2],
-        resolution,
-        resolution,
+        u_resolution,
+        v_resolution,
         true,
         true,
         false,
@@ -210,6 +223,15 @@ pub fn torus(major_radius: f64, minor_radius: f64, resolution: usize) -> PolyDat
 
 /// Generate a Klein bottle as a parametric surface.
 pub fn klein_bottle(resolution: usize) -> PolyData {
+    klein_bottle_uv(resolution, resolution)
+}
+
+/// Generate a Klein bottle with independent u/v resolutions.
+///
+/// This is `vtkParametricKlein` evaluated through `vtkParametricFunctionSource`:
+/// u in [0, PI], v in [0, 2*PI], `JoinU = 0`, `JoinV = 1`, no twists,
+/// anti-clockwise ordering.
+pub(crate) fn klein_bottle_uv(u_resolution: usize, v_resolution: usize) -> PolyData {
     let pi2 = 2.0 * std::f64::consts::PI;
     parametric_function_with_topology(
         |u, v| {
@@ -218,8 +240,8 @@ pub fn klein_bottle(resolution: usize) -> PolyData {
         },
         [0.0, std::f64::consts::PI],
         [0.0, pi2],
-        resolution,
-        resolution,
+        u_resolution,
+        v_resolution,
         false,
         true,
         false,

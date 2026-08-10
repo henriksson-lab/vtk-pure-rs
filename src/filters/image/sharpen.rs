@@ -7,8 +7,8 @@ use crate::data::{AnyDataArray, DataArray, ImageData};
 /// Adds a "Sharpened" array to the output point data.
 pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, alpha: f64) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
+        Some(a) if a.num_components() == 1 => a,
+        _ => return input.clone(),
     };
 
     let dims = input.dimensions();
@@ -16,6 +16,9 @@ pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, alpha: f64)
     let ny = dims[1] as usize;
     let nz = dims[2] as usize;
     let n: usize = nx * ny * nz;
+    if dims.contains(&0) || arr.num_tuples() != n {
+        return input.clone();
+    }
 
     let mut values = vec![0.0f64; n];
     let mut buf = [0.0f64];

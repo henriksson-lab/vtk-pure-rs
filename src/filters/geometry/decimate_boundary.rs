@@ -1,43 +1,12 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 use std::collections::HashMap;
 
-/// Identify and mark boundary points on a mesh.
+/// Identify and mark boundary points (and cells) on a mesh.
 ///
-/// A boundary edge is an edge that belongs to only one triangle.
-/// Points on boundary edges are marked with 1.0 in a "BoundaryPoints"
-/// point data array, others with 0.0.
-pub fn mark_boundary(input: &PolyData) -> PolyData {
-    let n = input.points.len();
-
-    // Count how many triangles share each edge
-    let mut edge_count: HashMap<(i64, i64), usize> = HashMap::new();
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i];
-            let b = cell[(i + 1) % cell.len()];
-            let key = if a < b { (a, b) } else { (b, a) };
-            *edge_count.entry(key).or_insert(0) += 1;
-        }
-    }
-
-    // Points on boundary edges (count == 1)
-    let mut boundary = vec![0.0f64; n];
-    for (&(a, b), &count) in &edge_count {
-        if count == 1 {
-            boundary[a as usize] = 1.0;
-            boundary[b as usize] = 1.0;
-        }
-    }
-
-    let mut pd = input.clone();
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "BoundaryPoints",
-            boundary,
-            1,
-        )));
-    pd
-}
+/// Re-exported from [`crate::filters::geometry::mark_boundary`], which holds the
+/// single implementation (the faithful `vtkMarkBoundaryFilter` translation:
+/// unsigned-char "BoundaryPoints" and "BoundaryCells" arrays).
+pub use crate::filters::geometry::mark_boundary::mark_boundary;
 
 /// Extract only boundary edges as line segments.
 pub fn extract_boundary(input: &PolyData) -> PolyData {
@@ -80,24 +49,6 @@ pub fn extract_boundary(input: &PolyData) -> PolyData {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn open_mesh_has_boundary() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.5, 1.0, 0.0]);
-        pd.polys.push_cell(&[0, 1, 2]);
-
-        let result = mark_boundary(&pd);
-        let arr = result.point_data().get_array("BoundaryPoints").unwrap();
-        let mut buf = [0.0f64];
-        // Single triangle: all 3 edges are boundary
-        for i in 0..3 {
-            arr.tuple_as_f64(i, &mut buf);
-            assert_eq!(buf[0], 1.0);
-        }
-    }
 
     #[test]
     fn closed_pair_has_interior() {

@@ -2,83 +2,35 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute geodesic-like distance from a set of seed points along mesh edges.
 ///
-/// Uses Dijkstra's algorithm on the mesh edge graph. `seed_indices` are
-/// the starting points (distance = 0). Adds a "GeodesicDistance" scalar.
+/// Multi-seed form of
+/// [`crate::filters::mesh::geodesic_distance_dijkstra::geodesic_distance`],
+/// which holds the single Dijkstra implementation: the result is the pointwise
+/// minimum over the single-source fields of each seed. `seed_indices` are the
+/// starting points (distance = 0); unreachable vertices get -1.0. Adds a
+/// "GeodesicDistance" scalar.
 pub fn geodesic_distance(input: &PolyData, seed_indices: &[usize]) -> PolyData {
-    use std::cmp::Ordering;
-    use std::collections::BinaryHeap;
-
     let n = input.points.len();
     if n == 0 {
         return input.clone();
     }
 
-    // Build adjacency with edge lengths
-    let mut adj: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        if cell.len() < 2 {
+    let mut dist = vec![-1.0f64; n];
+    let mut buf = [0.0f64];
+    for &seed in seed_indices {
+        if seed >= n {
             continue;
         }
-        for i in 0..cell.len() {
-            let (Ok(a), Ok(b)) = (
-                usize::try_from(cell[i]),
-                usize::try_from(cell[(i + 1) % cell.len()]),
-            ) else {
-                continue;
-            };
-            if a >= n || b >= n {
-                continue;
-            }
-            let pa = input.points.get(a);
-            let pb = input.points.get(b);
-            let d = ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                .sqrt();
-            adj[a].push((b, d));
-            adj[b].push((a, d));
-        }
-    }
-
-    #[derive(PartialEq)]
-    struct State(f64, usize);
-    impl Eq for State {}
-    impl PartialOrd for State {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-    impl Ord for State {
-        fn cmp(&self, other: &Self) -> Ordering {
-            other.0.partial_cmp(&self.0).unwrap_or(Ordering::Equal)
-        }
-    }
-
-    let mut dist = vec![f64::MAX; n];
-    let mut heap = BinaryHeap::new();
-
-    for &s in seed_indices {
-        if s < n {
-            dist[s] = 0.0;
-            heap.push(State(0.0, s));
-        }
-    }
-
-    while let Some(State(d, u)) = heap.pop() {
-        if d > dist[u] {
+        let field =
+            crate::filters::mesh::geodesic_distance_dijkstra::geodesic_distance(input, seed);
+        let Some(arr) = field.point_data().get_array("GeodesicDistance") else {
             continue;
-        }
-        for &(v, w) in &adj[u] {
-            let nd = d + w;
-            if nd < dist[v] {
-                dist[v] = nd;
-                heap.push(State(nd, v));
+        };
+        for (i, slot) in dist.iter_mut().enumerate() {
+            arr.tuple_as_f64(i, &mut buf);
+            let d = buf[0];
+            if d >= 0.0 && (*slot < 0.0 || d < *slot) {
+                *slot = d;
             }
-        }
-    }
-
-    // Replace MAX with -1 for unreachable
-    for d in &mut dist {
-        if *d == f64::MAX {
-            *d = -1.0;
         }
     }
 

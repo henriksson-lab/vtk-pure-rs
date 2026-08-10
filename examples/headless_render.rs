@@ -1,20 +1,20 @@
-//! Headless batch renderer: generate a mesh, render offscreen, save as image.
+//! Headless batch renderer: generate a mesh, render offscreen on the GPU, save as image.
 //!
-//! No window needed — creates a GPU context, renders to texture, saves PPM/BMP/TGA.
+//! No window and no display server are needed. `WgpuRenderer::new_headless()` creates
+//! a wgpu device with no surface attached; `render_to_image()` then draws into a
+//! renderer-owned texture and reads the pixels back to the CPU.
 //!
-//! Usage: cargo run --example headless_render
+//! Usage: cargo run --features render-wgpu --example headless_render
 
-#[cfg(feature = "render")]
+#[cfg(feature = "render-wgpu")]
 mod app {
     use vtk_pure_rs::filters::core::{elevation, sources};
     use vtk_pure_rs::filters::normals::normals;
     use vtk_pure_rs::render::*;
+    use vtk_pure_rs::render_wgpu::WgpuRenderer;
 
-    pub fn run() {
-        println!("vtk-rs headless batch renderer");
-        println!("==============================\n");
-
-        // Generate scene
+    /// Build the demo scene (a shaded, elevation-coloured sphere on a dark background).
+    pub fn build_scene() -> Scene {
         let sphere = sources::sphere(&sources::SphereParams {
             theta_resolution: 32,
             phi_resolution: 32,
@@ -38,55 +38,61 @@ mod app {
         ));
         scene.axes_widget = Some(AxesWidget::default());
         scene.camera.look_at([0.0, 0.5, 3.0], [0.0, 0.0, 0.0]);
+        scene
+    }
 
+    /// Number of distinct RGB colours in an RGBA buffer — a cheap "is this a real
+    /// render, or a flat fill?" check.
+    pub fn distinct_colors(rgba: &[u8]) -> usize {
+        let mut seen = std::collections::HashSet::new();
+        for px in rgba.chunks_exact(4) {
+            seen.insert((px[0], px[1], px[2]));
+        }
+        seen.len()
+    }
+
+    pub fn run() {
+        println!("vtk-rs headless batch renderer");
+        println!("==============================\n");
+
+        let scene = build_scene();
         println!("Scene: {}", scene.summary());
         scene.print_info();
         println!();
 
-        // Try to render (requires GPU)
-        println!("Attempting headless GPU render...");
-
-        // We need a window for wgpu initialization on most platforms
-        // For truly headless, wgpu needs specific adapter selection
-        // Instead, demonstrate the CPU-side pipeline and image saving
-
-        // Generate a simple test image pattern (gradient)
         let width = 640u32;
         let height = 480u32;
-        let mut rgba = vec![0u8; (width * height * 4) as usize];
 
-        // Render a gradient pattern as a placeholder
-        for y in 0..height {
-            for x in 0..width {
-                let idx = ((y * width + x) * 4) as usize;
-                let u = x as f32 / width as f32;
-                let v = y as f32 / height as f32;
-
-                // Sample the skybox gradient
-                let sky = scene.skybox.sample(v);
-                rgba[idx] = (sky[0] * 255.0) as u8;
-                rgba[idx + 1] = (sky[1] * 255.0) as u8;
-                rgba[idx + 2] = (sky[2] * 255.0) as u8;
-                rgba[idx + 3] = 255;
-
-                // Draw a simple sphere silhouette
-                let cx = u - 0.5;
-                let cy = v - 0.5;
-                let r = (cx * cx + cy * cy).sqrt();
-                if r < 0.3 {
-                    let t = 1.0 - r / 0.3; // normalized distance from edge
-                    let elev = cy / 0.3; // fake elevation
-                    let color = scene.actors[0].coloring.clone();
-                    if let Coloring::ScalarMap { ref color_map, .. } = color {
-                        let c = color_map.map_value(elev as f64, -1.0, 1.0);
-                        let shade = 0.3 + 0.7 * t; // fake lighting
-                        rgba[idx] = (c[0] * shade * 255.0) as u8;
-                        rgba[idx + 1] = (c[1] * shade * 255.0) as u8;
-                        rgba[idx + 2] = (c[2] * shade * 255.0) as u8;
-                    }
-                }
+        println!("Creating headless GPU context (no window, no surface)...");
+        let mut renderer = match WgpuRenderer::new_headless_blocking(width, height) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("Could not create a headless GPU context: {e}");
+                eprintln!("(A working wgpu backend — Vulkan, Metal, DX12 or GL — is required.)");
+                std::process::exit(1);
             }
-        }
+        };
+        println!(
+            "GPU context ready, colour format {:?}",
+            renderer.color_format()
+        );
+
+        println!("Rendering {width}x{height} offscreen...");
+        let rgba = renderer
+            .render_to_image(&scene, width, height)
+            .expect("offscreen render failed");
+        assert_eq!(rgba.len(), (width * height * 4) as usize);
+
+        let n_colors = distinct_colors(&rgba);
+        println!(
+            "Read back {} bytes, {} distinct colours",
+            rgba.len(),
+            n_colors
+        );
+        assert!(
+            n_colors > 16,
+            "image looks like a flat fill ({n_colors} colours) — nothing was drawn"
+        );
 
         // Save in multiple formats
         let dir = std::env::temp_dir().join("vtk_headless");
@@ -105,16 +111,15 @@ mod app {
         println!("Saved: {}", tga_path.display());
 
         println!("\nDone. Images saved to {}", dir.display());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "render-wgpu")]
 fn main() {
     app::run();
 }
 
-#[cfg(not(feature = "render"))]
+#[cfg(not(feature = "render-wgpu"))]
 fn main() {
-    println!("headless_render example requires --features render");
+    println!("headless_render example requires --features render-wgpu");
 }

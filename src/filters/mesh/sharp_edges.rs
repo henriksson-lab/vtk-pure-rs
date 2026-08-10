@@ -4,6 +4,12 @@ use std::collections::HashMap;
 /// Extract edges where the dihedral angle exceeds a threshold (sharp/feature edges).
 ///
 /// Returns a PolyData with line cells for sharp edges only.
+///
+/// This mirrors `vtkFeatureEdges` configured with `FeatureEdgesOn` and
+/// `BoundaryEdgesOff`/`NonManifoldEdgesOff`/`ManifoldEdgesOff`: only edges shared
+/// by exactly two polygons are considered, and an edge is emitted when
+/// `dot(n0, n1) <= cos(feature_angle)` (VTK's `vtkFeatureEdges.cxx:438`).
+/// The full multi-category filter lives in [`crate::filters::geometry::feature_edges`].
 pub fn extract_sharp_edges(input: &PolyData, angle_threshold_deg: f64) -> PolyData {
     let cos_thresh = angle_threshold_deg.to_radians().cos();
 
@@ -29,7 +35,11 @@ pub fn extract_sharp_edges(input: &PolyData, angle_threshold_deg: f64) -> PolyDa
     let mut out_pts = Points::<f64>::new();
     let mut out_lines = CellArray::new();
 
-    for (&(a, b), faces) in &edge_faces {
+    // Emit in a deterministic edge order (hash iteration order is not stable).
+    let mut edges: Vec<((i64, i64), Vec<usize>)> = edge_faces.into_iter().collect();
+    edges.sort_by_key(|&((a, b), _)| (a, b));
+
+    for ((a, b), faces) in edges {
         if faces.len() != 2 {
             continue;
         }

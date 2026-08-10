@@ -22,6 +22,12 @@ pub fn pendulum(
     lines.push_cell(&[0, bob_center as i64]);
     // Bob
     add_bob(&mut pts, &mut polys, bx, bz, bob_radius, res);
+    // Pivot bracket (small triangle at the suspension point)
+    let pb = pts.len();
+    pts.push([-bob_radius, 0.0, 0.0]);
+    pts.push([bob_radius, 0.0, 0.0]);
+    pts.push([0.0, 0.0, bob_radius]);
+    polys.push_cell(&[pb as i64, (pb + 1) as i64, (pb + 2) as i64]);
     let mut r = PolyData::new();
     r.points = pts;
     r.polys = polys;

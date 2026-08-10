@@ -1,23 +1,25 @@
-use crate::data::{AnyDataArray, DataSet, PolyData};
+use crate::data::{AnyDataArray, DataSet, Points, PolyData};
 
 /// Warp mesh vertices along the surface normal by the active scalar value.
 ///
 /// Each vertex is displaced as: `p_new = p + normal * scalar * scale_factor`.
 /// If active point normals are absent, uses VTK's default normal `(0, 0, 1)`.
 pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
-    let mut output = input.clone();
-
     let normals = input
         .point_data()
         .normals()
         .filter(|n| n.num_components() == 3);
     let scalars = match input.point_data().scalars() {
         Some(s) => s,
-        None => return output,
+        None => return input.clone(),
     };
 
     let n = input.num_points();
-    let pts = output.points.as_flat_slice_mut();
+    let in_pts = input.points.as_flat_slice();
+    let mut out_pts = Vec::with_capacity(in_pts.len());
+    unsafe {
+        out_pts.set_len(in_pts.len());
+    }
 
     match (normals, scalars) {
         (Some(AnyDataArray::F64(normals)), AnyDataArray::F64(scalars))
@@ -28,18 +30,21 @@ pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
             for i in 0..n {
                 let p = i * 3;
                 let d = scalars[i] * scale_factor;
-                pts[p] += normals[p] * d;
-                pts[p + 1] += normals[p + 1] * d;
-                pts[p + 2] += normals[p + 2] * d;
+                out_pts[p] = in_pts[p] + normals[p] * d;
+                out_pts[p + 1] = in_pts[p + 1] + normals[p + 1] * d;
+                out_pts[p + 2] = in_pts[p + 2] + normals[p + 2] * d;
             }
-            return output;
+            return warped_output(input, out_pts);
         }
         (None, AnyDataArray::F64(scalars)) if scalars.num_components() == 1 => {
             let scalars = scalars.as_slice();
             for i in 0..n {
-                pts[i * 3 + 2] += scalars[i] * scale_factor;
+                let p = i * 3;
+                out_pts[p] = in_pts[p];
+                out_pts[p + 1] = in_pts[p + 1];
+                out_pts[p + 2] = in_pts[p + 2] + scalars[i] * scale_factor;
             }
-            return output;
+            return warped_output(input, out_pts);
         }
         _ => {}
     }
@@ -56,11 +61,23 @@ pub fn warp_by_scalar(input: &PolyData, scale_factor: f64) -> PolyData {
         scalars.tuple_as_f64(i, &mut sbuf);
         let d = sbuf[0] * scale_factor;
         let b = i * 3;
-        pts[b] += nbuf[0] * d;
-        pts[b + 1] += nbuf[1] * d;
-        pts[b + 2] += nbuf[2] * d;
+        out_pts[b] = in_pts[b] + nbuf[0] * d;
+        out_pts[b + 1] = in_pts[b + 1] + nbuf[1] * d;
+        out_pts[b + 2] = in_pts[b + 2] + nbuf[2] * d;
     }
 
+    warped_output(input, out_pts)
+}
+
+fn warped_output(input: &PolyData, points: Vec<f64>) -> PolyData {
+    let mut output = input.clone();
+    output.points = Points::from_flat_vec(points);
+    if let Some(name) = input.point_data().normals().map(|a| a.name().to_string()) {
+        output.point_data_mut().remove_array(&name);
+    }
+    if let Some(name) = input.cell_data().normals().map(|a| a.name().to_string()) {
+        output.cell_data_mut().remove_array(&name);
+    }
     output
 }
 

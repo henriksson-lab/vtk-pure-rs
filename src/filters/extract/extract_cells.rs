@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::data::{CellArray, Points, PolyData};
 
 /// Extract specific cells by index from a PolyData.
@@ -7,33 +5,51 @@ use crate::data::{CellArray, Points, PolyData};
 /// Returns a new PolyData containing only the selected polygon cells,
 /// with compacted points (only referenced points are kept).
 pub fn extract_cells(input: &PolyData, cell_indices: &[usize]) -> PolyData {
-    let mut point_map: HashMap<i64, i64> = HashMap::new();
-    let mut out_points = Points::<f64>::new();
-    let mut out_polys = CellArray::new();
-
     let n_cells = input.polys.num_cells();
+    let n_points = input.points.len();
+    let pts = input.points.as_flat_slice();
+    let mut point_map = vec![-1i64; n_points];
+    let mut out_pts = Vec::<f64>::new();
+    let mut out_offsets = Vec::<i64>::with_capacity(cell_indices.len() + 1);
+    let mut out_conn = Vec::<i64>::with_capacity(cell_indices.len() * 3);
+    out_offsets.push(0);
 
     for &ci in cell_indices {
         if ci >= n_cells {
             continue;
         }
         let cell = input.polys.cell(ci);
-        let remapped: Vec<i64> = cell
-            .iter()
-            .map(|&id| {
-                *point_map.entry(id).or_insert_with(|| {
-                    let idx = out_points.len() as i64;
-                    out_points.push(input.points.get(id as usize));
-                    idx
-                })
-            })
-            .collect();
-        out_polys.push_cell(&remapped);
+        let conn_start = out_conn.len();
+        let mut valid_cell = true;
+        for &id in cell {
+            let Ok(src_id) = usize::try_from(id) else {
+                valid_cell = false;
+                break;
+            };
+            if src_id >= n_points {
+                valid_cell = false;
+                break;
+            }
+
+            let mut dst_id = point_map[src_id];
+            if dst_id < 0 {
+                dst_id = (out_pts.len() / 3) as i64;
+                point_map[src_id] = dst_id;
+                let b = src_id * 3;
+                out_pts.extend_from_slice(&pts[b..b + 3]);
+            }
+            out_conn.push(dst_id);
+        }
+        if valid_cell {
+            out_offsets.push(out_conn.len() as i64);
+        } else {
+            out_conn.truncate(conn_start);
+        }
     }
 
     let mut pd = PolyData::new();
-    pd.points = out_points;
-    pd.polys = out_polys;
+    pd.points = Points::from_flat_vec(out_pts);
+    pd.polys = CellArray::from_raw(out_offsets, out_conn);
     pd
 }
 

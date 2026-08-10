@@ -60,35 +60,39 @@ pub fn delaunay_2d(input: &PolyData) -> PolyData {
             }
         }
 
-        // Find boundary polygon of the "hole"
-        let mut polygon: Vec<(usize, usize)> = Vec::new();
+        // Find boundary polygon of the "hole". Edges seen by exactly one bad
+        // triangle are boundary edges; shared bad-bad edges are interior.
+        let bad_count = bad.iter().filter(|&&is_bad| is_bad).count();
+        let mut hole_edges: Vec<((usize, usize), (usize, usize))> =
+            Vec::with_capacity(bad_count * 3);
         for (ti, tri) in triangles.iter().enumerate() {
             if !bad[ti] {
                 continue;
             }
             let edges = [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])];
             for &(a, b) in &edges {
-                // Edge is on boundary if the adjacent triangle (sharing b,a) is not bad
-                let shared = triangles.iter().enumerate().any(|(tj, other)| {
-                    if tj == ti || !bad[tj] {
-                        // We want: adjacent triangle is NOT bad
-                        return false;
-                    }
-                    let oedges = [
-                        (other[0], other[1]),
-                        (other[1], other[2]),
-                        (other[2], other[0]),
-                    ];
-                    oedges.contains(&(b, a))
-                });
-                if !shared {
-                    polygon.push((a, b));
-                }
+                let key = if a < b { (a, b) } else { (b, a) };
+                hole_edges.push((key, (a, b)));
+            }
+        }
+        hole_edges.sort_unstable_by_key(|&(key, _)| key);
+        let mut polygon: Vec<(usize, usize)> = Vec::with_capacity(hole_edges.len());
+        let mut ei = 0;
+        while ei < hole_edges.len() {
+            let key = hole_edges[ei].0;
+            let edge = hole_edges[ei].1;
+            let start = ei;
+            while ei < hole_edges.len() && hole_edges[ei].0 == key {
+                ei += 1;
+            }
+            if ei - start == 1 {
+                polygon.push(edge);
             }
         }
 
         // Remove bad triangles
-        let mut new_tris: Vec<[usize; 3]> = Vec::new();
+        let mut new_tris: Vec<[usize; 3]> =
+            Vec::with_capacity(triangles.len() - bad_count + polygon.len());
         for (ti, tri) in triangles.iter().enumerate() {
             if !bad[ti] {
                 new_tris.push(*tri);

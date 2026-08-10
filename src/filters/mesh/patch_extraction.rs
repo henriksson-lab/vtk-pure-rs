@@ -176,13 +176,21 @@ fn extract_cells(mesh: &PolyData, all_cells: &[Vec<i64>], selected: &[usize]) ->
     let n_points = mesh.points.len();
     for &ci in selected {
         let cell = &all_cells[ci];
-        let mut ids = Vec::new();
-        let mut valid_cell = true;
-        for &pid in cell {
-            let Some(old) = valid_point_id(pid, n_points) else {
-                valid_cell = false;
-                break;
-            };
+        if cell.len() < 3 {
+            continue;
+        }
+        // Validate the whole cell *before* emitting any of its points, otherwise a
+        // cell that is rejected part-way through leaves orphaned points (and stale
+        // point-data tuples) behind in the output.
+        let Some(old_ids) = cell
+            .iter()
+            .map(|&pid| valid_point_id(pid, n_points))
+            .collect::<Option<Vec<usize>>>()
+        else {
+            continue;
+        };
+        let mut ids = Vec::with_capacity(old_ids.len());
+        for old in old_ids {
             let idx = *pt_map.entry(old).or_insert_with(|| {
                 let i = pts.len();
                 pts.push(mesh.points.get(old));
@@ -191,10 +199,8 @@ fn extract_cells(mesh: &PolyData, all_cells: &[Vec<i64>], selected: &[usize]) ->
             });
             ids.push(idx as i64);
         }
-        if valid_cell && ids.len() >= 3 {
-            polys.push_cell(&ids);
-            kept_cell_ids.push(ci);
-        }
+        polys.push_cell(&ids);
+        kept_cell_ids.push(ci);
     }
     let mut result = PolyData::new();
     result.points = pts;

@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData, UnstructuredGrid};
+use crate::data::{
+    AnyDataArray, CellArray, DataArray, DataSet, Points, PolyData, UnstructuredGrid,
+};
 use crate::types::CellType;
 
 /// Extract boundary faces from an UnstructuredGrid as PolyData.

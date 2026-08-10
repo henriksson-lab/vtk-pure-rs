@@ -2,11 +2,25 @@
 
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
+pub use crate::filters::image::slice_ops::extract_z_slice;
+
 /// Maximum intensity projection along Z axis.
+///
+/// Thin wrapper over the single implementation in
+/// [`crate::filters::image::slice_extract::max_intensity_projection`] (axis 2),
+/// keeping this module's `"MIP"` output-array naming convention that matches
+/// its `MinIP`/`MeanIP`/`SumIP` siblings.
 pub fn max_intensity_projection(input: &ImageData, scalars: &str) -> ImageData {
-    project_along_z(input, scalars, "MIP", |vals| {
-        vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
-    })
+    match input.point_data().get_array(scalars) {
+        Some(a) if a.num_components() == 1 => {}
+        _ => return input.clone(),
+    }
+    let mut out = crate::filters::image::slice_extract::max_intensity_projection(input, scalars, 2);
+    if let Some(mut arr) = out.point_data_mut().remove_array(scalars) {
+        arr.set_name("MIP");
+        out.point_data_mut().add_array(arr);
+    }
+    out
 }
 
 /// Minimum intensity projection along Z axis.
@@ -74,38 +88,6 @@ fn project_along_z(
         .with_point_array(AnyDataArray::F64(DataArray::from_vec(out_name, data, 1)))
 }
 
-/// Extract a single Z slice from a 3D volume.
-pub fn extract_z_slice(input: &ImageData, scalars: &str, z_index: usize) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return input.clone(),
-    };
-    let dims = input.dimensions();
-    let (nx, ny) = (dims[0], dims[1]);
-    let mut buf = [0.0f64];
-    let offset = z_index * nx * ny;
-    let data: Vec<f64> = (0..nx * ny)
-        .map(|i| {
-            let idx = offset + i;
-            if idx < arr.num_tuples() {
-                arr.tuple_as_f64(idx, &mut buf);
-                buf[0]
-            } else {
-                0.0
-            }
-        })
-        .collect();
-
-    let spacing = input.spacing();
-    let mut origin = input.origin();
-    origin[2] += z_index as f64 * spacing[2];
-
-    ImageData::with_dimensions(nx, ny, 1)
-        .with_spacing(spacing)
-        .with_origin(origin)
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,24 +109,6 @@ mod tests {
         arr.tuple_as_f64(0, &mut buf);
         assert!((buf[0] - 2.0).abs() < 1e-10);
     }
-    #[test]
-    fn test_slice() {
-        let img = ImageData::from_function(
-            [4, 4, 3],
-            [1.0, 1.0, 1.0],
-            [0.0, 0.0, 0.0],
-            "v",
-            |_, _, z| z * 10.0,
-        );
-        let r = extract_z_slice(&img, "v", 1);
-        assert_eq!(r.dimensions(), [4, 4, 1]);
-        assert_eq!(r.spacing(), [1.0, 1.0, 1.0]);
-        assert_eq!(r.origin(), [0.0, 0.0, 1.0]);
-        let arr = r.point_data().get_array("v").unwrap();
-        let mut buf = [0.0];
-        arr.tuple_as_f64(0, &mut buf);
-        assert!((buf[0] - 10.0).abs() < 1e-10);
-    }
 
     #[test]
     fn projection_preserves_non_unit_spacing_and_centers_origin() {
@@ -158,6 +122,28 @@ mod tests {
         let r = mean_intensity_projection(&img, "v");
         assert_eq!(r.spacing(), [0.5, 2.0, 3.0]);
         assert_eq!(r.origin(), [10.0, 20.0, 34.5]);
+    }
+
+    #[test]
+    fn mip_preserves_spacing_and_centers_origin() {
+        let img = ImageData::from_function(
+            [2, 2, 4],
+            [0.5, 2.0, 3.0],
+            [10.0, 20.0, 30.0],
+            "v",
+            |_, _, z| z,
+        );
+        let r = max_intensity_projection(&img, "v");
+        assert_eq!(r.dimensions(), [2, 2, 1]);
+        assert_eq!(r.spacing(), [0.5, 2.0, 3.0]);
+        assert_eq!(r.origin(), [10.0, 20.0, 34.5]);
+        let arr = r.point_data().get_array("MIP").unwrap();
+        let mut buf = [0.0];
+        arr.tuple_as_f64(0, &mut buf);
+        // `from_function` samples at *world* coordinates, so the z values are
+        // origin + k*spacing = 30, 33, 36, 39 — the projected maximum is 39,
+        // not the index 3.
+        assert!((buf[0] - 39.0).abs() < 1e-10);
     }
 
     #[test]

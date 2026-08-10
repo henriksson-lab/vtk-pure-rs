@@ -1,6 +1,51 @@
 use crate::data::{CellArray, ImageData, Points, PolyData};
 use crate::filters::core::marching_cubes::{EDGE_TABLE, TRI_TABLE};
 use rayon::prelude::*;
+use std::sync::OnceLock;
+
+const FE_PAR_MIN_ROW_EDGES: usize = 20_000;
+
+#[derive(Clone, Copy)]
+struct UnsafeF64Writer {
+    ptr: *mut f64,
+}
+
+unsafe impl Send for UnsafeF64Writer {}
+unsafe impl Sync for UnsafeF64Writer {}
+
+impl UnsafeF64Writer {
+    fn new(slice: &mut [f64]) -> Self {
+        Self {
+            ptr: slice.as_mut_ptr(),
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn write(&self, idx: usize, value: f64) {
+        *self.ptr.add(idx) = value;
+    }
+}
+
+#[derive(Clone, Copy)]
+struct UnsafeI64Writer {
+    ptr: *mut i64,
+}
+
+unsafe impl Send for UnsafeI64Writer {}
+unsafe impl Sync for UnsafeI64Writer {}
+
+impl UnsafeI64Writer {
+    fn new(slice: &mut [i64]) -> Self {
+        Self {
+            ptr: slice.as_mut_ptr(),
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn write(&self, idx: usize, value: i64) {
+        *self.ptr.add(idx) = value;
+    }
+}
 
 /// Flying Edges 3D — 4-pass algorithm with adaptive parallelism.
 ///
@@ -19,9 +64,10 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
     let nxm1 = nx - 1;
     let n_rows = ny * nz;
     let n_voxel_rows = (ny - 1) * (nz - 1);
+    let case_table = fe_case_table();
     // Match VTK's preference for threaded image-data contouring once row work
     // is large enough to amortize rayon scheduling.
-    let use_par = nxm1 * n_rows >= 100_000;
+    let use_par = nxm1 * n_rows >= FE_PAR_MIN_ROW_EDGES;
 
     // ====== PASS 1: Classify x-edges + trim ranges ======
     let mut x_cases: Vec<u8> = vec![0; nxm1 * n_rows];
@@ -141,25 +187,19 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
                 x_cases[xc[2] + i],
                 x_cases[xc[3] + i],
             );
-            let ci = edge_case_to_mc(fe_case);
-            let ef = EDGE_TABLE[ci as usize];
-            if ef == 0 {
+            let case = &case_table[fe_case as usize];
+            if case.tri_count == 0 {
                 continue;
             }
-            let uses = edge_uses_fe(ef);
-            deltas[0][0] += uses[4] as u32;
-            deltas[0][1] += uses[8] as u32;
+            let uses = case.uses_mask;
+            deltas[0][0] += edge_used(uses, 4) as u32;
+            deltas[0][1] += edge_used(uses, 8) as u32;
             count_boundary_yz(
                 yz_loc | if i >= dim0_wall { 2 } else { 0 },
-                &uses,
+                uses,
                 &mut deltas,
             );
-            let tr = &TRI_TABLE[ci as usize];
-            let mut t = 0;
-            while t < 15 && tr[t] != -1 {
-                t += 3;
-            }
-            tc += (t / 3) as u32;
+            tc += case.tri_count as u32;
         }
         (deltas, tc, xl as u32, xr as u32, true)
     };
@@ -249,6 +289,9 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
     ];
 
     // ====== PASS 4: Generate output ======
+    let pts_writer = UnsafeF64Writer::new(&mut pts_flat);
+    let conn_writer = UnsafeI64Writer::new(&mut conn);
+
     let gen_voxel_row = |vr: usize| {
         let j = vr % (ny - 1);
         let k = vr / (ny - 1);
@@ -281,20 +324,20 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
             x_cases[xc[2] + xl],
             x_cases[xc[3] + xl],
         );
-        let first_uses = edge_uses_fe(EDGE_TABLE[edge_case_to_mc(first_fe_case) as usize]);
+        let first_uses = case_table[first_fe_case as usize].uses_mask;
         let mut eids = [
             meta[rows[0]][0],
             meta[rows[1]][0],
             meta[rows[2]][0],
             meta[rows[3]][0],
             y_offset + meta[row0][1],
-            y_offset + meta[row0][1] + first_uses[4] as u32,
+            y_offset + meta[row0][1] + edge_used(first_uses, 4) as u32,
             y_offset + meta[rows[2]][1],
-            y_offset + meta[rows[2]][1] + first_uses[6] as u32,
+            y_offset + meta[rows[2]][1] + edge_used(first_uses, 6) as u32,
             z_offset + meta[row0][2],
-            z_offset + meta[row0][2] + first_uses[8] as u32,
+            z_offset + meta[row0][2] + edge_used(first_uses, 8) as u32,
             z_offset + meta[rows[1]][2],
-            z_offset + meta[rows[1]][2] + first_uses[10] as u32,
+            z_offset + meta[rows[1]][2] + edge_used(first_uses, 10) as u32,
         ];
         let mut tid = meta[row0][3] as usize;
 
@@ -305,12 +348,11 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
                 x_cases[xc[2] + i],
                 x_cases[xc[3] + i],
             );
-            let ci = edge_case_to_mc(fe_case);
-            let ef = EDGE_TABLE[ci as usize];
-            if ef == 0 {
+            let case = &case_table[fe_case as usize];
+            if case.tri_count == 0 {
                 continue;
             }
-            let uses = edge_uses_fe(ef);
+            let uses = case.uses_mask;
 
             let base = k * nxy + j * nx + i;
             let v = unsafe {
@@ -350,7 +392,7 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
             let loc = x_loc | (y_loc << 2) | (z_loc << 4);
 
             for e in 0..12usize {
-                if uses[e] == 0 || !generates_point_for_edge(e, loc) {
+                if !edge_used(uses, e) || !generates_point_for_edge(e, loc) {
                     continue;
                 }
                 let [c0, c1] = EV[e];
@@ -365,41 +407,53 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
                 let pid = eids[e];
 
                 let p = pid as usize * 3;
-                pts_flat[p] =
-                    org[0] + ((i + g0[0]) as f64 + t * (g1[0] as f64 - g0[0] as f64)) * sp[0];
-                pts_flat[p + 1] =
-                    org[1] + ((j + g0[1]) as f64 + t * (g1[1] as f64 - g0[1] as f64)) * sp[1];
-                pts_flat[p + 2] =
-                    org[2] + ((k + g0[2]) as f64 + t * (g1[2] as f64 - g0[2] as f64)) * sp[2];
+                unsafe {
+                    pts_writer.write(
+                        p,
+                        org[0] + ((i + g0[0]) as f64 + t * (g1[0] as f64 - g0[0] as f64)) * sp[0],
+                    );
+                    pts_writer.write(
+                        p + 1,
+                        org[1] + ((j + g0[1]) as f64 + t * (g1[1] as f64 - g0[1] as f64)) * sp[1],
+                    );
+                    pts_writer.write(
+                        p + 2,
+                        org[2] + ((k + g0[2]) as f64 + t * (g1[2] as f64 - g0[2] as f64)) * sp[2],
+                    );
+                }
             }
 
-            let tr = &TRI_TABLE[ci as usize];
-            let mut ti = 0;
-            while ti < 15 && tr[ti] != -1 {
+            let tri_edges = &case.tri_edges;
+            for ti in (0..case.tri_count as usize * 3).step_by(3) {
                 let c = tid * 3;
-                conn[c] = eids[MC_TO_FE_EDGE[tr[ti] as usize] as usize] as i64;
-                conn[c + 1] = eids[MC_TO_FE_EDGE[tr[ti + 1] as usize] as usize] as i64;
-                conn[c + 2] = eids[MC_TO_FE_EDGE[tr[ti + 2] as usize] as usize] as i64;
+                unsafe {
+                    conn_writer.write(c, eids[tri_edges[ti] as usize] as i64);
+                    conn_writer.write(c + 1, eids[tri_edges[ti + 1] as usize] as i64);
+                    conn_writer.write(c + 2, eids[tri_edges[ti + 2] as usize] as i64);
+                }
                 tid += 1;
-                ti += 3;
             }
 
-            eids[0] += uses[0] as u32;
-            eids[1] += uses[1] as u32;
-            eids[2] += uses[2] as u32;
-            eids[3] += uses[3] as u32;
-            eids[4] += uses[4] as u32;
-            eids[5] = eids[4] + uses[5] as u32;
-            eids[6] += uses[6] as u32;
-            eids[7] = eids[6] + uses[7] as u32;
-            eids[8] += uses[8] as u32;
-            eids[9] = eids[8] + uses[9] as u32;
-            eids[10] += uses[10] as u32;
-            eids[11] = eids[10] + uses[11] as u32;
+            eids[0] += edge_used(uses, 0) as u32;
+            eids[1] += edge_used(uses, 1) as u32;
+            eids[2] += edge_used(uses, 2) as u32;
+            eids[3] += edge_used(uses, 3) as u32;
+            eids[4] += edge_used(uses, 4) as u32;
+            eids[5] = eids[4] + edge_used(uses, 5) as u32;
+            eids[6] += edge_used(uses, 6) as u32;
+            eids[7] = eids[6] + edge_used(uses, 7) as u32;
+            eids[8] += edge_used(uses, 8) as u32;
+            eids[9] = eids[8] + edge_used(uses, 9) as u32;
+            eids[10] += edge_used(uses, 10) as u32;
+            eids[11] = eids[10] + edge_used(uses, 11) as u32;
         }
     };
 
-    (0..n_voxel_rows).for_each(gen_voxel_row);
+    if use_par {
+        (0..n_voxel_rows).into_par_iter().for_each(gen_voxel_row);
+    } else {
+        (0..n_voxel_rows).for_each(gen_voxel_row);
+    }
 
     let points = Points::from_flat_vec(pts_flat);
     let nt = conn.len() / 3;
@@ -412,6 +466,39 @@ pub fn flying_edges_3d(image: &ImageData, scalars: &[f64], isovalue: f64) -> Pol
 }
 
 const MC_TO_FE_EDGE: [u8; 12] = [0, 5, 1, 4, 2, 7, 3, 6, 8, 9, 10, 11];
+
+#[derive(Clone, Copy)]
+struct FeCase {
+    uses_mask: u16,
+    tri_edges: [u8; 15],
+    tri_count: u8,
+}
+
+fn fe_case_table() -> &'static [FeCase; 256] {
+    static TABLE: OnceLock<[FeCase; 256]> = OnceLock::new();
+    TABLE.get_or_init(build_fe_case_table)
+}
+
+fn build_fe_case_table() -> [FeCase; 256] {
+    std::array::from_fn(|fe_case| {
+        let mc_case = edge_case_to_mc(fe_case as u8);
+        let uses_mask = edge_uses_fe(EDGE_TABLE[mc_case as usize]);
+        let tr = &TRI_TABLE[mc_case as usize];
+        let mut tri_edges = [0u8; 15];
+        let mut ti = 0usize;
+        while ti < 15 && tr[ti] != -1 {
+            tri_edges[ti] = MC_TO_FE_EDGE[tr[ti] as usize];
+            tri_edges[ti + 1] = MC_TO_FE_EDGE[tr[ti + 1] as usize];
+            tri_edges[ti + 2] = MC_TO_FE_EDGE[tr[ti + 2] as usize];
+            ti += 3;
+        }
+        FeCase {
+            uses_mask,
+            tri_edges,
+            tri_count: (ti / 3) as u8,
+        }
+    })
+}
 
 #[inline(always)]
 fn edge_case(e00: u8, e10: u8, e01: u8, e11: u8) -> u8 {
@@ -431,14 +518,19 @@ fn edge_case_to_mc(ec: u8) -> u8 {
 }
 
 #[inline(always)]
-fn edge_uses_fe(mc_edge_flags: u16) -> [u8; 12] {
-    let mut uses = [0u8; 12];
+fn edge_uses_fe(mc_edge_flags: u16) -> u16 {
+    let mut uses = 0u16;
     for (mc_edge, &fe_edge) in MC_TO_FE_EDGE.iter().enumerate() {
         if mc_edge_flags & (1 << mc_edge) != 0 {
-            uses[fe_edge as usize] = 1;
+            uses |= 1 << fe_edge;
         }
     }
     uses
+}
+
+#[inline(always)]
+fn edge_used(uses_mask: u16, edge: usize) -> bool {
+    uses_mask & (1 << edge) != 0
 }
 
 #[inline(always)]
@@ -459,37 +551,37 @@ fn generates_point_for_edge(edge: usize, loc: u8) -> bool {
 }
 
 #[inline(always)]
-fn count_boundary_yz(loc: u8, edge_uses: &[u8; 12], deltas: &mut [[u32; 2]; 4]) {
+fn count_boundary_yz(loc: u8, edge_uses: u16, deltas: &mut [[u32; 2]; 4]) {
     match loc {
         2 => {
-            deltas[0][0] += edge_uses[5] as u32;
-            deltas[0][1] += edge_uses[9] as u32;
+            deltas[0][0] += edge_used(edge_uses, 5) as u32;
+            deltas[0][1] += edge_used(edge_uses, 9) as u32;
         }
         8 => {
-            deltas[1][1] += edge_uses[10] as u32;
+            deltas[1][1] += edge_used(edge_uses, 10) as u32;
         }
         10 => {
-            deltas[0][0] += edge_uses[5] as u32;
-            deltas[0][1] += edge_uses[9] as u32;
-            deltas[1][1] += edge_uses[10] as u32 + edge_uses[11] as u32;
+            deltas[0][0] += edge_used(edge_uses, 5) as u32;
+            deltas[0][1] += edge_used(edge_uses, 9) as u32;
+            deltas[1][1] += edge_used(edge_uses, 10) as u32 + edge_used(edge_uses, 11) as u32;
         }
         32 => {
-            deltas[2][0] += edge_uses[6] as u32;
+            deltas[2][0] += edge_used(edge_uses, 6) as u32;
         }
         34 => {
-            deltas[0][0] += edge_uses[5] as u32;
-            deltas[0][1] += edge_uses[9] as u32;
-            deltas[2][0] += edge_uses[6] as u32 + edge_uses[7] as u32;
+            deltas[0][0] += edge_used(edge_uses, 5) as u32;
+            deltas[0][1] += edge_used(edge_uses, 9) as u32;
+            deltas[2][0] += edge_used(edge_uses, 6) as u32 + edge_used(edge_uses, 7) as u32;
         }
         40 => {
-            deltas[2][0] += edge_uses[6] as u32;
-            deltas[1][1] += edge_uses[10] as u32;
+            deltas[2][0] += edge_used(edge_uses, 6) as u32;
+            deltas[1][1] += edge_used(edge_uses, 10) as u32;
         }
         42 => {
-            deltas[0][0] += edge_uses[5] as u32;
-            deltas[0][1] += edge_uses[9] as u32;
-            deltas[1][1] += edge_uses[10] as u32 + edge_uses[11] as u32;
-            deltas[2][0] += edge_uses[6] as u32 + edge_uses[7] as u32;
+            deltas[0][0] += edge_used(edge_uses, 5) as u32;
+            deltas[0][1] += edge_used(edge_uses, 9) as u32;
+            deltas[1][1] += edge_used(edge_uses, 10) as u32 + edge_used(edge_uses, 11) as u32;
+            deltas[2][0] += edge_used(edge_uses, 6) as u32 + edge_used(edge_uses, 7) as u32;
         }
         _ => {}
     }

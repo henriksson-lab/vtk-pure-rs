@@ -100,8 +100,43 @@ pub fn elevation_par_with_scalar_range(
 
 /// Convenience: compute elevation along the Z axis using the data's bounding box.
 pub fn elevation_z(input: &PolyData) -> PolyData {
-    let bb = input.bounds();
-    elevation(input, [0.0, 0.0, bb.z_min], [0.0, 0.0, bb.z_max])
+    let pts = input.points.as_flat_slice();
+    let n = input.points.len();
+    if n == 0 {
+        let mut output = input.clone();
+        output
+            .point_data_mut()
+            .add_array(DataArray::<f64>::from_vec("Elevation", Vec::new(), 1).into());
+        output.point_data_mut().set_active_scalars("Elevation");
+        return output;
+    }
+
+    let mut values = Vec::with_capacity(n);
+    let mut z_min = f64::INFINITY;
+    let mut z_max = f64::NEG_INFINITY;
+    for i in 0..n {
+        let z = pts[i * 3 + 2];
+        values.push(z);
+        z_min = z_min.min(z);
+        z_max = z_max.max(z);
+    }
+
+    let dz = z_max - z_min;
+    if dz > 0.0 {
+        let inv_dz = 1.0 / dz;
+        for value in &mut values {
+            *value = ((*value - z_min) * inv_dz).clamp(0.0, 1.0);
+        }
+    } else {
+        values.fill(0.0);
+    }
+
+    let mut output = input.clone();
+    output
+        .point_data_mut()
+        .add_array(DataArray::<f64>::from_vec("Elevation", values, 1).into());
+    output.point_data_mut().set_active_scalars("Elevation");
+    output
 }
 
 /// Convenience: compute elevation along the Y axis using the data's bounding box.

@@ -36,11 +36,12 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
         }
     }
 
-    // Build per-vertex adjacency: vertex -> set of triangle indices
-    let mut adj: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    // Build per-vertex adjacency: vertex -> triangle indices. These lists are
+    // compacted lazily for vertices touched by a collapse.
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (ti, tri) in tris.iter().enumerate() {
         for &v in tri {
-            adj[v].insert(ti);
+            adj[v].push(ti);
         }
     }
 
@@ -52,6 +53,9 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
 
     // Build priority queue: (Reverse(cost), version_a, version_b, a, b)
     let mut heap: BinaryHeap<(Reverse<u64>, u64, u64, usize, usize)> = BinaryHeap::new();
+    let mut tri_marks = vec![0u64; num_tris];
+    let mut vertex_marks = vec![0u64; n];
+    let mut mark_stamp = 0u64;
 
     // Collect unique edges and seed the heap
     {
@@ -110,24 +114,26 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
         version[a] += 1;
         version[b] += 1;
 
-        // Find triangles shared by both a and b (these become degenerate)
-        let shared: Vec<usize> = adj[a].intersection(&adj[b]).copied().collect();
-        for &ti in &shared {
+        // Find triangles shared by both a and b (these become degenerate).
+        mark_stamp = mark_stamp.wrapping_add(1).max(1);
+        for &ti in &adj[a] {
+            if !dead[ti] {
+                tri_marks[ti] = mark_stamp;
+            }
+        }
+        for &ti in &adj[b] {
+            if dead[ti] || tri_marks[ti] != mark_stamp {
+                continue;
+            }
             if !dead[ti] {
                 dead[ti] = true;
                 current_faces -= 1;
-                // Remove this triangle from adjacency of all its vertices
-                for &v in &tris[ti] {
-                    if v != a && v != b {
-                        adj[v].remove(&ti);
-                    }
-                }
             }
         }
 
         // Update triangles that reference b to reference a instead
-        let b_tris: Vec<usize> = adj[b].iter().copied().collect();
-        for ti in b_tris {
+        let b_tris = std::mem::take(&mut adj[b]);
+        for &ti in &b_tris {
             if dead[ti] {
                 continue;
             }
@@ -142,37 +148,40 @@ pub fn edge_collapse_quadric(input: &PolyData, target_ratio: f64) -> PolyData {
                 if !dead[ti] {
                     dead[ti] = true;
                     current_faces -= 1;
-                    for &v in &[tri[0], tri[1], tri[2]] {
-                        adj[v].remove(&ti);
-                    }
                 }
-            } else {
-                // Move triangle from b's adjacency to a's
-                adj[a].insert(ti);
             }
         }
-        adj[b].clear();
+
+        // Rebuild a's adjacency from its previous list plus b's moved list,
+        // removing dead/stale/duplicate triangle indices without allocating a
+        // temporary HashSet.
+        mark_stamp = mark_stamp.wrapping_add(1).max(1);
+        let mut a_tris = std::mem::take(&mut adj[a]);
+        a_tris.reserve(b_tris.len());
+        a_tris.extend(b_tris);
+        for ti in a_tris {
+            if dead[ti] || !tris[ti].contains(&a) || tri_marks[ti] == mark_stamp {
+                continue;
+            }
+            tri_marks[ti] = mark_stamp;
+            adj[a].push(ti);
+        }
 
         // Collect neighbors of a and re-insert edges into the heap
-        let neighbors: Vec<usize> = {
-            let mut nbrs = HashSet::new();
-            for &ti in &adj[a] {
-                if dead[ti] {
+        mark_stamp = mark_stamp.wrapping_add(1).max(1);
+        for &ti in &adj[a] {
+            if dead[ti] {
+                continue;
+            }
+            for &nb in &tris[ti] {
+                if nb == a || vertex_marks[nb] == mark_stamp {
                     continue;
                 }
-                for &v in &tris[ti] {
-                    if v != a {
-                        nbrs.insert(v);
-                    }
-                }
+                vertex_marks[nb] = mark_stamp;
+                let cost = edge_cost(&quadrics[a], &quadrics[nb], &pts[a], &pts[nb]);
+                let cost_bits = cost_key(cost);
+                heap.push((Reverse(cost_bits), version[a], version[nb], a, nb));
             }
-            nbrs.into_iter().collect()
-        };
-
-        for &nb in &neighbors {
-            let cost = edge_cost(&quadrics[a], &quadrics[nb], &pts[a], &pts[nb]);
-            let cost_bits = cost_key(cost);
-            heap.push((Reverse(cost_bits), version[a], version[nb], a, nb));
         }
     }
 

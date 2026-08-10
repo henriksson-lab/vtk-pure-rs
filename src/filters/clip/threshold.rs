@@ -116,15 +116,15 @@ enum CellKind {
 
 #[derive(Default)]
 struct KeptCells {
-    verts: Vec<Vec<i64>>,
-    lines: Vec<Vec<i64>>,
-    polys: Vec<Vec<i64>>,
-    strips: Vec<Vec<i64>>,
+    verts: RawCells,
+    lines: RawCells,
+    polys: RawCells,
+    strips: RawCells,
     cell_ids: Vec<usize>,
 }
 
 impl KeptCells {
-    fn push(&mut self, kind: CellKind, cell: Vec<i64>, cell_id: usize) {
+    fn push(&mut self, kind: CellKind, cell: &[i64], cell_id: usize) {
         match kind {
             CellKind::Verts => self.verts.push(cell),
             CellKind::Lines => self.lines.push(cell),
@@ -132,6 +132,27 @@ impl KeptCells {
             CellKind::Strips => self.strips.push(cell),
         }
         self.cell_ids.push(cell_id);
+    }
+}
+
+struct RawCells {
+    offsets: Vec<i64>,
+    connectivity: Vec<i64>,
+}
+
+impl Default for RawCells {
+    fn default() -> Self {
+        Self {
+            offsets: vec![0],
+            connectivity: Vec::new(),
+        }
+    }
+}
+
+impl RawCells {
+    fn push(&mut self, cell: &[i64]) {
+        self.connectivity.extend_from_slice(cell);
+        self.offsets.push(self.connectivity.len() as i64);
     }
 }
 
@@ -154,18 +175,20 @@ fn collect_kept_cells(
             for &id in cell {
                 point_used[id as usize] = true;
             }
-            kept_cells.push(kind, cell.to_vec(), cell_offset + cell_id);
+            kept_cells.push(kind, cell, cell_offset + cell_id);
         }
     }
 }
 
-fn remap_kept_cells(cells: &[Vec<i64>], point_map: &[i64]) -> CellArray {
-    let mut output = CellArray::new();
-    for cell in cells {
-        let remapped: Vec<i64> = cell.iter().map(|&id| point_map[id as usize]).collect();
-        output.push_cell(&remapped);
+fn remap_kept_cells(cells: &RawCells, point_map: &[i64]) -> CellArray {
+    if cells.offsets.len() == 1 {
+        return CellArray::new();
     }
-    output
+    let mut connectivity = Vec::with_capacity(cells.connectivity.len());
+    for &id in &cells.connectivity {
+        connectivity.push(point_map[id as usize]);
+    }
+    CellArray::from_raw(cells.offsets.clone(), connectivity)
 }
 
 fn copy_point_data_for_used_points(input: &PolyData, point_used: &[bool], output: &mut PolyData) {

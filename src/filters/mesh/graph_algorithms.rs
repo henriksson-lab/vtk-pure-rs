@@ -1,6 +1,6 @@
 //! Graph algorithms on mesh edge connectivity: shortest paths, centrality, spanning tree.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
 /// Compute shortest path between two vertices via Dijkstra.
 ///
@@ -81,146 +81,17 @@ pub fn shortest_path_polyline(mesh: &PolyData, start: usize, end: usize) -> Poly
 }
 
 /// Compute betweenness centrality for each vertex (approximate via sampling).
-pub fn betweenness_centrality(mesh: &PolyData, n_samples: usize) -> PolyData {
-    let n = mesh.points.len();
-    let adj = build_adj(mesh, n);
-    let mut centrality = vec![0.0f64; n];
-    if n == 0 {
-        let mut result = mesh.clone();
-        result
-            .point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "Centrality",
-                centrality,
-                1,
-            )));
-        return result;
-    }
-
-    let sample_step = (n / n_samples.max(1)).max(1);
-    for src in (0..n).step_by(sample_step) {
-        let (_, prevs) = dijkstra(mesh, &adj, src);
-        // Count how many shortest paths pass through each vertex
-        for tgt in (0..n).step_by(sample_step) {
-            if tgt == src {
-                continue;
-            }
-            let mut cur = tgt;
-            while cur != usize::MAX && cur != src {
-                let next = prevs[cur];
-                if next == usize::MAX {
-                    break;
-                }
-                if cur != tgt {
-                    centrality[cur] += 1.0;
-                }
-                cur = next;
-            }
-        }
-    }
-
-    let max_c = centrality.iter().cloned().fold(0.0f64, f64::max).max(1.0);
-    for c in &mut centrality {
-        *c /= max_c;
-    }
-
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Centrality",
-            centrality,
-            1,
-        )));
-    result
-}
+///
+/// Re-exported from [`crate::filters::mesh::abstract_graph`], which holds the
+/// single implementation (Brandes' algorithm, as used by
+/// `vtkBoostBrandesCentrality`).
+pub use crate::filters::mesh::abstract_graph::betweenness_centrality;
 
 /// Compute minimum spanning tree of the mesh edge graph.
-pub fn minimum_spanning_tree(mesh: &PolyData) -> PolyData {
-    let n = mesh.points.len();
-    // Collect unique edges with lengths
-    let mut edges: Vec<(f64, usize, usize)> = Vec::new();
-    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
-    collect_edges(mesh, mesh.polys.iter(), true, &mut seen, &mut edges);
-    collect_edges(mesh, mesh.lines.iter(), false, &mut seen, &mut edges);
-    edges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-
-    // Kruskal's algorithm
-    let mut parent: Vec<usize> = (0..n).collect();
-    let find = |parent: &mut Vec<usize>, mut x: usize| -> usize {
-        while parent[x] != x {
-            parent[x] = parent[parent[x]];
-            x = parent[x];
-        }
-        x
-    };
-
-    let mut pts = Points::<f64>::new();
-    let mut lines = CellArray::new();
-    let mut pt_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-
-    for (_, a, b) in &edges {
-        let ra = find(&mut parent, *a);
-        let rb = find(&mut parent, *b);
-        if ra != rb {
-            parent[ra] = rb;
-            let ia = *pt_map.entry(*a).or_insert_with(|| {
-                let i = pts.len();
-                pts.push(mesh.points.get(*a));
-                i
-            });
-            let ib = *pt_map.entry(*b).or_insert_with(|| {
-                let i = pts.len();
-                pts.push(mesh.points.get(*b));
-                i
-            });
-            lines.push_cell(&[ia as i64, ib as i64]);
-        }
-    }
-
-    let mut result = PolyData::new();
-    result.points = pts;
-    result.lines = lines;
-    result
-}
-
-fn collect_edges<'a, I>(
-    mesh: &PolyData,
-    cells: I,
-    closed: bool,
-    seen: &mut std::collections::HashSet<(usize, usize)>,
-    edges: &mut Vec<(f64, usize, usize)>,
-) where
-    I: IntoIterator<Item = &'a [i64]>,
-{
-    let n = mesh.points.len();
-    for cell in cells {
-        let nc = cell.len();
-        if nc < 2 {
-            continue;
-        }
-        let edge_count = if closed { nc } else { nc - 1 };
-        for i in 0..edge_count {
-            if cell[i] < 0 || cell[(i + 1) % nc] < 0 {
-                continue;
-            }
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a >= n || b >= n {
-                continue;
-            }
-            let edge = (a.min(b), a.max(b));
-            if seen.insert(edge) {
-                let pa = mesh.points.get(a);
-                let pb = mesh.points.get(b);
-                let d =
-                    ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2))
-                        .sqrt();
-                edges.push((d, a, b));
-            }
-        }
-    }
-}
+///
+/// Re-exported from [`crate::filters::mesh::minimum_spanning_tree`], which
+/// holds the single Kruskal implementation.
+pub use crate::filters::mesh::minimum_spanning_tree::minimum_spanning_tree;
 
 #[derive(Clone, Copy, PartialEq)]
 struct OrdF64(f64);
@@ -277,33 +148,6 @@ fn add_adj_cells<'a, I>(
     }
 }
 
-fn dijkstra(mesh: &PolyData, adj: &[Vec<usize>], src: usize) -> (Vec<f64>, Vec<usize>) {
-    let n = adj.len();
-    let mut dist = vec![f64::MAX; n];
-    let mut prev = vec![usize::MAX; n];
-    dist[src] = 0.0;
-    let mut heap = std::collections::BinaryHeap::new();
-    heap.push(std::cmp::Reverse((OrdF64(0.0), src)));
-    while let Some(std::cmp::Reverse((OrdF64(d), v))) = heap.pop() {
-        if d > dist[v] {
-            continue;
-        }
-        for &nb in &adj[v] {
-            let pv = mesh.points.get(v);
-            let pn = mesh.points.get(nb);
-            let el = ((pv[0] - pn[0]).powi(2) + (pv[1] - pn[1]).powi(2) + (pv[2] - pn[2]).powi(2))
-                .sqrt();
-            let nd = d + el;
-            if nd < dist[nb] {
-                dist[nb] = nd;
-                prev[nb] = v;
-                heap.push(std::cmp::Reverse((OrdF64(nd), nb)));
-            }
-        }
-    }
-    (dist, prev)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,66 +182,6 @@ mod tests {
         let line = shortest_path_polyline(&mesh, 0, 2);
         assert!(line.lines.num_cells() >= 1);
     }
-    #[test]
-    fn mst() {
-        let mut pts = Vec::new();
-        let mut tris = Vec::new();
-        for y in 0..3 {
-            for x in 0..3 {
-                pts.push([x as f64, y as f64, 0.0]);
-            }
-        }
-        for y in 0..2 {
-            for x in 0..2 {
-                let bl = y * 3 + x;
-                tris.push([bl, bl + 1, bl + 4]);
-                tris.push([bl, bl + 4, bl + 3]);
-            }
-        }
-        let mesh = PolyData::from_triangles(pts, tris);
-        let tree = minimum_spanning_tree(&mesh);
-        assert_eq!(tree.lines.num_cells(), 8); // 9 vertices - 1 = 8 MST edges
-    }
-    #[test]
-    fn centrality() {
-        let mut pts = Vec::new();
-        let mut tris = Vec::new();
-        for y in 0..4 {
-            for x in 0..4 {
-                pts.push([x as f64, y as f64, 0.0]);
-            }
-        }
-        for y in 0..3 {
-            for x in 0..3 {
-                let bl = y * 4 + x;
-                tris.push([bl, bl + 1, bl + 5]);
-                tris.push([bl, bl + 5, bl + 4]);
-            }
-        }
-        let mesh = PolyData::from_triangles(pts, tris);
-        let result = betweenness_centrality(&mesh, 8);
-        assert!(result.point_data().get_array("Centrality").is_some());
-    }
-
-    #[test]
-    fn centrality_excludes_path_endpoints() {
-        let mut mesh = PolyData::new();
-        mesh.points.push([0.0, 0.0, 0.0]);
-        mesh.points.push([1.0, 0.0, 0.0]);
-        mesh.points.push([2.0, 0.0, 0.0]);
-        mesh.lines.push_cell(&[0, 1, 2]);
-
-        let result = betweenness_centrality(&mesh, 3);
-        let arr = result.point_data().get_array("Centrality").unwrap();
-        let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf);
-        assert_eq!(buf[0], 0.0);
-        arr.tuple_as_f64(1, &mut buf);
-        assert_eq!(buf[0], 1.0);
-        arr.tuple_as_f64(2, &mut buf);
-        assert_eq!(buf[0], 0.0);
-    }
-
     #[test]
     fn path_on_line_cell() {
         let mut mesh = PolyData::new();

@@ -1,7 +1,12 @@
 //! Curvature flow smoothing: move vertices along their normal proportional
 //! to mean curvature. This flow minimizes surface area.
 
-use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use crate::data::{Points, PolyData};
+
+/// Per-vertex mean curvature; implemented in
+/// [`crate::filters::mesh::curvature_mean_simple`] using the cotangent
+/// Laplacian over the mixed vertex area.
+pub use crate::filters::mesh::curvature_mean_simple::compute_mean_curvature;
 
 /// Mean curvature flow smoothing.
 ///
@@ -116,40 +121,6 @@ pub fn cotangent_curvature_flow(mesh: &PolyData, iterations: usize, dt: f64) -> 
     result
 }
 
-/// Compute per-vertex mean curvature magnitude.
-pub fn compute_mean_curvature(mesh: &PolyData) -> PolyData {
-    let n = mesh.points.len();
-    let adj = build_adj(mesh, n);
-    let mut curvature = Vec::with_capacity(n);
-
-    for i in 0..n {
-        if adj[i].is_empty() {
-            curvature.push(0.0);
-            continue;
-        }
-        let p = mesh.points.get(i);
-        let mut lap = [0.0; 3];
-        for &j in &adj[i] {
-            let q = mesh.points.get(j);
-            for c in 0..3 {
-                lap[c] += q[c] - p[c];
-            }
-        }
-        let k = adj[i].len() as f64;
-        curvature.push(((lap[0] / k).powi(2) + (lap[1] / k).powi(2) + (lap[2] / k).powi(2)).sqrt());
-    }
-
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "MeanCurvature",
-            curvature,
-            1,
-        )));
-    result
-}
-
 fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
     for cell in mesh.polys.iter() {
@@ -157,7 +128,9 @@ fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
         for i in 0..nc {
             let a = cell[i] as usize;
             let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            // A repeated corner would otherwise add a self-loop, which only
+            // inflates the neighbour count and damps the step.
+            if a < n && b < n && a != b {
                 adj[a].insert(b);
                 adj[b].insert(a);
             }

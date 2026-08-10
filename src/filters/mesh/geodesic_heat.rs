@@ -13,27 +13,39 @@ pub fn geodesic_heat(mesh: &PolyData, seeds: &[usize], iterations: usize) -> Pol
     }
     let adj = build_adj(mesh, n);
 
-    // Step 1: Heat diffusion from seeds
-    let mut heat = vec![0.0f64; n];
+    // Step 1: Heat diffusion from seeds.
+    //
+    // The heat method solves the backward-Euler step (I - t*L) u = u0 with
+    // t = h^2 (h = mean edge length). Doing this *explicitly* as
+    // u <- u + t*L(u) is unstable for the graph Laplacian normalised by valence
+    // whenever t >= 1 — and t = h^2 >= 1 for any mesh with edges of unit length
+    // or longer, which made the heat oscillate between the two sides of a
+    // bipartite mesh instead of diffusing. Solve the implicit system by Jacobi
+    // iteration instead: it is diagonally dominant, hence unconditionally stable.
+    //
+    //   u_i = (u0_i + t * mean_{j in N(i)} u_j) / (1 + t)
+    let mut u0 = vec![0.0f64; n];
     for &s in seeds {
         if s < n {
-            heat[s] = 1.0;
+            u0[s] = 1.0;
         }
     }
     let avg_edge = avg_edge_len(mesh, &adj);
     let dt = avg_edge * avg_edge;
 
+    let mut heat = u0.clone();
     for _ in 0..iterations {
         let mut new_heat = heat.clone();
         for i in 0..n {
             if adj[i].is_empty() {
                 continue;
             }
-            let mut lap = 0.0;
+            let mut nb_sum = 0.0;
             for &j in &adj[i] {
-                lap += heat[j] - heat[i];
+                nb_sum += heat[j];
             }
-            new_heat[i] = heat[i] + dt * lap / adj[i].len() as f64;
+            let nb_mean = nb_sum / adj[i].len() as f64;
+            new_heat[i] = (u0[i] + dt * nb_mean) / (1.0 + dt);
         }
         heat = new_heat;
     }

@@ -1,0 +1,12 @@
+[package]
+name = "vtk-full-rs"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+description = "VTK-shaped Rust translation target populated from audited vtk-rs mappings"
+license = "BSD-3-Clause"
+publish = false
+
+[dependencies]
+libc = "0.2"
+thiserror = "2"

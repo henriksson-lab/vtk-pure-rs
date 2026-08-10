@@ -1,6 +1,6 @@
 //! 3D morphological operations on ImageData: dilate, erode, open, close.
 
-use crate::data::{AnyDataArray, DataArray, DataSetAttributes, ImageData};
+use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// 3D binary dilation with an ellipsoidal structuring element.
 pub fn dilate_3d(image: &ImageData, array_name: &str, radius: usize) -> ImageData {
@@ -64,136 +64,13 @@ pub fn morphological_gradient_3d(image: &ImageData, array_name: &str, radius: us
 
 /// Dilate one value and erode another, following `vtkImageDilateErode3D`.
 ///
-/// The input value is copied by default. Only components exactly equal to
-/// `erode_value` are changed, and only when an in-bounds component exactly
-/// equal to `dilate_value` lies under the ellipsoidal kernel footprint.
-pub fn image_dilate_erode_3d(
-    image: &ImageData,
-    array_name: &str,
-    dilate_value: f64,
-    erode_value: f64,
-    kernel_size: [usize; 3],
-) -> ImageData {
-    let arr = match image.point_data().get_array(array_name) {
-        Some(a) => a,
-        _ => return image.clone(),
-    };
-    let dims = image.dimensions();
-    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
-    let n = nx * ny * nz;
-    let num_components = arr.num_components();
-    if n == 0 || num_components == 0 || kernel_size.contains(&0) {
-        return image.clone();
-    }
-
-    let mut values = vec![0.0f64; n * num_components];
-    let mut buf = vec![0.0f64; num_components];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        let offset = i * num_components;
-        values[offset..offset + num_components].copy_from_slice(&buf);
-    }
-
-    let mut output = values.clone();
-    let kernel_middle = [kernel_size[0] / 2, kernel_size[1] / 2, kernel_size[2] / 2];
-
-    for z in 0..nz {
-        for y in 0..ny {
-            for x in 0..nx {
-                let tuple_idx = z * ny * nx + y * nx + x;
-                for component in 0..num_components {
-                    let out_idx = tuple_idx * num_components + component;
-                    if values[out_idx] != erode_value {
-                        continue;
-                    }
-
-                    'neighborhood: for kz in 0..kernel_size[2] {
-                        let dz = kz as isize - kernel_middle[2] as isize;
-                        let Some(zz) = z.checked_add_signed(dz) else {
-                            continue;
-                        };
-                        if zz >= nz {
-                            continue;
-                        }
-                        for ky in 0..kernel_size[1] {
-                            let dy = ky as isize - kernel_middle[1] as isize;
-                            let Some(yy) = y.checked_add_signed(dy) else {
-                                continue;
-                            };
-                            if yy >= ny {
-                                continue;
-                            }
-                            for kx in 0..kernel_size[0] {
-                                if !ellipsoid_mask_value(kx, ky, kz, kernel_size) {
-                                    continue;
-                                }
-
-                                let dx = kx as isize - kernel_middle[0] as isize;
-                                let Some(xx) = x.checked_add_signed(dx) else {
-                                    continue;
-                                };
-                                if xx >= nx {
-                                    continue;
-                                }
-
-                                let in_idx =
-                                    (zz * ny * nx + yy * nx + xx) * num_components + component;
-                                if values[in_idx] == dilate_value {
-                                    output[out_idx] = dilate_value;
-                                    break 'neighborhood;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let mut result = image.clone();
-    let mut point_data = DataSetAttributes::new();
-    for i in 0..image.point_data().num_arrays() {
-        let a = image.point_data().get_array_by_index(i).unwrap();
-        if a.name() == array_name {
-            point_data.add_array(AnyDataArray::F64(DataArray::from_vec(
-                array_name,
-                output.clone(),
-                num_components,
-            )));
-        } else {
-            point_data.add_array(a.clone());
-        }
-    }
-    *result.point_data_mut() = point_data;
-    result
-}
+/// Re-exported from [`crate::filters::image::erode_dilate_binary`], which holds
+/// the single implementation.
+pub use crate::filters::image::erode_dilate_binary::image_dilate_erode_3d;
 
 fn kernel_size_from_radius(radius: usize) -> [usize; 3] {
     let size = radius.saturating_mul(2).saturating_add(1);
     [size, size, size]
-}
-
-fn ellipsoid_mask_value(x: usize, y: usize, z: usize, kernel_size: [usize; 3]) -> bool {
-    let center = [
-        (kernel_size[0] - 1) as f64 * 0.5,
-        (kernel_size[1] - 1) as f64 * 0.5,
-        (kernel_size[2] - 1) as f64 * 0.5,
-    ];
-    let radius = [
-        kernel_size[0] as f64 * 0.5,
-        kernel_size[1] as f64 * 0.5,
-        kernel_size[2] as f64 * 0.5,
-    ];
-    let coords = [x as f64, y as f64, z as f64];
-    let mut sum = 0.0;
-
-    for axis in 0..3 {
-        let delta = coords[axis] - center[axis];
-        let normalized = delta / radius[axis];
-        sum += normalized * normalized;
-    }
-
-    sum <= 1.0
 }
 
 #[cfg(test)]

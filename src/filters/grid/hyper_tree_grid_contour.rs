@@ -2,7 +2,7 @@
 //!
 //! Extracts contour lines/surfaces at scalar isovalues on the coarse grid.
 
-use crate::data::{CellArray, HyperTreeGrid, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, HyperTreeGrid, HyperTreeLeaf, Points, PolyData};
 use crate::types::BoundingBox;
 
 /// Extract contour at an isovalue from HyperTreeGrid cell data.
@@ -17,7 +17,7 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
 
     let leaves = htg.leaves();
     if !leaves.is_empty() {
-        return contour_leaves(htg, &leaves, arr.as_ref(), isovalue);
+        return contour_leaves(htg, &leaves, arr, isovalue);
     }
 
     let gs = htg.grid_size();
@@ -140,8 +140,8 @@ pub fn hyper_tree_grid_contour(htg: &HyperTreeGrid, array_name: &str, isovalue: 
 
 fn contour_leaves(
     htg: &HyperTreeGrid,
-    leaves: &[crate::data::HyperTreeLeaf],
-    arr: &dyn crate::data::DataArrayTrait,
+    leaves: &[HyperTreeLeaf],
+    arr: &AnyDataArray,
     isovalue: f64,
 ) -> PolyData {
     let mut points = Points::<f64>::new();

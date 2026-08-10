@@ -69,51 +69,7 @@ pub fn simplify_by_persistence(mesh: &PolyData, array_name: &str, threshold: f64
         .add_array(AnyDataArray::F64(DataArray::from_vec(array_name, vals, 1)));
     r
 }
-pub fn count_critical_points(mesh: &PolyData, array_name: &str) -> (usize, usize, usize) {
-    let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return (0, 0, 0),
-    };
-    let n = mesh.points.len();
-    if arr.num_tuples() != n {
-        return (0, 0, 0);
-    }
-    let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..arr.num_tuples())
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0]
-        })
-        .collect();
-    let nb = build_neighbors(mesh, n);
-    let mut mins = 0;
-    let mut maxs = 0;
-    let mut saddles = 0;
-    for i in 0..n {
-        if nb[i].is_empty() {
-            continue;
-        }
-        let lower = nb[i].iter().filter(|&&j| vals[j] < vals[i]).count();
-        let upper = nb[i].iter().filter(|&&j| vals[j] > vals[i]).count();
-        if lower == 0 && upper > 0 {
-            mins += 1;
-        } else if upper == 0 && lower > 0 {
-            maxs += 1;
-        } else if lower > 0 && upper > 0 {
-            let changes = (0..nb[i].len())
-                .filter(|&j| {
-                    let a = nb[i][j];
-                    let b = nb[i][(j + 1) % nb[i].len()];
-                    (vals[a] > vals[i]) != (vals[b] > vals[i])
-                })
-                .count();
-            if changes >= 4 {
-                saddles += 1;
-            }
-        }
-    }
-    (mins, maxs, saddles)
-}
+pub use crate::filters::mesh::scalar_field_topology::count_critical_points;
 fn build_neighbors(mesh: &PolyData, number_of_points: usize) -> Vec<Vec<usize>> {
     let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); number_of_points];
     for cell in mesh.polys.iter() {
@@ -189,28 +145,6 @@ mod tests {
         let r = simplify_by_persistence(&m, "h", 0.2);
         assert!(r.point_data().get_array("h").is_some());
     }
-    #[test]
-    fn test_count() {
-        let mut m = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [2.0, 0.0, 0.0],
-                [1.0, 2.0, 0.0],
-                [2.0, 2.0, 0.0],
-                [1.0, 0.5, 0.0],
-            ],
-            vec![[0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4]],
-        );
-        m.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "h",
-                vec![0.0, 0.0, 0.0, 0.0, 1.0],
-                1,
-            )));
-        let (mins, maxs, _) = count_critical_points(&m, "h");
-        assert!(maxs >= 1);
-    }
-
     #[test]
     fn test_simplify_plateau_terminates() {
         let mut m = PolyData::from_triangles(

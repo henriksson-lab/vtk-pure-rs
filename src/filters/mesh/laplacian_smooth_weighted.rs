@@ -1,10 +1,15 @@
 //! Weighted Laplacian smoothing with per-vertex weight control.
 
-use crate::data::{AnyDataArray, DataArray, Points, PolyData};
+use crate::data::{Points, PolyData};
 
 /// Smooth with per-vertex weights from a scalar array.
 ///
-/// Vertices with higher weight values are smoothed more.
+/// Vertices with higher weight values are smoothed more: each vertex moves
+/// toward the mean of its neighbours by `base_factor * weight[i]`, Jacobi
+/// style (all vertices use the previous iteration's positions), as in
+/// `vtkSmoothPolyDataFilter`'s relaxation step. Weights are clamped to
+/// `[0, 1]`; vertices past the end of the weight array, or a missing/
+/// multi-component array, get weight 1.0.
 pub fn weighted_laplacian_smooth(
     mesh: &PolyData,
     weight_array: &str,
@@ -12,7 +17,7 @@ pub fn weighted_laplacian_smooth(
     iterations: usize,
 ) -> PolyData {
     let n = mesh.points.len();
-    if n < 3 {
+    if n == 0 {
         return mesh.clone();
     }
     let adj = build_adj(mesh, n);
@@ -163,6 +168,34 @@ fn add_edge(adj: &mut [std::collections::HashSet<usize>], n: usize, a_id: i64, b
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray};
+
+    #[test]
+    fn short_weight_array_uses_available_weights() {
+        let mut m = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [1.0, 2.0, 0.0],
+                [1.0, 0.5, 1.0],
+            ],
+            vec![[0, 1, 3], [1, 2, 3], [2, 0, 3]],
+        );
+        m.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "w",
+                vec![0.0, 0.0, 0.0],
+                1,
+            )));
+
+        let r = weighted_laplacian_smooth(&m, "w", 0.5, 1);
+
+        for i in 0..3 {
+            assert_eq!(r.points.get(i), m.points.get(i));
+        }
+        assert_ne!(r.points.get(3), m.points.get(3));
+    }
+
     #[test]
     fn weighted() {
         let mut pts = Vec::new();

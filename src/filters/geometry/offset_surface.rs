@@ -1,4 +1,4 @@
-use crate::data::{Points, PolyData};
+use crate::data::{AnyDataArray, Points, PolyData};
 
 /// Offset a surface mesh along vertex normals by a given distance.
 ///
@@ -12,33 +12,72 @@ pub fn offset_surface(input: &PolyData, distance: f64) -> PolyData {
     }
 
     // Try to use existing normals
-    let normals: Vec<[f64; 3]> = if let Some(arr) = input.point_data().get_array("Normals") {
-        let mut buf = [0.0f64; 3];
-        (0..n)
-            .map(|i| {
-                arr.tuple_as_f64(i, &mut buf);
-                buf
-            })
-            .collect()
+    let out_flat = if let Some(arr) = input.point_data().get_array("Normals") {
+        if let AnyDataArray::F64(normals) = arr {
+            if normals.num_components() == 3 && normals.num_tuples() == n {
+                offset_with_f64_normals(input.points.as_flat_slice(), normals.as_slice(), distance)
+            } else {
+                offset_with_generic_normals(input, arr, distance)
+            }
+        } else {
+            offset_with_generic_normals(input, arr, distance)
+        }
     } else {
         // Compute normals from faces
-        compute_vertex_normals(input)
+        let normals = compute_vertex_normals(input);
+        offset_with_computed_normals(input.points.as_flat_slice(), &normals, distance)
     };
 
-    let mut out_points = Points::<f64>::new();
-    for i in 0..n {
-        let p = input.points.get(i);
-        let nm = normals[i];
-        out_points.push([
-            p[0] + nm[0] * distance,
-            p[1] + nm[1] * distance,
-            p[2] + nm[2] * distance,
-        ]);
-    }
-
     let mut pd = input.clone();
-    pd.points = out_points;
+    pd.points = Points::from_flat_vec(out_flat);
     pd
+}
+
+fn offset_with_f64_normals(points: &[f64], normals: &[f64], distance: f64) -> Vec<f64> {
+    let mut out = Vec::with_capacity(points.len());
+    unsafe {
+        out.set_len(points.len());
+    }
+    for i in 0..points.len() {
+        out[i] = points[i] + normals[i] * distance;
+    }
+    out
+}
+
+fn offset_with_generic_normals(
+    input: &PolyData,
+    normals: &AnyDataArray,
+    distance: f64,
+) -> Vec<f64> {
+    let n = input.points.len();
+    let points = input.points.as_flat_slice();
+    let mut out = Vec::with_capacity(points.len());
+    unsafe {
+        out.set_len(points.len());
+    }
+    let mut nbuf = [0.0f64; 3];
+    for i in 0..n {
+        normals.tuple_as_f64(i, &mut nbuf);
+        let b = i * 3;
+        out[b] = points[b] + nbuf[0] * distance;
+        out[b + 1] = points[b + 1] + nbuf[1] * distance;
+        out[b + 2] = points[b + 2] + nbuf[2] * distance;
+    }
+    out
+}
+
+fn offset_with_computed_normals(points: &[f64], normals: &[[f64; 3]], distance: f64) -> Vec<f64> {
+    let mut out = Vec::with_capacity(points.len());
+    unsafe {
+        out.set_len(points.len());
+    }
+    for (i, nm) in normals.iter().enumerate() {
+        let b = i * 3;
+        out[b] = points[b] + nm[0] * distance;
+        out[b + 1] = points[b + 1] + nm[1] * distance;
+        out[b + 2] = points[b + 2] + nm[2] * distance;
+    }
+    out
 }
 
 fn compute_vertex_normals(input: &PolyData) -> Vec<[f64; 3]> {

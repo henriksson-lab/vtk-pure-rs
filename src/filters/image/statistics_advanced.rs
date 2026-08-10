@@ -2,74 +2,10 @@
 
 use crate::data::{AnyDataArray, DataArray, ImageData, Table};
 
-/// Compute mutual information between two scalar arrays on the same ImageData.
-pub fn mutual_information(image: &ImageData, array_a: &str, array_b: &str, n_bins: usize) -> f64 {
-    if n_bins == 0 {
-        return 0.0;
-    }
-    let a = match image.point_data().get_array(array_a) {
-        Some(x) => x,
-        None => return 0.0,
-    };
-    let b = match image.point_data().get_array(array_b) {
-        Some(x) => x,
-        None => return 0.0,
-    };
-    let n = a.num_tuples().min(b.num_tuples());
-    if n == 0 {
-        return 0.0;
-    }
-
-    let mut ab = [0.0f64];
-    let mut bb = [0.0f64];
-
-    // Find ranges
-    let (mut a_min, mut a_max) = (f64::MAX, f64::MIN);
-    let (mut b_min, mut b_max) = (f64::MAX, f64::MIN);
-    for i in 0..n {
-        a.tuple_as_f64(i, &mut ab);
-        b.tuple_as_f64(i, &mut bb);
-        a_min = a_min.min(ab[0]);
-        a_max = a_max.max(ab[0]);
-        b_min = b_min.min(bb[0]);
-        b_max = b_max.max(bb[0]);
-    }
-    let ar = (a_max - a_min).max(1e-15);
-    let br = (b_max - b_min).max(1e-15);
-
-    // Joint histogram
-    let mut joint = vec![vec![0usize; n_bins]; n_bins];
-    for i in 0..n {
-        a.tuple_as_f64(i, &mut ab);
-        b.tuple_as_f64(i, &mut bb);
-        let ai = (((ab[0] - a_min) / ar * n_bins as f64) as usize).min(n_bins - 1);
-        let bi = (((bb[0] - b_min) / br * n_bins as f64) as usize).min(n_bins - 1);
-        joint[ai][bi] += 1;
-    }
-
-    // Marginals
-    let mut pa = vec![0.0f64; n_bins];
-    let mut pb = vec![0.0f64; n_bins];
-    for i in 0..n_bins {
-        for j in 0..n_bins {
-            let p = joint[i][j] as f64 / n as f64;
-            pa[i] += p;
-            pb[j] += p;
-        }
-    }
-
-    // MI = sum p(a,b) * log(p(a,b) / (p(a)*p(b)))
-    let mut mi = 0.0;
-    for i in 0..n_bins {
-        for j in 0..n_bins {
-            let pab = joint[i][j] as f64 / n as f64;
-            if pab > 1e-15 && pa[i] > 1e-15 && pb[j] > 1e-15 {
-                mi += pab * (pab / (pa[i] * pb[j])).ln();
-            }
-        }
-    }
-    mi
-}
+/// Mutual information between two scalar arrays on the same ImageData.
+///
+/// Single implementation lives in [`crate::filters::image::histogram_2d`].
+pub use crate::filters::image::histogram_2d::mutual_information;
 
 /// Compute Shannon entropy of a scalar array.
 pub fn scalar_entropy(image: &ImageData, array_name: &str, n_bins: usize) -> f64 {
@@ -109,58 +45,49 @@ pub fn scalar_entropy(image: &ImageData, array_name: &str, n_bins: usize) -> f64
     entropy
 }
 
-/// Compute joint histogram as a Table.
+/// Joint histogram of two scalar arrays as a `Table` with one row per bin pair
+/// (bin centre of `array_a`, bin centre of `array_b`, count).
+///
+/// Thin wrapper: the histogram itself is computed by
+/// [`crate::filters::image::histogram_2d::joint_histogram`], which returns it as
+/// an `ImageData`; this only reshapes that image into table columns. Returns an
+/// empty table when either array is missing or not single-component.
 pub fn joint_histogram(image: &ImageData, array_a: &str, array_b: &str, n_bins: usize) -> Table {
     if n_bins == 0 {
         return Table::new();
     }
-    let a = match image.point_data().get_array(array_a) {
-        Some(x) => x,
-        None => return Table::new(),
+    let samples = match (
+        image.point_data().get_array(array_a),
+        image.point_data().get_array(array_b),
+    ) {
+        (Some(a), Some(b)) => a.num_tuples().min(b.num_tuples()),
+        _ => 0,
     };
-    let b = match image.point_data().get_array(array_b) {
-        Some(x) => x,
-        None => return Table::new(),
-    };
-    let n = a.num_tuples().min(b.num_tuples());
-    if n == 0 {
+    if samples == 0 {
         return Table::new();
     }
-    let mut ab = [0.0f64];
-    let mut bb = [0.0f64];
+    let histogram = crate::filters::image::histogram_2d::joint_histogram(
+        image, array_a, array_b, n_bins, n_bins,
+    );
+    let counts = match histogram.point_data().get_array("Histogram2D") {
+        Some(array) if array.num_tuples() == n_bins * n_bins => array,
+        _ => return Table::new(),
+    };
 
-    let (mut a_min, mut a_max) = (f64::MAX, f64::MIN);
-    let (mut b_min, mut b_max) = (f64::MAX, f64::MIN);
-    for i in 0..n {
-        a.tuple_as_f64(i, &mut ab);
-        b.tuple_as_f64(i, &mut bb);
-        a_min = a_min.min(ab[0]);
-        a_max = a_max.max(ab[0]);
-        b_min = b_min.min(bb[0]);
-        b_max = b_max.max(bb[0]);
-    }
-    let ar = (a_max - a_min).max(1e-15);
-    let br = (b_max - b_min).max(1e-15);
+    let [a_min, b_min, _] = histogram.origin();
+    let [bw_a, bw_b, _] = histogram.spacing();
 
-    let mut joint = vec![vec![0usize; n_bins]; n_bins];
-    for i in 0..n {
-        a.tuple_as_f64(i, &mut ab);
-        b.tuple_as_f64(i, &mut bb);
-        let ai = (((ab[0] - a_min) / ar * n_bins as f64) as usize).min(n_bins - 1);
-        let bi = (((bb[0] - b_min) / br * n_bins as f64) as usize).min(n_bins - 1);
-        joint[ai][bi] += 1;
-    }
-
-    let mut a_data = Vec::new();
-    let mut b_data = Vec::new();
-    let mut c_data = Vec::new();
-    let bw_a = ar / n_bins as f64;
-    let bw_b = br / n_bins as f64;
+    let mut a_data = Vec::with_capacity(n_bins * n_bins);
+    let mut b_data = Vec::with_capacity(n_bins * n_bins);
+    let mut c_data = Vec::with_capacity(n_bins * n_bins);
+    let mut count = [0.0f64];
     for i in 0..n_bins {
         for j in 0..n_bins {
             a_data.push(a_min + (i as f64 + 0.5) * bw_a);
             b_data.push(b_min + (j as f64 + 0.5) * bw_b);
-            c_data.push(joint[i][j] as f64);
+            // Row-major image: the `array_a` bin is the fast axis.
+            counts.tuple_as_f64(i + j * n_bins, &mut count);
+            c_data.push(count[0]);
         }
     }
 

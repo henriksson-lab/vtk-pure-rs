@@ -77,8 +77,8 @@ pub fn gpu_reduce_sum(ctx: &GpuContext, input: &DataArray<f32>) -> f32 {
         .device
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
 
     let pipeline = ctx
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn reduce_sum_basic() {
-        let ctx = match GpuContext::new() {
+        let ctx = match GpuContext::shared() {
             Ok(c) => c,
             Err(_) => return,
         };

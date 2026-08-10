@@ -18,8 +18,8 @@ struct Stage {
 /// downstream stages are also invalidated.
 ///
 /// ```
-/// use crate::data::PolyData;
-/// use crate::filters::core::pipeline::Pipeline;
+/// use vtk_pure_rs::data::PolyData;
+/// use vtk_pure_rs::filters::core::pipeline::Pipeline;
 ///
 /// let pd = PolyData::from_triangles(
 ///     vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],

@@ -1,6 +1,13 @@
-use std::collections::HashMap;
+use crate::data::{CellArray, PolyData};
 
-use crate::data::{CellArray, Points, PolyData};
+/// Extract edges that lie on sharp features based on dihedral angle.
+///
+/// Re-exported from [`crate::filters::mesh::sharp_edges`], which holds the single
+/// implementation. Note that it emits *only* edges shared by exactly two polygons
+/// (`vtkFeatureEdges` with feature edges on and boundary/non-manifold edges off);
+/// use [`crate::filters::geometry::feature_edges`] for the full VTK filter with
+/// boundary and non-manifold edge categories.
+pub use crate::filters::mesh::sharp_edges::extract_sharp_edges;
 
 /// Extract vertices that lie on sharp features based on a curvature-like metric.
 ///
@@ -53,74 +60,6 @@ pub fn extract_sharp_vertices(input: &PolyData, curvature_threshold: f64) -> Pol
     }
 
     out.verts = verts;
-    out
-}
-
-/// Extract edges that lie on sharp features based on dihedral angle.
-///
-/// An edge is considered "sharp" if the dihedral angle between its two adjacent
-/// faces exceeds `angle_threshold_deg` (in degrees). Boundary edges (with only
-/// one adjacent face) are also included. Returns a PolyData with line cells.
-pub fn extract_sharp_edges(input: &PolyData, angle_threshold_deg: f64) -> PolyData {
-    let cos_thresh: f64 = angle_threshold_deg.to_radians().cos();
-
-    // Build edge -> face list
-    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    let faces: Vec<Vec<i64>> = input.polys.iter().map(|c| c.to_vec()).collect();
-    let mut face_normals: Vec<[f64; 3]> = Vec::with_capacity(faces.len());
-
-    for (fi, cell) in faces.iter().enumerate() {
-        let normal = polygon_normal(input, cell);
-        face_normals.push(normal);
-
-        let len = cell.len();
-        for j in 0..len {
-            let a = cell[j];
-            let b = cell[(j + 1) % len];
-            let key = if a < b { (a, b) } else { (b, a) };
-            edge_faces.entry(key).or_default().push(fi);
-        }
-    }
-
-    let mut point_map: HashMap<i64, i64> = HashMap::new();
-    let mut out_points: Points<f64> = Points::new();
-    let mut out_lines = CellArray::new();
-
-    let mut edges: Vec<((i64, i64), Vec<usize>)> = edge_faces.into_iter().collect();
-    edges.sort_by_key(|&((a, b), _)| (a, b));
-
-    for ((a, b), adj_faces) in edges {
-        let include: bool = if adj_faces.len() == 1 {
-            // Boundary edge -> include
-            true
-        } else if adj_faces.len() == 2 {
-            let n1 = &face_normals[adj_faces[0]];
-            let n2 = &face_normals[adj_faces[1]];
-            let dot: f64 = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
-            dot < cos_thresh
-        } else {
-            // Non-manifold edge -> include
-            true
-        };
-
-        if include {
-            let id_a = *point_map.entry(a).or_insert_with(|| {
-                let idx = out_points.len() as i64;
-                out_points.push(input.points.get(a as usize));
-                idx
-            });
-            let id_b = *point_map.entry(b).or_insert_with(|| {
-                let idx = out_points.len() as i64;
-                out_points.push(input.points.get(b as usize));
-                idx
-            });
-            out_lines.push_cell(&[id_a, id_b]);
-        }
-    }
-
-    let mut out = PolyData::new();
-    out.points = out_points;
-    out.lines = out_lines;
     out
 }
 
@@ -181,30 +120,6 @@ mod tests {
             result.lines.num_cells() > 0,
             "should detect sharp edge at the fold"
         );
-    }
-
-    #[test]
-    fn flat_mesh_no_sharp_edges_detected() {
-        let mut pd = PolyData::new();
-        // Two coplanar triangles
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.5, 1.0, 0.0]);
-        pd.points.push([1.5, 1.0, 0.0]);
-
-        let mut polys = CellArray::new();
-        polys.push_cell(&[0, 1, 2]);
-        polys.push_cell(&[1, 3, 2]);
-        pd.polys = polys;
-
-        // High threshold means only very sharp edges detected
-        // But boundary edges are always included, so check that interior edge is not sharp
-        let result = extract_sharp_edges(&pd, 30.0);
-        // All edges are either boundary or coplanar interior.
-        // Boundary edges should be included. Count them.
-        // 5 unique edges total, 1 interior (shared), 4 boundary. Interior is flat => not sharp.
-        // So we expect 4 boundary edges.
-        assert_eq!(result.lines.num_cells(), 4);
     }
 
     #[test]

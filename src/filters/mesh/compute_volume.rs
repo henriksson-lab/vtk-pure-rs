@@ -2,24 +2,7 @@
 
 use crate::data::PolyData;
 
-/// Compute signed volume of a closed triangle mesh using divergence theorem.
-pub fn signed_volume(mesh: &PolyData) -> f64 {
-    let mut vol = 0.0;
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            vol += a[0] * (b[1] * c[2] - b[2] * c[1])
-                + a[1] * (b[2] * c[0] - b[0] * c[2])
-                + a[2] * (b[0] * c[1] - b[1] * c[0]);
-        }
-    }
-    vol / 6.0
-}
+pub use crate::filters::mesh::volume::signed_volume;
 
 /// Compute unsigned volume (absolute value).
 pub fn volume(mesh: &PolyData) -> f64 {

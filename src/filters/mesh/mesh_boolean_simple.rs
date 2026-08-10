@@ -3,14 +3,12 @@
 use crate::data::{CellArray, Points, PolyData};
 
 /// Classify each vertex of mesh A as inside or outside mesh B using ray casting.
+///
+/// Thin wrapper over [`crate::filters::mesh::mesh_point_containment::classify_points`],
+/// which takes the enclosing surface first and the query points as a slice.
 pub fn classify_points(mesh: &PolyData, reference: &PolyData) -> Vec<bool> {
-    let n = mesh.points.len();
-    (0..n)
-        .map(|i| {
-            let p = mesh.points.get(i);
-            point_inside_mesh(p, reference)
-        })
-        .collect()
+    let points: Vec<[f64; 3]> = (0..mesh.points.len()).map(|i| mesh.points.get(i)).collect();
+    crate::filters::mesh::mesh_point_containment::classify_points(reference, &points)
 }
 
 /// Extract faces of mesh A that are inside mesh B.
@@ -60,72 +58,16 @@ fn extract_classified(mesh: &PolyData, reference: &PolyData, want_inside: bool) 
     result
 }
 
-fn point_inside_mesh(p: [f64; 3], mesh: &PolyData) -> bool {
-    // Ray casting along +X with small jitter to avoid edge hits
-    let p = [p[0] + 1e-7, p[1] + 1.3e-7, p[2] + 0.9e-7];
-    let mut crossings = 0;
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if !valid_cell(cell, mesh.points.len()) {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            if ray_triangle_intersect_x(p, a, b, c) {
-                crossings += 1;
-            }
-        }
-    }
-    crossings % 2 == 1
-}
-
 fn valid_cell(cell: &[i64], npoints: usize) -> bool {
     cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
-}
-
-fn ray_triangle_intersect_x(origin: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> bool {
-    let dir = [1.0, 0.0, 0.0];
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let h = [
-        dir[1] * e2[2] - dir[2] * e2[1],
-        dir[2] * e2[0] - dir[0] * e2[2],
-        dir[0] * e2[1] - dir[1] * e2[0],
-    ];
-    let det = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
-    if det.abs() < 1e-12 {
-        return false;
-    }
-    let inv = 1.0 / det;
-    let s = [origin[0] - a[0], origin[1] - a[1], origin[2] - a[2]];
-    let u = inv * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
-    if u < 0.0 || u > 1.0 {
-        return false;
-    }
-    let q = [
-        s[1] * e1[2] - s[2] * e1[1],
-        s[2] * e1[0] - s[0] * e1[2],
-        s[0] * e1[1] - s[1] * e1[0],
-    ];
-    let v = inv * (dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]);
-    if v < 0.0 || u + v > 1.0 {
-        return false;
-    }
-    let t = inv * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
-    t > 1e-12
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn test_inside() {
-        // Tetrahedron enclosing origin
-        let big = PolyData::from_triangles(
+
+    fn tetrahedron() -> PolyData {
+        PolyData::from_triangles(
             vec![
                 [-5.0, -5.0, -5.0],
                 [5.0, -5.0, -5.0],
@@ -133,22 +75,25 @@ mod tests {
                 [0.0, 0.0, 5.0],
             ],
             vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
-        );
-        let inside = point_inside_mesh([0.0, 0.0, 0.0], &big);
-        assert!(inside, "origin should be inside tetrahedron");
+        )
     }
+
     #[test]
-    fn test_outside() {
-        let big = PolyData::from_triangles(
-            vec![
-                [-5.0, -5.0, -5.0],
-                [5.0, -5.0, -5.0],
-                [0.0, 5.0, -5.0],
-                [0.0, 0.0, 5.0],
-            ],
-            vec![[0, 2, 1], [0, 1, 3], [1, 2, 3], [0, 3, 2]],
+    fn classify_marks_enclosed_vertices() {
+        let big = tetrahedron();
+        let probe = PolyData::from_points(vec![[0.0, 0.0, 0.0], [20.0, 0.0, 0.0]]);
+        let flags = classify_points(&probe, &big);
+        assert_eq!(flags, vec![true, false]);
+    }
+
+    #[test]
+    fn extract_inside_keeps_only_enclosed_faces() {
+        let big = tetrahedron();
+        let inner = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.0, 0.5, 0.0]],
+            vec![[0, 1, 2]],
         );
-        let outside = point_inside_mesh([20.0, 0.0, 0.0], &big);
-        assert!(!outside, "far point should be outside");
+        assert_eq!(extract_inside(&inner, &big).polys.num_cells(), 1);
+        assert_eq!(extract_outside(&inner, &big).polys.num_cells(), 0);
     }
 }

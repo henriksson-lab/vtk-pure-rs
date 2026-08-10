@@ -1,55 +1,36 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::filters::image::image_math_ops;
 
-/// Add two ImageData scalar fields element-wise.
+/// Add two ImageData scalar fields element-wise, storing the result in `output_name`.
+///
+/// Thin wrapper over [`image_math_ops::image_add`] (VTK_ADD of `vtkImageMathematics`)
+/// that writes the result to a separate array instead of replacing `scalars`.
 pub fn image_add(a: &ImageData, b: &ImageData, scalars: &str, output_name: &str) -> ImageData {
-    image_binary_op(a, b, scalars, output_name, |x, y| x + y)
+    named_binary(a, b, scalars, output_name, image_math_ops::image_add)
 }
 
-/// Subtract ImageData scalar fields element-wise (a - b).
+/// Subtract ImageData scalar fields element-wise (a - b), storing the result in `output_name`.
 pub fn image_subtract(a: &ImageData, b: &ImageData, scalars: &str, output_name: &str) -> ImageData {
-    image_binary_op(a, b, scalars, output_name, |x, y| x - y)
+    named_binary(a, b, scalars, output_name, image_math_ops::image_subtract)
 }
 
-/// Multiply two ImageData scalar fields element-wise.
+/// Multiply two ImageData scalar fields element-wise, storing the result in `output_name`.
 pub fn image_multiply(a: &ImageData, b: &ImageData, scalars: &str, output_name: &str) -> ImageData {
-    image_binary_op(a, b, scalars, output_name, |x, y| x * y)
+    named_binary(a, b, scalars, output_name, image_math_ops::image_multiply)
 }
 
 /// Scale an ImageData scalar field by a constant.
+///
+/// This is VTK_MULTIPLYBYK of `vtkImageMathematics`
+/// (VTK/Imaging/Math/vtkImageMathematics.cxx:242), implemented once in
+/// [`image_math_ops::image_multiply_by_k`].
 pub fn image_scale(input: &ImageData, scalars: &str, factor: f64) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
-    };
-
-    let n = arr.num_tuples();
-    let nc = arr.num_components();
-    let mut values = Vec::with_capacity(n * nc);
-    let mut buf = vec![0.0f64; nc];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        values.extend(buf.iter().map(|v| v * factor));
-    }
-
-    let mut img = input.clone();
-    let mut new_attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == scalars {
-            new_attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                scalars,
-                values.clone(),
-                nc,
-            )));
-        } else {
-            new_attrs.add_array(a.clone());
-        }
-    }
-    *img.point_data_mut() = new_attrs;
-    img
+    image_math_ops::image_multiply_by_k(input, scalars, factor)
 }
 
-fn image_binary_op<F>(
+/// Run a two-input `image_math_ops` operation and store its result under `output_name`
+/// instead of overwriting the `scalars` array.
+fn named_binary<F>(
     a: &ImageData,
     b: &ImageData,
     scalars: &str,
@@ -57,30 +38,30 @@ fn image_binary_op<F>(
     op: F,
 ) -> ImageData
 where
-    F: Fn(f64, f64) -> f64,
+    F: Fn(&ImageData, &ImageData, &str) -> ImageData,
 {
-    let arr_a = match a.point_data().get_array(scalars) {
-        Some(x) => x,
-        None => return a.clone(),
-    };
-    let arr_b = match b.point_data().get_array(scalars) {
-        Some(x) => x,
-        None => return a.clone(),
+    let (n, nc) = match (
+        a.point_data().get_array(scalars),
+        b.point_data().get_array(scalars),
+    ) {
+        (Some(x), Some(y))
+            if x.num_tuples() == y.num_tuples() && x.num_components() == y.num_components() =>
+        {
+            (x.num_tuples(), x.num_components())
+        }
+        _ => return a.clone(),
     };
 
-    if arr_a.num_tuples() != arr_b.num_tuples() || arr_a.num_components() != arr_b.num_components()
-    {
-        return a.clone();
-    }
-    let n = arr_a.num_tuples();
-    let nc = arr_a.num_components();
+    let computed = op(a, b, scalars);
+    let arr = match computed.point_data().get_array(scalars) {
+        Some(x) => x,
+        None => return a.clone(),
+    };
     let mut values = Vec::with_capacity(n * nc);
-    let mut ba = vec![0.0f64; nc];
-    let mut bb = vec![0.0f64; nc];
+    let mut buf = vec![0.0f64; nc];
     for i in 0..n {
-        arr_a.tuple_as_f64(i, &mut ba);
-        arr_b.tuple_as_f64(i, &mut bb);
-        values.extend(ba.iter().zip(bb.iter()).map(|(x, y)| op(*x, *y)));
+        arr.tuple_as_f64(i, &mut buf);
+        values.extend(buf.iter().copied());
     }
 
     let mut img = a.clone();

@@ -29,6 +29,7 @@ pub fn edge_midpoints(mesh: &PolyData) -> PolyData {
     let mut r = PolyData::new();
     r.points = pts;
     r.verts = verts;
+    *r.field_data_mut() = mesh.field_data().clone();
     r
 }
 

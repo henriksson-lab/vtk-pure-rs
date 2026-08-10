@@ -5,6 +5,11 @@ use crate::data::{Points, PolyData};
 /// Compute the principal axes of a mesh via PCA on vertex positions.
 ///
 /// Returns (centroid, axes[3], eigenvalues[3]) sorted descending.
+///
+/// This mirrors `vtkOBBTree::ComputeOBB`: the mean-centred covariance matrix is
+/// normalised by the point count, diagonalised, and the eigenvectors are returned in
+/// decreasing eigenvalue order, i.e. `axes[0]` is the max (widest spread) axis,
+/// `axes[1]` the mid axis and `axes[2]` the min axis.
 pub fn principal_axes(mesh: &PolyData) -> ([f64; 3], [[f64; 3]; 3], [f64; 3]) {
     let n = mesh.points.len();
     if n < 2 {

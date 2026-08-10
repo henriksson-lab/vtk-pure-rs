@@ -38,10 +38,9 @@ pub fn add_face_areas(mesh: &PolyData) -> PolyData {
     result
 }
 
-/// Compute total surface area.
-pub fn total_surface_area(mesh: &PolyData) -> f64 {
-    compute_areas(mesh).iter().sum()
-}
+/// Compute total surface area (single implementation lives in
+/// [`crate::filters::mesh::surface_curvature_integral`]).
+pub use crate::filters::mesh::surface_curvature_integral::total_surface_area;
 
 /// Compute area statistics: (min, max, mean, std, total).
 pub fn area_statistics(mesh: &PolyData) -> (f64, f64, f64, f64, f64) {

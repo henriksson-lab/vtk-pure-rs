@@ -1,6 +1,69 @@
 use crate::data::{CellArray, PolyData};
 use std::collections::HashMap;
 
+#[derive(Clone, Copy)]
+struct EdgeEntry {
+    hi: i64,
+    tri_id: usize,
+    edge_id: usize,
+}
+
+struct EdgeTable {
+    buckets: Vec<Vec<EdgeEntry>>,
+}
+
+impl EdgeTable {
+    fn new(num_points: usize) -> Self {
+        Self {
+            buckets: vec![Vec::new(); num_points],
+        }
+    }
+
+    fn insert(
+        &mut self,
+        tri_verts: &[[i64; 3]],
+        neighbors: &mut [[(usize, i64); 3]],
+        a: i64,
+        b: i64,
+        tri_id: usize,
+        edge_id: usize,
+    ) {
+        let Some((lo, hi)) = edge_ids(a, b, self.buckets.len()) else {
+            return;
+        };
+        let bucket = &mut self.buckets[lo];
+        if let Some(entry) = bucket.iter().find(|entry| entry.hi == hi) {
+            neighbors[entry.tri_id][entry.edge_id] =
+                (tri_id, unique_vertex(tri_verts[tri_id], a, b));
+            neighbors[tri_id][edge_id] =
+                (entry.tri_id, unique_vertex(tri_verts[entry.tri_id], a, b));
+        } else {
+            bucket.push(EdgeEntry {
+                hi,
+                tri_id,
+                edge_id,
+            });
+        }
+    }
+}
+
+fn edge_ids(a: i64, b: i64, num_points: usize) -> Option<(usize, i64)> {
+    if a < 0 || b < 0 {
+        return None;
+    }
+    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+    let lo = lo as usize;
+    if lo < num_points {
+        Some((lo, hi))
+    } else {
+        None
+    }
+}
+
+fn unique_vertex(tri: [i64; 3], a: i64, b: i64) -> i64 {
+    tri.into_iter().find(|&v| v != a && v != b).unwrap_or(-1)
+}
+
 /// Convert triangle polygons to triangle strips.
 ///
 /// Existing strips are passed through, non-triangle polygons stay in `polys`,
@@ -19,7 +82,6 @@ pub fn to_triangle_strips_with_maximum_length(input: &PolyData, maximum_length: 
     output.points = input.points.clone();
     output.verts = input.verts.clone();
     output.lines = strip_lines(&input.lines, maximum_length);
-    output.strips = input.strips.clone();
     *output.point_data_mut() = input.point_data().clone();
 
     let mut tri_verts = Vec::new();
@@ -33,23 +95,30 @@ pub fn to_triangle_strips_with_maximum_length(input: &PolyData, maximum_length: 
 
     let nt = tri_verts.len();
     if nt == 0 {
+        output.strips = input.strips.clone();
         return output;
     }
 
-    let mut edge_tris: HashMap<u64, [usize; 2]> = HashMap::with_capacity(nt * 3);
+    let mut edge_tris = EdgeTable::new(input.points.len());
+    let mut neighbors = vec![[(usize::MAX, -1); 3]; nt];
     for (ti, tri) in tri_verts.iter().enumerate() {
-        for edge in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
-            let key = edge_key(edge.0, edge.1);
-            let entry = edge_tris.entry(key).or_insert([usize::MAX, usize::MAX]);
-            if entry[0] == usize::MAX {
-                entry[0] = ti;
-            } else if entry[1] == usize::MAX {
-                entry[1] = ti;
-            }
+        for (edge_id, edge) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])]
+            .into_iter()
+            .enumerate()
+        {
+            edge_tris.insert(&tri_verts, &mut neighbors, edge.0, edge.1, ti, edge_id);
         }
     }
 
     let mut visited = vec![false; nt];
+    let mut strip_offsets = Vec::with_capacity(input.strips.num_cells() + nt + 1);
+    let mut strip_connectivity =
+        Vec::with_capacity(input.strips.connectivity_len() + nt.saturating_mul(3));
+    strip_offsets.extend_from_slice(input.strips.offsets());
+    strip_connectivity.extend_from_slice(input.strips.connectivity());
+
+    let mut strip = Vec::with_capacity(maximum_length.saturating_add(2));
+    let mut prefix = Vec::with_capacity(maximum_length.saturating_add(2));
     for start in 0..nt {
         if visited[start] {
             continue;
@@ -57,56 +126,58 @@ pub fn to_triangle_strips_with_maximum_length(input: &PolyData, maximum_length: 
         visited[start] = true;
 
         let tri = tri_verts[start];
-        let mut strip = Vec::from(tri);
+        strip.clear();
+        prefix.clear();
+        strip.extend_from_slice(&tri);
 
         if let Some(([p0, p1, p2], next_ti)) =
-            find_start_edge(&tri_verts, &edge_tris, &visited, tri)
+            find_start_edge(&tri_verts, &neighbors, &visited, start, tri)
         {
             strip.clear();
             strip.extend_from_slice(&[p0, p1, p2]);
             visited[next_ti] = true;
             append_triangle(&mut strip, tri_verts[next_ti]);
 
-            loop {
-                let n = strip.len();
-                let Some(next) = find_unvisited_neighbor(
-                    &tri_verts,
-                    &edge_tris,
-                    &visited,
-                    strip[n - 2],
-                    strip[n - 1],
-                ) else {
-                    break;
-                };
-
-                visited[next.0] = true;
-                strip.push(next.1);
-                if strip.len() >= maximum_length + 2 {
-                    break;
-                }
-            }
+            extend_strip_forward(
+                &tri_verts,
+                &neighbors,
+                &mut visited,
+                &mut strip,
+                next_ti,
+                maximum_length,
+            );
+            extend_strip_backward(
+                &tri_verts,
+                &neighbors,
+                &mut visited,
+                &mut prefix,
+                start,
+                [p0, p1],
+                maximum_length.saturating_add(2).saturating_sub(strip.len()),
+            );
         }
 
-        output.strips.push_cell(&strip);
+        strip_connectivity.extend(prefix.iter().rev().copied());
+        strip_connectivity.extend(strip.iter().copied());
+        strip_offsets.push(strip_connectivity.len() as i64);
     }
 
+    output.strips = CellArray::from_raw(strip_offsets, strip_connectivity);
     output
 }
 
 fn find_start_edge(
     _tri_verts: &[[i64; 3]],
-    edge_tris: &HashMap<u64, [usize; 2]>,
+    neighbors: &[[(usize, i64); 3]],
     visited: &[bool],
+    tri_id: usize,
     tri: [i64; 3],
 ) -> Option<([i64; 3], usize)> {
     for i in 0..3 {
-        let edge = (tri[i], tri[(i + 1) % 3]);
-        if let Some(pair) = edge_tris.get(&edge_key(edge.0, edge.1)) {
-            for &ti in pair {
-                if ti != usize::MAX && !visited[ti] {
-                    return Some(([tri[(i + 2) % 3], edge.0, edge.1], ti));
-                }
-            }
+        let (ti, _) = neighbors[tri_id][i];
+        if ti != usize::MAX && !visited[ti] {
+            let edge = (tri[i], tri[(i + 1) % 3]);
+            return Some(([tri[(i + 2) % 3], edge.0, edge.1], ti));
         }
     }
     None
@@ -122,35 +193,61 @@ fn append_triangle(strip: &mut Vec<i64>, tri: [i64; 3]) {
     }
 }
 
-fn find_unvisited_neighbor(
+fn extend_strip_forward(
     tri_verts: &[[i64; 3]],
-    edge_tris: &HashMap<u64, [usize; 2]>,
-    visited: &[bool],
-    a: i64,
-    b: i64,
-) -> Option<(usize, i64)> {
-    let pair = edge_tris.get(&edge_key(a, b))?;
-    for &ti in pair {
-        if ti == usize::MAX || visited[ti] {
-            continue;
+    neighbors: &[[(usize, i64); 3]],
+    visited: &mut [bool],
+    strip: &mut Vec<i64>,
+    mut last_tri: usize,
+    maximum_length: usize,
+) {
+    while strip.len() < maximum_length + 2 {
+        let n = strip.len();
+        let Some(edge_id) = find_triangle_edge(tri_verts[last_tri], strip[n - 2], strip[n - 1])
+        else {
+            break;
+        };
+        let next = neighbors[last_tri][edge_id];
+        if next.0 == usize::MAX || visited[next.0] {
+            break;
         }
-        let tri = tri_verts[ti];
-        for v in tri {
-            if v != a && v != b {
-                return Some((ti, v));
-            }
-        }
+
+        visited[next.0] = true;
+        strip.push(next.1);
+        last_tri = next.0;
     }
-    None
 }
 
-fn edge_key(a: i64, b: i64) -> u64 {
-    let (lo, hi) = if a < b {
-        (a as u64, b as u64)
-    } else {
-        (b as u64, a as u64)
-    };
-    (lo << 32) | hi
+fn extend_strip_backward(
+    tri_verts: &[[i64; 3]],
+    neighbors: &[[(usize, i64); 3]],
+    visited: &mut [bool],
+    prefix: &mut Vec<i64>,
+    mut first_tri: usize,
+    edge: [i64; 2],
+    room: usize,
+) {
+    let mut edge = edge;
+    while prefix.len() < room {
+        let Some(edge_id) = find_triangle_edge(tri_verts[first_tri], edge[0], edge[1]) else {
+            break;
+        };
+        let next = neighbors[first_tri][edge_id];
+        if next.0 == usize::MAX || visited[next.0] {
+            break;
+        }
+
+        visited[next.0] = true;
+        prefix.push(next.1);
+        first_tri = next.0;
+        edge = [next.1, edge[0]];
+    }
+}
+
+fn find_triangle_edge(tri: [i64; 3], a: i64, b: i64) -> Option<usize> {
+    [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])]
+        .into_iter()
+        .position(|edge| (edge.0 == a && edge.1 == b) || (edge.0 == b && edge.1 == a))
 }
 
 fn strip_lines(lines: &CellArray, maximum_length: usize) -> CellArray {

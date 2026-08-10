@@ -1,13 +1,50 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
+use crate::filters::image::image_math_ops;
 
-/// Compute element-wise minimum of two ImageData scalar fields.
+/// Compute element-wise minimum of two ImageData scalar fields, storing it in `output`.
+///
+/// Thin wrapper over [`image_math_ops::image_min`] (VTK_MIN of `vtkImageMathematics`)
+/// that writes the result to a separate array instead of replacing `scalars`.
 pub fn image_min(a: &ImageData, b: &ImageData, scalars: &str, output: &str) -> ImageData {
-    image_binary(a, b, scalars, output, f64::min)
+    named_binary(a, b, scalars, output, image_math_ops::image_min)
 }
 
-/// Compute element-wise maximum of two ImageData scalar fields.
+/// Compute element-wise maximum of two ImageData scalar fields, storing it in `output`.
 pub fn image_max(a: &ImageData, b: &ImageData, scalars: &str, output: &str) -> ImageData {
-    image_binary(a, b, scalars, output, f64::max)
+    named_binary(a, b, scalars, output, image_math_ops::image_max)
+}
+
+/// Run a two-input `image_math_ops` operation and store its result under `output`
+/// instead of overwriting the `scalars` array.
+fn named_binary<F>(a: &ImageData, b: &ImageData, scalars: &str, output: &str, op: F) -> ImageData
+where
+    F: Fn(&ImageData, &ImageData, &str) -> ImageData,
+{
+    let nc = match (
+        a.point_data().get_array(scalars),
+        b.point_data().get_array(scalars),
+    ) {
+        (Some(x), Some(y)) if x.num_components() == y.num_components() => x.num_components(),
+        _ => return a.clone(),
+    };
+
+    let computed = op(a, b, scalars);
+    let arr = match computed.point_data().get_array(scalars) {
+        Some(x) => x,
+        None => return a.clone(),
+    };
+    let n = arr.num_tuples();
+    let mut values = Vec::with_capacity(n * nc);
+    let mut buf = vec![0.0f64; nc];
+    for i in 0..n {
+        arr.tuple_as_f64(i, &mut buf);
+        values.extend(buf.iter().copied());
+    }
+
+    let mut img = a.clone();
+    img.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(output, values, nc)));
+    img
 }
 
 /// Compute element-wise difference magnitude |a - b|.

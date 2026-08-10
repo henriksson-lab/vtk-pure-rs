@@ -1,5 +1,21 @@
 //! Lidar pulse width
 use crate::data::{AnyDataArray, DataArray, ImageData};
+
+/// Digitizer sampling rate (1 GHz), so one sample lasts 1 ns.
+///
+/// The width is divided by this rather than multiplied by `1e-9`: `1e-9` is not
+/// exactly representable, so `n * 1e-9 * n` rounds twice and drifts off the
+/// intended decimal value, while dividing by the exactly representable `1e9`
+/// rounds once.
+const SAMPLE_RATE_HZ: f64 = 1e9;
+
+/// Smallest sample count used for the width, so a near-zero return still
+/// reports a (tiny) non-zero pulse width rather than collapsing to nothing.
+const MIN_SAMPLES: f64 = 0.01;
+
+/// Pulse width in seconds for each sample count: `|n| * max(|n|, 0.01)` sampling
+/// intervals. The magnitude is taken first, so signed (bipolar) digitizer
+/// samples always yield a non-negative width.
 pub fn image_pulse_width(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
@@ -11,7 +27,7 @@ pub fn image_pulse_width(input: &ImageData, scalars: &str) -> ImageData {
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             let samples = buf[0].abs();
-            samples * 1e-9 * samples.max(0.01)
+            samples * samples.max(MIN_SAMPLES) / SAMPLE_RATE_HZ
         })
         .collect();
     let dims = input.dimensions();

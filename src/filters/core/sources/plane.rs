@@ -54,41 +54,54 @@ pub fn plane(params: &PlaneParams) -> PolyData {
         *value /= normal_length;
     }
 
-    let mut points = Points::new();
-    let mut normals = DataArray::<f64>::new("Normals", 3);
-    let mut tcoords = DataArray::<f64>::new("TextureCoordinates", 2);
-    let mut polys = CellArray::new();
+    let n_points = (x_resolution + 1) * (y_resolution + 1);
+    let n_quads = x_resolution * y_resolution;
+    let mut points = vec![0.0; n_points * 3];
+    let mut normals = vec![0.0; n_points * 3];
+    let mut tcoords = vec![0.0; n_points * 2];
 
     for i in 0..=y_resolution {
         let tc1 = i as f64 / y_resolution as f64;
         for j in 0..=x_resolution {
             let tc0 = j as f64 / x_resolution as f64;
-            points.push([
-                origin[0] + tc0 * v1[0] + tc1 * v2[0],
-                origin[1] + tc0 * v1[1] + tc1 * v2[1],
-                origin[2] + tc0 * v1[2] + tc1 * v2[2],
-            ]);
-            normals.push_tuple(&normal);
-            tcoords.push_tuple(&[tc0, tc1]);
+            let point_idx = i * (x_resolution + 1) + j;
+            let point_base = point_idx * 3;
+            points[point_base] = origin[0] + tc0 * v1[0] + tc1 * v2[0];
+            points[point_base + 1] = origin[1] + tc0 * v1[1] + tc1 * v2[1];
+            points[point_base + 2] = origin[2] + tc0 * v1[2] + tc1 * v2[2];
+            normals[point_base] = normal[0];
+            normals[point_base + 1] = normal[1];
+            normals[point_base + 2] = normal[2];
+            let tc_base = point_idx * 2;
+            tcoords[tc_base] = tc0;
+            tcoords[tc_base + 1] = tc1;
         }
     }
 
+    let mut connectivity = vec![0; n_quads * 4];
     for i in 0..y_resolution {
         for j in 0..x_resolution {
             let pt0 = (j + i * (x_resolution + 1)) as i64;
             let pt1 = pt0 + 1;
             let pt2 = pt0 + x_resolution as i64 + 2;
             let pt3 = pt0 + x_resolution as i64 + 1;
-            polys.push_cell(&[pt0, pt1, pt2, pt3]);
+            let base = (i * x_resolution + j) * 4;
+            connectivity[base] = pt0;
+            connectivity[base + 1] = pt1;
+            connectivity[base + 2] = pt2;
+            connectivity[base + 3] = pt3;
         }
     }
+    let offsets: Vec<i64> = (0..=n_quads).map(|i| (i * 4) as i64).collect();
 
     let mut pd = PolyData::new();
-    pd.points = points;
-    pd.polys = polys;
-    pd.point_data_mut().add_array(normals.into());
+    pd.points = Points::from_flat_vec(points);
+    pd.polys = CellArray::from_raw(offsets, connectivity);
+    pd.point_data_mut()
+        .add_array(DataArray::from_vec("Normals", normals, 3).into());
     pd.point_data_mut().set_active_normals("Normals");
-    pd.point_data_mut().add_array(tcoords.into());
+    pd.point_data_mut()
+        .add_array(DataArray::from_vec("TextureCoordinates", tcoords, 2).into());
     pd.point_data_mut().set_active_tcoords("TextureCoordinates");
     pd
 }

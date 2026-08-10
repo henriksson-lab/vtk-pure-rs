@@ -64,27 +64,18 @@ pub fn parametric_surface_closed(
 }
 
 /// Example: Klein bottle using VTK's `vtkParametricKlein` parametrization.
+///
+/// Thin wrapper around
+/// [`crate::filters::core::sources::parametric::klein_bottle`], the single
+/// implementation of `vtkParametricKlein` + `vtkParametricFunctionSource`; the
+/// result is uniformly scaled by `r`.
 pub fn klein_bottle(r: f64, res: usize) -> PolyData {
-    let pts_u = res.max(3);
-    let pts_v = res.max(3);
-    let mut points = Points::<f64>::new();
-    let mut polys = CellArray::new();
-
-    for i in 0..pts_u {
-        let u = PI * i as f64 / (pts_u - 1) as f64;
-        for j in 0..pts_v {
-            let v = 2.0 * PI * j as f64 / (pts_v - 1) as f64;
-            let (pt, _, _) = crate::filters::core::sources::klein_bottle::evaluate_klein(u, v);
-            points.push([r * pt[0], r * pt[1], r * pt[2]]);
-        }
+    let mut pd = crate::filters::core::sources::parametric::klein_bottle(res);
+    for i in 0..pd.points.len() {
+        let p = pd.points.get(i);
+        pd.points.set(i, [r * p[0], r * p[1], r * p[2]]);
     }
-
-    make_triangles(&mut polys, pts_u, pts_v, false, true, false, false, false);
-
-    let mut result = PolyData::new();
-    result.points = points;
-    result.polys = polys;
-    result
+    pd
 }
 
 fn add_tri_cells(

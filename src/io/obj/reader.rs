@@ -10,9 +10,11 @@ pub struct ObjReader;
 
 impl ObjReader {
     pub fn read(path: &Path) -> Result<PolyData, VtkError> {
-        let file = std::fs::File::open(path)?;
-        let reader = std::io::BufReader::new(file);
-        Self::read_from(reader)
+        let text = std::fs::read_to_string(path)?;
+        if let Some(pd) = try_read_simple_obj(&text)? {
+            return Ok(pd);
+        }
+        Self::read_from(std::io::Cursor::new(text.into_bytes()))
     }
 
     pub fn read_from<R: BufRead>(reader: R) -> Result<PolyData, VtkError> {
@@ -282,6 +284,64 @@ impl ObjReader {
 
         Ok(pd)
     }
+}
+
+fn try_read_simple_obj(text: &str) -> Result<Option<PolyData>, VtkError> {
+    let mut points = Vec::new();
+    let mut offsets = Vec::new();
+    let mut conn = Vec::new();
+    offsets.push(0);
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.ends_with('\\') {
+            return Ok(None);
+        }
+
+        let mut parts = trimmed.split_whitespace();
+        let Some(keyword) = parts.next() else {
+            continue;
+        };
+        match keyword {
+            "v" => {
+                for _ in 0..3 {
+                    let value = parts
+                        .next()
+                        .ok_or_else(|| VtkError::Parse("expected vertex coordinate".into()))?
+                        .parse::<f64>()
+                        .map_err(|_| VtkError::Parse("failed to parse vertex value".into()))?;
+                    points.push(value);
+                }
+            }
+            "f" => {
+                let start_len = conn.len();
+                for part in parts {
+                    if part.contains('/') {
+                        return Ok(None);
+                    }
+                    let index = part
+                        .parse::<i64>()
+                        .map_err(|_| VtkError::Parse("unexpected token in OBJ face".into()))?;
+                    conn.push(obj_index(index, points.len() / 3, "point")? as i64);
+                }
+                if conn.len() - start_len < 3 {
+                    return Err(VtkError::Parse(
+                        "definition of a face needs at least 3 vertices".into(),
+                    ));
+                }
+                offsets.push(conn.len() as i64);
+            }
+            _ => return Ok(None),
+        }
+    }
+
+    let mut pd = PolyData::new();
+    pd.points = Points::from_flat_vec(points);
+    pd.polys = CellArray::from_raw(offsets, conn);
+    Ok(Some(pd))
 }
 
 #[derive(Debug)]

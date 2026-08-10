@@ -14,6 +14,9 @@ pub fn flatten_z(input: &PolyData) -> PolyData {
 }
 
 /// Project mesh onto a plane defined by normal through centroid.
+///
+/// Thin wrapper over [`crate::filters::mesh::project_to_plane::project_to_plane`]
+/// that supplies the point centroid as the plane origin.
 pub fn project_to_plane(input: &PolyData, normal: [f64; 3]) -> PolyData {
     let n = input.points.len();
     if n == 0 {
@@ -24,7 +27,6 @@ pub fn project_to_plane(input: &PolyData, normal: [f64; 3]) -> PolyData {
     if nlen < 1e-15 {
         return input.clone();
     }
-    let nn = [normal[0] / nlen, normal[1] / nlen, normal[2] / nlen];
 
     let mut c = [0.0; 3];
     for i in 0..n {
@@ -38,21 +40,7 @@ pub fn project_to_plane(input: &PolyData, normal: [f64; 3]) -> PolyData {
     c[1] *= inv_n;
     c[2] *= inv_n;
 
-    let mut points = Points::<f64>::new();
-    for i in 0..n {
-        let p = input.points.get(i);
-        let d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
-        let dist = d[0] * nn[0] + d[1] * nn[1] + d[2] * nn[2];
-        points.push([
-            p[0] - dist * nn[0],
-            p[1] - dist * nn[1],
-            p[2] - dist * nn[2],
-        ]);
-    }
-
-    let mut pd = input.clone();
-    pd.points = points;
-    pd
+    crate::filters::mesh::project_to_plane::project_to_plane(input, c, normal)
 }
 
 /// Scale Z coordinates by a factor (useful for terrain exaggeration).

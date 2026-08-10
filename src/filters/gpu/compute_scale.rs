@@ -84,8 +84,8 @@ pub fn gpu_scale_offset_array(
         .device
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
         });
 
     let pipeline = ctx
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn scale_array() {
-        let ctx = match GpuContext::new() {
+        let ctx = match GpuContext::shared() {
             Ok(c) => c,
             Err(_) => return, // no GPU available
         };
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn scale_offset() {
-        let ctx = match GpuContext::new() {
+        let ctx = match GpuContext::shared() {
             Ok(c) => c,
             Err(_) => return,
         };

@@ -42,7 +42,7 @@ pub use explicit_structured_grid::ExplicitStructuredGrid;
 pub use field_data::{FieldData, StringArray};
 pub use generic_dataset::AnyDataSet;
 pub use graph::{Graph, Tree};
-pub use hyper_tree_grid::HyperTreeGrid;
+pub use hyper_tree_grid::{HyperTreeGrid, HyperTreeLeaf};
 pub use image_data::ImageData;
 pub use kd_tree::KdTree;
 pub use molecule::Molecule;

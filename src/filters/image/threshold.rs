@@ -51,32 +51,37 @@ pub fn image_threshold(
 /// Create a binary mask from an ImageData scalar field.
 ///
 /// Adds a "Mask" array where values in [lower, upper] are 1.0 and others 0.0.
+///
+/// Thin wrapper around
+/// [`crate::filters::image::binarize::image_binary_threshold`], which holds the
+/// single implementation of `vtkImageThreshold`'s binary mode; this entry point
+/// fixes `ThresholdBetween` with `InValue = 1.0` / `OutValue = 0.0` and renames
+/// the result to "Mask".
 pub fn image_binary_threshold(
     input: &ImageData,
     scalars: &str,
     lower: f64,
     upper: f64,
 ) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        None => return input.clone(),
-    };
+    use crate::filters::image::binarize::{image_binary_threshold as binarize, ThresholdFunction};
 
-    let n = arr.num_tuples();
-    let mut mask = vec![0.0f64; n];
-    let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        mask[i] = if buf[0] >= lower && buf[0] <= upper {
-            1.0
-        } else {
-            0.0
-        };
-    }
+    let thresholded = binarize(
+        input,
+        scalars,
+        lower,
+        upper,
+        ThresholdFunction::Between,
+        1.0,
+        0.0,
+    );
+    let Some(binary) = thresholded.point_data().get_array("Binary") else {
+        return input.clone();
+    };
+    let mut mask = binary.clone();
+    mask.set_name("Mask");
 
     let mut img = input.clone();
-    img.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Mask", mask, 1)));
+    img.point_data_mut().add_array(mask);
     img
 }
 

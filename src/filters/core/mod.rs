@@ -13,6 +13,7 @@ pub mod marching_cubes;
 pub mod mass_properties;
 pub mod merge;
 pub mod mesh {
+    pub mod coplanar_merge;
     pub mod depth_sort;
 }
 pub mod mmap_data;

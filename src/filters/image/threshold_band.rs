@@ -44,10 +44,12 @@ pub fn quantize(input: &ImageData, scalars: &str, levels: usize) -> ImageData {
 }
 
 /// Apply sigmoid contrast curve: output = 1 / (1 + exp(-gain * (value - midpoint))).
+///
+/// Thin wrapper over [`crate::filters::image::window_level::sigmoid_contrast`],
+/// which takes the same two parameters in the opposite order (`alpha` = gain,
+/// `beta` = midpoint).
 pub fn sigmoid_contrast(input: &ImageData, scalars: &str, midpoint: f64, gain: f64) -> ImageData {
-    apply_map(input, scalars, |v| {
-        1.0 / (1.0 + (-gain * (v - midpoint)).exp())
-    })
+    crate::filters::image::window_level::sigmoid_contrast(input, scalars, gain, midpoint)
 }
 
 fn apply_map(input: &ImageData, scalars: &str, f: impl Fn(f64) -> f64) -> ImageData {

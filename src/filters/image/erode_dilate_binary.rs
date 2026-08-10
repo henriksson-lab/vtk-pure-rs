@@ -4,16 +4,22 @@ use crate::data::{AnyDataArray, DataArray, DataSetAttributes, ImageData};
 ///
 /// This is the binary specialization of VTK's `vtkImageDilateErode3D`:
 /// 1-valued pixels dilate into neighboring 0-valued pixels.
+///
+/// Fixed-radius convenience form of
+/// [`crate::filters::image::morphology_binary::binary_dilate`].
 pub fn binary_dilate(input: &ImageData, scalars: &str) -> ImageData {
-    image_dilate_erode_3d(input, scalars, 1.0, 0.0, [3, 3, 3])
+    crate::filters::image::morphology_binary::binary_dilate(input, scalars, 1)
 }
 
 /// Binary erosion on ImageData using a 3x3x3 ellipsoidal structuring element.
 ///
 /// This is the binary specialization of VTK's `vtkImageDilateErode3D`:
 /// 0-valued pixels dilate into neighboring 1-valued pixels.
+///
+/// Fixed-radius convenience form of
+/// [`crate::filters::image::morphology_binary::binary_erode`].
 pub fn binary_erode(input: &ImageData, scalars: &str) -> ImageData {
-    image_dilate_erode_3d(input, scalars, 0.0, 1.0, [3, 3, 3])
+    crate::filters::image::morphology_binary::binary_erode(input, scalars, 1)
 }
 
 /// Dilate one value and erode another, following `vtkImageDilateErode3D`.

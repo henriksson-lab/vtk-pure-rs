@@ -24,27 +24,11 @@ pub fn hedgehog(input: &PolyData, vector_name: &str, scale_factor: f64) -> PolyD
     // VTK orders all original points first, then all displaced endpoints.
     let pts_in = input.points.as_flat_slice();
     let mut pts_flat = vec![0.0f64; n * 6];
+    write_hedgehog_points(pts_in, vectors, scale_factor, n, &mut pts_flat);
     let mut offsets = Vec::with_capacity(n + 1);
     let mut conn = Vec::with_capacity(n * 2);
     offsets.push(0i64);
-
-    let mut vbuf = [0.0f64; 3];
     for i in 0..n {
-        let b = i * 3;
-        let px = pts_in[b];
-        let py = pts_in[b + 1];
-        let pz = pts_in[b + 2];
-        vectors.tuple_as_f64(i, &mut vbuf);
-
-        let base_out = i * 3;
-        let tip_out = (i + n) * 3;
-        pts_flat[base_out] = px;
-        pts_flat[base_out + 1] = py;
-        pts_flat[base_out + 2] = pz;
-        pts_flat[tip_out] = px + vbuf[0] * scale_factor;
-        pts_flat[tip_out + 1] = py + vbuf[1] * scale_factor;
-        pts_flat[tip_out + 2] = pz + vbuf[2] * scale_factor;
-
         let base_idx = i as i64;
         conn.push(base_idx);
         conn.push(base_idx + n as i64);
@@ -56,6 +40,52 @@ pub fn hedgehog(input: &PolyData, vector_name: &str, scale_factor: f64) -> PolyD
     result.lines = CellArray::from_raw(offsets, conn);
     copy_duplicated_point_data(input, &mut result, n);
     result
+}
+
+fn write_hedgehog_points(
+    pts_in: &[f64],
+    vectors: &AnyDataArray,
+    scale_factor: f64,
+    n: usize,
+    pts_flat: &mut [f64],
+) {
+    if let AnyDataArray::F64(array) = vectors {
+        if array.num_components() >= 3 {
+            let vecs = array.as_slice();
+            for i in 0..n {
+                let b = i * 3;
+                let vb = i * array.num_components();
+                let px = pts_in[b];
+                let py = pts_in[b + 1];
+                let pz = pts_in[b + 2];
+                let tip_out = (i + n) * 3;
+                pts_flat[b] = px;
+                pts_flat[b + 1] = py;
+                pts_flat[b + 2] = pz;
+                pts_flat[tip_out] = px + vecs[vb] * scale_factor;
+                pts_flat[tip_out + 1] = py + vecs[vb + 1] * scale_factor;
+                pts_flat[tip_out + 2] = pz + vecs[vb + 2] * scale_factor;
+            }
+            return;
+        }
+    }
+
+    let mut vbuf = [0.0f64; 3];
+    for i in 0..n {
+        let b = i * 3;
+        let px = pts_in[b];
+        let py = pts_in[b + 1];
+        let pz = pts_in[b + 2];
+        vectors.tuple_as_f64(i, &mut vbuf);
+
+        let tip_out = (i + n) * 3;
+        pts_flat[b] = px;
+        pts_flat[b + 1] = py;
+        pts_flat[b + 2] = pz;
+        pts_flat[tip_out] = px + vbuf[0] * scale_factor;
+        pts_flat[tip_out + 1] = py + vbuf[1] * scale_factor;
+        pts_flat[tip_out + 2] = pz + vbuf[2] * scale_factor;
+    }
 }
 
 fn copy_duplicated_point_data(input: &PolyData, output: &mut PolyData, n: usize) {

@@ -12,59 +12,20 @@ pub struct RayHit {
 }
 
 /// Cast a ray and find all intersections with a triangle mesh.
+///
+/// Delegates to [`crate::filters::mesh::ray_cast_mesh::ray_cast_all`], which
+/// holds the single ray/triangle implementation; only the hit record differs
+/// (this one reports full barycentric coordinates).
 pub fn ray_cast_all(mesh: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> Vec<RayHit> {
-    let dir_len = (direction[0].powi(2) + direction[1].powi(2) + direction[2].powi(2)).sqrt();
-    if dir_len < 1e-15 {
-        return Vec::new();
-    }
-    let dir = [
-        direction[0] / dir_len,
-        direction[1] / dir_len,
-        direction[2] / dir_len,
-    ];
-
-    let mut hits = Vec::new();
-    for (ci, cell) in mesh.polys.iter().enumerate() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if !cell_ids_are_valid(cell, mesh.points.len()) {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        let mut cell_hit: Option<RayHit> = None;
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            if let Some((t, u, v)) = ray_triangle(origin, dir, a, b, c) {
-                let hit = match &cell_hit {
-                    Some(existing) => t < existing.distance,
-                    None => true,
-                };
-                if hit {
-                    cell_hit = Some(RayHit {
-                        point: [
-                            origin[0] + t * dir[0],
-                            origin[1] + t * dir[1],
-                            origin[2] + t * dir[2],
-                        ],
-                        distance: t,
-                        cell_index: ci,
-                        barycentric: [1.0 - u - v, u, v],
-                    });
-                }
-            }
-        }
-        if let Some(hit) = cell_hit {
-            hits.push(hit);
-        }
-    }
-    hits.sort_by(|a, b| {
-        a.distance
-            .partial_cmp(&b.distance)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    hits
+    crate::filters::mesh::ray_cast_mesh::ray_cast_all(mesh, origin, direction)
+        .into_iter()
+        .map(|hit| RayHit {
+            point: hit.point,
+            distance: hit.t,
+            cell_index: hit.cell_index,
+            barycentric: [1.0 - hit.u - hit.v, hit.u, hit.v],
+        })
+        .collect()
 }
 
 /// Cast a ray and find the closest intersection.
@@ -156,51 +117,6 @@ pub fn depth_map(
         }
     }
     depths
-}
-
-fn ray_triangle(
-    o: [f64; 3],
-    d: [f64; 3],
-    v0: [f64; 3],
-    v1: [f64; 3],
-    v2: [f64; 3],
-) -> Option<(f64, f64, f64)> {
-    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-    let h = [
-        d[1] * e2[2] - d[2] * e2[1],
-        d[2] * e2[0] - d[0] * e2[2],
-        d[0] * e2[1] - d[1] * e2[0],
-    ];
-    let a = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
-    if a.abs() < 1e-12 {
-        return None;
-    }
-    let f = 1.0 / a;
-    let s = [o[0] - v0[0], o[1] - v0[1], o[2] - v0[2]];
-    let u = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
-    if u < 0.0 || u > 1.0 {
-        return None;
-    }
-    let q = [
-        s[1] * e1[2] - s[2] * e1[1],
-        s[2] * e1[0] - s[0] * e1[2],
-        s[0] * e1[1] - s[1] * e1[0],
-    ];
-    let v = f * (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]);
-    if v < 0.0 || u + v > 1.0 {
-        return None;
-    }
-    let t = f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
-    if t > 1e-12 {
-        Some((t, u, v))
-    } else {
-        None
-    }
-}
-
-fn cell_ids_are_valid(cell: &[i64], num_points: usize) -> bool {
-    cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
 }
 
 #[cfg(test)]

@@ -71,61 +71,11 @@ pub fn radial_force_deform(
     result
 }
 
-/// Inflate a mesh by pushing vertices outward along normals.
-pub fn inflate(mesh: &PolyData, amount: f64) -> PolyData {
-    let n = mesh.points.len();
-    let nm = normals(mesh);
-    let mut pts = Points::<f64>::new();
-    for i in 0..n {
-        let p = mesh.points.get(i);
-        pts.push([
-            p[0] + nm[i][0] * amount,
-            p[1] + nm[i][1] * amount,
-            p[2] + nm[i][2] * amount,
-        ]);
-    }
-    let mut result = mesh.clone();
-    result.points = pts;
-    result
-}
-
-/// Deflate (shrink) a mesh inward along normals.
-pub fn deflate(mesh: &PolyData, amount: f64) -> PolyData {
-    inflate(mesh, -amount)
-}
-
-fn normals(m: &PolyData) -> Vec<[f64; 3]> {
-    let n = m.points.len();
-    let mut nm = vec![[0.0; 3]; n];
-    for c in m.polys.iter() {
-        if c.len() < 3 {
-            continue;
-        }
-        let a = m.points.get(c[0] as usize);
-        let b = m.points.get(c[1] as usize);
-        let cc = m.points.get(c[2] as usize);
-        let f = [
-            (b[1] - a[1]) * (cc[2] - a[2]) - (b[2] - a[2]) * (cc[1] - a[1]),
-            (b[2] - a[2]) * (cc[0] - a[0]) - (b[0] - a[0]) * (cc[2] - a[2]),
-            (b[0] - a[0]) * (cc[1] - a[1]) - (b[1] - a[1]) * (cc[0] - a[0]),
-        ];
-        for &p in c {
-            let i = p as usize;
-            for j in 0..3 {
-                nm[i][j] += f[j];
-            }
-        }
-    }
-    for n in &mut nm {
-        let l = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-        if l > 1e-15 {
-            for j in 0..3 {
-                n[j] /= l;
-            }
-        }
-    }
-    nm
-}
+/// Inflate/deflate a mesh along its vertex normals.
+///
+/// The single implementation lives in
+/// [`crate::filters::mesh::mesh_scale_per_vertex`].
+pub use crate::filters::mesh::mesh_scale_per_vertex::{deflate, inflate};
 
 fn build_adj(m: &PolyData, n: usize) -> Vec<Vec<usize>> {
     let mut a: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
@@ -170,15 +120,5 @@ mod tests {
         );
         let result = radial_force_deform(&mesh, [0.5, 0.0, 0.0], 1.0, 2.0, 10);
         assert!(result.point_data().get_array("Displacement").is_some());
-    }
-    #[test]
-    fn inflate_test() {
-        let mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        let result = inflate(&mesh, 0.1);
-        // Points should have moved along normal (z direction for XY plane)
-        assert!((result.points.get(0)[2]).abs() > 0.05);
     }
 }

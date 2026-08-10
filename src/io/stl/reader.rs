@@ -164,8 +164,11 @@ impl StlReader {
             ));
         }
         let num_triangles_file = remaining / 50;
-        let mut points = Points::<f64>::new();
-        let mut polys = CellArray::new();
+        let mut points_flat = Vec::with_capacity(num_triangles_file * 9);
+        let mut offsets = Vec::with_capacity(num_triangles_file + 1);
+        let mut conn = Vec::with_capacity(num_triangles_file * 3);
+        let mut locator = HashMap::<[u64; 3], i64>::with_capacity(num_triangles_file * 3 / 2);
+        offsets.push(0);
 
         let mut offset = 84;
         for _ in 0..num_triangles_file {
@@ -178,7 +181,7 @@ impl StlReader {
                 return Err(VtkError::Parse("Normal vector non-finite".into()));
             }
 
-            let base = points.len() as i64;
+            let tri_start = conn.len();
             // 3 vertices: each 3 x f32 LE
             for _ in 0..3 {
                 let x = f32::from_le_bytes(data[offset..offset + 4].try_into().unwrap()) as f64;
@@ -189,15 +192,36 @@ impl StlReader {
                 if !x.is_finite() || !y.is_finite() || !z.is_finite() {
                     return Err(VtkError::Parse("vertex non-finite".into()));
                 }
-                points.push([x, y, z]);
+                let point = [x, y, z];
+                let key = point_key(point);
+                let next_id = (points_flat.len() / 3) as i64;
+                let id = *locator.entry(key).or_insert_with(|| {
+                    points_flat.extend_from_slice(&point);
+                    next_id
+                });
+                conn.push(id);
             }
             // Attribute byte count (skip)
             offset += 2;
 
-            polys.push_cell(&[base, base + 1, base + 2]);
+            if conn[tri_start] != conn[tri_start + 1]
+                && conn[tri_start] != conn[tri_start + 2]
+                && conn[tri_start + 1] != conn[tri_start + 2]
+            {
+                offsets.push(conn.len() as i64);
+            } else {
+                conn.truncate(tri_start);
+            }
         }
 
-        Ok(merge_points(points, polys))
+        let mut pd = PolyData::new();
+        pd.points = Points::from_flat_vec(points_flat);
+        pd.polys = if offsets.len() == 1 {
+            CellArray::new()
+        } else {
+            CellArray::from_raw(offsets, conn)
+        };
+        Ok(pd)
     }
 }
 

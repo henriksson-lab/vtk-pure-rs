@@ -1,5 +1,4 @@
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
-use std::collections::HashMap;
 
 /// Extract the largest connected component from a PolyData.
 ///
@@ -36,7 +35,7 @@ fn extract_regions_by_size(input: &PolyData, n: usize) -> Vec<PolyData> {
     }
 
     let mut regions: Vec<RegionCells> = Vec::new();
-    let mut root_to_region: HashMap<usize, usize> = HashMap::new();
+    let mut root_to_region = vec![usize::MAX; input.points.len()];
     collect_cells(
         &input.verts,
         CellKind::Verts,
@@ -109,7 +108,7 @@ fn collect_cells(
     cells: &CellArray,
     kind: CellKind,
     parent: &mut [usize],
-    root_to_region: &mut HashMap<usize, usize>,
+    root_to_region: &mut [usize],
     regions: &mut Vec<RegionCells>,
 ) {
     for (cell_id, cell) in cells.iter().enumerate() {
@@ -117,18 +116,22 @@ fn collect_cells(
             continue;
         };
         let root = find(parent, first as usize);
-        let region_id = *root_to_region.entry(root).or_insert_with(|| {
+        let region_id = if root_to_region[root] == usize::MAX {
             regions.push(RegionCells::default());
-            regions.len() - 1
-        });
+            let region_id = regions.len() - 1;
+            root_to_region[root] = region_id;
+            region_id
+        } else {
+            root_to_region[root]
+        };
         regions[region_id].push(kind, cell_id);
     }
 }
 
 fn build_region(input: &PolyData, region: &RegionCells) -> PolyData {
-    let mut point_map: HashMap<usize, i64> = HashMap::new();
+    let mut point_map = vec![-1i64; input.points.len()];
     let mut point_ids = Vec::new();
-    let mut points = Points::<f64>::new();
+    let mut points = Vec::new();
     let verts = remap_cells(
         &input.verts,
         &region.verts,
@@ -163,7 +166,7 @@ fn build_region(input: &PolyData, region: &RegionCells) -> PolyData {
     );
 
     let mut output = PolyData::new();
-    output.points = points;
+    output.points = Points::from_flat_vec(points);
     output.verts = verts;
     output.lines = lines;
     output.polys = polys;
@@ -181,28 +184,42 @@ fn remap_cells(
     cells: &CellArray,
     cell_ids: &[usize],
     input: &PolyData,
-    point_map: &mut HashMap<usize, i64>,
+    point_map: &mut [i64],
     point_ids: &mut Vec<usize>,
-    points: &mut Points<f64>,
+    points: &mut Vec<f64>,
 ) -> CellArray {
-    let mut output = CellArray::new();
-    for &cell_id in cell_ids {
-        let mapped: Vec<i64> = cells
-            .cell(cell_id)
-            .iter()
-            .map(|&id| {
-                let old_id = id as usize;
-                *point_map.entry(old_id).or_insert_with(|| {
-                    let new_id = points.len() as i64;
-                    points.push(input.points.get(old_id));
-                    point_ids.push(old_id);
-                    new_id
-                })
-            })
-            .collect();
-        output.push_cell(&mapped);
+    if cell_ids.is_empty() {
+        return CellArray::new();
     }
-    output
+
+    let src_offsets = cells.offsets();
+    let src_conn = cells.connectivity();
+    let mut total_conn = 0usize;
+    for &cell_id in cell_ids {
+        total_conn += (src_offsets[cell_id + 1] - src_offsets[cell_id]) as usize;
+    }
+
+    let mut offsets = Vec::with_capacity(cell_ids.len() + 1);
+    let mut conn = Vec::with_capacity(total_conn);
+    offsets.push(0);
+    for &cell_id in cell_ids {
+        let start = src_offsets[cell_id] as usize;
+        let end = src_offsets[cell_id + 1] as usize;
+        for &id in &src_conn[start..end] {
+            let old_id = id as usize;
+            let mut new_id = point_map[old_id];
+            if new_id < 0 {
+                new_id = point_ids.len() as i64;
+                point_map[old_id] = new_id;
+                let p = input.points.get(old_id);
+                points.extend_from_slice(&p);
+                point_ids.push(old_id);
+            }
+            conn.push(new_id);
+        }
+        offsets.push(conn.len() as i64);
+    }
+    CellArray::from_raw(offsets, conn)
 }
 
 fn copy_point_data(input: &PolyData, output: &mut PolyData, point_ids: &[usize]) {

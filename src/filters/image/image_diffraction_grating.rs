@@ -1,5 +1,23 @@
 //! Diffraction grating order
 use crate::data::{AnyDataArray, DataArray, ImageData};
+
+/// Number of illuminated slits in the modelled grating.
+const SLITS: f64 = 3.0;
+
+/// Relative intensity of a `SLITS`-slit grating.
+///
+/// The scalar is the normalized diffraction variable `u`; the grating phase is
+/// `x = 2*pi*u` and the response is the single-slit envelope times the `N`-slit
+/// interference factor:
+///
+/// ```text
+/// I(u) = sinc(x)^2 * [sin(N*x) / (N*sin(x))]^2,   x = 2*pi*u
+/// ```
+///
+/// The slit count enters the interference factor only, never the phase, which
+/// puts the `N - 1` interference minima evenly between successive principal
+/// maxima -- for three slits, `u = 1/6` and `u = 1/3` between the orders at
+/// `u = 0` and `u = 1/2`.
 pub fn image_diffraction_grating(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
@@ -11,16 +29,16 @@ pub fn image_diffraction_grating(input: &ImageData, scalars: &str) -> ImageData 
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             {
-                let x = buf[0] * std::f64::consts::PI * 3.0;
+                let x = buf[0] * std::f64::consts::TAU;
                 if x.abs() < 1e-15 {
                     1.0
                 } else {
                     let sinc = x.sin() / x;
-                    let denominator = 3.0 * x.sin();
+                    let denominator = SLITS * x.sin();
                     let grating = if denominator.abs() < 1e-15 {
                         1.0
                     } else {
-                        (3.0 * x).sin() / denominator
+                        (SLITS * x).sin() / denominator
                     };
                     sinc.powi(2) * grating.powi(2)
                 }

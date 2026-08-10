@@ -33,166 +33,171 @@ But:
 
 ## Performance vs VTK C++ 9.6
 
-Tracked 141 benchmark operations against VTK C++ 9.6; 141 completed in the latest captured run. Average speed ratio: **10.82x** (Rust time / VTK time; lower is better).
+Original benchmark baseline: VTK C++ comparisons use the vendored Kitware/VTK
+source at commit `00f9418ca61f`.
 
-RSS is recorded from `/proc/self/status` where available. Average RSS ratio over 141 comparable operations: **0.94x** (Rust RSS / VTK RSS; lower is better).
+Tracked 141 benchmark operations against VTK C++ 9.6; 141 completed in the latest captured run on 2026-07-14. Average speed ratio: **3.50x** (Rust time / VTK time; lower is better).
+
+The serial rerun used `--test-threads=1`; the Rust test process exited with status 101 because 32 performance-threshold assertions failed after their benchmark rows had been emitted. The per-operation source rows are tracked in `benchmarks/vtk-rs.tsv` in the presentation repository.
+
+RSS is recorded from `/proc/self/status` where available. Average RSS ratio over 141 comparable operations: **0.13x** (Rust RSS / VTK RSS; lower is better).
 
 | Category | Count | % |
 |---|---:|---:|
-| Faster than C++ | 9 | 6% |
-| Within 2x | 7 | 5% |
-| 2-3x slower | 10 | 7% |
-| >3x slower | 115 | 82% |
+| Faster than C++ | 22 | 16% |
+| Within 2x | 21 | 15% |
+| 2-3x slower | 40 | 28% |
+| >3x slower | 58 | 41% |
 | Not captured in latest run | 0 | n/a |
 
 | Algorithm | Parity | Rust ms | VTK ms | Speed ratio | Rust RSS | VTK RSS | RSS ratio | Rust peak delta |
 |---|---|---:|---:|---:|---:|---:|---:|---:|
-| append_10_small | reference fixture: filter_append | 0.690 | 0.259 | 2.66x | 53.8 MiB | 178.3 MiB | 0.30x | 46.6 MiB |
-| append_3 | reference fixture: filter_append | 3.07 | 0.058 | 53.18x | 98.2 MiB | 178.5 MiB | 0.55x | 91.4 MiB |
-| append_5_large | reference fixture: filter_append | 22.55 | 0.600 | 37.59x | 8.1 MiB | 184.9 MiB | 0.04x | 12.8 MiB |
-| arrow | reference fixture: source_arrow | 0.168 | 0.348 | 0.48x | 13.8 MiB | 177.5 MiB | 0.08x | 6.9 MiB |
-| boolean_union | reference fixture: filter_boolean_union | 173.8 | 276.5 | 0.63x | 274.1 MiB | 188.3 MiB | 1.46x | 271.6 MiB |
-| butterfly_1 | reference fixture: filter_butterfly_1 | 58.47 | 4.14 | 14.13x | 250.3 MiB | 180.3 MiB | 1.39x | 242.2 MiB |
-| byu_roundtrip | reference fixture: io_byu | 19.04 | 3.16 | 6.02x | 170.3 MiB | 179.2 MiB | 0.95x | 163.9 MiB |
-| calculator | reference fixture: filter_calculator | 0.180 | 0.734 | 0.24x | 20.9 MiB | 181.1 MiB | 0.12x | 14.4 MiB |
-| catmull_clark_1 | reference fixture: filter_catmull_clark_1 | 33.57 | 5.42 | 6.20x | 218.1 MiB | 180.3 MiB | 1.21x | 210.9 MiB |
-| cell_centers | reference fixture: filter_cell_centers | 1.07 | 0.224 | 4.76x | 56.6 MiB | 178.6 MiB | 0.32x | 53.9 MiB |
-| cell_centers_large | reference fixture: filter_cell_centers | 15.23 | 2.87 | 5.31x | 168.5 MiB | 181.7 MiB | 0.93x | 135.3 MiB |
-| cell_quality | reference fixture: filter_cell_quality | 2.10 | 0.442 | 4.74x | 78.0 MiB | 179.1 MiB | 0.44x | 72.9 MiB |
-| cell_quality_large | reference fixture: filter_cell_quality | 33.10 | 4.27 | 7.75x | 215.6 MiB | 180.8 MiB | 1.19x | 181.1 MiB |
-| cell_size | reference fixture: filter_cell_size | 1.12 | 0.226 | 4.98x | 54.7 MiB | 179.4 MiB | 0.31x | 54.2 MiB |
-| cell_size_large | reference fixture: filter_cell_size | 17.76 | 2.50 | 7.11x | 171.1 MiB | 181.6 MiB | 0.94x | 127.9 MiB |
-| cell_to_point_data | reference fixture: filter_cell_to_point_data | 1.97 | 0.225 | 8.75x | 7.5 MiB | 182.2 MiB | 0.04x | 320 KiB |
-| center_of_mass | reference fixture: filter_center_of_mass | 0.923 | 0.052 | 17.89x | 53.8 MiB | 183.7 MiB | 0.29x | 53.9 MiB |
-| clean | reference fixture: filter_clean | 6.66 | 0.738 | 9.03x | 22.5 MiB | 180.9 MiB | 0.12x | 15.6 MiB |
-| clean_3x_large | reference fixture: filter_clean | 190.0 | 16.37 | 11.61x | 8.5 MiB | 186.6 MiB | 0.05x | 26.6 MiB |
-| clean_large | reference fixture: filter_clean | 125.7 | 11.84 | 10.62x | 21.3 MiB | 185.0 MiB | 0.12x | 25.7 MiB |
-| clip | reference fixture: filter_clip_plane | 9.19 | 0.654 | 14.05x | 134.4 MiB | 179.6 MiB | 0.75x | 123.4 MiB |
-| clip_closed | reference fixture: filter_clip_closed | 7.12 | 0.477 | 14.94x | 116.5 MiB | 181.8 MiB | 0.64x | 119.2 MiB |
-| clip_large | reference fixture: filter_clip_plane | 32.24 | 7.31 | 4.41x | 9.7 MiB | 182.3 MiB | 0.05x | 2.6 MiB |
-| collision | reference fixture: filter_collision | 13.32 | 3.98 | 3.34x | 144.0 MiB | 180.6 MiB | 0.80x | 134.7 MiB |
-| cone_32 | reference fixture: source_cone_32 | 0.074 | 0.049 | 1.53x | 18.1 MiB | 175.9 MiB | 0.10x | 6.9 MiB |
-| connectivity | reference fixture: filter_connectivity | 0.719 | 0.142 | 5.07x | 58.6 MiB | 179.7 MiB | 0.33x | 48.9 MiB |
-| connectivity_large | reference fixture: filter_connectivity_large | 86.30 | 17.70 | 4.87x | 272.5 MiB | 192.0 MiB | 1.42x | 262.8 MiB |
-| contour_32 | reference fixture: filter_contour | 10.77 | 0.712 | 15.13x | 7.6 MiB | 179.0 MiB | 0.04x | 1.6 MiB |
-| cube | reference fixture: source_cube | 0.064 | 0.051 | 1.25x | 14.0 MiB | 176.2 MiB | 0.08x | 3.8 MiB |
-| curvatures_gaussian | reference fixture: filter_curvatures_gaussian | 14.43 | 0.315 | 45.82x | 156.5 MiB | 179.1 MiB | 0.87x | 142.5 MiB |
-| curvatures_large | reference fixture: filter_curvatures_large | 258.2 | 12.45 | 20.73x | 263.0 MiB | 181.1 MiB | 1.45x | 239.4 MiB |
-| curvatures_mean | reference fixture: filter_curvatures_mean | 14.70 | 0.811 | 18.12x | 152.2 MiB | 179.1 MiB | 0.85x | 137.8 MiB |
-| cylinder_32 | reference fixture: source_cylinder_32 | 0.097 | 0.058 | 1.67x | 13.8 MiB | 176.5 MiB | 0.08x | 6.6 MiB |
-| decimate_50 | reference fixture: filter_decimate_50 | 37.54 | 3.56 | 10.56x | 217.8 MiB | 180.0 MiB | 1.21x | 212.5 MiB |
-| decimate_50_large | reference fixture: filter_decimate_50 | 465.5 | 62.84 | 7.41x | 291.0 MiB | 184.7 MiB | 1.58x | 258.7 MiB |
-| decimate_75 | reference fixture: filter_decimate_75 | 55.20 | 5.07 | 10.88x | 249.1 MiB | 180.0 MiB | 1.38x | 232.5 MiB |
-| decimate_90 | reference fixture: filter_decimate_90 | 65.11 | 6.48 | 10.05x | 237.2 MiB | 180.0 MiB | 1.32x | 245.7 MiB |
-| delaunay_1000 | reference fixture: filter_delaunay_2d | 639.8 | 40.41 | 15.83x | 288.1 MiB | 179.4 MiB | 1.61x | 278.9 MiB |
-| delaunay_500 | reference fixture: filter_delaunay_500 | 256.9 | 15.78 | 16.28x | 280.2 MiB | 179.4 MiB | 1.56x | 265.4 MiB |
-| densify | reference fixture: filter_densify | 8.40 | 0.582 | 14.43x | 121.2 MiB | 179.2 MiB | 0.68x | 116.3 MiB |
-| depth_sort | reference fixture: filter_depth_sort | 2.39 | 0.251 | 9.53x | 98.5 MiB | 178.5 MiB | 0.55x | 70.1 MiB |
-| depth_sort_large | reference fixture: filter_depth_sort | 42.73 | 2.86 | 14.96x | 223.4 MiB | 181.0 MiB | 1.23x | 171.1 MiB |
-| dihedral_angles | reference fixture: filter_dihedral_angles | 7.94 | 0.465 | 17.09x | 121.5 MiB | 178.0 MiB | 0.68x | 95.1 MiB |
-| disk_32 | reference fixture: source_disk | 0.179 | 0.079 | 2.26x | 51.3 MiB | 177.8 MiB | 0.29x | 26.0 MiB |
-| distance_to_origin | reference fixture: filter_distance_to_origin | 0.124 | 0.792 | 0.16x | 34.8 MiB | 177.9 MiB | 0.20x | 9.2 MiB |
-| elevation | reference fixture: filter_elevation | 0.196 | 0.036 | 5.52x | 52.2 MiB | 178.1 MiB | 0.29x | 11.5 MiB |
-| elevation_large | reference fixture: filter_elevation | 2.99 | 0.234 | 12.79x | 116.1 MiB | 178.6 MiB | 0.65x | 55.0 MiB |
-| extract_cells_half | reference fixture: filter_extract_cells_half | 4.99 | 0.338 | 14.75x | 112.8 MiB | 185.9 MiB | 0.61x | 73.2 MiB |
-| extract_edges | reference fixture: filter_extract_edges | 13.75 | 1.15 | 11.91x | 149.4 MiB | 180.2 MiB | 0.83x | 93.6 MiB |
-| extract_edges_large | reference fixture: filter_extract_edges | 230.6 | 20.57 | 11.21x | 280.5 MiB | 185.5 MiB | 1.51x | 215.6 MiB |
-| extract_largest | reference fixture: filter_extract_largest | 11.96 | 1.11 | 10.73x | 151.2 MiB | 179.6 MiB | 0.84x | 90.1 MiB |
-| extrude | reference fixture: filter_extrude | 1.17 | 0.147 | 7.95x | 92.0 MiB | 178.1 MiB | 0.52x | 31.6 MiB |
-| fe_128 | reference fixture: filter_fe_128 | 239.7 | 5.73 | 41.86x | 255.2 MiB | 181.3 MiB | 1.41x | 223.3 MiB |
-| fe_64 | reference fixture: filter_fe_64 | 35.00 | 1.09 | 32.12x | 9.6 MiB | 180.2 MiB | 0.05x | 4.1 MiB |
-| feature_edges_boundary | reference fixture: filter_feature_edges | 9.19 | 0.652 | 14.11x | 141.5 MiB | 179.6 MiB | 0.79x | 47.4 MiB |
-| feature_edges_large | reference fixture: filter_feature_edges | 151.4 | 8.72 | 17.36x | 277.5 MiB | 182.0 MiB | 1.52x | 176.4 MiB |
-| fill_holes | reference fixture: filter_fill_holes | 6.09 | 0.532 | 11.44x | 9.7 MiB | 181.3 MiB | 0.05x | 4.1 MiB |
-| fill_holes_large | reference fixture: filter_fill_holes | 240.7 | 3.77 | 63.84x | 12.7 MiB | 185.3 MiB | 0.07x | 7.1 MiB |
-| glyph_10 | reference fixture: filter_glyph | 1.01 | 0.115 | 8.71x | 120.6 MiB | 178.7 MiB | 0.67x | 5.9 MiB |
-| glyph_100 | reference fixture: filter_glyph | 4.78 | 0.654 | 7.31x | 141.5 MiB | 179.4 MiB | 0.79x | 14.3 MiB |
-| glyph_50 | reference fixture: filter_glyph | 4.63 | 0.505 | 9.17x | 143.4 MiB | 192.0 MiB | 0.75x | 16.1 MiB |
-| gradient | reference fixture: filter_gradient | 10.34 | 1.62 | 6.37x | 169.9 MiB | 185.6 MiB | 0.92x | 42.9 MiB |
-| hausdorff | reference fixture: filter_hausdorff | 11.81 | 2.02 | 5.85x | 173.7 MiB | 179.3 MiB | 0.97x | 46.4 MiB |
-| hausdorff_large | reference fixture: filter_hausdorff | 306.9 | 61.21 | 5.01x | 281.2 MiB | 186.0 MiB | 1.51x | 157.8 MiB |
-| hedgehog | reference fixture: filter_hedgehog | 3.56 | 0.081 | 43.79x | 144.0 MiB | 180.1 MiB | 0.80x | 9.1 MiB |
-| hull_200 | reference fixture: filter_hull_200 | 7.18 | 0.479 | 14.99x | 174.3 MiB | 180.7 MiB | 0.96x | 32.8 MiB |
-| linear_subdiv_1 | reference fixture: filter_subdivide_1 | 27.26 | 1.63 | 16.76x | 218.1 MiB | 179.7 MiB | 1.21x | 84.7 MiB |
-| mask_points_3 | reference fixture: filter_mask_points_3 | 0.236 | 0.092 | 2.58x | 144.0 MiB | 178.1 MiB | 0.81x | 320 KiB |
-| mass_properties | reference fixture: filter_mass_properties | 0.861 | 0.145 | 5.95x | 149.0 MiB | 178.8 MiB | 0.83x | 5.0 MiB |
-| mass_properties_large | reference fixture: filter_mass_properties | 14.54 | 2.33 | 6.23x | 203.4 MiB | 180.2 MiB | 1.13x | 55.0 MiB |
-| mc_128 | reference fixture: filter_mc_128 | 678.7 | 32.66 | 20.78x | 264.1 MiB | 181.7 MiB | 1.45x | 147.0 MiB |
-| mc_64 | reference fixture: filter_mc_64 | 78.64 | 7.35 | 10.70x | 6.9 MiB | 179.8 MiB | 0.04x | 6.9 MiB |
-| mirror | reference fixture: filter_mirror | 2.02 | 0.922 | 2.19x | 167.4 MiB | 181.0 MiB | 0.92x | 17.9 MiB |
-| mirror_large | reference fixture: filter_mirror | 34.07 | 13.92 | 2.45x | 238.8 MiB | 183.7 MiB | 1.30x | 82.2 MiB |
-| normals | reference fixture: filter_normals | 1.88 | 1.10 | 1.71x | 169.5 MiB | 179.4 MiB | 0.95x | 17.1 MiB |
-| normals_large | reference fixture: filter_normals | 31.45 | 14.21 | 2.21x | 232.2 MiB | 181.2 MiB | 1.28x | 68.7 MiB |
-| obj_large | reference fixture: io_obj | 526.5 | 59.24 | 8.89x | 264.9 MiB | 181.4 MiB | 1.46x | 122.8 MiB |
-| offset_surface | reference fixture: filter_offset_surface | 1.65 | 0.091 | 18.14x | 170.0 MiB | 186.2 MiB | 0.91x | 2.6 MiB |
-| orient_normals | validation test: filter_orient_consistent | 9.71 | 1.44 | 6.74x | 195.0 MiB | 183.7 MiB | 1.06x | 25.7 MiB |
-| outline | reference fixture: filter_outline | 0.115 | 0.076 | 1.52x | 170.2 MiB | 178.8 MiB | 0.95x | 640 KiB |
-| pipeline_normals_smooth | reference fixture: filter_normals | 315.0 | 32.28 | 9.76x | 282.6 MiB | 180.3 MiB | 1.57x | 114.9 MiB |
-| plane_32 | reference fixture: source_plane_32x32 | 0.925 | 0.100 | 9.26x | 171.8 MiB | 177.8 MiB | 0.97x | 1.7 MiB |
-| ply_large | reference fixture: io_ply | 133.9 | 17.29 | 7.75x | 278.1 MiB | 182.5 MiB | 1.52x | 107.0 MiB |
-| ply_roundtrip | reference fixture: io_ply | 8.02 | 1.39 | 5.78x | 196.2 MiB | 179.1 MiB | 1.10x | 25.1 MiB |
-| point_density | reference fixture: filter_point_density | 12.41 | 1.00 | 12.41x | 208.1 MiB | 177.6 MiB | 1.17x | 37.0 MiB |
-| point_to_cell_data | reference fixture: filter_point_to_cell_data | 2.23 | 0.214 | 10.40x | 7.8 MiB | 182.2 MiB | 0.04x | 1.6 MiB |
-| poly_data_distance | reference fixture: filter_poly_data_distance | 227.3 | 30.46 | 7.46x | 277.7 MiB | 182.3 MiB | 1.52x | 110.7 MiB |
-| probe_100 | reference fixture: filter_probe | 7.52 | 0.538 | 13.96x | 201.5 MiB | 179.7 MiB | 1.12x | 27.2 MiB |
-| quadric_clustering | reference fixture: filter_quadric_clustering | 2.93 | 1.07 | 2.72x | 207.8 MiB | 185.0 MiB | 1.12x | 13.8 MiB |
-| quadric_clustering_large | reference fixture: filter_quadric_clustering | 49.92 | 7.20 | 6.93x | 267.5 MiB | 189.7 MiB | 1.41x | 71.3 MiB |
-| quadric_decimate_50 | reference fixture: filter_decimate_50 | 37.75 | 3.83 | 9.85x | 240.3 MiB | 180.1 MiB | 1.33x | 65.4 MiB |
-| quadric_decimate_50_large | reference fixture: filter_decimate_50 | 439.5 | 74.28 | 5.92x | 289.3 MiB | 192.1 MiB | 1.51x | 92.3 MiB |
-| reflect | reference fixture: filter_reflect | 4.24 | 4.13 | 1.03x | 220.3 MiB | 179.9 MiB | 1.22x | 18.5 MiB |
-| reflect_large | reference fixture: filter_reflect | 74.33 | 23.24 | 3.20x | 275.0 MiB | 183.6 MiB | 1.50x | 71.6 MiB |
-| reverse_sense | reference fixture: filter_reverse_sense | 0.815 | 0.090 | 9.08x | 207.8 MiB | 178.3 MiB | 1.17x | 1.9 MiB |
-| reverse_sense_large | reference fixture: filter_reverse_sense | 14.12 | 1.26 | 11.24x | 230.0 MiB | 181.1 MiB | 1.27x | 21.9 MiB |
-| ribbon | reference fixture: filter_ribbon | 0.056 | 0.105 | 0.54x | 207.8 MiB | 183.7 MiB | 1.13x | 0 KiB |
-| rotation_extrude | validation test: filter_rotation_extrude_test | 0.148 | 0.215 | 0.69x | 209.6 MiB | 178.1 MiB | 1.18x | 1.9 MiB |
-| ruled_surface | reference fixture: filter_ruled_surface | 0.057 | 1.00 | 0.06x | 209.6 MiB | 178.3 MiB | 1.18x | 320 KiB |
-| separate_cells | reference fixture: filter_separate_cells | 2.40 | 0.806 | 2.97x | 224.7 MiB | 179.1 MiB | 1.25x | 15.1 MiB |
-| shrink | reference fixture: filter_shrink | 2.37 | 0.648 | 3.65x | 219.1 MiB | 178.6 MiB | 1.23x | 8.8 MiB |
-| shrink_large | reference fixture: filter_shrink | 48.81 | 10.60 | 4.60x | 272.5 MiB | 180.9 MiB | 1.51x | 54.7 MiB |
-| signed_distance_32 | reference fixture: filter_signed_distance | 223.8 | 188.8 | 1.19x | 260.5 MiB | 180.6 MiB | 1.44x | 66.3 MiB |
-| silhouette | reference fixture: filter_silhouette | 10.46 | 1.00 | 10.46x | 232.2 MiB | 179.7 MiB | 1.29x | 12.2 MiB |
-| slice | reference fixture: filter_slice | 2.39 | 0.442 | 5.39x | 206.2 MiB | 183.7 MiB | 1.12x | 5.0 MiB |
-| slice_large | reference fixture: filter_slice | 19.67 | 1.15 | 17.11x | 7.2 MiB | 187.2 MiB | 0.04x | 2.8 MiB |
-| smooth_20 | reference fixture: filter_smooth_20 | 25.95 | 1.15 | 22.62x | 19.8 MiB | 179.2 MiB | 0.11x | 20.9 MiB |
-| smooth_20_constrained | reference fixture: filter_smooth_20 | 22.60 | 1.15 | 19.72x | 19.2 MiB | 181.0 MiB | 0.11x | 20.6 MiB |
-| smooth_20_large | reference fixture: filter_smooth_20 | 347.4 | 19.41 | 17.90x | 21.0 MiB | 180.9 MiB | 0.12x | 22.2 MiB |
-| smooth_50 | reference fixture: filter_smooth_50 | 46.83 | 1.81 | 25.89x | 19.8 MiB | 179.1 MiB | 0.11x | 20.9 MiB |
-| smooth_50_large | reference fixture: filter_smooth_50 | 601.2 | 30.90 | 19.46x | 21.0 MiB | 181.1 MiB | 0.12x | 16.0 MiB |
-| sphere_128x128 | reference fixture: source_sphere_128x128 | 12.40 | 1.31 | 9.46x | 258.1 MiB | 178.8 MiB | 1.44x | 25.9 MiB |
-| sphere_32x32 | reference fixture: source_sphere_32x32 | 0.766 | 0.093 | 8.20x | 234.4 MiB | 177.6 MiB | 1.32x | 2.2 MiB |
-| sphere_64x64 | reference fixture: source_sphere_64x64 | 3.13 | 0.364 | 8.58x | 241.0 MiB | 177.5 MiB | 1.36x | 6.6 MiB |
-| spline | reference fixture: filter_spline | 0.023 | 0.043 | 0.54x | 239.1 MiB | 178.1 MiB | 1.34x | 0 KiB |
-| stl_large | reference fixture: io_stl | 231.5 | 22.58 | 10.25x | 280.5 MiB | 184.0 MiB | 1.52x | 46.0 MiB |
-| stl_roundtrip | reference fixture: io_stl | 19.22 | 1.63 | 11.79x | 255.6 MiB | 179.8 MiB | 1.42x | 21.2 MiB |
-| subdivide_1 | reference fixture: filter_subdivide_1 | 45.07 | 3.33 | 13.52x | 272.2 MiB | 181.2 MiB | 1.50x | 34.0 MiB |
-| subdivide_2 | reference fixture: filter_subdivide_2 | 230.4 | 16.12 | 14.29x | 274.6 MiB | 189.7 MiB | 1.45x | 35.0 MiB |
-| surface_nets_32 | reference fixture: filter_surface_nets_32 | 69.43 | 16.78 | 4.14x | 276.2 MiB | 180.6 MiB | 1.53x | 27.5 MiB |
-| texture_map_sphere | reference fixture: filter_texture_map_sphere | 0.435 | 0.185 | 2.35x | 259.4 MiB | 177.8 MiB | 1.46x | 1.2 MiB |
-| threshold | reference fixture: filter_threshold | 2.38 | 0.198 | 12.01x | 259.4 MiB | 179.8 MiB | 1.44x | 0 KiB |
-| topology_analysis | reference fixture: filter_topology_analysis | 5.04 | 0.722 | 6.98x | 254.4 MiB | 179.9 MiB | 1.41x | 640 KiB |
-| topology_analysis_large | reference fixture: filter_topology_analysis | 89.86 | 8.45 | 10.64x | 276.9 MiB | 182.0 MiB | 1.52x | 17.8 MiB |
-| transform | reference fixture: filter_transform_translate | 1.19 | 0.103 | 11.53x | 253.7 MiB | 179.7 MiB | 1.41x | 0 KiB |
-| transform_large | reference fixture: filter_transform_large | 7.87 | 0.335 | 23.50x | 267.5 MiB | 189.7 MiB | 1.41x | 7.5 MiB |
-| triangle_strips | reference fixture: filter_triangle_strips | 4.32 | 0.350 | 12.35x | 12.8 MiB | 178.5 MiB | 0.07x | 6.6 MiB |
-| triangle_strips_large | reference fixture: filter_triangle_strips | 60.14 | 4.40 | 13.67x | 13.8 MiB | 180.9 MiB | 0.08x | 5.0 MiB |
-| triangulate | reference fixture: filter_triangulate | 0.292 | 0.039 | 7.56x | 267.5 MiB | 177.6 MiB | 1.51x | 320 KiB |
-| triangulate_large | reference fixture: filter_triangulate | 0.884 | 0.058 | 15.16x | 8.4 MiB | 179.5 MiB | 0.05x | 320 KiB |
-| tube | reference fixture: filter_tube | 0.323 | 0.057 | 5.63x | 267.8 MiB | 178.4 MiB | 1.50x | 320 KiB |
-| tube_large | reference fixture: filter_tube | 1.45 | 0.257 | 5.66x | 268.1 MiB | 192.3 MiB | 1.39x | 640 KiB |
-| validate | reference fixture: filter_validate | 2.73 | 0.790 | 3.46x | 268.1 MiB | 177.9 MiB | 1.51x | 320 KiB |
-| voronoi_200 | reference fixture: filter_voronoi_2d | 27.35 | 10.00 | 2.74x | 276.2 MiB | 179.1 MiB | 1.54x | 8.4 MiB |
-| voxel_grid | reference fixture: filter_voxel_grid | 2.71 | 5.06 | 0.54x | 268.4 MiB | 177.4 MiB | 1.51x | 640 KiB |
-| vtk_large | reference fixture: io_vtk_large | 378.0 | 65.87 | 5.74x | 289.3 MiB | 181.9 MiB | 1.59x | 23.2 MiB |
-| vtk_roundtrip | reference fixture: io_vtk_roundtrip | 36.92 | 4.13 | 8.95x | 268.1 MiB | 179.7 MiB | 1.49x | 9.7 MiB |
-| vtp_large | reference fixture: io_vtp | 441.4 | 58.33 | 7.57x | 279.9 MiB | 183.9 MiB | 1.52x | 22.9 MiB |
-| vtp_roundtrip | reference fixture: io_vtp | 41.16 | 4.36 | 9.43x | 268.1 MiB | 181.2 MiB | 1.48x | 9.4 MiB |
-| warp_scalar | reference fixture: filter_warp_scalar | 3.23 | 0.111 | 29.16x | 272.5 MiB | 179.7 MiB | 1.52x | 4.1 MiB |
-| windowed_sinc_20 | reference fixture: filter_windowed_sinc | 19.35 | 1.38 | 14.07x | 267.8 MiB | 177.9 MiB | 1.50x | 5.0 MiB |
+| append_10_small | covered-by-vtk_validation | 0.572 | 0.259 | 2.20x | 7.5 MiB | 178.3 MiB | 0.04x | 1.6 MiB |
+| append_3 | covered-by-vtk_validation | 1.427 | 0.058 | 24.71x | 7.8 MiB | 178.5 MiB | 0.04x | 320 KiB |
+| append_5_large | covered-by-vtk_validation | 18.435 | 0.600 | 30.74x | 7.8 MiB | 184.9 MiB | 0.04x | 10.3 MiB |
+| arrow | covered-by-vtk_validation | 0.087 | 0.348 | 0.25x | 8.4 MiB | 177.5 MiB | 0.05x | 0 KiB |
+| boolean_union | covered-by-vtk_validation | 76.807 | 276.501 | 0.28x | 9.4 MiB | 188.3 MiB | 0.05x | 0 KiB |
+| butterfly_1 | covered-by-vtk_validation | 22.469 | 4.139 | 5.43x | 11.3 MiB | 180.3 MiB | 0.06x | 0 KiB |
+| byu_roundtrip | covered-by-vtk_validation | 6.533 | 3.162 | 2.07x | 11.3 MiB | 179.2 MiB | 0.06x | 0 KiB |
+| calculator | covered-by-vtk_validation | 0.169 | 0.734 | 0.23x | 11.3 MiB | 181.1 MiB | 0.06x | 0 KiB |
+| catmull_clark_1 | covered-by-vtk_validation | 14.726 | 5.418 | 2.72x | 11.3 MiB | 180.3 MiB | 0.06x | 0 KiB |
+| cell_centers | covered-by-vtk_validation | 0.556 | 0.224 | 2.48x | 11.3 MiB | 178.6 MiB | 0.06x | 0 KiB |
+| cell_centers_large | covered-by-vtk_validation | 6.379 | 2.867 | 2.22x | 11.3 MiB | 181.7 MiB | 0.06x | 0 KiB |
+| cell_quality | covered-by-vtk_validation | 0.361 | 0.442 | 0.82x | 11.3 MiB | 179.1 MiB | 0.06x | 0 KiB |
+| cell_quality_large | covered-by-vtk_validation | 2.795 | 4.269 | 0.65x | 11.3 MiB | 180.8 MiB | 0.06x | 0 KiB |
+| cell_size | covered-by-vtk_validation | 0.666 | 0.226 | 2.95x | 11.3 MiB | 179.4 MiB | 0.06x | 0 KiB |
+| cell_size_large | covered-by-vtk_validation | 7.492 | 2.499 | 3.00x | 11.6 MiB | 181.6 MiB | 0.06x | 0 KiB |
+| cell_to_point_data | covered-by-vtk_validation | 1.045 | 0.225 | 4.64x | 11.6 MiB | 182.2 MiB | 0.06x | 0 KiB |
+| center_of_mass | covered-by-vtk_validation | 0.038 | 0.052 | 0.74x | 11.6 MiB | 183.7 MiB | 0.06x | 0 KiB |
+| clean | covered-by-vtk_validation | 2.095 | 0.738 | 2.84x | 11.6 MiB | 180.9 MiB | 0.06x | 0 KiB |
+| clean_3x_large | covered-by-vtk_validation | 58.586 | 16.365 | 3.58x | 13.1 MiB | 186.6 MiB | 0.07x | 2.5 MiB |
+| clean_large | covered-by-vtk_validation | 38.000 | 11.838 | 3.21x | 9.0 MiB | 185.0 MiB | 0.05x | 0 KiB |
+| clip | covered-by-vtk_validation | 1.378 | 0.654 | 2.11x | 9.0 MiB | 179.6 MiB | 0.05x | 0 KiB |
+| clip_closed | covered-by-vtk_validation | 1.791 | 0.477 | 3.76x | 9.0 MiB | 181.8 MiB | 0.05x | 0 KiB |
+| clip_large | covered-by-vtk_validation | 19.092 | 7.313 | 2.61x | 12.1 MiB | 182.3 MiB | 0.07x | 0 KiB |
+| collision | covered-by-vtk_validation | 5.378 | 3.983 | 1.35x | 12.1 MiB | 180.6 MiB | 0.07x | 0 KiB |
+| cone_32 | covered-by-vtk_validation | 0.042 | 0.049 | 0.87x | 12.1 MiB | 175.9 MiB | 0.07x | 0 KiB |
+| connectivity | covered-by-vtk_validation | 0.345 | 0.142 | 2.44x | 12.1 MiB | 179.7 MiB | 0.07x | 0 KiB |
+| connectivity_large | covered-by-vtk_validation | 33.416 | 17.702 | 1.89x | 15.2 MiB | 192.0 MiB | 0.08x | 0 KiB |
+| contour_32 | covered-by-vtk_validation | 5.555 | 0.712 | 7.80x | 15.8 MiB | 179.0 MiB | 0.09x | 0 KiB |
+| cube | covered-by-vtk_validation | 0.011 | 0.051 | 0.21x | 15.8 MiB | 176.2 MiB | 0.09x | 0 KiB |
+| curvatures_mean | covered-by-vtk_validation | 4.394 | 0.811 | 5.42x | 15.8 MiB | 179.1 MiB | 0.09x | 0 KiB |
+| curvatures_gaussian | covered-by-vtk_validation | 0.828 | 0.315 | 2.63x | 15.8 MiB | 179.1 MiB | 0.09x | 0 KiB |
+| curvatures_large | covered-by-vtk_validation | 92.929 | 12.452 | 7.46x | 16.5 MiB | 181.1 MiB | 0.09x | 0 KiB |
+| cylinder_32 | covered-by-vtk_validation | 0.158 | 0.058 | 2.72x | 16.5 MiB | 176.5 MiB | 0.09x | 0 KiB |
+| decimate_50 | covered-by-vtk_validation | 9.803 | 3.556 | 2.76x | 16.5 MiB | 180.0 MiB | 0.09x | 0 KiB |
+| decimate_75 | covered-by-vtk_validation | 14.248 | 5.073 | 2.81x | 16.5 MiB | 180.0 MiB | 0.09x | 0 KiB |
+| decimate_90 | covered-by-vtk_validation | 16.636 | 6.476 | 2.57x | 16.5 MiB | 180.0 MiB | 0.09x | 0 KiB |
+| decimate_50_large | covered-by-vtk_validation | 173.477 | 62.838 | 2.76x | 22.0 MiB | 184.7 MiB | 0.12x | 2.1 MiB |
+| delaunay_1000 | covered-by-vtk_validation | 161.010 | 40.410 | 3.98x | 10.2 MiB | 179.4 MiB | 0.06x | 0 KiB |
+| delaunay_500 | covered-by-vtk_validation | 41.330 | 15.781 | 2.62x | 10.2 MiB | 179.4 MiB | 0.06x | 0 KiB |
+| densify | covered-by-vtk_validation | 2.247 | 0.582 | 3.86x | 10.2 MiB | 179.2 MiB | 0.06x | 0 KiB |
+| depth_sort | covered-by-vtk_validation | 0.731 | 0.251 | 2.91x | 10.2 MiB | 178.5 MiB | 0.06x | 0 KiB |
+| depth_sort_large | covered-by-vtk_validation | 14.003 | 2.856 | 4.90x | 13.4 MiB | 181.0 MiB | 0.07x | 0 KiB |
+| dihedral_angles | covered-by-vtk_validation | 1.738 | 0.465 | 3.74x | 13.4 MiB | 178.0 MiB | 0.08x | 0 KiB |
+| disk_32 | covered-by-vtk_validation | 0.242 | 0.079 | 3.07x | 13.4 MiB | 177.8 MiB | 0.08x | 0 KiB |
+| distance_to_origin | covered-by-vtk_validation | 0.097 | 0.792 | 0.12x | 13.4 MiB | 177.9 MiB | 0.08x | 0 KiB |
+| elevation | covered-by-vtk_validation | 0.089 | 0.036 | 2.51x | 13.4 MiB | 178.1 MiB | 0.07x | 0 KiB |
+| elevation_large | covered-by-vtk_validation | 0.477 | 0.234 | 2.04x | 13.4 MiB | 178.6 MiB | 0.07x | 0 KiB |
+| extract_cells_half | covered-by-vtk_validation | 0.695 | 0.338 | 2.06x | 13.4 MiB | 185.9 MiB | 0.07x | 0 KiB |
+| extract_edges | covered-by-vtk_validation | 2.596 | 1.155 | 2.25x | 13.4 MiB | 180.2 MiB | 0.07x | 0 KiB |
+| extract_edges_large | covered-by-vtk_validation | 44.673 | 20.569 | 2.17x | 15.2 MiB | 185.5 MiB | 0.08x | 0 KiB |
+| extract_largest | covered-by-vtk_validation | 1.478 | 1.114 | 1.33x | 15.2 MiB | 179.6 MiB | 0.08x | 0 KiB |
+| extrude | covered-by-vtk_validation | 0.711 | 0.147 | 4.84x | 15.2 MiB | 178.1 MiB | 0.09x | 0 KiB |
+| fe_128 | covered-by-vtk_validation | 73.913 | 5.725 | 12.91x | 28.4 MiB | 181.3 MiB | 0.16x | 9.4 MiB |
+| fe_64 | covered-by-vtk_validation | 19.479 | 1.090 | 17.88x | 28.4 MiB | 180.2 MiB | 0.16x | 0 KiB |
+| feature_edges_boundary | covered-by-vtk_validation | 0.911 | 0.652 | 1.40x | 28.4 MiB | 179.6 MiB | 0.16x | 0 KiB |
+| feature_edges_large | covered-by-vtk_validation | 10.302 | 8.723 | 1.18x | 28.4 MiB | 182.0 MiB | 0.16x | 0 KiB |
+| fill_holes | covered-by-vtk_validation | 1.879 | 0.532 | 3.53x | 28.4 MiB | 181.3 MiB | 0.16x | 0 KiB |
+| fill_holes_large | covered-by-vtk_validation | 4.879 | 3.770 | 1.29x | 28.4 MiB | 185.3 MiB | 0.15x | 0 KiB |
+| glyph_10 | covered-by-vtk_validation | 0.306 | 0.115 | 2.65x | 28.4 MiB | 178.7 MiB | 0.16x | 0 KiB |
+| glyph_100 | covered-by-vtk_validation | 0.502 | 0.654 | 0.77x | 28.4 MiB | 179.4 MiB | 0.16x | 0 KiB |
+| glyph_50 | covered-by-vtk_validation | 0.667 | 0.505 | 1.32x | 28.4 MiB | 192.0 MiB | 0.15x | 0 KiB |
+| gradient | covered-by-vtk_validation | 2.684 | 1.624 | 1.65x | 28.4 MiB | 185.6 MiB | 0.15x | 0 KiB |
+| hausdorff | covered-by-vtk_validation | 5.315 | 2.018 | 2.63x | 28.4 MiB | 179.3 MiB | 0.16x | 0 KiB |
+| hausdorff_large | covered-by-vtk_validation | 150.803 | 61.206 | 2.46x | 28.4 MiB | 186.0 MiB | 0.15x | 0 KiB |
+| hedgehog | covered-by-vtk_validation | 0.474 | 0.081 | 5.83x | 28.4 MiB | 180.1 MiB | 0.16x | 0 KiB |
+| hull_200 | covered-by-vtk_validation | 1.848 | 0.479 | 3.86x | 28.4 MiB | 180.7 MiB | 0.16x | 0 KiB |
+| linear_subdiv_1 | covered-by-vtk_validation | 5.578 | 1.626 | 3.43x | 28.4 MiB | 179.7 MiB | 0.16x | 0 KiB |
+| mask_points_3 | covered-by-vtk_validation | 0.108 | 0.092 | 1.17x | 28.4 MiB | 178.1 MiB | 0.16x | 0 KiB |
+| mass_properties | covered-by-vtk_validation | 0.655 | 0.145 | 4.52x | 28.4 MiB | 178.8 MiB | 0.16x | 0 KiB |
+| mass_properties_large | covered-by-vtk_validation | 6.278 | 2.334 | 2.69x | 28.4 MiB | 180.2 MiB | 0.16x | 0 KiB |
+| mc_128 | covered-by-vtk_validation | 76.897 | 32.665 | 2.35x | 28.7 MiB | 181.7 MiB | 0.16x | 0 KiB |
+| mc_64 | covered-by-vtk_validation | 21.414 | 7.352 | 2.91x | 28.7 MiB | 179.8 MiB | 0.16x | 0 KiB |
+| mirror | covered-by-vtk_validation | 0.859 | 0.922 | 0.93x | 28.7 MiB | 181.0 MiB | 0.16x | 0 KiB |
+| mirror_large | covered-by-vtk_validation | 14.407 | 13.919 | 1.04x | 28.7 MiB | 183.7 MiB | 0.16x | 0 KiB |
+| normals | covered-by-vtk_validation | 0.846 | 1.099 | 0.77x | 28.7 MiB | 179.4 MiB | 0.16x | 0 KiB |
+| normals_large | covered-by-vtk_validation | 13.663 | 14.210 | 0.96x | 28.7 MiB | 181.2 MiB | 0.16x | 0 KiB |
+| obj_large | covered-by-vtk_validation | 422.370 | 59.241 | 7.13x | 28.7 MiB | 181.4 MiB | 0.16x | 0 KiB |
+| offset_surface | covered-by-vtk_validation | 0.278 | 0.091 | 3.05x | 28.7 MiB | 186.2 MiB | 0.15x | 0 KiB |
+| orient_normals | covered-by-vtk_validation | 4.154 | 1.439 | 2.89x | 28.7 MiB | 183.7 MiB | 0.16x | 0 KiB |
+| outline | covered-by-vtk_validation | 0.177 | 0.076 | 2.33x | 28.7 MiB | 178.8 MiB | 0.16x | 0 KiB |
+| pipeline_normals_smooth | covered-by-vtk_validation | 96.971 | 32.282 | 3.00x | 28.7 MiB | 180.3 MiB | 0.16x | 0 KiB |
+| plane_32 | covered-by-vtk_validation | 0.413 | 0.100 | 4.14x | 28.7 MiB | 177.8 MiB | 0.16x | 0 KiB |
+| ply_roundtrip | covered-by-vtk_validation | 2.385 | 1.387 | 1.72x | 28.7 MiB | 179.1 MiB | 0.16x | 0 KiB |
+| ply_large | covered-by-vtk_validation | 36.536 | 17.287 | 2.11x | 28.7 MiB | 182.5 MiB | 0.16x | 0 KiB |
+| point_density | covered-by-vtk_validation | 5.582 | 1.000 | 5.58x | 28.7 MiB | 177.6 MiB | 0.16x | 0 KiB |
+| point_to_cell_data | covered-by-vtk_validation | 1.041 | 0.214 | 4.87x | 28.7 MiB | 182.2 MiB | 0.16x | 0 KiB |
+| poly_data_distance | covered-by-vtk_validation | 12.377 | 30.459 | 0.41x | 28.7 MiB | 182.3 MiB | 0.16x | 0 KiB |
+| probe_100 | covered-by-vtk_validation | 1.759 | 0.538 | 3.27x | 28.7 MiB | 179.7 MiB | 0.16x | 0 KiB |
+| quadric_clustering | covered-by-vtk_validation | 1.158 | 1.075 | 1.08x | 28.7 MiB | 185.0 MiB | 0.16x | 0 KiB |
+| quadric_decimate_50 | covered-by-vtk_validation | 10.207 | 3.834 | 2.66x | 28.7 MiB | 180.1 MiB | 0.16x | 0 KiB |
+| quadric_decimate_50_large | covered-by-vtk_validation | 181.521 | 74.280 | 2.44x | 28.7 MiB | 192.1 MiB | 0.15x | 0 KiB |
+| quadric_clustering_large | covered-by-vtk_validation | 16.732 | 7.199 | 2.32x | 28.7 MiB | 189.7 MiB | 0.15x | 0 KiB |
+| reflect | covered-by-vtk_validation | 1.635 | 4.129 | 0.40x | 28.7 MiB | 179.9 MiB | 0.16x | 0 KiB |
+| reflect_large | covered-by-vtk_validation | 26.688 | 23.243 | 1.15x | 28.7 MiB | 183.6 MiB | 0.16x | 0 KiB |
+| reverse_sense | covered-by-vtk_validation | 0.642 | 0.090 | 7.16x | 28.7 MiB | 178.3 MiB | 0.16x | 0 KiB |
+| reverse_sense_large | covered-by-vtk_validation | 7.376 | 1.257 | 5.87x | 28.7 MiB | 181.1 MiB | 0.16x | 0 KiB |
+| ribbon | covered-by-vtk_validation | 0.087 | 0.105 | 0.83x | 28.7 MiB | 183.7 MiB | 0.16x | 0 KiB |
+| rotation_extrude | covered-by-vtk_validation | 0.087 | 0.215 | 0.40x | 28.7 MiB | 178.1 MiB | 0.16x | 0 KiB |
+| ruled_surface | covered-by-vtk_validation | 0.077 | 1.000 | 0.08x | 28.7 MiB | 178.3 MiB | 0.16x | 0 KiB |
+| separate_cells | covered-by-vtk_validation | 1.074 | 0.806 | 1.33x | 28.7 MiB | 179.1 MiB | 0.16x | 0 KiB |
+| shrink | covered-by-vtk_validation | 1.038 | 0.648 | 1.60x | 28.7 MiB | 178.6 MiB | 0.16x | 0 KiB |
+| shrink_large | covered-by-vtk_validation | 17.586 | 10.602 | 1.66x | 28.7 MiB | 180.9 MiB | 0.16x | 0 KiB |
+| signed_distance_32 | covered-by-vtk_validation | 98.837 | 188.808 | 0.52x | 28.7 MiB | 180.6 MiB | 0.16x | 0 KiB |
+| silhouette | covered-by-vtk_validation | 2.554 | 1.000 | 2.55x | 28.7 MiB | 179.7 MiB | 0.16x | 0 KiB |
+| slice | covered-by-vtk_validation | 0.348 | 0.442 | 0.79x | 28.7 MiB | 183.7 MiB | 0.16x | 0 KiB |
+| slice_large | covered-by-vtk_validation | 2.187 | 1.149 | 1.90x | 28.7 MiB | 187.2 MiB | 0.15x | 0 KiB |
+| smooth_20 | covered-by-vtk_validation | 8.811 | 1.147 | 7.68x | 28.7 MiB | 179.2 MiB | 0.16x | 0 KiB |
+| smooth_20_constrained | covered-by-vtk_validation | 8.272 | 1.146 | 7.22x | 28.7 MiB | 181.0 MiB | 0.16x | 0 KiB |
+| smooth_20_large | covered-by-vtk_validation | 91.299 | 19.406 | 4.70x | 28.7 MiB | 180.9 MiB | 0.16x | 0 KiB |
+| smooth_50 | covered-by-vtk_validation | 15.712 | 1.809 | 8.69x | 28.7 MiB | 179.1 MiB | 0.16x | 0 KiB |
+| smooth_50_large | covered-by-vtk_validation | 101.503 | 30.896 | 3.29x | 28.7 MiB | 181.1 MiB | 0.16x | 0 KiB |
+| sphere_128x128 | covered-by-vtk_validation | 4.777 | 1.312 | 3.64x | 28.7 MiB | 178.8 MiB | 0.16x | 0 KiB |
+| sphere_32x32 | covered-by-vtk_validation | 0.489 | 0.093 | 5.23x | 28.7 MiB | 177.6 MiB | 0.16x | 0 KiB |
+| sphere_64x64 | covered-by-vtk_validation | 1.212 | 0.364 | 3.33x | 28.7 MiB | 177.5 MiB | 0.16x | 0 KiB |
+| spline | covered-by-vtk_validation | 0.037 | 0.043 | 0.87x | 28.7 MiB | 178.1 MiB | 0.16x | 0 KiB |
+| stl_roundtrip | covered-by-vtk_validation | 6.454 | 1.630 | 3.96x | 28.7 MiB | 179.8 MiB | 0.16x | 0 KiB |
+| stl_large | covered-by-vtk_validation | 106.352 | 22.582 | 4.71x | 28.7 MiB | 184.0 MiB | 0.16x | 0 KiB |
+| subdivide_1 | covered-by-vtk_validation | 18.496 | 3.333 | 5.55x | 28.7 MiB | 181.2 MiB | 0.16x | 0 KiB |
+| subdivide_2 | covered-by-vtk_validation | 100.419 | 16.124 | 6.23x | 28.7 MiB | 189.7 MiB | 0.15x | 0 KiB |
+| surface_nets_32 | covered-by-vtk_validation | 26.191 | 16.784 | 1.56x | 28.7 MiB | 180.6 MiB | 0.16x | 0 KiB |
+| texture_map_sphere | covered-by-vtk_validation | 0.505 | 0.185 | 2.73x | 28.7 MiB | 177.8 MiB | 0.16x | 0 KiB |
+| threshold | covered-by-vtk_validation | 0.842 | 0.198 | 4.25x | 28.7 MiB | 179.8 MiB | 0.16x | 0 KiB |
+| topology_analysis | covered-by-vtk_validation | 1.927 | 0.722 | 2.67x | 28.7 MiB | 179.9 MiB | 0.16x | 0 KiB |
+| topology_analysis_large | covered-by-vtk_validation | 33.032 | 8.446 | 3.91x | 28.7 MiB | 182.0 MiB | 0.16x | 0 KiB |
+| transform | covered-by-vtk_validation | 0.315 | 0.103 | 3.05x | 28.7 MiB | 179.7 MiB | 0.16x | 0 KiB |
+| transform_large | covered-by-vtk_validation | 1.663 | 0.335 | 4.96x | 28.7 MiB | 189.7 MiB | 0.15x | 0 KiB |
+| triangle_strips | covered-by-vtk_validation | 2.057 | 0.350 | 5.88x | 28.7 MiB | 178.5 MiB | 0.16x | 0 KiB |
+| triangle_strips_large | covered-by-vtk_validation | 34.585 | 4.400 | 7.86x | 28.7 MiB | 180.9 MiB | 0.16x | 0 KiB |
+| triangulate | covered-by-vtk_validation | 0.121 | 0.039 | 3.13x | 28.7 MiB | 177.6 MiB | 0.16x | 0 KiB |
+| triangulate_large | covered-by-vtk_validation | 0.592 | 0.058 | 10.16x | 28.7 MiB | 179.5 MiB | 0.16x | 0 KiB |
+| tube | covered-by-vtk_validation | 0.317 | 0.057 | 5.53x | 28.7 MiB | 178.4 MiB | 0.16x | 0 KiB |
+| tube_large | covered-by-vtk_validation | 0.692 | 0.257 | 2.69x | 28.7 MiB | 192.3 MiB | 0.15x | 0 KiB |
+| validate | covered-by-vtk_validation | 1.071 | 0.790 | 1.36x | 28.7 MiB | 177.9 MiB | 0.16x | 0 KiB |
+| voronoi_200 | covered-by-vtk_validation | 11.740 | 10.000 | 1.17x | 28.7 MiB | 179.1 MiB | 0.16x | 0 KiB |
+| voxel_grid | covered-by-vtk_validation | 1.265 | 5.056 | 0.25x | 28.7 MiB | 177.4 MiB | 0.16x | 0 KiB |
+| vtk_roundtrip | covered-by-vtk_validation | 15.070 | 4.127 | 3.65x | 28.7 MiB | 179.7 MiB | 0.16x | 0 KiB |
+| vtk_large | covered-by-vtk_validation | 259.665 | 65.872 | 3.94x | 28.7 MiB | 181.9 MiB | 0.16x | 0 KiB |
+| vtp_roundtrip | covered-by-vtk_validation | 17.608 | 4.365 | 4.03x | 28.7 MiB | 181.2 MiB | 0.16x | 0 KiB |
+| vtp_large | covered-by-vtk_validation | 314.505 | 58.325 | 5.39x | 28.7 MiB | 183.9 MiB | 0.16x | 0 KiB |
+| warp_scalar | covered-by-vtk_validation | 0.181 | 0.111 | 1.63x | 28.7 MiB | 179.7 MiB | 0.16x | 0 KiB |
+| windowed_sinc_20 | covered-by-vtk_validation | 4.553 | 1.376 | 3.31x | 28.7 MiB | 177.9 MiB | 0.16x | 0 KiB |
 
 Benchmark command:
 
 ```bash
-cargo test --test vtk_perf --features filters-smooth,filters-transform,filters-subdivide,filters-cell,filters-statistics,filters-texture,filters-flow,filters-boolean,filters-data,filters-distance -- --nocapture
+cargo test --test vtk_perf --features filters-smooth,filters-transform,filters-subdivide,filters-cell,filters-statistics,filters-texture,filters-flow,filters-boolean,filters-data,filters-distance -- --nocapture --test-threads=1
 ```
 
 ## Test Coverage

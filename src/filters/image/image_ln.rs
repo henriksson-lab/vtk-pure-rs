@@ -1,31 +1,14 @@
 //! Natural logarithm of pixel values
 
-use crate::data::{AnyDataArray, DataArray, ImageData};
-
-/// Natural logarithm of pixel values
-pub fn image_ln(input: &ImageData, scalars: &str) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return input.clone(),
-    };
-    let n = arr.num_tuples();
-    let mut buf = [0.0f64];
-    let data: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            (buf[0].abs().max(1e-30)).ln()
-        })
-        .collect();
-    let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
-        .with_spacing(input.spacing())
-        .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(scalars, data, 1)))
-}
+// VTK_LOG of `vtkImageMathematics` (VTK/Imaging/Math/vtkImageMathematics.cxx:227) is a
+// plain `std::log`; the single implementation is `image_math_ops::image_log`, reached
+// here through `arithmetic::image_ln`.
+pub use crate::filters::image::arithmetic::image_ln;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::ImageData;
     #[test]
     fn test_image_ln() {
         let img = ImageData::from_function(

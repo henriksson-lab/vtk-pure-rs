@@ -1,72 +1,8 @@
 //! 2D and 3D convex hull computation.
 
-use crate::data::{CellArray, Points, PolyData};
+use crate::data::{CellArray, PolyData};
 
-/// Compute 2D convex hull (in XY plane) using Graham scan.
-pub fn convex_hull_2d(mesh: &PolyData) -> PolyData {
-    let n = mesh.points.len();
-    if n < 3 {
-        return mesh.clone();
-    }
-
-    let mut points: Vec<(usize, [f64; 3])> = (0..n).map(|i| (i, mesh.points.get(i))).collect();
-    // Find bottom-left point
-    points.sort_by(|a, b| {
-        a.1[1]
-            .partial_cmp(&b.1[1])
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then(
-                a.1[0]
-                    .partial_cmp(&b.1[0])
-                    .unwrap_or(std::cmp::Ordering::Equal),
-            )
-    });
-    let pivot = points[0].1;
-
-    // Sort by angle
-    points[1..].sort_by(|a, b| {
-        let aa = (a.1[1] - pivot[1]).atan2(a.1[0] - pivot[0]);
-        let ab = (b.1[1] - pivot[1]).atan2(b.1[0] - pivot[0]);
-        aa.partial_cmp(&ab)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                let da = (a.1[0] - pivot[0]).powi(2) + (a.1[1] - pivot[1]).powi(2);
-                let db = (b.1[0] - pivot[0]).powi(2) + (b.1[1] - pivot[1]).powi(2);
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            })
-    });
-
-    let mut hull: Vec<usize> = Vec::new();
-    for &(idx, p) in &points {
-        while hull.len() >= 2 {
-            let a = mesh.points.get(hull[hull.len() - 2]);
-            let b = mesh.points.get(hull[hull.len() - 1]);
-            let cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
-            if cross <= 0.0 {
-                hull.pop();
-            } else {
-                break;
-            }
-        }
-        hull.push(idx);
-    }
-
-    let mut pts = Points::<f64>::new();
-    let ids: Vec<i64> = hull
-        .iter()
-        .enumerate()
-        .map(|(i, &v)| {
-            pts.push(mesh.points.get(v));
-            i as i64
-        })
-        .collect();
-    let mut polys = CellArray::new();
-    polys.push_cell(&ids);
-    let mut result = PolyData::new();
-    result.points = pts;
-    result.polys = polys;
-    result
-}
+pub use crate::filters::mesh::convex_hull_2d::convex_hull_2d;
 
 /// Extract convex hull as wireframe (lines).
 pub fn convex_hull_2d_wireframe(mesh: &PolyData) -> PolyData {

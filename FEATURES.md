@@ -183,7 +183,7 @@ Last updated: 2026-04-04 | ~296K lines Rust | Tests: ~9100 | Clippy: clean | 528
 | `extract_cells` | Extract cells by index or predicate |
 | `icp` | Iterative Closest Point rigid registration (SVD-based) |
 | `extract_points` | Extract points by index or scalar range |
-| `signed_distance` | Signed distance field from closed surface |
+| `signed_distance` | Curless-Levoy signed distance field over the input bounding box, with a user-supplied radius of influence (vtkSignedDistance) |
 | `cell_size` | Compute area/length of polygon/line cells |
 | `extrude` | Linear extrusion of 2D geometry along a direction |
 | `cell_quality` | Aspect ratio, min/max angle, area metrics per cell |

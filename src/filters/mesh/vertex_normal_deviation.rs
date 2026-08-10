@@ -5,6 +5,11 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 /// For each vertex, measures how much its smooth normal deviates from
 /// the adjacent face normals. High deviation = sharp feature.
 /// Adds "NormalDeviation" scalar (angle in degrees).
+///
+/// Both polygonal cells and triangle strips contribute faces. Face normals
+/// follow `vtkPolygon::ComputeNormal` (Newell's method, skipping degenerate
+/// leading edges); the vertex normal is the area-weighted sum of the incident
+/// face normals, as in `vtkPolyDataNormals`.
 pub fn normal_deviation(input: &PolyData) -> PolyData {
     let n = input.points.len();
     if n == 0 {
@@ -14,8 +19,11 @@ pub fn normal_deviation(input: &PolyData) -> PolyData {
     let mut vertex_normals = vec![[0.0f64; 3]; n];
     let mut face_normals_per_vertex: Vec<Vec<[f64; 3]>> = vec![Vec::new(); n];
 
-    for cell in input.polys.iter() {
-        let face_normal = polygon_normal(input, cell);
+    for cell in surface_cells(input) {
+        let Some(indices) = valid_cell_indices(&cell, n) else {
+            continue;
+        };
+        let face_normal = polygon_normal(input, &indices);
         let length = norm(face_normal);
         if length == 0.0 {
             continue;
@@ -26,11 +34,7 @@ pub fn normal_deviation(input: &PolyData) -> PolyData {
             face_normal[2] / length,
         ];
 
-        for &point_id in cell {
-            let point_id = point_id as usize;
-            if point_id >= n {
-                continue;
-            }
+        for &point_id in &indices {
             vertex_normals[point_id][0] += face_normal[0];
             vertex_normals[point_id][1] += face_normal[1];
             vertex_normals[point_id][2] += face_normal[2];
@@ -68,10 +72,23 @@ pub fn normal_deviation(input: &PolyData) -> PolyData {
     pd
 }
 
-fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {
-    let Some(indices) = valid_cell_indices(cell, input.points.len()) else {
-        return [0.0; 3];
-    };
+/// All surface faces: polygons plus the triangles of every triangle strip
+/// (with the alternating winding VTK uses).
+fn surface_cells(mesh: &PolyData) -> Vec<Vec<i64>> {
+    let mut cells: Vec<Vec<i64>> = mesh.polys.iter().map(|cell| cell.to_vec()).collect();
+    for strip in mesh.strips.iter() {
+        for (i, tri) in strip.windows(3).enumerate() {
+            if i % 2 == 0 {
+                cells.push(vec![tri[0], tri[1], tri[2]]);
+            } else {
+                cells.push(vec![tri[1], tri[0], tri[2]]);
+            }
+        }
+    }
+    cells
+}
+
+fn polygon_normal(input: &PolyData, indices: &[usize]) -> [f64; 3] {
     if indices.len() < 3 {
         return [0.0; 3];
     }
@@ -222,5 +239,23 @@ mod tests {
         let result = normal_deviation(&pd);
         let arr = result.point_data().get_array("NormalDeviation").unwrap();
         assert_eq!(arr.num_tuples(), 3);
+    }
+
+    #[test]
+    fn triangle_strips_contribute_faces() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([1.0, 1.0, 1.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let result = normal_deviation(&pd);
+        let arr = result.point_data().get_array("NormalDeviation").unwrap();
+        assert_eq!(arr.num_tuples(), 4);
+        let mut buf = [0.0f64];
+        // Vertex 1 is shared by both strip triangles, which are not coplanar.
+        arr.tuple_as_f64(1, &mut buf);
+        assert!(buf[0] > 0.0);
     }
 }

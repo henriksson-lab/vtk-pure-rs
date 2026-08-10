@@ -10,10 +10,8 @@ use crate::data::{CellArray, Points, PolyData};
 ///
 /// Returns a PolyData with line cells representing the silhouette edges.
 pub fn extract_silhouette(input: &PolyData, viewpoint: [f64; 3]) -> PolyData {
-    if input.polys.num_cells() == 0 {
-        return PolyData::new();
-    }
-
+    // Like `vtkPolyDataSilhouette::RequestData`, the output always carries the input
+    // points (and nothing else) even when no silhouette edge is produced.
     let feature_angle_cos = 60.0_f64.to_radians().cos();
     let mut edges: HashMap<(i64, i64), TwoNormals> = HashMap::new();
 

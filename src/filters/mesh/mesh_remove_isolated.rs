@@ -165,4 +165,33 @@ mod tests {
         let r = remove_isolated_vertices(&mesh);
         assert_eq!(r.points.len(), 3);
     }
+
+    #[test]
+    fn preserves_all_referenced_cell_arrays() {
+        let mut mesh = PolyData::from_points(vec![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [99.0, 99.0, 99.0],
+        ]);
+        mesh.verts.push_cell(&[0]);
+        mesh.lines.push_cell(&[1, 2]);
+        mesh.strips.push_cell(&[2, 3, 4]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "id",
+                vec![10.0, 11.0, 12.0, 13.0, 14.0, 99.0],
+                1,
+            )));
+
+        let r = remove_isolated_vertices(&mesh);
+
+        assert_eq!(r.points.len(), 5);
+        assert_eq!(r.verts.cell(0), &[0]);
+        assert_eq!(r.lines.cell(0), &[1, 2]);
+        assert_eq!(r.strips.cell(0), &[2, 3, 4]);
+        assert_eq!(r.point_data().get_array("id").unwrap().num_tuples(), 5);
+    }
 }

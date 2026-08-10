@@ -14,6 +14,62 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
         return PolyData::new();
     }
 
+    let mut pd = crate::filters::core::flying_edges::flying_edges_3d(image, scalars, iso_value);
+    if pd.points.is_empty() {
+        return pd;
+    }
+
+    let num_points = pd.points.len();
+    let normals = contour_point_normals(&pd, image, scalars);
+    pd.point_data_mut()
+        .add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "Normals", normals, 3,
+        )));
+    pd.point_data_mut().set_active_normals("Normals");
+    pd.point_data_mut()
+        .add_array(crate::data::AnyDataArray::F64(DataArray::from_vec(
+            "Scalars",
+            vec![iso_value; num_points],
+            1,
+        )));
+    pd.point_data_mut().set_active_scalars("Scalars");
+    pd
+}
+
+fn contour_point_normals(pd: &PolyData, image: &ImageData, scalars: &[f64]) -> Vec<f64> {
+    let dims = image.dimensions();
+    let [nx, ny, nz] = dims;
+    let sp = image.spacing();
+    let org = image.origin();
+    let mut normals = Vec::with_capacity(pd.points.len() * 3);
+    for p in pd.points.iter() {
+        let i = grid_coord(p[0], org[0], sp[0], nx);
+        let j = grid_coord(p[1], org[1], sp[1], ny);
+        let k = grid_coord(p[2], org[2], sp[2], nz);
+        let idx = (k * ny + j) * nx + i;
+        let g = gradient_at(scalars, idx, nx, ny, dims);
+        let len = (g[0] * g[0] + g[1] * g[1] + g[2] * g[2]).sqrt();
+        if len > 1e-12 {
+            normals.extend_from_slice(&[-g[0] / len, -g[1] / len, -g[2] / len]);
+        } else {
+            normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+        }
+    }
+    normals
+}
+
+fn grid_coord(value: f64, origin: f64, spacing: f64, n: usize) -> usize {
+    if n == 0 || spacing == 0.0 {
+        return 0;
+    }
+    ((value - origin) / spacing)
+        .round()
+        .clamp(0.0, (n - 1) as f64) as usize
+}
+
+#[allow(dead_code)]
+fn marching_cubes_serial(image: &ImageData, scalars: &[f64], iso_value: f64) -> PolyData {
+    let dims = image.dimensions();
     let nx = dims[0];
     let ny = dims[1];
     let nxy = nx * ny;
@@ -215,6 +271,7 @@ pub fn marching_cubes(image: &ImageData, scalars: &[f64], iso_value: f64) -> Pol
 }
 
 #[inline(always)]
+#[allow(dead_code)]
 fn edge_cache_key(edge: usize, i: usize, j: usize, k: usize, nx: usize, ny: usize) -> (u8, usize) {
     match edge {
         0 => (0, (k * ny + j) * (nx - 1) + i),

@@ -86,8 +86,8 @@ impl BloomPass {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("bloom pl"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let make_pipeline = |label: &str, entry: &str, blend: Option<wgpu::BlendState>| {
@@ -116,7 +116,7 @@ impl BloomPass {
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             })
         };
@@ -262,6 +262,7 @@ impl BloomPass {
                 label: Some("bloom extract"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: bright_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -295,6 +296,7 @@ impl BloomPass {
                 label: Some("bloom blur h"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: blur_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -328,6 +330,7 @@ impl BloomPass {
                 label: Some("bloom blur v"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: bright_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -361,6 +364,7 @@ impl BloomPass {
                 label: Some("bloom composite"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: source_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,

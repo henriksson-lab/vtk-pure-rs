@@ -33,10 +33,20 @@ mod tests {
 
     #[test]
     fn radius_grows_by_phi_per_quarter_turn() {
-        let m = fibonacci_spiral(1.0, 4);
-        assert!(
-            (m.points.get(1)[0].hypot(m.points.get(1)[1]) - (1.0 + 5.0f64.sqrt()) / 2.0).abs()
-                < 1e-12
-        );
+        // The golden spiral r = phi^(2*theta/pi) grows by exactly phi per quarter
+        // turn. `n_pts` is clamped to at least 20 segments, so ask for one full
+        // turn over 20 segments: 5 segments is then exactly a quarter turn.
+        let m = fibonacci_spiral(1.0, 20);
+        let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
+        let r = |i: usize| m.points.get(i)[0].hypot(m.points.get(i)[1]);
+        assert!((r(0) - 1.0).abs() < 1e-12, "spiral starts at r = 1");
+        for i in 0..=15 {
+            let ratio = r(i + 5) / r(i);
+            assert!(
+                (ratio - phi).abs() < 1e-12,
+                "quarter turn {i}..{}: ratio {ratio} != phi {phi}",
+                i + 5
+            );
+        }
     }
 }

@@ -393,11 +393,7 @@ pub(crate) fn parse_points_ascii(data: &str) -> Result<Points<f64>, VtkError> {
             values.len()
         )));
     }
-    let mut pts = Points::new();
-    for chunk in values.chunks(3) {
-        pts.push([chunk[0], chunk[1], chunk[2]]);
-    }
-    Ok(pts)
+    Ok(Points::from_flat_vec(values))
 }
 
 fn parse_cell_section(
@@ -494,7 +490,8 @@ fn parse_cell_section(
         ));
     }
 
-    let mut cells = CellArray::new();
+    let mut offsets = Vec::with_capacity(offsets_values.len() + 1);
+    offsets.push(0);
     let mut prev_offset = 0;
     for &offset in &offsets_values {
         if offset < prev_offset {
@@ -505,14 +502,13 @@ fn parse_cell_section(
         if offset < 0 {
             return Err(VtkError::Parse("cell offset is negative".into()));
         }
-        let start = prev_offset as usize;
         let end = offset as usize;
         if end > connectivity_values.len() {
             return Err(VtkError::Parse(
                 "cell offsets exceed connectivity length".into(),
             ));
         }
-        cells.push_cell(&connectivity_values[start..end]);
+        offsets.push(offset);
         prev_offset = offset;
     }
     if prev_offset as usize != connectivity_values.len() {
@@ -521,7 +517,7 @@ fn parse_cell_section(
         ));
     }
 
-    Ok(cells)
+    Ok(CellArray::from_raw(offsets, connectivity_values))
 }
 
 pub(crate) fn any_data_array_to_i64(arr: &AnyDataArray) -> Vec<i64> {

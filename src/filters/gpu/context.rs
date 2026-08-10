@@ -8,8 +8,32 @@ pub struct GpuContext {
 
 impl GpuContext {
     /// Create a new GPU context. Requests a default adapter and device.
+    ///
+    /// Each call builds a fresh `wgpu::Instance`, adapter and device, which is
+    /// expensive (tens to hundreds of milliseconds) and, on some drivers,
+    /// unsafe to do from several threads at once — see [`GpuContext::shared`].
+    /// Prefer `shared()` unless you specifically need an isolated device.
     pub fn new() -> Result<Self, String> {
         pollster::block_on(Self::new_async())
+    }
+
+    /// A process-wide context, created once on first use.
+    ///
+    /// Requesting several devices concurrently deadlocks on this project's
+    /// reference driver (NVIDIA/Vulkan): the whole `filters::gpu` test module
+    /// hangs indefinitely when its five tests each call `new()` on their own
+    /// thread, while passing in 1.4 s when run one at a time. Sharing one
+    /// device sidesteps that and is what callers want anyway — a device is a
+    /// heavyweight, freely shareable handle, not a per-operation resource.
+    ///
+    /// The `Result` is cached, so a machine with no GPU reports the same error
+    /// on every call rather than retrying adapter enumeration each time.
+    pub fn shared() -> Result<&'static Self, &'static str> {
+        static SHARED: std::sync::OnceLock<Result<GpuContext, String>> = std::sync::OnceLock::new();
+        match SHARED.get_or_init(Self::new) {
+            Ok(context) => Ok(context),
+            Err(error) => Err(error.as_str()),
+        }
     }
 
     async fn new_async() -> Result<Self, String> {
@@ -21,10 +45,10 @@ impl GpuContext {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| "no GPU adapter found".to_string())?;
+            .map_err(|e| format!("no GPU adapter found: {e}"))?;
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .map_err(|e| format!("device request failed: {e}"))?;
 
@@ -75,7 +99,7 @@ impl GpuContext {
         slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
         rx.recv().unwrap().unwrap();
 
         let data = slice.get_mapped_range();

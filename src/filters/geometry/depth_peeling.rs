@@ -31,15 +31,16 @@ pub fn depth_peel_layers(
 
 /// Sort all faces of a mesh by depth for painter's algorithm rendering.
 ///
-/// Returns a new PolyData with faces reordered front-to-back relative to
-/// the view direction, with a "Depth" cell data array.
+/// Returns a new PolyData with faces reordered back-to-front relative to
+/// the view direction, matching vtkDepthSortPolyData's default
+/// VTK_SORT_FIRST_POINT mode, with a "Depth" cell data array.
 pub fn depth_sort_mesh(mesh: &PolyData, view_direction: [f64; 3]) -> PolyData {
     let nc = mesh.polys.num_cells();
     if nc == 0 {
         return mesh.clone();
     }
 
-    let cell_depths = compute_cell_depths(mesh, view_direction);
+    let (cell_ids, depth_arr) = compute_first_point_depth_order(mesh, view_direction);
 
     // Rebuild PolyData with sorted cell order using raw offsets/connectivity.
     // Like vtkDepthSortPolyData, point ids stay unchanged and data arrays are
@@ -51,25 +52,21 @@ pub fn depth_sort_mesh(mesh: &PolyData, view_direction: [f64; 3]) -> PolyData {
     let mut new_conn = Vec::with_capacity(total_conn);
     let mut new_off = Vec::with_capacity(nc + 1);
     new_off.push(0i64);
-    let mut depth_arr = Vec::with_capacity(nc);
-    let mut cell_ids = Vec::with_capacity(nc);
 
-    for &(ci, depth) in &cell_depths {
+    for &ci in &cell_ids {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
-        for idx in start..end {
-            new_conn.push(conn[idx]);
-        }
+        new_conn.extend_from_slice(&conn[start..end]);
         new_off.push(new_conn.len() as i64);
-        cell_ids.push(ci);
-        depth_arr.push(depth);
     }
 
     let mut result = PolyData::new();
     result.points = mesh.points.clone();
     result.polys = CellArray::from_raw(new_off, new_conn);
     *result.point_data_mut() = mesh.point_data().clone();
-    copy_arrays_by_indices(mesh.cell_data(), result.cell_data_mut(), &cell_ids);
+    if mesh.cell_data().num_arrays() != 0 {
+        copy_arrays_by_indices(mesh.cell_data(), result.cell_data_mut(), &cell_ids);
+    }
     result
         .cell_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
@@ -108,6 +105,39 @@ fn compute_cell_depths(mesh: &PolyData, view_direction: [f64; 3]) -> Vec<(usize,
 
     cell_depths.sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
     cell_depths
+}
+
+fn compute_first_point_depth_order(
+    mesh: &PolyData,
+    view_direction: [f64; 3],
+) -> (Vec<usize>, Vec<f64>) {
+    let nc = mesh.polys.num_cells();
+    let offsets = mesh.polys.offsets();
+    let conn = mesh.polys.connectivity();
+    let pts = mesh.points.as_flat_slice();
+    let (vx, vy, vz) = (view_direction[0], view_direction[1], view_direction[2]);
+
+    let mut order = Vec::with_capacity(nc);
+    for ci in 0..nc {
+        let start = offsets[ci] as usize;
+        let end = offsets[ci + 1] as usize;
+        if start == end {
+            continue;
+        }
+        let b = conn[start] as usize * 3;
+        let depth = pts[b] * vx + pts[b + 1] * vy + pts[b + 2] * vz;
+        order.push((ci, depth));
+    }
+
+    order.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut cell_ids = Vec::with_capacity(order.len());
+    let mut depths = Vec::with_capacity(order.len());
+    for (ci, depth) in order {
+        cell_ids.push(ci);
+        depths.push(depth);
+    }
+    (cell_ids, depths)
 }
 
 fn extract_cells_fast(mesh: &PolyData, cells: &[(usize, f64)]) -> PolyData {
@@ -277,14 +307,32 @@ mod tests {
         let original_cell_ids = sorted.cell_data().get_array("OriginalCellIds").unwrap();
         let mut original_id = [0.0f64];
         original_cell_ids.tuple_as_f64(0, &mut original_id);
-        assert_eq!(original_id[0], 20.0);
+        assert_eq!(original_id[0], 10.0);
         assert!(sorted.cell_data().get_array("Depth").is_some());
         let depth_arr = sorted.cell_data().get_array("Depth").unwrap();
         let mut d0 = [0.0f64];
         let mut d1 = [0.0f64];
         depth_arr.tuple_as_f64(0, &mut d0);
         depth_arr.tuple_as_f64(1, &mut d1);
-        assert!(d0[0] <= d1[0]);
+        assert!(d0[0] >= d1[0]);
+    }
+
+    #[test]
+    fn depth_sort_uses_first_point_like_vtk_default() {
+        let mesh = PolyData::from_triangles(
+            vec![
+                [10.0, 0.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+                [100.0, 0.0, 0.0],
+            ],
+            vec![[0, 1, 2], [3, 4, 5]],
+        );
+
+        let sorted = depth_sort_mesh(&mesh, [1.0, 0.0, 0.0]);
+        assert_eq!(sorted.polys.cell(0), &[0, 1, 2]);
     }
 
     #[test]

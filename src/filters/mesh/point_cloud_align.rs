@@ -169,6 +169,8 @@ mod tests {
 
     #[test]
     fn aligns_opposite_principal_axis() {
+        // Source runs -2 -> 0 and target runs 2 -> 0, i.e. the two clouds are
+        // listed in opposite order along their shared principal direction.
         let mut src = PolyData::new();
         src.points.push([-2.0, 0.0, 0.0]);
         src.points.push([-1.0, 0.0, 0.0]);
@@ -179,10 +181,26 @@ mod tests {
         tgt.points.push([0.0, 0.0, 0.0]);
 
         let result = pca_align(&src, &tgt);
-        for i in 0..src.points.len() {
+
+        // A principal axis is only defined up to sign, and `pca_align` establishes
+        // no point-to-point correspondence, so the contract is that the aligned
+        // cloud *occupies the same positions* as the target — not that point i
+        // lands on target point i. Compare the two as sets.
+        let sorted = |pd: &PolyData| {
+            let mut xs: Vec<f64> = (0..pd.points.len()).map(|i| pd.points.get(i)[0]).collect();
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            xs
+        };
+        let got = sorted(&result);
+        let want = sorted(&tgt);
+        assert_eq!(got.len(), want.len());
+        for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+            assert!((g - w).abs() < 1e-10, "position {i}: {g} != {w} ({got:?})");
+        }
+        // Off-axis coordinates must stay put.
+        for i in 0..result.points.len() {
             let p = result.points.get(i);
-            let q = tgt.points.get(i);
-            assert!((p[0] - q[0]).abs() < 1e-10, "point {i}: {p:?} != {q:?}");
+            assert!(p[1].abs() < 1e-10 && p[2].abs() < 1e-10, "point {i}: {p:?}");
         }
     }
 }

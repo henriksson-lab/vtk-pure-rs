@@ -37,6 +37,10 @@ pub enum QualityMetric {
 ///
 /// Adds a "CellQuality" scalar array to cell data.
 pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
+    if matches!(metric, QualityMetric::AspectRatio) {
+        return cell_quality_aspect_ratio(input);
+    }
+
     let nc = input.total_cells();
     let flat_pts = input.points.as_flat_slice();
     let mut values = Vec::with_capacity(nc);
@@ -76,6 +80,45 @@ pub fn cell_quality(input: &PolyData, metric: QualityMetric) -> PolyData {
         )));
     pd.cell_data_mut().set_active_scalars("CellQuality");
     pd
+}
+
+fn cell_quality_aspect_ratio(input: &PolyData) -> PolyData {
+    let flat_pts = input.points.as_flat_slice();
+    let mut values = Vec::with_capacity(input.total_cells());
+
+    for cells in [&input.verts, &input.lines, &input.polys, &input.strips] {
+        let offsets = cells.offsets();
+        let conn = cells.connectivity();
+        for ci in 0..cells.num_cells() {
+            let start = offsets[ci] as usize;
+            let end = offsets[ci + 1] as usize;
+            if end - start != 3 {
+                values.push(-1.0);
+                continue;
+            }
+
+            let a = point_from_flat(flat_pts, conn[start] as usize);
+            let b = point_from_flat(flat_pts, conn[start + 1] as usize);
+            let c = point_from_flat(flat_pts, conn[start + 2] as usize);
+            values.push(triangle_aspect_ratio_points(a, b, c));
+        }
+    }
+
+    let mut pd = input.clone();
+    pd.cell_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "CellQuality",
+            values,
+            1,
+        )));
+    pd.cell_data_mut().set_active_scalars("CellQuality");
+    pd
+}
+
+#[inline]
+fn point_from_flat(points: &[f64], idx: usize) -> [f64; 3] {
+    let base = idx * 3;
+    [points[base], points[base + 1], points[base + 2]]
 }
 
 fn cell_quality_value(pts: &[[f64; 3]], metric: QualityMetric) -> f64 {
@@ -266,9 +309,14 @@ fn triangle_condition(pts: &[[f64; 3]]) -> f64 {
 }
 
 fn triangle_aspect_ratio(pts: &[[f64; 3]]) -> f64 {
-    let edges = edge_lengths(pts);
-    let (a, b, c) = (edges[0], edges[1], edges[2]);
-    let area_x2 = triangle_area_x2(pts);
+    triangle_aspect_ratio_points(pts[0], pts[1], pts[2])
+}
+
+fn triangle_aspect_ratio_points(p0: [f64; 3], p1: [f64; 3], p2: [f64; 3]) -> f64 {
+    let a = dist(p0, p1);
+    let b = dist(p1, p2);
+    let c = dist(p2, p0);
+    let area_x2 = norm(cross(sub(p1, p0), sub(p2, p0)));
     if area_x2 < 1e-30 {
         return f64::MAX;
     }

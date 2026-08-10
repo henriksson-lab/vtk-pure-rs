@@ -3,41 +3,27 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Compute a histogram with configurable bins and return bin centers + counts.
+///
+/// Thin adapter over the single histogram implementation in
+/// [`crate::filters::image::histogram_compute::compute_histogram`]; the bin
+/// centers are the midpoints of that function's bin edges. Returns empty
+/// vectors when the array is missing or empty.
 pub fn compute_histogram(
     image: &ImageData,
     array_name: &str,
     n_bins: usize,
 ) -> (Vec<f64>, Vec<usize>) {
-    let arr = match image.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return (Vec::new(), Vec::new()),
-    };
-    let n_bins = n_bins.max(1);
-    let n = arr.num_tuples();
-    if n == 0 {
+    let Some(result) =
+        crate::filters::image::histogram_compute::compute_histogram(image, array_name, n_bins)
+    else {
         return (Vec::new(), Vec::new());
-    }
-    let mut buf = [0.0f64];
-    let mut min_v = f64::MAX;
-    let mut max_v = f64::NEG_INFINITY;
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        min_v = min_v.min(buf[0]);
-        max_v = max_v.max(buf[0]);
-    }
-    if (max_v - min_v).abs() < 1e-15 {
-        max_v = min_v + 1.0;
-    }
-    let bw = (max_v - min_v) / n_bins as f64;
-
-    let mut counts = vec![0usize; n_bins];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        let bin = ((buf[0] - min_v) / bw) as usize;
-        counts[bin.min(n_bins - 1)] += 1;
-    }
-    let centers: Vec<f64> = (0..n_bins).map(|i| min_v + (i as f64 + 0.5) * bw).collect();
-    (centers, counts)
+    };
+    let centers: Vec<f64> = result
+        .bin_edges
+        .windows(2)
+        .map(|edges| 0.5 * (edges[0] + edges[1]))
+        .collect();
+    (centers, result.counts)
 }
 
 /// Histogram equalization: redistribute values for uniform histogram.
@@ -83,47 +69,12 @@ pub fn histogram_equalize(image: &ImageData, array_name: &str) -> ImageData {
 }
 
 /// Compute Otsu's optimal threshold for bimodal distribution.
+///
+/// Fixed 256-bin convenience form of
+/// [`crate::filters::image::otsu::otsu_threshold`], which holds the single
+/// implementation. Returns `0.0` when the array is missing or empty.
 pub fn otsu_threshold(image: &ImageData, array_name: &str) -> f64 {
-    let (centers, counts) = compute_histogram(image, array_name, 256);
-    if centers.is_empty() {
-        return 0.0;
-    }
-    let total: usize = counts.iter().sum();
-    if total == 0 {
-        return centers[0];
-    }
-
-    let mut sum_total = 0.0;
-    for (i, &c) in counts.iter().enumerate() {
-        sum_total += centers[i] * c as f64;
-    }
-
-    let mut sum_bg = 0.0;
-    let mut w_bg = 0;
-    let mut max_variance = 0.0;
-    let mut best_thresh = centers[0];
-
-    for t in 0..centers.len() {
-        w_bg += counts[t];
-        if w_bg == 0 {
-            continue;
-        }
-        let w_fg = total - w_bg;
-        if w_fg == 0 {
-            break;
-        }
-
-        sum_bg += centers[t] * counts[t] as f64;
-        let mean_bg = sum_bg / w_bg as f64;
-        let mean_fg = (sum_total - sum_bg) / w_fg as f64;
-        let between = w_bg as f64 * w_fg as f64 * (mean_bg - mean_fg).powi(2);
-
-        if between > max_variance {
-            max_variance = between;
-            best_thresh = centers[t];
-        }
-    }
-    best_thresh
+    crate::filters::image::otsu::otsu_threshold(image, array_name, 256).unwrap_or(0.0)
 }
 
 /// Apply a threshold determined by Otsu's method.

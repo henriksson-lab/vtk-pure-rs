@@ -1,4 +1,4 @@
-use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
+use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, PolyData};
 use std::collections::HashSet;
 
 /// Remove duplicate polygons (same vertices in any order) and degenerate polygons.
@@ -62,71 +62,9 @@ pub fn remove_degenerate_cells(input: &PolyData, min_area: f64) -> PolyData {
 }
 
 /// Remove isolated vertices (points not referenced by any cell).
-pub fn remove_unused_points(input: &PolyData) -> PolyData {
-    let n = input.points.len();
-    let mut used = vec![false; n];
-
-    if !mark_used(&input.polys, &mut used)
-        || !mark_used(&input.lines, &mut used)
-        || !mark_used(&input.verts, &mut used)
-        || !mark_used(&input.strips, &mut used)
-    {
-        return PolyData::new();
-    }
-
-    if used.iter().all(|&is_used| is_used) {
-        return input.clone();
-    }
-
-    let mut pt_map = vec![-1i64; n];
-    let mut out_points = Points::<f64>::new();
-    for i in 0..n {
-        if used[i] {
-            pt_map[i] = out_points.len() as i64;
-            out_points.push(input.points.get(i));
-        }
-    }
-
-    let remap = |cell: &[i64]| -> Vec<i64> { cell.iter().map(|&id| pt_map[id as usize]).collect() };
-
-    let mut out_polys = CellArray::new();
-    for cell in input.polys.iter() {
-        out_polys.push_cell(&remap(cell));
-    }
-    let mut out_lines = CellArray::new();
-    for cell in input.lines.iter() {
-        out_lines.push_cell(&remap(cell));
-    }
-    let mut out_verts = CellArray::new();
-    for cell in input.verts.iter() {
-        out_verts.push_cell(&remap(cell));
-    }
-    let mut out_strips = CellArray::new();
-    for cell in input.strips.iter() {
-        out_strips.push_cell(&remap(cell));
-    }
-
-    let mut pd = input.clone();
-    pd.points = out_points;
-    pd.polys = out_polys;
-    pd.lines = out_lines;
-    pd.verts = out_verts;
-    pd.strips = out_strips;
-    remap_point_data(input, &used, &mut pd);
-    pd
-}
-
-fn mark_used(cells: &CellArray, used: &mut [bool]) -> bool {
-    for cell in cells.iter() {
-        for &id in cell {
-            if id < 0 || id as usize >= used.len() {
-                return false;
-            }
-            used[id as usize] = true;
-        }
-    }
-    true
-}
+///
+/// Single implementation in [`crate::filters::mesh::remove_unused_points`].
+pub use crate::filters::mesh::remove_unused_points::remove_unused_points;
 
 fn cell_ids_are_valid(cell: &[i64], num_points: usize) -> bool {
     cell.iter().all(|&id| id >= 0 && (id as usize) < num_points)
@@ -149,20 +87,6 @@ fn polygon_area_vector_x2(input: &PolyData, cell: &[i64]) -> [f64; 3] {
     }
 
     [cx, cy, cz]
-}
-
-fn remap_point_data(input: &PolyData, used: &[bool], output: &mut PolyData) {
-    output.point_data_mut().clear();
-
-    for array in input.point_data().iter() {
-        if array.num_tuples() == used.len() {
-            output
-                .point_data_mut()
-                .add_array(select_tuples_by_mask(array, used));
-        }
-    }
-
-    copy_active_attributes(input.point_data(), output.point_data_mut());
 }
 
 fn remap_cell_data_for_kept_polys(input: &PolyData, kept_polys: &[usize], output: &mut PolyData) {
@@ -190,33 +114,6 @@ fn remap_cell_data_for_kept_polys(input: &PolyData, kept_polys: &[usize], output
     }
 
     copy_active_attributes(input.cell_data(), output.cell_data_mut());
-}
-
-fn select_tuples_by_mask(array: &AnyDataArray, used: &[bool]) -> AnyDataArray {
-    macro_rules! select {
-        ($array:expr, $variant:ident) => {{
-            let mut out = DataArray::new($array.name(), $array.num_components());
-            for (tuple_id, &is_used) in used.iter().enumerate() {
-                if is_used {
-                    out.push_tuple($array.tuple(tuple_id));
-                }
-            }
-            AnyDataArray::$variant(out)
-        }};
-    }
-
-    match array {
-        AnyDataArray::F32(a) => select!(a, F32),
-        AnyDataArray::F64(a) => select!(a, F64),
-        AnyDataArray::I8(a) => select!(a, I8),
-        AnyDataArray::I16(a) => select!(a, I16),
-        AnyDataArray::I32(a) => select!(a, I32),
-        AnyDataArray::I64(a) => select!(a, I64),
-        AnyDataArray::U8(a) => select!(a, U8),
-        AnyDataArray::U16(a) => select!(a, U16),
-        AnyDataArray::U32(a) => select!(a, U32),
-        AnyDataArray::U64(a) => select!(a, U64),
-    }
 }
 
 fn select_tuples_by_indices(array: &AnyDataArray, kept: &[usize]) -> AnyDataArray {
@@ -335,49 +232,8 @@ mod tests {
     }
 
     #[test]
-    fn remove_unused() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]); // 0: used
-        pd.points.push([1.0, 0.0, 0.0]); // 1: used
-        pd.points.push([0.0, 1.0, 0.0]); // 2: used
-        pd.points.push([5.0, 5.0, 5.0]); // 3: unused
-        pd.polys.push_cell(&[0, 1, 2]);
-
-        let result = remove_unused_points(&pd);
-        assert_eq!(result.points.len(), 3);
-        assert_eq!(result.polys.num_cells(), 1);
-    }
-
-    #[test]
     fn empty_input() {
         let pd = PolyData::new();
         assert_eq!(remove_duplicate_cells(&pd).polys.num_cells(), 0);
-        assert_eq!(remove_unused_points(&pd).points.len(), 0);
-    }
-
-    #[test]
-    fn remove_unused_preserves_strips() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.0, 1.0, 0.0]);
-        pd.points.push([1.0, 1.0, 0.0]);
-        pd.points.push([99.0, 99.0, 99.0]);
-        pd.strips.push_cell(&[0, 1, 2, 3]);
-
-        let result = remove_unused_points(&pd);
-        assert_eq!(result.points.len(), 4);
-        assert_eq!(result.strips.num_cells(), 1);
-    }
-
-    #[test]
-    fn invalid_point_id_returns_empty_output() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.lines.push_cell(&[0, -1]);
-
-        let result = remove_unused_points(&pd);
-        assert_eq!(result.points.len(), 0);
-        assert_eq!(result.total_cells(), 0);
     }
 }

@@ -3,17 +3,10 @@
 use crate::data::{Points, PolyData};
 
 /// Translate mesh by offset.
-pub fn translate_mesh(mesh: &PolyData, offset: [f64; 3]) -> PolyData {
-    let n = mesh.points.len();
-    let mut pts = Points::<f64>::new();
-    for i in 0..n {
-        let p = mesh.points.get(i);
-        pts.push([p[0] + offset[0], p[1] + offset[1], p[2] + offset[2]]);
-    }
-    let mut r = mesh.clone();
-    r.points = pts;
-    r
-}
+///
+/// Re-exported from [`crate::filters::mesh::transform_mesh`], which holds the
+/// single implementation.
+pub use crate::filters::mesh::transform_mesh::translate_mesh;
 
 /// Scale mesh uniformly from center.
 pub fn scale_mesh_uniform(mesh: &PolyData, factor: f64) -> PolyData {
@@ -154,13 +147,6 @@ pub fn mirror_mesh(mesh: &PolyData, plane: usize) -> PolyData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn translate() {
-        let mesh = PolyData::from_points(vec![[1.0, 2.0, 3.0]]);
-        let result = translate_mesh(&mesh, [10.0, 20.0, 30.0]);
-        let p = result.points.get(0);
-        assert!((p[0] - 11.0).abs() < 0.01);
-    }
     #[test]
     fn scale_uniform() {
         let mesh = PolyData::from_points(vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);

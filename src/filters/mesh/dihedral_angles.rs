@@ -33,29 +33,16 @@ pub fn dihedral_angle_analysis(mesh: &PolyData) -> DihedralAngleStats {
 }
 
 /// Compute dihedral angle (in degrees) for each interior edge.
+///
+/// Thin wrapper over the single implementation in
+/// [`crate::filters::mesh::dihedral_angle_array`], which returns the same
+/// angles as a `"DihedralAngle"` cell-data array on an edge `PolyData`.
 pub fn compute_dihedral_angles(mesh: &PolyData) -> Vec<f64> {
-    let cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
-        std::collections::HashMap::new();
-    for (ci, cell) in cells.iter().enumerate() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            edge_faces.entry((a.min(b), a.max(b))).or_default().push(ci);
-        }
+    let edges = crate::filters::mesh::dihedral_angle_array::compute_dihedral_angles(mesh);
+    match edges.cell_data().get_array("DihedralAngle") {
+        Some(array) => array.to_f64_vec(),
+        None => Vec::new(),
     }
-
-    let mut angles = Vec::new();
-    for (_, faces) in &edge_faces {
-        if faces.len() == 2 {
-            let n0 = face_normal(&cells[faces[0]], mesh);
-            let n1 = face_normal(&cells[faces[1]], mesh);
-            let dot = (n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2]).clamp(-1.0, 1.0);
-            angles.push(dot.acos().to_degrees());
-        }
-    }
-    angles
 }
 
 /// Attach per-edge dihedral angle as a point data array (averaged at vertices).

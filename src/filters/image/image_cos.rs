@@ -1,35 +1,13 @@
 //! Cosine of pixel values
 
-use crate::data::{AnyDataArray, DataArray, ImageData};
-
-/// Cosine of pixel values
-pub fn image_cos(input: &ImageData, scalars: &str) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) {
-        Some(a) => a,
-        _ => return input.clone(),
-    };
-    let n = arr.num_tuples();
-    let num_components = arr.num_components();
-    let mut buf = vec![0.0f64; num_components];
-    let mut data = Vec::with_capacity(n * num_components);
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        data.extend(buf.iter().map(|value| value.cos()));
-    }
-    let dims = input.dimensions();
-    ImageData::with_dimensions(dims[0], dims[1], dims[2])
-        .with_spacing(input.spacing())
-        .with_origin(input.origin())
-        .with_point_array(AnyDataArray::F64(DataArray::from_vec(
-            scalars,
-            data,
-            num_components,
-        )))
-}
+// VTK_COS of `vtkImageMathematics` (VTK/Imaging/Math/vtkImageMathematics.cxx:221);
+// the single implementation lives in `image_math_ops`.
+pub use crate::filters::image::image_math_ops::image_cos;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray, ImageData};
     #[test]
     fn test_image_cos() {
         let img = ImageData::from_function(

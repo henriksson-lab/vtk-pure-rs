@@ -71,27 +71,10 @@ pub fn cell_centroids_as_points(input: &PolyData) -> PolyData {
 }
 
 /// Extract edge midpoints as a point cloud.
-pub fn edge_midpoints(input: &PolyData) -> PolyData {
-    let mut out_pts = Points::<f64>::new();
-    let mut out_verts = CellArray::new();
-    let mut seen = std::collections::HashSet::new();
-
-    push_open_edge_midpoints(&input.lines, input, &mut seen, &mut out_pts, &mut out_verts);
-    push_closed_edge_midpoints(&input.polys, input, &mut seen, &mut out_pts, &mut out_verts);
-    push_strip_edge_midpoints(
-        &input.strips,
-        input,
-        &mut seen,
-        &mut out_pts,
-        &mut out_verts,
-    );
-
-    let mut pd = PolyData::new();
-    pd.points = out_pts;
-    pd.verts = out_verts;
-    *pd.field_data_mut() = input.field_data().clone();
-    pd
-}
+///
+/// Re-exported from [`crate::filters::mesh::mesh_sample_edges`], which holds the
+/// single implementation.
+pub use crate::filters::mesh::mesh_sample_edges::edge_midpoints;
 
 fn push_cell_centroids(
     cells: &CellArray,
@@ -147,89 +130,6 @@ fn copy_cell_data_to_point_data(input: &PolyData, old_cell_ids: &[usize], output
         }
     }
     copy_active_attributes(input.cell_data(), output.point_data_mut());
-}
-
-fn push_open_edge_midpoints(
-    cells: &CellArray,
-    input: &PolyData,
-    seen: &mut std::collections::HashSet<(usize, usize)>,
-    out_pts: &mut Points<f64>,
-    out_verts: &mut CellArray,
-) {
-    for cell in cells.iter() {
-        for edge in cell.windows(2) {
-            push_edge_midpoint(edge[0], edge[1], input, seen, out_pts, out_verts);
-        }
-    }
-}
-
-fn push_closed_edge_midpoints(
-    cells: &CellArray,
-    input: &PolyData,
-    seen: &mut std::collections::HashSet<(usize, usize)>,
-    out_pts: &mut Points<f64>,
-    out_verts: &mut CellArray,
-) {
-    for cell in cells.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        for edge in cell.windows(2) {
-            push_edge_midpoint(edge[0], edge[1], input, seen, out_pts, out_verts);
-        }
-        push_edge_midpoint(
-            cell[cell.len() - 1],
-            cell[0],
-            input,
-            seen,
-            out_pts,
-            out_verts,
-        );
-    }
-}
-
-fn push_strip_edge_midpoints(
-    cells: &CellArray,
-    input: &PolyData,
-    seen: &mut std::collections::HashSet<(usize, usize)>,
-    out_pts: &mut Points<f64>,
-    out_verts: &mut CellArray,
-) {
-    for cell in cells.iter() {
-        for tri in cell.windows(3) {
-            push_edge_midpoint(tri[0], tri[1], input, seen, out_pts, out_verts);
-            push_edge_midpoint(tri[1], tri[2], input, seen, out_pts, out_verts);
-            push_edge_midpoint(tri[2], tri[0], input, seen, out_pts, out_verts);
-        }
-    }
-}
-
-fn push_edge_midpoint(
-    a: i64,
-    b: i64,
-    input: &PolyData,
-    seen: &mut std::collections::HashSet<(usize, usize)>,
-    out_pts: &mut Points<f64>,
-    out_verts: &mut CellArray,
-) {
-    let (Ok(a), Ok(b)) = (usize::try_from(a), usize::try_from(b)) else {
-        return;
-    };
-    if a >= input.points.len() || b >= input.points.len() || a == b {
-        return;
-    }
-    let key = if a < b { (a, b) } else { (b, a) };
-    if seen.insert(key) {
-        let pa = input.points.get(a);
-        let pb = input.points.get(b);
-        let idx = out_pts.len() as i64;
-        out_pts.push([
-            (pa[0] + pb[0]) * 0.5,
-            (pa[1] + pb[1]) * 0.5,
-            (pa[2] + pb[2]) * 0.5,
-        ]);
-        out_verts.push_cell(&[idx]);
-    }
 }
 
 fn remap_array(array: &AnyDataArray, old_tuple_ids: &[usize]) -> AnyDataArray {
@@ -331,18 +231,6 @@ mod tests {
         let p = result.points.get(0);
         assert!((p[0] - 1.0).abs() < 1e-10);
         assert!((p[1] - 1.0).abs() < 1e-10);
-    }
-
-    #[test]
-    fn edge_midpoints_test() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([2.0, 0.0, 0.0]);
-        pd.points.push([1.0, 2.0, 0.0]);
-        pd.polys.push_cell(&[0, 1, 2]);
-
-        let result = edge_midpoints(&pd);
-        assert_eq!(result.points.len(), 3); // 3 edges
     }
 
     #[test]

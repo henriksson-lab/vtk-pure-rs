@@ -43,83 +43,28 @@ pub fn inertia_tensor(input: &PolyData) -> [[f64; 3]; 3] {
     tensor
 }
 
-/// Compute principal axes of inertia via power iteration.
+/// Compute principal axes of inertia.
 ///
-/// Returns (eigenvalues, eigenvectors) sorted by eigenvalue descending.
+/// Returns (eigenvalues, eigenvectors) sorted by inertia eigenvalue descending.
+///
+/// The eigen-decomposition itself is shared with
+/// [`crate::filters::mesh::principal_axes::principal_axes`], which diagonalises the
+/// *covariance* matrix the way `vtkOBBTree::ComputeOBB` does. The inertia tensor of a
+/// unit-mass point set is `I = n * (trace(C) * Id - C)`, so it has the same
+/// eigenvectors as the covariance matrix `C` with the eigenvalue ordering reversed:
+/// the widest spread direction carries the *smallest* moment of inertia.
 pub fn principal_axes(input: &PolyData) -> ([f64; 3], [[f64; 3]; 3]) {
-    jacobi_eigen_symmetric(inertia_tensor(input))
-}
-
-fn jacobi_eigen_symmetric(mut a: [[f64; 3]; 3]) -> ([f64; 3], [[f64; 3]; 3]) {
-    let mut v = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-
-    for _ in 0..50 {
-        let mut p = 0usize;
-        let mut q = 1usize;
-        let mut max = a[0][1].abs();
-        for &(r, c) in &[(0usize, 2usize), (1usize, 2usize)] {
-            if a[r][c].abs() > max {
-                max = a[r][c].abs();
-                p = r;
-                q = c;
-            }
-        }
-        if max < 1e-12 {
-            break;
-        }
-
-        let theta = 0.5 * (2.0 * a[p][q]).atan2(a[q][q] - a[p][p]);
-        let c = theta.cos();
-        let s = theta.sin();
-        let app = a[p][p];
-        let aqq = a[q][q];
-        let apq = a[p][q];
-
-        a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
-        a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
-        a[p][q] = 0.0;
-        a[q][p] = 0.0;
-
-        for r in 0..3 {
-            if r == p || r == q {
-                continue;
-            }
-            let arp = a[r][p];
-            let arq = a[r][q];
-            a[r][p] = c * arp - s * arq;
-            a[p][r] = a[r][p];
-            a[r][q] = s * arp + c * arq;
-            a[q][r] = a[r][q];
-        }
-
-        for row in &mut v {
-            let vrp = row[p];
-            let vrq = row[q];
-            row[p] = c * vrp - s * vrq;
-            row[q] = s * vrp + c * vrq;
-        }
-    }
-
-    let mut pairs = [
-        (a[0][0], normalize([v[0][0], v[1][0], v[2][0]])),
-        (a[1][1], normalize([v[0][1], v[1][1], v[2][1]])),
-        (a[2][2], normalize([v[0][2], v[1][2], v[2][2]])),
-    ];
-    pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-
+    let n = input.points.len() as f64;
+    let (_, axes, spread) = crate::filters::mesh::principal_axes::principal_axes(input);
+    let trace = spread[0] + spread[1] + spread[2];
     (
-        [pairs[0].0, pairs[1].0, pairs[2].0],
-        [pairs[0].1, pairs[1].1, pairs[2].1],
+        [
+            n * (trace - spread[2]),
+            n * (trace - spread[1]),
+            n * (trace - spread[0]),
+        ],
+        [axes[2], axes[1], axes[0]],
     )
-}
-
-fn normalize(v: [f64; 3]) -> [f64; 3] {
-    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-    if len > 1e-15 {
-        [v[0] / len, v[1] / len, v[2] / len]
-    } else {
-        v
-    }
 }
 
 #[cfg(test)]

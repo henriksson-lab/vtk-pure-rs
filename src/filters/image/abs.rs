@@ -1,24 +1,9 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
-/// Compute absolute value of an ImageData scalar field.
-pub fn image_abs(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| v.abs())
-}
-
-/// Compute square root of an ImageData scalar field.
-pub fn image_sqrt(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| v.sqrt())
-}
-
-/// Compute log (natural) of an ImageData scalar field.
-pub fn image_log(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| v.ln())
-}
-
-/// Compute exponential of an ImageData scalar field.
-pub fn image_exp(input: &ImageData, scalars: &str) -> ImageData {
-    image_unary_op(input, scalars, |v| v.exp())
-}
+// `vtkImageMathematics` (VTK/Imaging/Math/vtkImageMathematics.cxx) implements ABS, SQRT,
+// LOG and EXP over every scalar component; the single implementation lives in
+// `image_math_ops`. These re-exports keep the historical paths working.
+pub use crate::filters::image::image_math_ops::{image_abs, image_exp, image_log, image_sqrt};
 
 /// Clamp ImageData values to [min, max].
 pub fn image_clamp(input: &ImageData, scalars: &str, min_val: f64, max_val: f64) -> ImageData {

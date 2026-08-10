@@ -1,71 +1,15 @@
 //! Smooth a scalar field on mesh vertices using Laplacian averaging.
-use crate::data::{AnyDataArray, DataArray, PolyData};
 
-pub fn smooth_scalar(
-    mesh: &PolyData,
-    scalar_name: &str,
-    iterations: usize,
-    lambda: f64,
-) -> PolyData {
-    let n = mesh.points.len();
-    let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
-        None => return mesh.clone(),
-        _ => return mesh.clone(),
-    };
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            add_neighbor_pair(&mut adj, n, cell[i], cell[(i + 1) % nc]);
-        }
-    }
-    let mut vals = vec![0.0f64; n];
-    let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        vals[i] = buf[0];
-    }
-    for _ in 0..iterations {
-        let mut next = vals.clone();
-        for i in 0..n {
-            if adj[i].is_empty() {
-                continue;
-            }
-            let avg: f64 = adj[i].iter().map(|&j| vals[j]).sum::<f64>() / adj[i].len() as f64;
-            next[i] += lambda * (avg - vals[i]);
-        }
-        vals = next;
-    }
-    let out_name = format!("{}_smooth", scalar_name);
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(&out_name, vals, 1)));
-    result.point_data_mut().set_active_scalars(&out_name);
-    result
-}
-
-fn add_neighbor_pair(adj: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
-    if a_id < 0 || b_id < 0 {
-        return;
-    }
-    let a = a_id as usize;
-    let b = b_id as usize;
-    if a >= n || b >= n || a == b {
-        return;
-    }
-    if !adj[a].contains(&b) {
-        adj[a].push(b);
-    }
-    if !adj[b].contains(&a) {
-        adj[b].push(a);
-    }
-}
+/// Smooth a scalar field on mesh vertices using Laplacian averaging.
+///
+/// Single implementation lives in [`crate::filters::mesh::mesh_scalar_smooth`];
+/// the smoothed values replace the array of the same name in the output.
+pub use crate::filters::mesh::mesh_scalar_smooth::smooth_scalar;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::{AnyDataArray, DataArray, PolyData};
     #[test]
     fn test_smooth_scalar() {
         let mut mesh = PolyData::from_triangles(
@@ -84,7 +28,7 @@ mod tests {
                 1,
             )));
         let r = smooth_scalar(&mesh, "v", 5, 0.5);
-        let arr = r.point_data().get_array("v_smooth").unwrap();
+        let arr = r.point_data().get_array("v").unwrap();
         let mut b = [0.0f64];
         arr.tuple_as_f64(1, &mut b);
         assert!(b[0] < 100.0); // smoothed toward neighbors

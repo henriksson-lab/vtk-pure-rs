@@ -1,7 +1,7 @@
 //! Quick topology information queries.
 
 use crate::data::PolyData;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Quick mesh info as a formatted string.
 pub fn mesh_info_string(mesh: &PolyData) -> String {
@@ -68,23 +68,9 @@ pub fn is_manifold_mesh(mesh: &PolyData) -> bool {
 }
 
 /// Euler characteristic: V - E + F.
-pub fn euler_characteristic(mesh: &PolyData) -> i64 {
-    let v = mesh.points.len() as i64;
-    let mut f = 0i64;
-    let mut edges: HashSet<(usize, usize)> = HashSet::new();
-    for cell in mesh.polys.iter() {
-        if !is_valid_polygon(cell, mesh.points.len()) {
-            continue;
-        }
-        f += 1;
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            edges.insert((a.min(b), a.max(b)));
-        }
-    }
-    v - edges.len() as i64 + f
-}
+///
+/// Single implementation lives in [`crate::filters::mesh::mesh_genus`].
+pub use crate::filters::mesh::mesh_genus::euler_characteristic;
 
 fn edge_counts(mesh: &PolyData) -> Option<HashMap<(usize, usize), usize>> {
     let mut ec: HashMap<(usize, usize), usize> = HashMap::new();

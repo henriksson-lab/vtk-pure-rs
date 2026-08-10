@@ -46,19 +46,41 @@ impl Default for FeatureEdgesParams {
 ///
 /// Returns a PolyData containing line cells for the selected edge types.
 pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData {
+    if !params.boundary_edges
+        && !params.feature_edges
+        && !params.manifold_edges
+        && !params.non_manifold_edges
+    {
+        return empty_feature_edges_output();
+    }
+
+    if params.boundary_edges
+        && !params.feature_edges
+        && !params.manifold_edges
+        && !params.non_manifold_edges
+    {
+        return boundary_edges_only(input);
+    }
+
     // Build edge -> (face_count, face0, face1). Stores the first two face
     // indices; higher counts only affect non-manifold classification.
-    let mut edge_data: HashMap<(i64, i64), (usize, usize, usize)> = HashMap::new();
     let nc = input.polys.num_cells();
-    let mut face_normals: Vec<[f64; 3]> = Vec::with_capacity(nc);
+    let mut edge_data: HashMap<(i64, i64), (usize, usize, usize)> =
+        HashMap::with_capacity(input.polys.connectivity_len());
+    let mut face_normals: Vec<[f64; 3]> = if params.feature_edges {
+        Vec::with_capacity(nc)
+    } else {
+        Vec::new()
+    };
 
     for ci in 0..nc {
         let cell = input.polys.cell(ci);
-        face_normals.push(polygon_normal(input, cell));
+        if params.feature_edges {
+            face_normals.push(polygon_normal(input, cell));
+        }
         let n = cell.len();
         for i in 0..n {
-            let (a, b) = (cell[i], cell[(i + 1) % n]);
-            let key = if a < b { (a, b) } else { (b, a) };
+            let key = ordered_edge(cell[i], cell[(i + 1) % n]);
             let entry = edge_data.entry(key).or_insert((0, 0, 0));
             if entry.0 == 0 {
                 entry.1 = ci;
@@ -81,11 +103,15 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
         let edge_type = if count == 1 {
             EdgeType::Boundary
         } else if count == 2 {
-            let n1 = face_normals[f0];
-            let n2 = face_normals[f1];
-            let dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
-            if dot <= cos_threshold {
-                EdgeType::Feature
+            if params.feature_edges {
+                let n1 = face_normals[f0];
+                let n2 = face_normals[f1];
+                let dot = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2];
+                if dot <= cos_threshold {
+                    EdgeType::Feature
+                } else {
+                    EdgeType::Manifold
+                }
             } else {
                 EdgeType::Manifold
             }
@@ -123,6 +149,126 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
         }
     }
 
+    feature_edges_output(pts_flat, line_conn, edge_types)
+}
+
+fn boundary_edges_only(input: &PolyData) -> PolyData {
+    if input.points.len() <= u32::MAX as usize && all_directed_edges_have_reverse(input) {
+        return empty_feature_edges_output();
+    }
+
+    let mut edges = Vec::with_capacity(input.polys.connectivity_len());
+
+    let offsets = input.polys.offsets();
+    let connectivity = input.polys.connectivity();
+    for cell_offsets in offsets.windows(2) {
+        let start = cell_offsets[0] as usize;
+        let end = cell_offsets[1] as usize;
+        if start == end {
+            continue;
+        }
+
+        let mut previous = connectivity[end - 1];
+        for &current in &connectivity[start..end] {
+            edges.push(ordered_edge(previous, current));
+            previous = current;
+        }
+    }
+
+    if edges.is_empty() {
+        return empty_feature_edges_output();
+    }
+
+    edges.sort_unstable();
+
+    let mut n_boundary = 0usize;
+    let mut i = 0;
+    while i < edges.len() {
+        let edge = edges[i];
+        let mut j = i + 1;
+        while j < edges.len() && edges[j] == edge {
+            j += 1;
+        }
+        if j == i + 1 {
+            n_boundary += 1;
+        }
+        i = j;
+    }
+
+    if n_boundary == 0 {
+        return empty_feature_edges_output();
+    }
+
+    let points = input.points.as_flat_slice();
+    let mut pts_flat = Vec::with_capacity(n_boundary.saturating_mul(6));
+    let mut line_conn = Vec::with_capacity(n_boundary.saturating_mul(2));
+    let mut pt_map = vec![-1; input.points.len()];
+
+    i = 0;
+    while i < edges.len() {
+        let (a, b) = edges[i];
+        let mut j = i + 1;
+        while j < edges.len() && edges[j] == (a, b) {
+            j += 1;
+        }
+
+        if j == i + 1 {
+            for id in [a, b] {
+                let ui = id as usize;
+                if pt_map[ui] < 0 {
+                    pt_map[ui] = (pts_flat.len() / 3) as i64;
+                    let offset = ui * 3;
+                    pts_flat.extend_from_slice(&points[offset..offset + 3]);
+                }
+            }
+            line_conn.push(pt_map[a as usize]);
+            line_conn.push(pt_map[b as usize]);
+        }
+
+        i = j;
+    }
+
+    feature_edges_output(pts_flat, line_conn, vec![0.0; n_boundary])
+}
+
+fn all_directed_edges_have_reverse(input: &PolyData) -> bool {
+    let n_edges = input.polys.connectivity_len();
+    if n_edges == 0 {
+        return true;
+    }
+
+    let mut set = U64Set::with_capacity(n_edges.saturating_mul(2));
+    let offsets = input.polys.offsets();
+    let connectivity = input.polys.connectivity();
+
+    for cell_offsets in offsets.windows(2) {
+        let start = cell_offsets[0] as usize;
+        let end = cell_offsets[1] as usize;
+        if start == end {
+            continue;
+        }
+
+        let mut previous = connectivity[end - 1];
+        for &current in &connectivity[start..end] {
+            set.insert(pack_directed_edge(previous, current));
+            previous = current;
+        }
+    }
+
+    for &edge in set.entries() {
+        if edge != U64Set::EMPTY && !set.contains(reverse_directed_edge(edge)) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn empty_feature_edges_output() -> PolyData {
+    feature_edges_output(Vec::new(), Vec::new(), Vec::new())
+}
+
+fn feature_edges_output(pts_flat: Vec<f64>, line_conn: Vec<i64>, edge_types: Vec<f64>) -> PolyData {
     let n_lines = line_conn.len() / 2;
     let offsets: Vec<i64> = (0..=n_lines).map(|i| (i * 2) as i64).collect();
 
@@ -136,6 +282,76 @@ pub fn feature_edges(input: &PolyData, params: &FeatureEdgesParams) -> PolyData 
             1,
         )));
     pd
+}
+
+fn ordered_edge(a: i64, b: i64) -> (i64, i64) {
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
+}
+
+fn pack_directed_edge(a: i64, b: i64) -> u64 {
+    ((a as u64) << 32) | (b as u32 as u64)
+}
+
+fn reverse_directed_edge(edge: u64) -> u64 {
+    (edge << 32) | (edge >> 32)
+}
+
+struct U64Set {
+    entries: Vec<u64>,
+    mask: usize,
+}
+
+impl U64Set {
+    const EMPTY: u64 = u64::MAX;
+
+    fn with_capacity(capacity: usize) -> Self {
+        let len = capacity.next_power_of_two().max(8);
+        Self {
+            entries: vec![Self::EMPTY; len],
+            mask: len - 1,
+        }
+    }
+
+    fn entries(&self) -> &[u64] {
+        &self.entries
+    }
+
+    fn insert(&mut self, key: u64) {
+        let mut idx = hash_u64(key) & self.mask;
+        loop {
+            let entry = &mut self.entries[idx];
+            if *entry == key {
+                return;
+            }
+            if *entry == Self::EMPTY {
+                *entry = key;
+                return;
+            }
+            idx = (idx + 1) & self.mask;
+        }
+    }
+
+    fn contains(&self, key: u64) -> bool {
+        let mut idx = hash_u64(key) & self.mask;
+        loop {
+            let entry = self.entries[idx];
+            if entry == key {
+                return true;
+            }
+            if entry == Self::EMPTY {
+                return false;
+            }
+            idx = (idx + 1) & self.mask;
+        }
+    }
+}
+
+fn hash_u64(key: u64) -> usize {
+    (key.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) as usize
 }
 
 fn polygon_normal(input: &PolyData, cell: &[i64]) -> [f64; 3] {

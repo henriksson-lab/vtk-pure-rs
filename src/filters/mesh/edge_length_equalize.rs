@@ -63,31 +63,15 @@ pub fn equalize_edge_lengths(input: &PolyData, target: f64, iterations: usize) -
     pd
 }
 
-/// Compute edge length statistics.
+/// Compute edge length statistics as `(min, max, mean, stddev)`.
+///
+/// Thin wrapper around
+/// [`crate::filters::mesh::compute_edge_lengths::edge_length_stats`], which
+/// holds the single implementation; this entry point only reshapes the result
+/// into a tuple.
 pub fn edge_length_stats(input: &PolyData) -> (f64, f64, f64, f64) {
-    // (min, max, mean, stddev)
-    let mut min_l = f64::MAX;
-    let mut max_l = 0.0f64;
-    let mut sum = 0.0;
-    let mut sum2 = 0.0;
-    let mut count = 0usize;
-    for (a, b) in unique_edges(input) {
-        let pa = input.points.get(a);
-        let pb = input.points.get(b);
-        let d =
-            ((pa[0] - pb[0]).powi(2) + (pa[1] - pb[1]).powi(2) + (pa[2] - pb[2]).powi(2)).sqrt();
-        min_l = min_l.min(d);
-        max_l = max_l.max(d);
-        sum += d;
-        sum2 += d * d;
-        count += 1;
-    }
-    if count == 0 {
-        return (0.0, 0.0, 0.0, 0.0);
-    }
-    let mean = sum / count as f64;
-    let var = (sum2 / count as f64 - mean * mean).max(0.0);
-    (min_l, max_l, mean, var.sqrt())
+    let stats = crate::filters::mesh::compute_edge_lengths::edge_length_stats(input);
+    (stats.min, stats.max, stats.mean, stats.std_dev)
 }
 
 fn unique_edges(input: &PolyData) -> Vec<(usize, usize)> {

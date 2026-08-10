@@ -1,3 +1,12 @@
+//! Depth sorting of polygonal cells, after `vtkDepthSortPolyData`
+//! (VTK/Filters/Hybrid/vtkDepthSortPolyData.cxx).
+//!
+//! Cell depth uses the default `VTK_SORT_FIRST_POINT` mode: the cell's depth is
+//! the projection of its *first* point onto the sort vector
+//! (vtkDepthSortPolyData.cxx:152-175). Back-to-front is the VTK default
+//! direction and sorts descending (`greaterf`, line 197); front-to-back sorts
+//! ascending (`lessf`, line 192).
+
 use crate::data::{AnyDataArray, CellArray, DataArray, PolyData};
 use std::cmp::Ordering;
 
@@ -106,37 +115,27 @@ fn rebuild_sorted_poly_data(
     let mut out_lines = CellArray::new();
     let mut out_polys = CellArray::new();
     let mut out_strips = CellArray::new();
-    let mut output_order = Vec::with_capacity(indexed.len());
-    let mut depth_values = Vec::with_capacity(indexed.len());
+    // Cell data is indexed by *global sort position*, not by the position the
+    // cell ends up at within its own output cell array. VTK's construction loop
+    // runs `for i in 0..nCells { cid = order[i]; ...; outCD->CopyData(inCD, cid,
+    // i); }` (vtkDepthSortPolyData.cxx:419-457): the cells themselves are
+    // dispatched into the verts/lines/polys/strips arrays by type, but the cell
+    // data tuple index `i` keeps counting across all four kinds. So
+    // `output_order` must follow the single mixed-kind sorted sequence, and the
+    // "Depth" values must be in that same sequence. (For inputs with only one
+    // cell kind the two orderings coincide; they differ only for mixed input.)
+    let output_order: Vec<usize> = sorted_cells
+        .iter()
+        .map(|(_, cell)| cell.input_cell_id)
+        .collect();
+    let depth_values: Vec<f64> = sorted_cells.iter().map(|(depth, _)| *depth).collect();
 
-    append_sorted_kind(
-        &sorted_cells,
-        CellKind::Vert,
-        &mut out_verts,
-        &mut output_order,
-        &mut depth_values,
-    );
-    append_sorted_kind(
-        &sorted_cells,
-        CellKind::Line,
-        &mut out_lines,
-        &mut output_order,
-        &mut depth_values,
-    );
-    append_sorted_kind(
-        &sorted_cells,
-        CellKind::Poly,
-        &mut out_polys,
-        &mut output_order,
-        &mut depth_values,
-    );
-    append_sorted_kind(
-        &sorted_cells,
-        CellKind::Strip,
-        &mut out_strips,
-        &mut output_order,
-        &mut depth_values,
-    );
+    // Cells are appended per kind, each kind preserving the global sorted order
+    // restricted to that kind (vtkDepthSortPolyData.cxx:433-454).
+    append_sorted_kind(&sorted_cells, CellKind::Vert, &mut out_verts);
+    append_sorted_kind(&sorted_cells, CellKind::Line, &mut out_lines);
+    append_sorted_kind(&sorted_cells, CellKind::Poly, &mut out_polys);
+    append_sorted_kind(&sorted_cells, CellKind::Strip, &mut out_strips);
 
     let mut pd = input.clone();
     pd.verts = out_verts;
@@ -155,20 +154,12 @@ fn rebuild_sorted_poly_data(
     pd
 }
 
-fn append_sorted_kind(
-    sorted_cells: &[(f64, &SortCell)],
-    kind: CellKind,
-    output: &mut CellArray,
-    output_order: &mut Vec<usize>,
-    depth_values: &mut Vec<f64>,
-) {
-    for &(depth, cell) in sorted_cells {
+fn append_sorted_kind(sorted_cells: &[(f64, &SortCell)], kind: CellKind, output: &mut CellArray) {
+    for &(_, cell) in sorted_cells {
         if cell.kind != kind {
             continue;
         }
         output.push_cell(&cell.point_ids);
-        output_order.push(cell.input_cell_id);
-        depth_values.push(depth);
     }
 }
 
@@ -323,9 +314,13 @@ mod tests {
         assert_eq!(result.strips.cell(0), &[9, 10, 11]);
         assert_eq!(result.strips.cell(1), &[6, 7, 8]);
 
+        // Global sorted order (back to front, by first-point depth) is
+        // cells 5, 3, 1, 4, 2, 0 -> ids 6, 4, 2, 5, 3, 1. VTK writes cell data
+        // at the global sort position, so the cell data is NOT regrouped per
+        // cell kind even though the cells themselves are.
         let ids = result.cell_data().get_array("id").unwrap();
         let mut buf = [0.0f64];
-        for (tuple, expected) in [2.0, 1.0, 4.0, 3.0, 6.0, 5.0].into_iter().enumerate() {
+        for (tuple, expected) in [6.0, 4.0, 2.0, 5.0, 3.0, 1.0].into_iter().enumerate() {
             ids.tuple_as_f64(tuple, &mut buf);
             assert_eq!(buf[0], expected);
         }

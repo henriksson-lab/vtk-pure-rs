@@ -46,7 +46,7 @@ impl Default for VideoOptions {
 /// # Example
 ///
 /// ```no_run
-/// use crate::io::video::{FrameSequence, write_video, ffmpeg_writer::VideoOptions};
+/// use vtk_pure_rs::io::video::{FrameSequence, write_video, ffmpeg_writer::VideoOptions};
 ///
 /// let mut seq = FrameSequence::new(640, 480).with_fps(30);
 /// // ... add frames ...

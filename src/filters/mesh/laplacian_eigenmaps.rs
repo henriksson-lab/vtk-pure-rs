@@ -11,32 +11,7 @@ pub fn fiedler_vector(input: &PolyData) -> PolyData {
         return input.clone();
     }
 
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            add_neighbor_pair(&mut neighbors, n, cell[i], cell[(i + 1) % cell.len()]);
-        }
-    }
-    for cell in input.lines.iter() {
-        for edge in cell.windows(2) {
-            add_neighbor_pair(&mut neighbors, n, edge[0], edge[1]);
-        }
-    }
-    for strip in input.strips.iter() {
-        if strip.len() < 3 {
-            continue;
-        }
-        for i in 0..strip.len() - 2 {
-            let tri = if i % 2 == 0 {
-                [strip[i], strip[i + 1], strip[i + 2]]
-            } else {
-                [strip[i + 1], strip[i], strip[i + 2]]
-            };
-            add_neighbor_pair(&mut neighbors, n, tri[0], tri[1]);
-            add_neighbor_pair(&mut neighbors, n, tri[1], tri[2]);
-            add_neighbor_pair(&mut neighbors, n, tri[2], tri[0]);
-        }
-    }
+    let neighbors = build_neighbors(input, n);
 
     // Power iteration for smallest non-trivial eigenvector of graph Laplacian
     // L*v = degree*v - A*v, we want second smallest eigenvalue
@@ -79,34 +54,112 @@ pub fn fiedler_vector(input: &PolyData) -> PolyData {
 
 /// Partition mesh into two halves using the Fiedler vector sign.
 /// Adds "Partition" scalar (0 or 1).
+///
+/// Uses a default iteration count; see [`spectral_partition_iter`], which holds
+/// the single implementation. The output carries only "Partition" — use
+/// [`fiedler_vector`] if you also want a (much cruder) vector estimate.
 pub fn spectral_partition(input: &PolyData) -> PolyData {
-    let result = fiedler_vector(input);
-    let arr = match result.point_data().get_array("Fiedler") {
-        Some(a) => a,
-        None => return input.clone(),
-    };
+    spectral_partition_iter(input, 100)
+}
 
-    let n = arr.num_tuples();
-    let mut buf = [0.0f64];
-    let partition: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            if buf[0] >= 0.0 {
-                1.0
-            } else {
-                0.0
+/// Partition a mesh into two halves by the sign of the Fiedler vector.
+///
+/// The Fiedler vector — the eigenvector of the graph Laplacian for the
+/// smallest non-trivial eigenvalue — is found by projected gradient descent on
+/// the Rayleigh quotient in the subspace orthogonal to the constant vector.
+/// (Plain power iteration on `L`, which the other copies of this filter used,
+/// converges on the *largest* eigenvector instead.) Polygon, line and
+/// triangle-strip cells all contribute edges. Adds a "Partition" scalar
+/// (0 or 1) and makes it the active scalars.
+pub(crate) fn spectral_partition_iter(mesh: &PolyData, iterations: usize) -> PolyData {
+    let n = mesh.points.len();
+    if n < 2 {
+        return mesh.clone();
+    }
+    let adj = build_neighbors(mesh, n);
+
+    let iters = iterations.max(50);
+    let mut v: Vec<f64> = (0..n).map(|i| (i as f64) / n as f64 - 0.5).collect();
+    for _ in 0..iters {
+        // Apply Laplacian: Lv[i] = deg(i)*v[i] - sum(v[j] for j in adj[i])
+        let mut lv: Vec<f64> = vec![0.0; n];
+        for i in 0..n {
+            lv[i] = adj[i].len() as f64 * v[i] - adj[i].iter().map(|&j| v[j]).sum::<f64>();
+        }
+        // Project out the constant vector, then normalize.
+        let mean = lv.iter().sum::<f64>() / n as f64;
+        for x in &mut lv {
+            *x -= mean;
+        }
+        let norm = lv.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if norm > 1e-15 {
+            for x in &mut lv {
+                *x /= norm;
             }
-        })
-        .collect();
+        }
+        // Descend the Rayleigh quotient: v <- v - alpha * (Lv - (v.Lv) v).
+        let dot: f64 = v.iter().zip(lv.iter()).map(|(a, b)| a * b).sum();
+        for i in 0..n {
+            v[i] -= 0.1 * (lv[i] - dot * v[i]);
+        }
+        let mean = v.iter().sum::<f64>() / n as f64;
+        for x in &mut v {
+            *x -= mean;
+        }
+        let norm = v.iter().map(|x| x * x).sum::<f64>().sqrt();
+        if norm > 1e-15 {
+            for x in &mut v {
+                *x /= norm;
+            }
+        }
+    }
 
-    let mut pd = result;
-    pd.point_data_mut()
+    let labels: Vec<f64> = v
+        .iter()
+        .map(|&x| if x >= 0.0 { 1.0 } else { 0.0 })
+        .collect();
+    let mut result = mesh.clone();
+    result
+        .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Partition",
-            partition,
+            labels,
             1,
         )));
-    pd
+    result.point_data_mut().set_active_scalars("Partition");
+    result
+}
+
+/// Vertex adjacency from polygons (closed loops), polylines and triangle
+/// strips.
+fn build_neighbors(input: &PolyData, n: usize) -> Vec<Vec<usize>> {
+    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for cell in input.polys.iter() {
+        for i in 0..cell.len() {
+            add_neighbor_pair(&mut neighbors, n, cell[i], cell[(i + 1) % cell.len()]);
+        }
+    }
+    for cell in input.lines.iter() {
+        for edge in cell.windows(2) {
+            add_neighbor_pair(&mut neighbors, n, edge[0], edge[1]);
+        }
+    }
+    for strip in input.strips.iter() {
+        if strip.len() < 3 {
+            continue;
+        }
+        for i in 0..strip.len() - 2 {
+            let tri = if i % 2 == 0 {
+                [strip[i], strip[i + 1], strip[i + 2]]
+            } else {
+                [strip[i + 1], strip[i], strip[i + 2]]
+            };
+            add_neighbor_pair(&mut neighbors, n, tri[0], tri[1]);
+            add_neighbor_pair(&mut neighbors, n, tri[1], tri[2]);
+            add_neighbor_pair(&mut neighbors, n, tri[2], tri[0]);
+        }
+    }
+    neighbors
 }
 
 fn add_neighbor_pair(neighbors: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {

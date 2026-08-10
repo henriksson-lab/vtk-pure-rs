@@ -18,11 +18,155 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
     let conn = work_polys.connectivity();
     let nc = work_polys.num_cells();
 
-    // Bucket edges by their lower endpoint, then sort only each small point
-    // bucket. This is the same boundary criterion as VTK's "no edge neighbor"
-    // check, but avoids a global sort across every mesh edge.
+    // Build a compact edge list and sort by undirected endpoints. This mirrors
+    // VTK's boundary criterion ("no edge neighbor") without allocating a Vec
+    // for every point in the mesh.
     let np = input.points.len();
-    let mut edge_counts_by_lower = vec![0usize; np];
+    let boundary_edges = collect_boundary_edges(offsets, conn, nc, np);
+
+    if boundary_edges.is_empty() {
+        return input.clone();
+    }
+
+    // VTK stores free edges as line cells, builds links, and walks from one
+    // line to the single neighboring line at the current endpoint. Use
+    // undirected edge adjacency here so reversed boundary-edge orientation
+    // does not falsely invalidate a valid loop.
+    let sentinel = usize::MAX;
+    let mut first_edge_by_vertex = vec![sentinel; np];
+    let mut second_edge_by_vertex = vec![sentinel; np];
+    let mut edge_degree_by_vertex = vec![0u8; np];
+    for (edge_id, &(a, b)) in boundary_edges.iter().enumerate() {
+        add_boundary_edge_id(
+            a,
+            edge_id,
+            &mut first_edge_by_vertex,
+            &mut second_edge_by_vertex,
+            &mut edge_degree_by_vertex,
+        );
+        add_boundary_edge_id(
+            b,
+            edge_id,
+            &mut first_edge_by_vertex,
+            &mut second_edge_by_vertex,
+            &mut edge_degree_by_vertex,
+        );
+    }
+
+    let mut visited = vec![false; boundary_edges.len()];
+    let mut output_cells: Option<(Vec<i64>, Vec<i64>)> = None;
+
+    for (start_edge, &(start_v, next_v)) in boundary_edges.iter().enumerate() {
+        if visited[start_edge] {
+            continue;
+        }
+        let mut loop_pts = vec![start_v];
+        let mut current = next_v;
+        let mut current_edge = start_edge;
+        let mut valid = true;
+        loop {
+            visited[current_edge] = true;
+            if current == start_v {
+                break;
+            }
+            loop_pts.push(current);
+
+            let mut next_edge = sentinel;
+            let mut unvisited_count = 0usize;
+            let first = first_edge_by_vertex[current];
+            if first != sentinel && !visited[first] {
+                next_edge = first;
+                unvisited_count += 1;
+            }
+            let second = second_edge_by_vertex[current];
+            if second != sentinel && !visited[second] {
+                next_edge = second;
+                unvisited_count += 1;
+            }
+            if edge_degree_by_vertex[current] != 2 || unvisited_count != 1 {
+                valid = false;
+                break;
+            }
+            current_edge = next_edge;
+            let (a, b) = boundary_edges[current_edge];
+            current = if a == current { b } else { a };
+        }
+        if valid
+            && loop_pts.len() >= 3
+            && loop_bounding_sphere_radius(input, &loop_pts) <= hole_size
+        {
+            let (offsets, conn) = output_cells.get_or_insert_with(|| {
+                (
+                    input.polys.offsets().to_vec(),
+                    input.polys.connectivity().to_vec(),
+                )
+            });
+            let added_tris = loop_pts.len() - 2;
+            offsets.reserve(added_tris);
+            conn.reserve(added_tris * 3);
+            for i in 1..loop_pts.len() - 1 {
+                conn.extend_from_slice(&[
+                    loop_pts[0] as i64,
+                    loop_pts[i] as i64,
+                    loop_pts[i + 1] as i64,
+                ]);
+                offsets.push(conn.len() as i64);
+            }
+        }
+    }
+
+    let mut pd = input.clone();
+    if let Some((offsets, conn)) = output_cells {
+        pd.polys = CellArray::from_raw(offsets, conn);
+    }
+    pd.cell_data_mut().clear();
+
+    pd
+}
+
+fn collect_boundary_edges(
+    offsets: &[i64],
+    conn: &[i64],
+    nc: usize,
+    np: usize,
+) -> Vec<(usize, usize)> {
+    if u32::try_from(np).is_ok() {
+        collect_boundary_edges_packed(offsets, conn, nc, np)
+    } else {
+        collect_boundary_edges_wide(offsets, conn, nc, np)
+    }
+}
+
+fn collect_boundary_edges_packed(
+    offsets: &[i64],
+    conn: &[i64],
+    nc: usize,
+    np: usize,
+) -> Vec<(usize, usize)> {
+    const EMPTY_KEY: u64 = u64::MAX;
+
+    #[derive(Clone, Copy)]
+    struct EdgeSlot {
+        key: u64,
+        dir: u64,
+        count: u8,
+    }
+
+    let cap = conn
+        .len()
+        .saturating_add(conn.len() / 4)
+        .saturating_add(1)
+        .max(16)
+        .next_power_of_two();
+    let mut slots = vec![
+        EdgeSlot {
+            key: EMPTY_KEY,
+            dir: 0,
+            count: 0,
+        };
+        cap
+    ];
+    let mask = cap - 1;
 
     for ci in 0..nc {
         let start = offsets[ci] as usize;
@@ -37,20 +181,52 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
             if a < 0 || b < 0 || a as usize >= np || b as usize >= np || a == b {
                 continue;
             }
-            let (lo, _) = if a < b {
-                (a as usize, b as usize)
-            } else {
-                (b as usize, a as usize)
-            };
-            edge_counts_by_lower[lo] += 1;
+            let a = a as u32;
+            let b = b as u32;
+            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+            let key = ((lo as u64) << 32) | hi as u64;
+            let dir = ((a as u64) << 32) | b as u64;
+            let mut idx = edge_hash(key) & mask;
+            loop {
+                let slot = &mut slots[idx];
+                if slot.key == EMPTY_KEY {
+                    *slot = EdgeSlot { key, dir, count: 1 };
+                    break;
+                }
+                if slot.key == key {
+                    slot.count = slot.count.saturating_add(1);
+                    break;
+                }
+                idx = (idx + 1) & mask;
+            }
         }
     }
 
-    let mut edges_by_lower: Vec<Vec<(usize, usize, usize)>> = edge_counts_by_lower
-        .into_iter()
-        .map(Vec::with_capacity)
-        .collect();
+    let mut boundary_edges = Vec::new();
+    for slot in slots {
+        if slot.count == 1 {
+            boundary_edges.push(((slot.dir >> 32) as usize, (slot.dir & 0xffff_ffff) as usize));
+        }
+    }
+    boundary_edges
+}
 
+fn edge_hash(key: u64) -> usize {
+    let mut x = key;
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xff51afd7ed558ccd);
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xc4ceb9fe1a85ec53);
+    (x ^ (x >> 33)) as usize
+}
+
+fn collect_boundary_edges_wide(
+    offsets: &[i64],
+    conn: &[i64],
+    nc: usize,
+    np: usize,
+) -> Vec<(usize, usize)> {
+    let mut edges = Vec::with_capacity(conn.len());
     for ci in 0..nc {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;
@@ -67,106 +243,46 @@ pub fn fill_holes_with_hole_size(input: &PolyData, hole_size: f64) -> PolyData {
             let a = a as usize;
             let b = b as usize;
             let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-            edges_by_lower[lo].push((hi, a, b));
+            edges.push((lo, hi, a, b));
         }
     }
 
-    let mut boundary_edges: Vec<(usize, usize)> = Vec::new();
-    let mut has_boundary = false;
-    for bucket in &mut edges_by_lower {
-        bucket.sort_unstable_by_key(|edge| edge.0);
-        let mut i = 0;
-        while i < bucket.len() {
-            let hi = bucket[i].0;
-            let start_i = i;
+    edges.sort_unstable_by_key(|&(lo, hi, _, _)| (lo, hi));
+    let mut boundary_edges = Vec::new();
+    let mut i = 0;
+    while i < edges.len() {
+        let lo = edges[i].0;
+        let hi = edges[i].1;
+        let start_i = i;
+        i += 1;
+        while i < edges.len() && edges[i].0 == lo && edges[i].1 == hi {
             i += 1;
-            while i < bucket.len() && bucket[i].0 == hi {
-                i += 1;
-            }
-            if i - start_i == 1 {
-                let (_, a, b) = bucket[start_i];
-                boundary_edges.push((a, b));
-                has_boundary = true;
-            }
+        }
+        if i - start_i == 1 {
+            let (_, _, a, b) = edges[start_i];
+            boundary_edges.push((a, b));
         }
     }
-
-    if !has_boundary {
-        return input.clone();
-    }
-
-    // VTK stores free edges as line cells, builds links, and walks from one
-    // line to the single neighboring line at the current endpoint. Use
-    // undirected edge adjacency here so reversed boundary-edge orientation
-    // does not falsely invalidate a valid loop.
-    let mut edge_ids_by_vertex: Vec<Vec<usize>> = vec![Vec::new(); np];
-    for (edge_id, &(a, b)) in boundary_edges.iter().enumerate() {
-        edge_ids_by_vertex[a].push(edge_id);
-        edge_ids_by_vertex[b].push(edge_id);
-    }
-
-    let mut visited = vec![false; boundary_edges.len()];
-    let mut loops: Vec<Vec<i64>> = Vec::new();
-
-    for (start_edge, &(start_v, next_v)) in boundary_edges.iter().enumerate() {
-        if visited[start_edge] {
-            continue;
-        }
-        let mut loop_pts = vec![start_v as i64];
-        let mut current = next_v;
-        let mut current_edge = start_edge;
-        let mut valid = true;
-        loop {
-            visited[current_edge] = true;
-            if current == start_v {
-                break;
-            }
-            loop_pts.push(current as i64);
-
-            let mut next_edge = None;
-            let mut unvisited_count = 0usize;
-            for &edge_id in &edge_ids_by_vertex[current] {
-                if !visited[edge_id] {
-                    next_edge = Some(edge_id);
-                    unvisited_count += 1;
-                    if unvisited_count > 1 {
-                        break;
-                    }
-                }
-            }
-            let Some(next_edge) = next_edge else {
-                valid = false;
-                break;
-            };
-            if unvisited_count != 1 {
-                valid = false;
-                break;
-            }
-            current_edge = next_edge;
-            let (a, b) = boundary_edges[current_edge];
-            current = if a == current { b } else { a };
-        }
-        if valid && loop_pts.len() >= 3 {
-            loops.push(loop_pts);
-        }
-    }
-
-    let mut pd = input.clone();
-
-    for lp in &loops {
-        if loop_bounding_sphere_radius(input, lp) > hole_size {
-            continue;
-        }
-        for i in 1..lp.len() - 1 {
-            pd.polys.push_cell(&[lp[0], lp[i], lp[i + 1]]);
-        }
-    }
-    pd.cell_data_mut().clear();
-
-    pd
+    boundary_edges
 }
 
-fn loop_bounding_sphere_radius(input: &PolyData, loop_pts: &[i64]) -> f64 {
+fn add_boundary_edge_id(
+    vertex: usize,
+    edge_id: usize,
+    first_edge_by_vertex: &mut [usize],
+    second_edge_by_vertex: &mut [usize],
+    edge_degree_by_vertex: &mut [u8],
+) {
+    let degree = &mut edge_degree_by_vertex[vertex];
+    if *degree == 0 {
+        first_edge_by_vertex[vertex] = edge_id;
+    } else if *degree == 1 {
+        second_edge_by_vertex[vertex] = edge_id;
+    }
+    *degree = degree.saturating_add(1);
+}
+
+fn loop_bounding_sphere_radius(input: &PolyData, loop_pts: &[usize]) -> f64 {
     if loop_pts.is_empty() {
         return 0.0;
     }
@@ -174,11 +290,11 @@ fn loop_bounding_sphere_radius(input: &PolyData, loop_pts: &[i64]) -> f64 {
     // vtkFillHolesFilter calls vtkSphere::ComputeBoundingSphere with hints
     // initialized to [0, 0], so the sphere starts at the first loop point and
     // grows in a single pass to include subsequent points.
-    let first = input.points.get(loop_pts[0] as usize);
+    let first = input.points.get(loop_pts[0]);
     let mut sphere = [first[0], first[1], first[2], 0.0f64];
     let mut radius2 = 0.0f64;
     for &pid in &loop_pts[1..] {
-        let p = input.points.get(pid as usize);
+        let p = input.points.get(pid);
         let dx = p[0] - sphere[0];
         let dy = p[1] - sphere[1];
         let dz = p[2] - sphere[2];

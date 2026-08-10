@@ -1,69 +1,23 @@
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
+
+/// Heat diffusion step size used by this single-scale entry point.
+const STEP_TIME: f64 = 0.3;
 
 /// Compute Heat Kernel Signature (HKS) at each vertex.
 ///
 /// HKS is a shape descriptor based on heat diffusion. Approximated by
 /// running heat diffusion from each vertex for `time` steps and recording
-/// the remaining heat at the source. Adds "HKS" scalar array.
+/// the remaining heat at the source. Adds a single-component "HKS" scalar array.
 ///
-/// This is a simplified single-scale HKS using explicit heat diffusion.
+/// Thin wrapper over the single (multi-scale) implementation in
+/// [`crate::filters::mesh::mesh_heat_kernel_signature::heat_kernel_signature`],
+/// evaluated at the one diffusion time `time * 0.3` that `time` steps of size
+/// 0.3 correspond to.
 pub fn heat_kernel_signature(input: &PolyData, time: usize) -> PolyData {
-    let n = input.points.len();
-    if n == 0 {
-        return input.clone();
-    }
-
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        let cn = cell.len();
-        if cn < 2 {
-            continue;
-        }
-        for i in 0..cn {
-            if cell[i] < 0 || cell[(i + 1) % cn] < 0 {
-                continue;
-            }
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cn] as usize;
-            if a >= n || b >= n {
-                continue;
-            }
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
-
-    let dt = 0.3;
-    let mut hks = vec![0.0f64; n];
-
-    for src in 0..n {
-        let mut heat = vec![0.0f64; n];
-        heat[src] = 1.0;
-
-        for _ in 0..time {
-            let mut new = heat.clone();
-            for i in 0..n {
-                if neighbors[i].is_empty() {
-                    continue;
-                }
-                let avg: f64 =
-                    neighbors[i].iter().map(|&j| heat[j]).sum::<f64>() / neighbors[i].len() as f64;
-                new[i] = heat[i] + dt * (avg - heat[i]);
-            }
-            heat = new;
-        }
-        hks[src] = heat[src]; // heat remaining at source
-    }
-
-    let mut pd = input.clone();
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("HKS", hks, 1)));
-    pd.point_data_mut().set_active_scalars("HKS");
-    pd
+    crate::filters::mesh::mesh_heat_kernel_signature::heat_kernel_signature(
+        input,
+        &[STEP_TIME * time as f64],
+    )
 }
 
 #[cfg(test)]

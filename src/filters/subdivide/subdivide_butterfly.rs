@@ -13,16 +13,21 @@ pub fn subdivide_butterfly(input: &PolyData) -> PolyData {
     {
         return input.clone();
     }
-    let mut points = input.points.clone();
-    let mut new_tris: Vec<[i64; 3]> = Vec::new();
-    let mut point_stencils: Vec<PointStencil> = (0..n).map(PointStencil::single).collect();
-    let mut source_cell_ids = Vec::new();
+    let input_poly_count = input.polys.num_cells();
+    let max_new_edges = input.polys.connectivity_len();
+    let mut point_data_flat = Vec::with_capacity((n + max_new_edges) * 3);
+    point_data_flat.extend_from_slice(input.points.as_flat_slice());
+    let mut points = Points::from_flat_vec(point_data_flat);
+    let mut new_tris: Vec<[i64; 3]> = Vec::with_capacity(input_poly_count * 4);
+    let mut point_stencils: Vec<PointStencil> = Vec::with_capacity(n + max_new_edges);
+    point_stencils.extend((0..n).map(PointStencil::single));
+    let mut source_cell_ids = Vec::with_capacity(input_poly_count * 4);
     let poly_cell_offset = input.verts.num_cells() + input.lines.num_cells();
 
     // Build edge-to-face adjacency
-    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    let mut edge_faces: HashMap<(i64, i64), Vec<usize>> = HashMap::with_capacity(max_new_edges);
     let mut point_faces: Vec<Vec<usize>> = vec![Vec::new(); n];
-    let mut tris: Vec<[i64; 3]> = Vec::new();
+    let mut tris: Vec<[i64; 3]> = Vec::with_capacity(input_poly_count);
 
     for cell in input.polys.iter() {
         let Some(tri) = valid_triangle_point_ids(cell, n) else {
@@ -47,7 +52,7 @@ pub fn subdivide_butterfly(input: &PolyData) -> PolyData {
         return input.clone();
     }
 
-    let mut midpoint_cache: HashMap<(i64, i64), i64> = HashMap::new();
+    let mut midpoint_cache: HashMap<(i64, i64), i64> = HashMap::with_capacity(edge_faces.len());
 
     for (cell_index, tri) in tris.iter().enumerate() {
         let a = tri[0];
@@ -92,10 +97,12 @@ pub fn subdivide_butterfly(input: &PolyData) -> PolyData {
         source_cell_ids.extend(std::iter::repeat(poly_cell_offset + cell_index).take(4));
     }
 
-    let mut polys = CellArray::new();
+    let mut connectivity = Vec::with_capacity(new_tris.len() * 3);
     for tri in &new_tris {
-        polys.push_cell(&[tri[0], tri[1], tri[2]]);
+        connectivity.extend_from_slice(tri);
     }
+    let offsets = (0..=new_tris.len()).map(|i| (i * 3) as i64).collect();
+    let polys = CellArray::from_raw(offsets, connectivity);
 
     let mut pd = PolyData::new();
     pd.points = points;

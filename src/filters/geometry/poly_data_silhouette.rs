@@ -4,6 +4,7 @@
 //! is back-facing relative to a view direction.
 
 use crate::data::{CellArray, Points, PolyData};
+use std::collections::HashMap;
 
 /// Options matching vtkPolyDataSilhouette defaults where practical.
 #[derive(Debug, Clone, Copy)]
@@ -43,51 +44,74 @@ pub fn silhouette_edges_with_options(
         return PolyData::new();
     }
 
-    // Compute face normals
-    let all_cells: Vec<Vec<i64>> = mesh.polys.iter().map(|c| c.to_vec()).collect();
-    let face_normals: Vec<[f64; 3]> = all_cells
-        .iter()
-        .map(|cell| {
-            if cell.len() < 3 {
-                return [0.0, 0.0, 1.0];
-            }
-            let a = mesh.points.get(cell[0] as usize);
-            let b = mesh.points.get(cell[1] as usize);
-            let c = mesh.points.get(cell[2] as usize);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ]
-        })
-        .collect();
+    let offsets = mesh.polys.offsets();
+    let conn = mesh.polys.connectivity();
+    let pts = mesh.points.as_flat_slice();
 
-    // Build edge → face adjacency
-    let mut edge_faces: std::collections::HashMap<(usize, usize), Vec<usize>> =
-        std::collections::HashMap::new();
-    for (ci, cell) in all_cells.iter().enumerate() {
-        let n = cell.len();
+    let mut face_normals = Vec::with_capacity(n_cells);
+    for ci in 0..n_cells {
+        let start = offsets[ci] as usize;
+        let end = offsets[ci + 1] as usize;
+        if end - start < 3 {
+            face_normals.push([0.0, 0.0, 1.0]);
+            continue;
+        }
+        let a = conn[start] as usize * 3;
+        let b = conn[start + 1] as usize * 3;
+        let c = conn[start + 2] as usize * 3;
+        let e1 = [
+            pts[b] - pts[a],
+            pts[b + 1] - pts[a + 1],
+            pts[b + 2] - pts[a + 2],
+        ];
+        let e2 = [
+            pts[c] - pts[a],
+            pts[c + 1] - pts[a + 1],
+            pts[c + 2] - pts[a + 2],
+        ];
+        face_normals.push([
+            e1[1] * e2[2] - e1[2] * e2[1],
+            e1[2] * e2[0] - e1[0] * e2[2],
+            e1[0] * e2[1] - e1[1] * e2[0],
+        ]);
+    }
+
+    // Build edge -> up to two adjacent faces. Extra incident faces are marked
+    // non-manifold and ignored for silhouette extraction, matching the old path.
+    let mut edge_faces: HashMap<(usize, usize), [usize; 3]> =
+        HashMap::with_capacity(mesh.polys.connectivity_len());
+    for ci in 0..n_cells {
+        let start = offsets[ci] as usize;
+        let end = offsets[ci + 1] as usize;
+        let n = end - start;
         for i in 0..n {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % n] as usize;
+            let a = conn[start + i] as usize;
+            let b = conn[start + (i + 1) % n] as usize;
             let edge = (a.min(b), a.max(b));
-            edge_faces.entry(edge).or_default().push(ci);
+            let faces = edge_faces.entry(edge).or_insert([usize::MAX; 3]);
+            if faces[0] == usize::MAX {
+                faces[0] = ci;
+            } else if faces[1] == usize::MAX {
+                faces[1] = ci;
+            } else {
+                faces[2] = ci;
+            }
         }
     }
 
     let feature_angle_cos = options.feature_angle_degrees.to_radians().cos();
 
     // Find silhouette edges
-    let mut sil_points = Points::<f64>::new();
-    let mut sil_lines = CellArray::new();
-    let mut point_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut sil_points = Vec::new();
+    let mut line_offsets = Vec::new();
+    let mut line_conn = Vec::new();
+    let mut point_map = vec![-1i64; mesh.points.len()];
+    line_offsets.push(0);
 
-    for ((a, b), faces) in &edge_faces {
-        let is_silhouette = if faces.len() == 1 {
+    for (&(a, b), faces) in &edge_faces {
+        let is_silhouette = if faces[1] == usize::MAX {
             options.border_edges
-        } else if faces.len() == 2 {
+        } else if faces[2] == usize::MAX {
             let d0 = dot(face_normals[faces[0]], view_dir);
             let d1 = dot(face_normals[faces[1]], view_dir);
             let edge_angle_cos = normalized_dot(face_normals[faces[0]], face_normals[faces[1]]);
@@ -97,24 +121,35 @@ pub fn silhouette_edges_with_options(
         };
 
         if is_silhouette {
-            let ia = *point_map.entry(*a).or_insert_with(|| {
-                let idx = sil_points.len();
-                sil_points.push(mesh.points.get(*a));
-                idx
-            });
-            let ib = *point_map.entry(*b).or_insert_with(|| {
-                let idx = sil_points.len();
-                sil_points.push(mesh.points.get(*b));
-                idx
-            });
-            sil_lines.push_cell(&[ia as i64, ib as i64]);
+            let ia = map_silhouette_point(a, &mut point_map, &mut sil_points, pts);
+            let ib = map_silhouette_point(b, &mut point_map, &mut sil_points, pts);
+            line_conn.push(ia);
+            line_conn.push(ib);
+            line_offsets.push(line_conn.len() as i64);
         }
     }
 
     let mut result = PolyData::new();
-    result.points = sil_points;
-    result.lines = sil_lines;
+    result.points = Points::from_flat_vec(sil_points);
+    result.lines = CellArray::from_raw(line_offsets, line_conn);
     result
+}
+
+fn map_silhouette_point(
+    id: usize,
+    point_map: &mut [i64],
+    sil_points: &mut Vec<f64>,
+    points: &[f64],
+) -> i64 {
+    let mapped = point_map[id];
+    if mapped >= 0 {
+        return mapped;
+    }
+    let next = (sil_points.len() / 3) as i64;
+    let base = id * 3;
+    sil_points.extend_from_slice(&points[base..base + 3]);
+    point_map[id] = next;
+    next
 }
 
 /// Extract silhouette edges relative to a camera position (perspective).

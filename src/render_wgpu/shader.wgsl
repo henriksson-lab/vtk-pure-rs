@@ -42,7 +42,12 @@ struct Uniforms {
     shadow_darkness: f32,
     light_vp: mat4x4<f32>,
     shadow_bias: f32,
-    _shadow_pad: vec3<f32>,
+    // Spelled out as scalars: a `vec3<f32>` here would be re-aligned to offset
+    // 416 by WGSL and push `lights` 16 bytes past where the Rust-side
+    // `Uniforms` struct puts it.
+    _shadow_pad0: f32,
+    _shadow_pad1: f32,
+    _shadow_pad2: f32,
     lights: array<LightData, 8>,
 };
 

@@ -183,6 +183,12 @@ impl PlyBinaryReader {
                 .iter()
                 .any(|p| p.count_type.is_some() && p.name == "texcoord");
 
+        if let Some(pd) =
+            read_simple_polydata_fast_path(&mut reader, &elements, endian, has_normals)?
+        {
+            return Ok(pd);
+        }
+
         let mut points = Points::<f64>::new();
         let mut polys = CellArray::new();
         let mut colors = rgb_names.map(|_| Vec::<u8>::new());
@@ -392,6 +398,97 @@ impl PlyBinaryReader {
         }
         Ok(pd)
     }
+}
+
+fn read_simple_polydata_fast_path<R: BufRead>(
+    reader: &mut R,
+    elements: &[PlyElement],
+    endian: PlyEndian,
+    has_normals: bool,
+) -> Result<Option<PolyData>, VtkError> {
+    if !matches!(endian, PlyEndian::Little) {
+        return Ok(None);
+    }
+    let [vertex_element, face_element] = elements else {
+        return Ok(None);
+    };
+    if vertex_element.name != "vertex" || face_element.name != "face" {
+        return Ok(None);
+    }
+
+    let expected_vertex_props: &[&str] = if has_normals {
+        &["x", "y", "z", "nx", "ny", "nz"]
+    } else {
+        &["x", "y", "z"]
+    };
+    if vertex_element.props.len() != expected_vertex_props.len()
+        || vertex_element
+            .props
+            .iter()
+            .zip(expected_vertex_props)
+            .any(|(prop, &name)| {
+                prop.count_type.is_some()
+                    || prop.name != name
+                    || !matches!(prop.data_type, PlyScalarType::F32)
+            })
+    {
+        return Ok(None);
+    }
+    if face_element.props.len() != 1 {
+        return Ok(None);
+    }
+    let face_prop = &face_element.props[0];
+    if !(face_prop.name == "vertex_indices" || face_prop.name == "vertex_index")
+        || !matches!(face_prop.count_type, Some(PlyScalarType::U8))
+        || !matches!(face_prop.data_type, PlyScalarType::I32)
+    {
+        return Ok(None);
+    }
+
+    let mut points_flat = Vec::with_capacity(vertex_element.count * 3);
+    let mut normals_flat = has_normals.then(|| Vec::with_capacity(vertex_element.count * 3));
+    let mut buf = [0u8; 24];
+    let vertex_bytes = expected_vertex_props.len() * 4;
+    for _ in 0..vertex_element.count {
+        reader
+            .read_exact(&mut buf[..vertex_bytes])
+            .map_err(VtkError::Io)?;
+        for chunk in buf[..12].chunks_exact(4) {
+            points_flat.push(f32::from_le_bytes(chunk.try_into().unwrap()) as f64);
+        }
+        if let Some(normals) = normals_flat.as_mut() {
+            for chunk in buf[12..24].chunks_exact(4) {
+                normals.push(f32::from_le_bytes(chunk.try_into().unwrap()) as f64);
+            }
+        }
+    }
+
+    let mut offsets = Vec::with_capacity(face_element.count + 1);
+    let mut conn = Vec::with_capacity(face_element.count * 3);
+    offsets.push(0);
+    let mut count_buf = [0u8; 1];
+    let mut id_buf = [0u8; 4];
+    for _ in 0..face_element.count {
+        reader.read_exact(&mut count_buf).map_err(VtkError::Io)?;
+        let n = count_buf[0] as usize;
+        for _ in 0..n {
+            reader.read_exact(&mut id_buf).map_err(VtkError::Io)?;
+            conn.push(i32::from_le_bytes(id_buf) as i64);
+        }
+        offsets.push(conn.len() as i64);
+    }
+
+    let mut pd = PolyData::new();
+    pd.points = Points::from_flat_vec(points_flat);
+    pd.polys = CellArray::from_raw(offsets, conn);
+    if let Some(normals) = normals_flat {
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Normals", normals, 3,
+            )));
+        pd.point_data_mut().set_active_normals("Normals");
+    }
+    Ok(Some(pd))
 }
 
 fn has_scalar_props(props: &[PlyProperty], names: &[&str]) -> bool {

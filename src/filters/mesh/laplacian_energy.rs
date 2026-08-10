@@ -25,54 +25,7 @@ pub fn dirichlet_energy(input: &PolyData) -> f64 {
     energy
 }
 
-/// Compute the Willmore energy (integral of squared mean curvature).
-///
-/// Approximated as sum of squared Laplacian magnitudes over the mesh.
-pub fn willmore_energy(input: &PolyData) -> f64 {
-    let n = input.points.len();
-    if n == 0 {
-        return 0.0;
-    }
-
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        for i in 0..cell.len() {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cell.len()] as usize;
-            if a < n && b < n {
-                if !neighbors[a].contains(&b) {
-                    neighbors[a].push(b);
-                }
-                if !neighbors[b].contains(&a) {
-                    neighbors[b].push(a);
-                }
-            }
-        }
-    }
-
-    let mut energy = 0.0;
-    for i in 0..n {
-        if neighbors[i].is_empty() {
-            continue;
-        }
-        let p = input.points.get(i);
-        let cnt = neighbors[i].len() as f64;
-        let mut lx = 0.0;
-        let mut ly = 0.0;
-        let mut lz = 0.0;
-        for &j in &neighbors[i] {
-            let q = input.points.get(j);
-            lx += q[0] - p[0];
-            ly += q[1] - p[1];
-            lz += q[2] - p[2];
-        }
-        lx /= cnt;
-        ly /= cnt;
-        lz /= cnt;
-        energy += lx * lx + ly * ly + lz * lz;
-    }
-    energy
-}
+pub use crate::filters::mesh::mesh_willmore_energy::willmore_energy;
 
 /// Compute the ratio of Willmore to Dirichlet energy (smoothness metric).
 pub fn smoothness_ratio(input: &PolyData) -> f64 {

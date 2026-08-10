@@ -1,12 +1,21 @@
+// NOTE: field offsets must match `BloomUniforms` in bloom_pass.rs byte for byte.
+// Padding is spelled out as scalars (rather than vec3) because a vec3 member
+// would be re-aligned to 16 by WGSL and silently shift everything after it.
+// `weights` is a 16-tap f32 kernel, declared as 4 x vec4 because arrays in the
+// uniform address space require a stride that is a multiple of 16.
 struct BloomUniforms {
     threshold: f32,
     intensity: f32,
     texel_size: vec2<f32>,
     horizontal: f32,
-    _pad: vec3<f32>,
-    weights: array<f32, 16>,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
+    weights: array<vec4<f32>, 4>,
     num_weights: f32,
-    _pad2: vec3<f32>,
+    _pad3: f32,
+    _pad4: f32,
+    _pad5: f32,
 };
 
 @group(0) @binding(0)
@@ -60,7 +69,7 @@ fn fs_blur(in: VertexOutput) -> @location(0) vec4<f32> {
             uv_offset = vec2<f32>(0.0, offset * uniforms.texel_size.y);
         }
         let sample = textureSample(source_tex, source_sampler, in.uv + uv_offset);
-        result += sample.rgb * uniforms.weights[i];
+        result += sample.rgb * uniforms.weights[i / 4][i % 4];
     }
 
     return vec4<f32>(result, 1.0);

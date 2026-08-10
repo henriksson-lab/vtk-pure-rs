@@ -38,6 +38,11 @@ pub fn orient_faces_consistent(mesh: &PolyData) -> PolyData {
         while let Some(ci) = queue.pop_front() {
             let cell = &cells[ci];
             let n = cell.len();
+            // vtkOrientPolyData::TraverseAndOrder skips cells with fewer than
+            // three points when propagating the wave.
+            if n < 3 {
+                continue;
+            }
             for i in 0..n {
                 if cell[i] < 0 || cell[(i + 1) % n] < 0 {
                     continue;

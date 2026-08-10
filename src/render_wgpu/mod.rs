@@ -12,4 +12,4 @@ pub(crate) mod ssao_pass;
 pub(crate) mod volume_pass;
 mod wgpu_renderer;
 pub mod wireframe;
-pub use wgpu_renderer::WgpuRenderer;
+pub use wgpu_renderer::{WgpuRenderer, DEFAULT_OFFSCREEN_FORMAT};

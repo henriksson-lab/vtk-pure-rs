@@ -2,43 +2,27 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 
 /// Compute the displacement field between two mesh configurations.
 ///
-/// Given original and deformed mesh (same topology), computes per-vertex
-/// displacement magnitude and adds "Displacement" and
-/// "DisplacementMagnitude".
+/// Given original and deformed mesh (same topology), attaches "Displacement"
+/// and "DisplacementMagnitude" to the *deformed* configuration. The field
+/// itself is computed by
+/// [`crate::filters::mesh::diff::displacement_field`], which holds the single
+/// implementation and attaches the same arrays to the reference mesh.
 pub fn displacement_field(original: &PolyData, deformed: &PolyData) -> PolyData {
     let n = original.points.len();
     if n == 0 || n != deformed.points.len() {
         return deformed.clone();
     }
 
-    let mut disp = Vec::with_capacity(n * 3);
-    let mut mag = Vec::with_capacity(n);
-
-    for i in 0..n {
-        let a = original.points.get(i);
-        let b = deformed.points.get(i);
-        let dx = b[0] - a[0];
-        let dy = b[1] - a[1];
-        let dz = b[2] - a[2];
-        disp.push(dx);
-        disp.push(dy);
-        disp.push(dz);
-        mag.push((dx * dx + dy * dy + dz * dz).sqrt());
-    }
+    let Some(fields) = crate::filters::mesh::diff::displacement_field(original, deformed) else {
+        return deformed.clone();
+    };
 
     let mut pd = deformed.clone();
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Displacement",
-            disp,
-            3,
-        )));
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "DisplacementMagnitude",
-            mag,
-            1,
-        )));
+    for name in ["Displacement", "DisplacementMagnitude"] {
+        if let Some(arr) = fields.point_data().get_array(name) {
+            pd.point_data_mut().add_array(arr.clone());
+        }
+    }
     pd.point_data_mut().set_active_vectors("Displacement");
     pd.point_data_mut()
         .set_active_scalars("DisplacementMagnitude");

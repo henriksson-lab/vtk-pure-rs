@@ -5,11 +5,14 @@ use std::time::Instant;
 /// A simple timer for measuring elapsed time.
 ///
 /// ```
-/// use crate::types::timer::Timer;
+/// use vtk_pure_rs::types::timer::Timer;
 ///
 /// let timer = Timer::start();
 /// // ... do work ...
 /// let elapsed = timer.elapsed_ms();
+/// assert!(elapsed >= 0.0);
+/// // The timer keeps running, so later readings are never smaller.
+/// assert!(timer.elapsed_ms() >= elapsed);
 /// ```
 pub struct Timer {
     start: Instant,

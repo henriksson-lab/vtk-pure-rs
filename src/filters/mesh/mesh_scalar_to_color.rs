@@ -1,45 +1,41 @@
 //! Map a scalar field to RGB color per vertex using a simple blue-to-red colormap.
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
+use crate::filters::mesh::curvature_map_to_color::ColorMapType;
+
+/// Map a scalar field to per-vertex RGB, published as "ColorR"/"ColorG"/"ColorB".
+///
+/// Thin wrapper over the single implementation in
+/// [`crate::filters::mesh::curvature_map_to_color::scalar_to_color`] (a
+/// jet/rainbow ramp, the VTK default lookup-table style), splitting its
+/// 3-component "Colors" array into the separate channel arrays this entry point
+/// has always produced. The combined "Colors" array is kept as well.
 pub fn scalar_to_color(mesh: &PolyData, scalar_name: &str) -> PolyData {
     let n = mesh.points.len();
-    let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 => a,
-        None => return mesh.clone(),
+    match mesh.point_data().get_array(scalar_name) {
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => {}
         _ => return mesh.clone(),
+    }
+
+    let mut result = crate::filters::mesh::curvature_map_to_color::scalar_to_color(
+        mesh,
+        scalar_name,
+        ColorMapType::Jet,
+    );
+    let colors = match result.point_data().get_array("Colors") {
+        Some(a) => a.to_f64_vec_flat(),
+        None => return mesh.clone(),
     };
-    if arr.num_tuples() != n {
-        return mesh.clone();
-    }
-    let mut vals = Vec::with_capacity(n);
-    let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        vals.push(buf[0]);
-    }
-    let vmin = vals.iter().cloned().fold(f64::INFINITY, f64::min);
-    let vmax = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let range = (vmax - vmin).max(1e-15);
+
     let mut r_data = Vec::with_capacity(n);
     let mut g_data = Vec::with_capacity(n);
     let mut b_data = Vec::with_capacity(n);
-    for &v in &vals {
-        let t = (v - vmin) / range;
-        // Blue -> cyan -> green -> yellow -> red
-        let (r, g, b) = if t < 0.25 {
-            (0.0, t * 4.0, 1.0)
-        } else if t < 0.5 {
-            (0.0, 1.0, 1.0 - (t - 0.25) * 4.0)
-        } else if t < 0.75 {
-            ((t - 0.5) * 4.0, 1.0, 0.0)
-        } else {
-            (1.0, 1.0 - (t - 0.75) * 4.0, 0.0)
-        };
-        r_data.push(r);
-        g_data.push(g);
-        b_data.push(b);
+    for rgb in colors.chunks_exact(3) {
+        r_data.push(rgb[0]);
+        g_data.push(rgb[1]);
+        b_data.push(rgb[2]);
     }
-    let mut result = mesh.clone();
+
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("ColorR", r_data, 1)));
@@ -71,6 +67,28 @@ mod tests {
         assert!(r.point_data().get_array("ColorR").is_some());
         assert!(r.point_data().get_array("ColorG").is_some());
         assert!(r.point_data().get_array("ColorB").is_some());
+    }
+
+    #[test]
+    fn channels_match_combined_colors_array() {
+        let mut mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "val",
+                vec![0.0, 0.5, 1.0],
+                1,
+            )));
+        let r = scalar_to_color(&mesh, "val");
+        let combined = r.point_data().get_array("Colors").unwrap();
+        let red = r.point_data().get_array("ColorR").unwrap().to_f64_vec();
+        let mut buf = [0.0f64; 3];
+        for (i, &channel) in red.iter().enumerate() {
+            combined.tuple_as_f64(i, &mut buf);
+            assert!((buf[0] - channel).abs() < 1e-12);
+        }
     }
 
     #[test]

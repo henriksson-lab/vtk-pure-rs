@@ -1,7 +1,5 @@
 use crate::data::PolyData;
-
-#[path = "../core/mesh/coplanar_merge.rs"]
-mod coplanar_merge;
+use crate::filters::core::mesh::coplanar_merge;
 
 /// Merge coplanar adjacent faces into larger polygons.
 ///

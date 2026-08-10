@@ -6,8 +6,9 @@ use std::collections::HashMap;
 /// Keeps the half-space where `dot(p - origin, normal) > 0`.
 /// Triangles that cross the plane are split, generating new vertices on the plane.
 pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> PolyData {
-    let mut points = input.points.clone();
+    let mut points = Points::new();
     let mut point_locator = PointLocator::default();
+    let mut point_map = vec![-1i64; input.points.len()];
     let mut verts = CellArray::new();
     let mut lines = CellArray::new();
     let mut polys = CellArray::new();
@@ -17,7 +18,9 @@ pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> Po
             let p = input.points.get(id as usize);
             let dist = signed_distance(p, origin, normal);
             if dist > 0.0 {
-                verts.push_cell(&[id]);
+                let out_id =
+                    get_or_copy_input_point(id, &input.points, &mut points, &mut point_map);
+                verts.push_cell(&[out_id]);
             }
         }
     }
@@ -33,6 +36,7 @@ pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> Po
             &input.points,
             &mut points,
             &mut point_locator,
+            &mut point_map,
             &mut lines,
         );
     }
@@ -51,6 +55,7 @@ pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> Po
                 &input.points,
                 &mut points,
                 &mut point_locator,
+                &mut point_map,
                 &mut polys,
             );
         }
@@ -74,10 +79,21 @@ pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> Po
             let all_outside = dists.iter().all(|&d| d <= 0.0);
 
             if all_inside {
-                polys.push_cell(&tri);
+                let mapped = [
+                    get_or_copy_input_point(tri[0], &input.points, &mut points, &mut point_map),
+                    get_or_copy_input_point(tri[1], &input.points, &mut points, &mut point_map),
+                    get_or_copy_input_point(tri[2], &input.points, &mut points, &mut point_map),
+                ];
+                polys.push_cell(&mapped);
             } else if !all_outside {
-                let clipped =
-                    clip_polygon(&tri, &dists, &input.points, &mut points, &mut point_locator);
+                let clipped = clip_polygon(
+                    &tri,
+                    &dists,
+                    &input.points,
+                    &mut points,
+                    &mut point_locator,
+                    &mut point_map,
+                );
                 if clipped.len() >= 3 {
                     for j in 1..clipped.len() - 1 {
                         polys.push_cell(&[clipped[0], clipped[j], clipped[j + 1]]);
@@ -87,33 +103,30 @@ pub fn clip_by_plane(input: &PolyData, origin: [f64; 3], normal: [f64; 3]) -> Po
         }
     }
 
-    // Compact: only keep referenced points
-    let mut used = vec![false; points.len()];
-    for cells in [&verts, &lines, &polys] {
-        for ci in 0..cells.num_cells() {
-            for &vid in cells.cell(ci) {
-                used[vid as usize] = true;
-            }
-        }
-    }
-    let mut point_map = vec![0i64; points.len()];
-    let mut compact_points = Points::new();
-    for i in 0..points.len() {
-        if used[i] {
-            point_map[i] = compact_points.len() as i64;
-            compact_points.push(points.get(i));
-        }
-    }
-    let compact_verts = remap_cells(&verts, &point_map);
-    let compact_lines = remap_cells(&lines, &point_map);
-    let compact_polys = remap_cells(&polys, &point_map);
-
     let mut output = PolyData::new();
-    output.points = compact_points;
-    output.verts = compact_verts;
-    output.lines = compact_lines;
-    output.polys = compact_polys;
+    output.points = points;
+    output.verts = verts;
+    output.lines = lines;
+    output.polys = polys;
     output
+}
+
+fn get_or_copy_input_point(
+    input_id: i64,
+    src_points: &Points<f64>,
+    out_points: &mut Points<f64>,
+    point_map: &mut [i64],
+) -> i64 {
+    let input_idx = input_id as usize;
+    let out_id = point_map[input_idx];
+    if out_id >= 0 {
+        return out_id;
+    }
+
+    let out_id = out_points.len() as i64;
+    out_points.push(src_points.get(input_idx));
+    point_map[input_idx] = out_id;
+    out_id
 }
 
 #[derive(Default)]
@@ -148,28 +161,22 @@ fn signed_distance(p: [f64; 3], origin: [f64; 3], normal: [f64; 3]) -> f64 {
     (p[0] - origin[0]) * normal[0] + (p[1] - origin[1]) * normal[1] + (p[2] - origin[2]) * normal[2]
 }
 
-fn remap_cells(cells: &CellArray, point_map: &[i64]) -> CellArray {
-    let mut remapped_cells = CellArray::new();
-    for ci in 0..cells.num_cells() {
-        let cell = cells.cell(ci);
-        let remapped: Vec<i64> = cell.iter().map(|&v| point_map[v as usize]).collect();
-        remapped_cells.push_cell(&remapped);
-    }
-    remapped_cells
-}
-
 fn clip_polyline_segment(
     ids: [i64; 2],
     dists: [f64; 2],
     src_points: &Points<f64>,
     all_points: &mut Points<f64>,
     point_locator: &mut PointLocator,
+    point_map: &mut [i64],
 ) -> Vec<i64> {
     let i_in = dists[0] > 0.0;
     let j_in = dists[1] > 0.0;
 
     match (i_in, j_in) {
-        (true, true) => vec![ids[0], ids[1]],
+        (true, true) => vec![
+            get_or_copy_input_point(ids[0], src_points, all_points, point_map),
+            get_or_copy_input_point(ids[1], src_points, all_points, point_map),
+        ],
         (false, false) => Vec::new(),
         _ => {
             let t = dists[0] / (dists[0] - dists[1]);
@@ -182,9 +189,15 @@ fn clip_polyline_segment(
             ];
             let new_id = point_locator.insert_edge_point(all_points, ids, intersection);
             if i_in {
-                vec![ids[0], new_id]
+                vec![
+                    get_or_copy_input_point(ids[0], src_points, all_points, point_map),
+                    new_id,
+                ]
             } else {
-                vec![new_id, ids[1]]
+                vec![
+                    new_id,
+                    get_or_copy_input_point(ids[1], src_points, all_points, point_map),
+                ]
             }
         }
     }
@@ -197,6 +210,7 @@ fn clip_polyline(
     src_points: &Points<f64>,
     all_points: &mut Points<f64>,
     point_locator: &mut PointLocator,
+    point_map: &mut [i64],
     lines: &mut CellArray,
 ) {
     let mut current = Vec::new();
@@ -207,7 +221,8 @@ fn clip_polyline(
             signed_distance(src_points.get(ids[0] as usize), origin, normal),
             signed_distance(src_points.get(ids[1] as usize), origin, normal),
         ];
-        let clipped = clip_polyline_segment(ids, dists, src_points, all_points, point_locator);
+        let clipped =
+            clip_polyline_segment(ids, dists, src_points, all_points, point_locator, point_map);
 
         if clipped.len() == 2 {
             if current.is_empty() {
@@ -239,6 +254,7 @@ fn clip_triangle_by_plane(
     src_points: &Points<f64>,
     all_points: &mut Points<f64>,
     point_locator: &mut PointLocator,
+    point_map: &mut [i64],
     polys: &mut CellArray,
 ) {
     let dists: Vec<f64> = tri
@@ -249,9 +265,21 @@ fn clip_triangle_by_plane(
     let all_outside = dists.iter().all(|&d| d <= 0.0);
 
     if all_inside {
-        polys.push_cell(tri);
+        let mapped = [
+            get_or_copy_input_point(tri[0], src_points, all_points, point_map),
+            get_or_copy_input_point(tri[1], src_points, all_points, point_map),
+            get_or_copy_input_point(tri[2], src_points, all_points, point_map),
+        ];
+        polys.push_cell(&mapped);
     } else if !all_outside {
-        let clipped = clip_polygon(tri, &dists, src_points, all_points, point_locator);
+        let clipped = clip_polygon(
+            tri,
+            &dists,
+            src_points,
+            all_points,
+            point_locator,
+            point_map,
+        );
         if clipped.len() >= 3 {
             for i in 1..clipped.len() - 1 {
                 polys.push_cell(&[clipped[0], clipped[i], clipped[i + 1]]);
@@ -267,6 +295,7 @@ fn clip_polygon(
     src_points: &Points<f64>,
     all_points: &mut Points<f64>,
     point_locator: &mut PointLocator,
+    point_map: &mut [i64],
 ) -> Vec<i64> {
     let n = cell.len();
     let mut result = Vec::new();
@@ -279,7 +308,9 @@ fn clip_polygon(
         let vj = cell[j];
 
         if di > 0.0 {
-            result.push(vi);
+            result.push(get_or_copy_input_point(
+                vi, src_points, all_points, point_map,
+            ));
         }
 
         // If edge crosses the plane, add intersection point

@@ -46,8 +46,10 @@ pub fn surface_area(input: &PolyData) -> f64 {
     area
 }
 
-/// Compute volume-to-surface-area ratio (sphericity indicator).
-/// For a sphere, V/A = r/3. Higher ratio = more spherical.
+/// Compute the isoperimetric compactness `36 * pi * V^2 / A^3`.
+///
+/// 1.0 for a perfect sphere, smaller for anything else. VTK has no direct
+/// counterpart; the closest is `vtkMassProperties::NormalizedShapeIndex`.
 pub fn compactness(input: &PolyData) -> f64 {
     let v = signed_volume(input).abs();
     let a = surface_area(input);

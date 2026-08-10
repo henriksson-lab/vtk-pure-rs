@@ -54,41 +54,7 @@ pub fn recompute_normals(input: &PolyData) -> PolyData {
     pd
 }
 
-/// Flip all normals (negate).
-pub fn flip_normals(input: &PolyData) -> PolyData {
-    let arr = match input.point_data().get_array("Normals") {
-        Some(a) if a.num_components() == 3 => a,
-        _ => return recompute_and_flip(input),
-    };
-
-    let n = arr.num_tuples();
-    let mut buf = [0.0f64; 3];
-    let mut flipped = Vec::with_capacity(n * 3);
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        flipped.push(-buf[0]);
-        flipped.push(-buf[1]);
-        flipped.push(-buf[2]);
-    }
-
-    let mut pd = input.clone();
-    let mut attrs = crate::data::DataSetAttributes::new();
-    for i in 0..input.point_data().num_arrays() {
-        let a = input.point_data().get_array_by_index(i).unwrap();
-        if a.name() == "Normals" {
-            attrs.add_array(AnyDataArray::F64(DataArray::from_vec(
-                "Normals",
-                flipped.clone(),
-                3,
-            )));
-        } else {
-            attrs.add_array(a.clone());
-        }
-    }
-    attrs.set_active_normals("Normals");
-    *pd.point_data_mut() = attrs;
-    pd
-}
+pub use crate::filters::mesh::mesh_flip_normals::flip_normals;
 
 fn polygon_normal(input: &PolyData, cell: &[i64]) -> Option<[f64; 3]> {
     let mut normal = [0.0f64; 3];
@@ -113,11 +79,6 @@ fn point_for_id(input: &PolyData, id: i64) -> Option<[f64; 3]> {
 
 fn valid_point_id(id: i64, n_points: usize) -> Option<usize> {
     usize::try_from(id).ok().filter(|&idx| idx < n_points)
-}
-
-fn recompute_and_flip(input: &PolyData) -> PolyData {
-    let with_normals = recompute_normals(input);
-    flip_normals(&with_normals)
 }
 
 #[cfg(test)]

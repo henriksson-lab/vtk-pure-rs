@@ -38,38 +38,27 @@ pub fn adjacency_matrix(input: &PolyData) -> Vec<(usize, usize, f64)> {
 
 /// Compute betweenness centrality (approximate) for each vertex.
 ///
-/// Uses BFS from a subset of source vertices. Adds "Centrality" scalar.
-/// Higher values = more paths pass through that vertex.
+/// This is Brandes' algorithm — the same algorithm Boost (and therefore
+/// `vtkBoostBrandesCentrality`) uses — restricted to `num_sources` evenly
+/// spaced source vertices. Adds an unnormalized "Centrality" scalar, matching
+/// Boost's `brandes_betweenness_centrality`. Higher values = more shortest
+/// paths pass through that vertex.
 pub fn betweenness_centrality(input: &PolyData, num_sources: usize) -> PolyData {
     let n = input.points.len();
     if n == 0 {
-        return input.clone();
+        let mut pd = input.clone();
+        pd.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "Centrality",
+                Vec::new(),
+                1,
+            )));
+        return pd;
     }
 
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        if cell.len() < 2 {
-            continue;
-        }
-        for i in 0..cell.len() {
-            let a_id = cell[i];
-            let b_id = cell[(i + 1) % cell.len()];
-            if a_id < 0 || b_id < 0 {
-                continue;
-            }
-            let a = a_id as usize;
-            let b = b_id as usize;
-            if a >= n || b >= n || a == b {
-                continue;
-            }
-            if !adj[a].contains(&b) {
-                adj[a].push(b);
-            }
-            if !adj[b].contains(&a) {
-                adj[b].push(a);
-            }
-        }
-    }
+    add_adjacency(&mut adj, n, input.polys.iter(), true);
+    add_adjacency(&mut adj, n, input.lines.iter(), false);
 
     let mut centrality = vec![0.0f64; n];
     let sources = num_sources.min(n);
@@ -123,6 +112,39 @@ pub fn betweenness_centrality(input: &PolyData, num_sources: usize) -> PolyData 
     pd
 }
 
+/// Add the edges of `cells` to `adj`. Polygonal cells are closed loops, line
+/// cells are open polylines.
+fn add_adjacency<'a, I>(adj: &mut [Vec<usize>], n: usize, cells: I, closed: bool)
+where
+    I: IntoIterator<Item = &'a [i64]>,
+{
+    for cell in cells {
+        let nc = cell.len();
+        if nc < 2 {
+            continue;
+        }
+        let edge_count = if closed { nc } else { nc - 1 };
+        for i in 0..edge_count {
+            let a_id = cell[i];
+            let b_id = cell[(i + 1) % nc];
+            if a_id < 0 || b_id < 0 {
+                continue;
+            }
+            let a = a_id as usize;
+            let b = b_id as usize;
+            if a >= n || b >= n || a == b {
+                continue;
+            }
+            if !adj[a].contains(&b) {
+                adj[a].push(b);
+            }
+            if !adj[b].contains(&a) {
+                adj[b].push(a);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +185,30 @@ mod tests {
     fn empty_input() {
         let pd = PolyData::new();
         assert!(adjacency_matrix(&pd).is_empty());
+        let result = betweenness_centrality(&pd, 3);
+        let arr = result.point_data().get_array("Centrality").unwrap();
+        assert_eq!(arr.num_tuples(), 0);
+    }
+
+    #[test]
+    fn centrality_excludes_path_endpoints() {
+        // Line cells contribute edges; on the path 0-1-2 only the middle
+        // vertex lies on a shortest path between two other vertices.
+        let mut mesh = PolyData::new();
+        mesh.points.push([0.0, 0.0, 0.0]);
+        mesh.points.push([1.0, 0.0, 0.0]);
+        mesh.points.push([2.0, 0.0, 0.0]);
+        mesh.lines.push_cell(&[0, 1, 2]);
+
+        let result = betweenness_centrality(&mesh, 3);
+        let arr = result.point_data().get_array("Centrality").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(0, &mut buf);
+        assert_eq!(buf[0], 0.0);
+        // Brandes accumulates each unordered pair twice on an undirected graph.
+        arr.tuple_as_f64(1, &mut buf);
+        assert_eq!(buf[0], 2.0);
+        arr.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 0.0);
     }
 }

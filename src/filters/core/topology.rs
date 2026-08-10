@@ -1,5 +1,6 @@
 use crate::data::PolyData;
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 
 /// Topology analysis results for a PolyData mesh.
 #[derive(Debug, Clone)]
@@ -37,7 +38,11 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
     // Combined with union-find with rank, this is 2x faster than VTK C++ (0.45x ratio).
     let offsets = pd.polys.offsets();
     let conn = pd.polys.connectivity();
-    let mut edge_count: HashMap<u64, u8> = HashMap::with_capacity(n_faces * 2);
+    let mut edge_count: HashMap<u64, u8, BuildHasherDefault<U64Hasher>> =
+        HashMap::with_capacity_and_hasher(n_faces * 2, BuildHasherDefault::default());
+    let mut parent: Vec<usize> = (0..n_pts).collect();
+    let mut rank = vec![0u8; n_pts];
+    let mut used = vec![false; n_pts];
     let mut is_all_tris = true;
 
     for ci in 0..n_faces {
@@ -46,6 +51,9 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
         let len = end - start;
         if len != 3 {
             is_all_tris = false;
+        }
+        if len > 0 {
+            used[conn[start] as usize] = true;
         }
         for i in 0..len {
             let a = conn[start + i];
@@ -57,6 +65,11 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
             };
             let e = edge_count.entry(key).or_insert(0);
             *e = (*e).saturating_add(1);
+            let au = a as usize;
+            let bu = b as usize;
+            used[au] = true;
+            used[bu] = true;
+            union_components(&mut parent, &mut rank, au, bu);
         }
     }
 
@@ -73,7 +86,7 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
         None
     };
 
-    let num_components = count_components(pd);
+    let num_components = count_used_components(&mut parent, &used);
 
     TopologyInfo {
         num_points: n_pts,
@@ -90,76 +103,76 @@ pub fn analyze_topology(pd: &PolyData) -> TopologyInfo {
     }
 }
 
-/// Count connected components using union-find with rank.
-fn count_components(pd: &PolyData) -> usize {
-    let n = pd.points.len();
-    if n == 0 {
-        return 0;
+#[derive(Default)]
+struct U64Hasher(u64);
+
+impl Hasher for U64Hasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for &byte in bytes {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x1000_0000_01b3);
+        }
+        self.0 = hash;
     }
 
-    let mut parent: Vec<u32> = (0..n as u32).collect();
-    let mut rank: Vec<u8> = vec![0; n];
-
-    #[inline]
-    fn find(parent: &mut [u32], x: u32) -> u32 {
-        let mut x = x;
-        while parent[x as usize] != x {
-            parent[x as usize] = parent[parent[x as usize] as usize];
-            x = parent[x as usize];
-        }
-        x
+    fn write_u64(&mut self, value: u64) {
+        self.0 = mix_u64(value);
     }
 
-    #[inline]
-    fn union(parent: &mut [u32], rank: &mut [u8], a: u32, b: u32) {
-        let ra = find(parent, a);
-        let rb = find(parent, b);
-        if ra != rb {
-            if rank[ra as usize] < rank[rb as usize] {
-                parent[ra as usize] = rb;
-            } else if rank[ra as usize] > rank[rb as usize] {
-                parent[rb as usize] = ra;
-            } else {
-                parent[rb as usize] = ra;
-                rank[ra as usize] += 1;
-            }
-        }
+    fn finish(&self) -> u64 {
+        self.0
     }
+}
 
-    let offsets = pd.polys.offsets();
-    let conn = pd.polys.connectivity();
-    let nc = pd.polys.num_cells();
-    let mut used = vec![false; n];
+#[inline]
+fn mix_u64(mut value: u64) -> u64 {
+    value ^= value >> 33;
+    value = value.wrapping_mul(0xff51_afd7_ed55_8ccd);
+    value ^= value >> 33;
+    value = value.wrapping_mul(0xc4ce_b9fe_1a85_ec53);
+    value ^ (value >> 33)
+}
 
-    for ci in 0..nc {
-        let start = offsets[ci] as usize;
-        let end = offsets[ci + 1] as usize;
-        if start >= end {
-            continue;
-        }
-        let first = conn[start] as u32;
-        used[first as usize] = true;
-        for idx in (start + 1)..end {
-            let v = conn[idx] as u32;
-            used[v as usize] = true;
-            union(&mut parent, &mut rank, first, v);
-        }
+#[inline]
+fn find_component(parent: &mut [usize], mut x: usize) -> usize {
+    while parent[x] != x {
+        parent[x] = parent[parent[x]];
+        x = parent[x];
     }
+    x
+}
 
-    // Count unique roots among used points
-    let mut seen = vec![false; n];
+#[inline]
+fn union_components(parent: &mut [usize], rank: &mut [u8], a: usize, b: usize) {
+    let mut ra = find_component(parent, a);
+    let mut rb = find_component(parent, b);
+    if ra == rb {
+        return;
+    }
+    if rank[ra] < rank[rb] {
+        std::mem::swap(&mut ra, &mut rb);
+    }
+    parent[rb] = ra;
+    if rank[ra] == rank[rb] {
+        rank[ra] += 1;
+    }
+}
+
+fn count_used_components(parent: &mut [usize], used: &[bool]) -> usize {
+    let mut seen = vec![false; parent.len()];
     let mut count = 0usize;
-    for v in 0..n {
+    for v in 0..used.len() {
         if !used[v] {
             continue;
         }
-        let r = find(&mut parent, v as u32) as usize;
-        if !seen[r] {
-            seen[r] = true;
+        let root = find_component(parent, v);
+        if !seen[root] {
+            seen[root] = true;
             count += 1;
         }
     }
-    count.max(if used.iter().any(|&u| u) { 1 } else { 0 })
+    count
 }
 
 /// Find boundary edges (edges with exactly one adjacent face).

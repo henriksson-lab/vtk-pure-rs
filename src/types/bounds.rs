@@ -3,7 +3,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::types::BoundingBox;
+/// use vtk_pure_rs::types::BoundingBox;
 ///
 /// let bb = BoundingBox::from_corners([0.0, 0.0, 0.0], [2.0, 3.0, 4.0]);
 /// assert_eq!(bb.center(), [1.0, 1.5, 2.0]);

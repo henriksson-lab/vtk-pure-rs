@@ -20,6 +20,12 @@ impl Ord for State {
     }
 }
 
+/// Geodesic Voronoi partition: assign every vertex to the nearest seed along
+/// mesh edges (Dijkstra over poly and line connectivity, edge weights are
+/// Euclidean edge lengths).
+///
+/// Adds "VoronoiRegion" (seed index, -1 where unreachable, active scalars) and
+/// "VoronoiDist" (geodesic distance to that seed, 0 where unreachable).
 pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
     let n = mesh.points.len();
     if n == 0 || seeds.is_empty() {
@@ -70,12 +76,23 @@ pub fn geodesic_voronoi(mesh: &PolyData, seeds: &[usize]) -> PolyData {
         .iter()
         .map(|&l| if l == usize::MAX { -1.0 } else { l as f64 })
         .collect();
+    let dist_data: Vec<f64> = dist
+        .iter()
+        .map(|&d| if d.is_finite() { d } else { 0.0 })
+        .collect();
     let mut result = mesh.clone();
     result
         .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "VoronoiRegion",
             label_data,
+            1,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "VoronoiDist",
+            dist_data,
             1,
         )));
     result.point_data_mut().set_active_scalars("VoronoiRegion");
@@ -128,5 +145,48 @@ mod tests {
         assert_eq!(b[0], 0.0);
         arr.tuple_as_f64(3, &mut b);
         assert_eq!(b[0], 1.0);
+    }
+
+    #[test]
+    fn line_cell_edges_are_used() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([2.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, 1, 2]);
+
+        let result = geodesic_voronoi(&pd, &[0]);
+        let arr = result.point_data().get_array("VoronoiRegion").unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..3 {
+            arr.tuple_as_f64(i, &mut buf);
+            assert_eq!(buf[0], 0.0);
+        }
+        let dist = result.point_data().get_array("VoronoiDist").unwrap();
+        dist.tuple_as_f64(2, &mut buf);
+        assert_eq!(buf[0], 2.0);
+    }
+
+    #[test]
+    fn unreachable_vertices_are_unlabelled() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.points.push([50.0, 50.0, 50.0]); // no cell references this one
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let result = geodesic_voronoi(&pd, &[0]);
+        let arr = result.point_data().get_array("VoronoiRegion").unwrap();
+        let mut buf = [0.0f64];
+        arr.tuple_as_f64(3, &mut buf);
+        assert_eq!(buf[0], -1.0);
+    }
+
+    #[test]
+    fn empty_input() {
+        let pd = PolyData::new();
+        let result = geodesic_voronoi(&pd, &[0]);
+        assert_eq!(result.points.len(), 0);
     }
 }

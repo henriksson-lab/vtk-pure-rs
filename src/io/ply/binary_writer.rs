@@ -59,6 +59,10 @@ impl PlyBinaryWriter {
         }
         writeln!(w, "end_header")?;
 
+        if !has_normals && !has_colors && !has_tcoords && !has_cell_colors {
+            return write_simple_polydata_body(w, data);
+        }
+
         // Vertices (binary f32 little-endian)
         for i in 0..n_verts {
             let p = data.points.get(i);
@@ -108,6 +112,40 @@ impl PlyBinaryWriter {
 
         Ok(())
     }
+}
+
+fn write_simple_polydata_body<W: Write>(w: &mut W, data: &PolyData) -> Result<(), VtkError> {
+    let coords = data.points.as_flat_slice();
+    let mut vertex_bytes = Vec::with_capacity(coords.len() * 4);
+    for &value in coords {
+        vertex_bytes.extend_from_slice(&(value as f32).to_le_bytes());
+    }
+    w.write_all(&vertex_bytes)?;
+
+    let offsets = data.polys.offsets();
+    let conn = data.polys.connectivity();
+    let mut face_bytes = Vec::with_capacity(data.polys.num_cells() + conn.len() * 4);
+    for cell_id in 0..data.polys.num_cells() {
+        let start = offsets[cell_id] as usize;
+        let end = offsets[cell_id + 1] as usize;
+        let cell = &conn[start..end];
+        if cell.len() > u8::MAX as usize {
+            return Err(VtkError::Unsupported(
+                "PLY face vertex count exceeds uchar list count".into(),
+            ));
+        }
+        face_bytes.push(cell.len() as u8);
+        for &id in cell {
+            if id < i32::MIN as i64 || id > i32::MAX as i64 {
+                return Err(VtkError::Unsupported(
+                    "PLY face vertex index exceeds int range".into(),
+                ));
+            }
+            face_bytes.extend_from_slice(&(id as i32).to_le_bytes());
+        }
+    }
+    w.write_all(&face_bytes)?;
+    Ok(())
 }
 
 fn point_normals(data: &PolyData) -> Option<&AnyDataArray> {

@@ -1,6 +1,4 @@
-use std::f64::consts::PI;
-
-use crate::data::{CellArray, DataArray, Points, PolyData};
+use crate::data::PolyData;
 
 /// Parameters for generating a Klein bottle (classical immersion in 3D).
 pub struct KleinBottleParams {
@@ -23,54 +21,25 @@ impl Default for KleinBottleParams {
 
 /// Generate a Klein bottle using VTK's `vtkParametricKlein` parametrization.
 ///
-/// VTK uses u in [0, PI], v in [0, 2*PI], no U join, and a V join.
+/// Thin wrapper around
+/// [`crate::filters::core::sources::parametric::klein_bottle`], which is the
+/// single implementation of `vtkParametricKlein` +
+/// `vtkParametricFunctionSource` (u in [0, PI], v in [0, 2*PI], no U join, a V
+/// join, anti-clockwise ordering). The surface is then uniformly scaled by
+/// `radius` and translated to `center`, neither of which VTK's parametric
+/// function has; both leave the surface normals unchanged.
 pub fn klein_bottle(params: &KleinBottleParams) -> PolyData {
-    let nu = params.u_resolution.max(3);
-    let nv = params.v_resolution.max(3);
+    let mut pd = crate::filters::core::sources::parametric::klein_bottle_uv(
+        params.u_resolution,
+        params.v_resolution,
+    );
     let [cx, cy, cz] = params.center;
-    let radius = params.radius;
-
-    let mut points = Points::new();
-    let mut normals = DataArray::<f64>::new("Normals", 3);
-    let mut polys = CellArray::new();
-
-    for j in 0..nv {
-        let v = 2.0 * PI * j as f64 / nv as f64;
-        for i in 0..=nu {
-            let u = PI * i as f64 / nu as f64;
-            let (pt, du, dv) = evaluate_klein(u, v);
-
-            points.push([
-                cx + radius * pt[0],
-                cy + radius * pt[1],
-                cz + radius * pt[2],
-            ]);
-
-            let nx = du[1] * dv[2] - du[2] * dv[1];
-            let ny = du[2] * dv[0] - du[0] * dv[2];
-            let nz = du[0] * dv[1] - du[1] * dv[0];
-            let len = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-12);
-            normals.push_tuple(&[nx / len, ny / len, nz / len]);
-        }
+    let r = params.radius;
+    for i in 0..pd.points.len() {
+        let p = pd.points.get(i);
+        pd.points
+            .set(i, [cx + r * p[0], cy + r * p[1], cz + r * p[2]]);
     }
-
-    let cols = nu + 1;
-    for j in 0..nv {
-        let j_next = (j + 1) % nv;
-        for i in 0..nu {
-            let p00 = (j * cols + i) as i64;
-            let p10 = (j * cols + i + 1) as i64;
-            let p01 = (j_next * cols + i) as i64;
-            let p11 = (j_next * cols + i + 1) as i64;
-            polys.push_cell(&[p00, p10, p11, p01]);
-        }
-    }
-
-    let mut pd = PolyData::new();
-    pd.points = points;
-    pd.polys = polys;
-    pd.point_data_mut().add_array(normals.into());
-    pd.point_data_mut().set_active_normals("Normals");
     pd
 }
 
@@ -155,8 +124,10 @@ mod tests {
     #[test]
     fn default_klein_bottle() {
         let pd = klein_bottle(&KleinBottleParams::default());
-        assert_eq!(pd.points.len(), (32 + 1) * 16);
-        assert_eq!(pd.polys.num_cells(), 32 * 16);
+        // vtkParametricFunctionSource samples UResolution x VResolution points.
+        assert_eq!(pd.points.len(), 32 * 16);
+        // JoinU = 0, JoinV = 1 -> (PtsU - 1) * PtsV quads, two triangles each.
+        assert_eq!(pd.polys.num_cells(), (32 - 1) * 16 * 2);
         assert!(pd.point_data().normals().is_some());
     }
 
@@ -167,8 +138,26 @@ mod tests {
             v_resolution: 3,
             ..Default::default()
         });
-        assert_eq!(pd.points.len(), (3 + 1) * 3);
-        assert_eq!(pd.polys.num_cells(), 9);
+        assert_eq!(pd.points.len(), 3 * 3);
+        assert_eq!(pd.polys.num_cells(), (3 - 1) * 3 * 2);
+    }
+
+    #[test]
+    fn center_and_radius_are_applied() {
+        let pd = klein_bottle(&KleinBottleParams {
+            center: [10.0, 20.0, 30.0],
+            radius: 2.0,
+            u_resolution: 8,
+            v_resolution: 8,
+        });
+        let plain = crate::filters::core::sources::parametric::klein_bottle(8);
+        for i in 0..pd.points.len() {
+            let p = plain.points.get(i);
+            let q = pd.points.get(i);
+            assert!((q[0] - (10.0 + 2.0 * p[0])).abs() < 1e-12);
+            assert!((q[1] - (20.0 + 2.0 * p[1])).abs() < 1e-12);
+            assert!((q[2] - (30.0 + 2.0 * p[2])).abs() < 1e-12);
+        }
     }
 
     #[test]

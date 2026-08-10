@@ -3,59 +3,34 @@
 use crate::data::{AnyDataArray, DataArray, ImageData};
 
 /// Apply unsharp mask: result = original + amount * (original - blurred).
+///
+/// In-place-style variant of [`crate::filters::image::sharpen::unsharp_mask`],
+/// which holds the single implementation of the sharpening math: the result is
+/// a bare image carrying only the sharpened values, stored back under the
+/// `scalars` name instead of a separate "Sharpened" array.
 pub fn unsharp_mask(input: &ImageData, scalars: &str, radius: usize, amount: f64) -> ImageData {
-    let arr = match input.point_data().get_array(scalars) {
-        Some(a) if a.num_components() == 1 => a,
-        _ => return input.clone(),
-    };
     let dims = input.dimensions();
-    let n = arr.num_tuples();
-    if dims.contains(&0) || n != dims[0] * dims[1] * dims[2] {
+    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
+    match input.point_data().get_array(scalars) {
+        Some(a) if a.num_components() == 1 && a.num_tuples() == nx * ny * nz => {}
+        _ => return input.clone(),
+    }
+    if dims.contains(&0) {
         return input.clone();
     }
+
+    let sharpened = crate::filters::image::sharpen::unsharp_mask(input, scalars, radius, amount);
+    let Some(arr) = sharpened.point_data().get_array("Sharpened") else {
+        return input.clone();
+    };
+
+    let n = arr.num_tuples();
     let mut buf = [0.0f64];
-    let vals: Vec<f64> = (0..n)
+    let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
             buf[0]
         })
-        .collect();
-
-    let r = radius as isize;
-    let (nx, ny, nz) = (dims[0], dims[1], dims[2]);
-    let mut blurred = vec![0.0f64; n];
-
-    for iz in 0..nz {
-        for iy in 0..ny {
-            for ix in 0..nx {
-                let mut sum = 0.0;
-                let mut count = 0.0;
-                for dz in -r..=r {
-                    for dy in -r..=r {
-                        for dx in -r..=r {
-                            let sx = ix as isize + dx;
-                            let sy = iy as isize + dy;
-                            let sz = iz as isize + dz;
-                            if sx >= 0
-                                && sx < nx as isize
-                                && sy >= 0
-                                && sy < ny as isize
-                                && sz >= 0
-                                && sz < nz as isize
-                            {
-                                sum += vals[sx as usize + sy as usize * nx + sz as usize * nx * ny];
-                                count += 1.0;
-                            }
-                        }
-                    }
-                }
-                blurred[ix + iy * nx + iz * nx * ny] = sum / count;
-            }
-        }
-    }
-
-    let data: Vec<f64> = (0..n)
-        .map(|i| vals[i] + amount * (vals[i] - blurred[i]))
         .collect();
 
     ImageData::with_dimensions(nx, ny, nz)

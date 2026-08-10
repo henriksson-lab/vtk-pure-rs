@@ -3,55 +3,12 @@ use crate::data::{DataSet, Points, PolyData};
 /// Twist a mesh around an axis by a given angle per unit length.
 ///
 /// Points are rotated around the specified axis proportionally to their
-/// position along that axis. `twist_rate` is in radians per unit.
-pub fn twist(input: &PolyData, axis: usize, twist_rate: f64) -> PolyData {
-    let n = input.points.len();
-    if n == 0 {
-        return input.clone();
-    }
-
-    let bb = input.bounds();
-    let center = bb.center();
-
-    let mut points = Points::<f64>::new();
-    for i in 0..n {
-        let p = input.points.get(i);
-        let height = p[axis.min(2)] - center[axis.min(2)];
-        let angle = height * twist_rate;
-        let c = angle.cos();
-        let s = angle.sin();
-
-        let mut out = p;
-        match axis.min(2) {
-            0 => {
-                // twist around X: rotate YZ
-                let dy = p[1] - center[1];
-                let dz = p[2] - center[2];
-                out[1] = center[1] + dy * c - dz * s;
-                out[2] = center[2] + dy * s + dz * c;
-            }
-            1 => {
-                // twist around Y: rotate XZ
-                let dx = p[0] - center[0];
-                let dz = p[2] - center[2];
-                out[0] = center[0] + dx * c - dz * s;
-                out[2] = center[2] + dx * s + dz * c;
-            }
-            _ => {
-                // twist around Z: rotate XY
-                let dx = p[0] - center[0];
-                let dy = p[1] - center[1];
-                out[0] = center[0] + dx * c - dy * s;
-                out[1] = center[1] + dx * s + dy * c;
-            }
-        }
-        points.push(out);
-    }
-
-    let mut pd = input.clone();
-    pd.points = points;
-    pd
-}
+/// position along that axis. The rate is in radians per unit.
+///
+/// Single implementation lives in [`crate::filters::mesh::mesh_twist_deform`];
+/// it rotates about the world origin using the standard right-handed rotation
+/// matrix for each axis.
+pub use crate::filters::mesh::mesh_twist_deform::twist;
 
 /// Bend a mesh around an axis. Points farther from the axis are
 /// displaced along a circular arc. `curvature` controls bend amount.

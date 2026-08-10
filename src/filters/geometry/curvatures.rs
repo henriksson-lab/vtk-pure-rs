@@ -1,5 +1,4 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
-use std::collections::HashMap;
 
 /// Compute discrete Gaussian and mean curvatures at each vertex.
 ///
@@ -7,17 +6,43 @@ use std::collections::HashMap;
 /// cotangent-weight formula for mean curvature. Only works on
 /// triangle meshes.
 pub fn curvatures(input: &PolyData) -> PolyData {
+    let gauss = compute_gaussian_curvature(input);
+    let mean = compute_mean_curvature(input);
+
+    let mut pd = input.clone();
+    add_gaussian_arrays(&mut pd, gauss);
+    add_mean_arrays(&mut pd, mean);
+    pd.point_data_mut().set_active_scalars("Mean_Curvature");
+    pd
+}
+
+/// Compute only Gaussian curvature, matching `vtkCurvatures::SetCurvatureTypeToGaussian`.
+pub fn curvatures_gaussian(input: &PolyData) -> PolyData {
+    let gauss = compute_gaussian_curvature(input);
+    let mut pd = input.clone();
+    add_gaussian_arrays(&mut pd, gauss);
+    pd.point_data_mut().set_active_scalars("Gauss_Curvature");
+    pd
+}
+
+/// Compute only mean curvature, matching `vtkCurvatures::SetCurvatureTypeToMean`.
+pub fn curvatures_mean(input: &PolyData) -> PolyData {
+    let mean = compute_mean_curvature(input);
+    let mut pd = input.clone();
+    add_mean_arrays(&mut pd, mean);
+    pd.point_data_mut().set_active_scalars("Mean_Curvature");
+    pd
+}
+
+fn compute_gaussian_curvature(input: &PolyData) -> Vec<f64> {
     let n = input.points.len();
     let mut gauss = vec![0.0f64; n];
     let mut area = vec![0.0f64; n];
-    let mut triangles = Vec::new();
-    let mut edge_faces: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
 
     // Initialize Gaussian curvature with 2*pi (angle deficit starts from full circle)
     gauss.fill(2.0 * std::f64::consts::PI);
 
-    // Build one-ring using raw offsets/connectivity and flat point access for speed.
-    // This is 2x faster than VTK C++ on large meshes (0.47x ratio).
+    // Use raw offsets/connectivity and flat point access for speed.
     let offsets = input.polys.offsets();
     let conn = input.polys.connectivity();
     let nc = input.polys.num_cells();
@@ -61,20 +86,7 @@ pub fn curvatures(input: &PolyData) -> PolyData {
         area[i0] += tri_area;
         area[i1] += tri_area;
         area[i2] += tri_area;
-
-        let tri_id = triangles.len();
-        triangles.push(TriangleInfo {
-            ids: [i0, i1, i2],
-            normal: normalize(cross),
-            area: tri_area,
-        });
-        for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
-            let key = if a < b { (a, b) } else { (b, a) };
-            edge_faces.entry(key).or_default().push(tri_id);
-        }
     }
-
-    let mean = compute_mean_curvature(input, &triangles, &edge_faces);
 
     for i in 0..n {
         if area[i] > 0.0 {
@@ -84,7 +96,10 @@ pub fn curvatures(input: &PolyData) -> PolyData {
         }
     }
 
-    let mut pd = input.clone();
+    gauss
+}
+
+fn add_gaussian_arrays(pd: &mut PolyData, gauss: Vec<f64>) {
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
             "Gauss_Curvature",
@@ -93,14 +108,17 @@ pub fn curvatures(input: &PolyData) -> PolyData {
         )));
     pd.point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Mean_Curvature",
-            mean.clone(),
-            1,
-        )));
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
             "GaussCurvature",
             gauss,
+            1,
+        )));
+}
+
+fn add_mean_arrays(pd: &mut PolyData, mean: Vec<f64>) {
+    pd.point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Mean_Curvature",
+            mean.clone(),
             1,
         )));
     pd.point_data_mut()
@@ -109,66 +127,70 @@ pub fn curvatures(input: &PolyData) -> PolyData {
             mean,
             1,
         )));
-    pd.point_data_mut().set_active_scalars("Mean_Curvature");
-    pd
 }
 
 #[derive(Clone, Copy)]
 struct TriangleInfo {
-    ids: [usize; 3],
     normal: [f64; 3],
     area: f64,
 }
 
-fn compute_mean_curvature(
-    input: &PolyData,
-    triangles: &[TriangleInfo],
-    edge_faces: &HashMap<(usize, usize), Vec<usize>>,
-) -> Vec<f64> {
+fn compute_mean_curvature(input: &PolyData) -> Vec<f64> {
+    let (triangles, mut edges) = build_triangle_topology(input);
     let mut sum = vec![0.0f64; input.points.len()];
     let mut num_neighbors = vec![0usize; input.points.len()];
 
-    for (f, tri) in triangles.iter().enumerate() {
-        for v in 0..3 {
-            let v_l = tri.ids[v];
-            let v_r = tri.ids[(v + 1) % 3];
-            let key = if v_l < v_r { (v_l, v_r) } else { (v_r, v_l) };
-            let Some(faces) = edge_faces.get(&key) else {
-                continue;
-            };
-            if faces.len() != 2 {
-                continue;
-            }
-            let n = if faces[0] == f { faces[1] } else { faces[0] };
-            if n <= f {
-                continue;
-            }
-
-            let ore = input.points.get(v_l);
-            let end = input.points.get(v_r);
-            let edge = sub(end, ore);
-            let length = length(edge);
-            if length <= 1e-20 {
-                continue;
-            }
-            let edge_unit = [edge[0] / length, edge[1] / length, edge[2] / length];
-            let neighbor = triangles[n];
-            let area = tri.area + neighbor.area;
-
-            let cs = dot(tri.normal, neighbor.normal);
-            let sn = dot(cross_3(tri.normal, neighbor.normal), edge_unit);
-            let hf = if sn != 0.0 || cs != 0.0 {
-                length * sn.atan2(cs)
-            } else {
-                0.0
-            };
-            let hf = if area != 0.0 { 3.0 * hf / area } else { hf };
-
-            sum[v_l] += hf;
-            sum[v_r] += hf;
-            num_neighbors[v_l] += 1;
-            num_neighbors[v_r] += 1;
+    edges.sort_unstable_by_key(|edge| (edge.lo, edge.hi));
+    let mut edge_idx = 0usize;
+    while edge_idx < edges.len() {
+        let lo = edges[edge_idx].lo;
+        let hi = edges[edge_idx].hi;
+        let start = edge_idx;
+        edge_idx += 1;
+        while edge_idx < edges.len() && edges[edge_idx].lo == lo && edges[edge_idx].hi == hi {
+            edge_idx += 1;
         }
+        if edge_idx - start != 2 {
+            continue;
+        }
+
+        let first = edges[start];
+        let second = edges[start + 1];
+        let (edge, neighbor_id) = if first.tri < second.tri {
+            (first, second.tri)
+        } else {
+            (second, first.tri)
+        };
+
+        let tri = triangles[edge.tri];
+        let ore = input.points.get(edge.a);
+        let end = input.points.get(edge.b);
+        let edge_vec = sub(end, ore);
+        let length = length(edge_vec);
+        if length <= 1e-20 {
+            continue;
+        }
+        let edge_unit = [
+            edge_vec[0] / length,
+            edge_vec[1] / length,
+            edge_vec[2] / length,
+        ];
+        let neighbor = triangles[neighbor_id];
+        let area = tri.area + neighbor.area;
+
+        let cs = dot(tri.normal, neighbor.normal);
+        let sn = dot(cross_3(tri.normal, neighbor.normal), edge_unit);
+        let hf = if sn != 0.0 || cs != 0.0 {
+            length * sn.atan2(cs)
+        } else {
+            0.0
+        };
+        let hf = if area != 0.0 { 3.0 * hf / area } else { hf };
+
+        sum[edge.a] += hf;
+        sum[edge.b] += hf;
+        num_neighbors[edge.a] += 1;
+        num_neighbors[edge.b] += 1;
     }
 
     sum.into_iter()
@@ -181,6 +203,63 @@ fn compute_mean_curvature(
             }
         })
         .collect()
+}
+
+#[derive(Clone, Copy)]
+struct EdgeOccurrence {
+    lo: usize,
+    hi: usize,
+    a: usize,
+    b: usize,
+    tri: usize,
+}
+
+fn build_triangle_topology(input: &PolyData) -> (Vec<TriangleInfo>, Vec<EdgeOccurrence>) {
+    let offsets = input.polys.offsets();
+    let conn = input.polys.connectivity();
+    let nc = input.polys.num_cells();
+    let pts = input.points.as_flat_slice();
+
+    let mut triangles = Vec::with_capacity(nc);
+    let mut edges = Vec::with_capacity(nc * 3);
+    for ci in 0..nc {
+        let start = offsets[ci] as usize;
+        let end = offsets[ci + 1] as usize;
+        if end - start != 3 {
+            continue;
+        }
+        let i0 = conn[start] as usize;
+        let i1 = conn[start + 1] as usize;
+        let i2 = conn[start + 2] as usize;
+
+        let b0 = i0 * 3;
+        let b1 = i1 * 3;
+        let b2 = i2 * 3;
+        let p0 = [pts[b0], pts[b0 + 1], pts[b0 + 2]];
+        let p1 = [pts[b1], pts[b1 + 1], pts[b1 + 2]];
+        let p2 = [pts[b2], pts[b2 + 1], pts[b2 + 2]];
+
+        let e01 = sub(p1, p0);
+        let cross = cross_3(e01, sub(p2, p0));
+        let tri_area = 0.5 * length(cross);
+
+        let tri_id = triangles.len();
+        triangles.push(TriangleInfo {
+            normal: normalize(cross),
+            area: tri_area,
+        });
+        for &(a, b) in &[(i0, i1), (i1, i2), (i2, i0)] {
+            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+            edges.push(EdgeOccurrence {
+                lo,
+                hi,
+                a,
+                b,
+                tri: tri_id,
+            });
+        }
+    }
+    (triangles, edges)
 }
 
 fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {

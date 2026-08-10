@@ -35,11 +35,13 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
     }
     let mut tri_alive = vec![true; triangles.len()];
 
-    // Adjacency: vertex → set of triangle indices
-    let mut vert_tris: Vec<HashSet<usize>> = vec![HashSet::new(); n_points];
+    // Adjacency: vertex -> triangle indices. Lists are append-only during
+    // collapses; stale entries are filtered by `tri_alive` and triangle
+    // membership. This avoids hot hash removals/inserts in the collapse loop.
+    let mut vert_tris: Vec<Vec<usize>> = vec![Vec::new(); n_points];
     for (ti, tri) in triangles.iter().enumerate() {
         for &v in tri {
-            vert_tris[v].insert(ti);
+            vert_tris[v].push(ti);
         }
     }
 
@@ -93,11 +95,13 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
         version[a] += 1;
         version[b] += 1;
 
-        // Collect triangles touching b
-        let b_tris: Vec<usize> = vert_tris[b].iter().copied().collect();
+        // Collect triangles touching b. The adjacency list can contain stale
+        // entries from prior collapses, so only process live triangles that
+        // still reference b.
+        let b_tris = std::mem::take(&mut vert_tris[b]);
 
         for &ti in &b_tris {
-            if !tri_alive[ti] {
+            if !tri_alive[ti] || !triangles[ti].contains(&b) {
                 continue;
             }
             let tri = &mut triangles[ti];
@@ -113,28 +117,23 @@ pub fn decimate(input: &PolyData, target_reduction: f64) -> PolyData {
             if tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2] {
                 tri_alive[ti] = false;
                 live_count -= 1;
-                // Remove from adjacency
-                for &v in triangles[ti].iter() {
-                    vert_tris[v].remove(&ti);
-                }
             } else {
-                // Move triangle from b's adjacency to a's
-                vert_tris[b].remove(&ti);
-                vert_tris[a].insert(ti);
+                vert_tris[a].push(ti);
             }
         }
 
         // Re-insert edges touching a with fresh costs
-        let mut new_edges = HashSet::new();
+        let mut new_edges = Vec::new();
         for &ti in &vert_tris[a] {
-            if !tri_alive[ti] {
+            if !tri_alive[ti] || !triangles[ti].contains(&a) {
                 continue;
             }
             let tri = triangles[ti];
             for &v in &tri {
                 if v != a {
                     let edge = if a < v { (a, v) } else { (v, a) };
-                    if new_edges.insert(edge) {
+                    if !new_edges.contains(&edge) {
+                        new_edges.push(edge);
                         let cost = edge_cost(&quadrics[a], &quadrics[v], points[a], points[v]);
                         heap.push(EdgeCollapse {
                             cost: -cost,

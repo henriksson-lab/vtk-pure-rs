@@ -91,13 +91,11 @@ pub fn extract_cells_by_indices(grid: &UnstructuredGrid, indices: &[usize]) -> U
 }
 
 /// Count cells by type in an UnstructuredGrid.
-pub fn cell_type_counts(grid: &UnstructuredGrid) -> std::collections::HashMap<CellType, usize> {
-    let mut counts = std::collections::HashMap::new();
-    for &ct in grid.cell_types() {
-        *counts.entry(ct).or_insert(0) += 1;
-    }
-    counts
-}
+///
+/// Re-exported from [`crate::filters::extract::extract_by_type`], which holds
+/// the single implementation (it walks `0..GetNumberOfCells()` calling
+/// `GetCellType(i)`, matching `vtkDataSet::GetDistinctCellTypes`).
+pub use crate::filters::extract::extract_by_type::cell_type_counts;
 
 fn select_tuples(array: &AnyDataArray, tuple_ids: &[usize]) -> AnyDataArray {
     macro_rules! select {
@@ -204,13 +202,5 @@ mod tests {
         let grid = make_mixed_grid();
         let result = extract_cells_by_indices(&grid, &[0]);
         assert_eq!(result.cells().num_cells(), 1);
-    }
-
-    #[test]
-    fn type_counts() {
-        let grid = make_mixed_grid();
-        let counts = cell_type_counts(&grid);
-        assert_eq!(counts[&CellType::Triangle], 1);
-        assert_eq!(counts[&CellType::Quad], 1);
     }
 }

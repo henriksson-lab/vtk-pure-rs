@@ -1,5 +1,41 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
+
+type EdgeFaceMap = HashMap<u64, (u32, u32), BuildHasherDefault<U64IdentityHasher>>;
+
+#[derive(Default)]
+struct U64IdentityHasher(u64);
+
+impl Hasher for U64IdentityHasher {
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        mix_u64(self.0)
+    }
+
+    #[inline(always)]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut value = 0u64;
+        for (shift, &byte) in bytes.iter().take(8).enumerate() {
+            value |= (byte as u64) << (shift * 8);
+        }
+        self.0 = value;
+    }
+
+    #[inline(always)]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = i;
+    }
+}
+
+#[inline(always)]
+fn mix_u64(mut value: u64) -> u64 {
+    value ^= value >> 30;
+    value = value.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    value ^= value >> 27;
+    value = value.wrapping_mul(0x94d0_49bb_1331_11eb);
+    value ^ (value >> 31)
+}
 
 /// Compute dihedral angles between adjacent triangles.
 ///
@@ -48,7 +84,10 @@ pub fn dihedral_angles(input: &PolyData) -> PolyData {
     }
 
     // Build edge adjacency using packed u64 keys: (face0, face1)
-    let mut edge_faces: HashMap<u64, (u32, u32)> = HashMap::with_capacity(nc * 3);
+    let mut edge_faces: EdgeFaceMap = HashMap::with_capacity_and_hasher(
+        nc * 3,
+        BuildHasherDefault::<U64IdentityHasher>::default(),
+    );
     for ci in 0..nc {
         let start = offsets[ci] as usize;
         let end = offsets[ci + 1] as usize;

@@ -3,7 +3,8 @@ use crate::data::PolyData;
 /// Result of a ray-mesh intersection test.
 #[derive(Debug, Clone)]
 pub struct RayHit {
-    /// Index of the hit cell (triangle).
+    /// Index of the hit cell in `vtkPolyData` cell order
+    /// (verts, then lines, then polys, then strips).
     pub cell_id: usize,
     /// Hit point position.
     pub point: [f64; 3],
@@ -14,155 +15,30 @@ pub struct RayHit {
 /// Cast a ray and find the first intersection with a triangle mesh.
 ///
 /// Ray is defined by `origin` and `direction`. Returns the closest hit.
+///
+/// Delegates to [`crate::filters::mesh::ray_cast_mesh`], which holds the single
+/// ray/triangle implementation.
 pub fn ray_cast(input: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> Option<RayHit> {
-    let dlen =
-        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
-            .sqrt();
-    if dlen < 1e-15 {
-        return None;
-    }
-    let dir = [
-        direction[0] / dlen,
-        direction[1] / dlen,
-        direction[2] / dlen,
-    ];
-
-    let mut best: Option<RayHit> = None;
-
-    for (ci, cell) in input.polys.iter().enumerate() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let Some(i0) = valid_point_id(cell[0], input.points.len()) else {
-            continue;
-        };
-        let v0 = input.points.get(i0);
-        for i in 1..cell.len() - 1 {
-            let Some(i1) = valid_point_id(cell[i], input.points.len()) else {
-                continue;
-            };
-            let Some(i2) = valid_point_id(cell[i + 1], input.points.len()) else {
-                continue;
-            };
-            let v1 = input.points.get(i1);
-            let v2 = input.points.get(i2);
-            if let Some(t) = ray_triangle(origin, dir, v0, v1, v2) {
-                if t > 1e-12 {
-                    let hit = match &best {
-                        Some(b) => t < b.t,
-                        None => true,
-                    };
-                    if hit {
-                        best = Some(RayHit {
-                            cell_id: ci,
-                            point: [
-                                origin[0] + t * dir[0],
-                                origin[1] + t * dir[1],
-                                origin[2] + t * dir[2],
-                            ],
-                            t,
-                        });
-                    }
-                }
-            }
-        }
-    }
-    best
+    crate::filters::mesh::ray_cast_mesh::ray_cast_first(input, origin, direction).map(convert_hit)
 }
 
 /// Cast a ray and find ALL intersections (sorted by distance).
+///
+/// Delegates to [`crate::filters::mesh::ray_cast_mesh::ray_cast_all`]; only the
+/// hit record differs (this one carries just the cell id, point and `t`).
 pub fn ray_cast_all(input: &PolyData, origin: [f64; 3], direction: [f64; 3]) -> Vec<RayHit> {
-    let dlen =
-        (direction[0] * direction[0] + direction[1] * direction[1] + direction[2] * direction[2])
-            .sqrt();
-    if dlen < 1e-15 {
-        return vec![];
-    }
-    let dir = [
-        direction[0] / dlen,
-        direction[1] / dlen,
-        direction[2] / dlen,
-    ];
-
-    let mut hits = Vec::new();
-    for (ci, cell) in input.polys.iter().enumerate() {
-        if cell.len() < 3 {
-            continue;
-        }
-        let Some(i0) = valid_point_id(cell[0], input.points.len()) else {
-            continue;
-        };
-        let v0 = input.points.get(i0);
-        let mut cell_hit: Option<RayHit> = None;
-        for i in 1..cell.len() - 1 {
-            let Some(i1) = valid_point_id(cell[i], input.points.len()) else {
-                continue;
-            };
-            let Some(i2) = valid_point_id(cell[i + 1], input.points.len()) else {
-                continue;
-            };
-            let v1 = input.points.get(i1);
-            let v2 = input.points.get(i2);
-            if let Some(t) = ray_triangle(origin, dir, v0, v1, v2) {
-                if t > 1e-12 {
-                    let hit = match &cell_hit {
-                        Some(b) => t < b.t,
-                        None => true,
-                    };
-                    if hit {
-                        cell_hit = Some(RayHit {
-                            cell_id: ci,
-                            point: [
-                                origin[0] + t * dir[0],
-                                origin[1] + t * dir[1],
-                                origin[2] + t * dir[2],
-                            ],
-                            t,
-                        });
-                    }
-                }
-            }
-        }
-        if let Some(hit) = cell_hit {
-            hits.push(hit);
-        }
-    }
-    hits.sort_by(|a, b| a.t.partial_cmp(&b.t).unwrap());
-    hits
+    crate::filters::mesh::ray_cast_mesh::ray_cast_all(input, origin, direction)
+        .into_iter()
+        .map(convert_hit)
+        .collect()
 }
 
-fn ray_triangle(o: [f64; 3], d: [f64; 3], v0: [f64; 3], v1: [f64; 3], v2: [f64; 3]) -> Option<f64> {
-    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-    let h = [
-        d[1] * e2[2] - d[2] * e2[1],
-        d[2] * e2[0] - d[0] * e2[2],
-        d[0] * e2[1] - d[1] * e2[0],
-    ];
-    let a = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
-    if a.abs() < 1e-12 {
-        return None;
+fn convert_hit(hit: crate::filters::mesh::ray_cast_mesh::RayHit) -> RayHit {
+    RayHit {
+        cell_id: hit.cell_index,
+        point: hit.point,
+        t: hit.t,
     }
-    let f = 1.0 / a;
-    let s = [o[0] - v0[0], o[1] - v0[1], o[2] - v0[2]];
-    let u = f * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
-    if !(0.0..=1.0).contains(&u) {
-        return None;
-    }
-    let q = [
-        s[1] * e1[2] - s[2] * e1[1],
-        s[2] * e1[0] - s[0] * e1[2],
-        s[0] * e1[1] - s[1] * e1[0],
-    ];
-    let v = f * (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]);
-    if v < 0.0 || u + v > 1.0 {
-        return None;
-    }
-    Some(f * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]))
-}
-
-fn valid_point_id(id: i64, num_points: usize) -> Option<usize> {
-    usize::try_from(id).ok().filter(|&id| id < num_points)
 }
 
 #[cfg(test)]

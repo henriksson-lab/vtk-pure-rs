@@ -83,7 +83,10 @@ pub fn diff(a: &PolyData, b: &PolyData) -> MeshDiff {
 }
 
 /// Compute per-point displacement between two meshes with the same topology.
-/// Returns a new PolyData (copy of A) with a "Displacement" vector array.
+///
+/// Returns a new PolyData (copy of the reference mesh `a`) carrying a
+/// "Displacement" vector array (`b - a`) and a "DisplacementMagnitude" scalar
+/// array. Returns `None` when the two meshes have different point counts.
 pub fn displacement_field(a: &PolyData, b: &PolyData) -> Option<PolyData> {
     if a.points.len() != b.points.len() {
         return None;
@@ -92,16 +95,36 @@ pub fn displacement_field(a: &PolyData, b: &PolyData) -> Option<PolyData> {
     let mut result = a.clone();
     let n = a.points.len();
     let mut disp = Vec::with_capacity(n * 3);
+    let mut mag = Vec::with_capacity(n);
     for i in 0..n {
         let pa = a.points.get(i);
         let pb = b.points.get(i);
-        disp.push(pb[0] - pa[0]);
-        disp.push(pb[1] - pa[1]);
-        disp.push(pb[2] - pa[2]);
+        let dx = pb[0] - pa[0];
+        let dy = pb[1] - pa[1];
+        let dz = pb[2] - pa[2];
+        disp.push(dx);
+        disp.push(dy);
+        disp.push(dz);
+        mag.push((dx * dx + dy * dy + dz * dz).sqrt());
     }
-    let arr = DataArray::from_vec("Displacement", disp, 3);
-    result.point_data_mut().add_array(AnyDataArray::F64(arr));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Displacement",
+            disp,
+            3,
+        )));
+    result
+        .point_data_mut()
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "DisplacementMagnitude",
+            mag,
+            1,
+        )));
     result.point_data_mut().set_active_vectors("Displacement");
+    result
+        .point_data_mut()
+        .set_active_scalars("DisplacementMagnitude");
     Some(result)
 }
 

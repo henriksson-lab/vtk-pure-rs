@@ -3,7 +3,16 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn boundary_distance_field(mesh: &PolyData) -> PolyData {
     let n = mesh.points.len();
     if n == 0 {
-        return mesh.clone();
+        // Still emit the (empty) array so callers can rely on it existing.
+        let mut r = mesh.clone();
+        r.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "BoundaryDist",
+                Vec::new(),
+                1,
+            )));
+        r.point_data_mut().set_active_scalars("BoundaryDist");
+        return r;
     }
     let mut nb: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n];
     let mut ec: std::collections::HashMap<(usize, usize), usize> = std::collections::HashMap::new();

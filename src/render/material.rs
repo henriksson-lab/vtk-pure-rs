@@ -6,7 +6,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::render::Material;
+/// use vtk_pure_rs::render::Material;
 ///
 /// let matte = Material::matte();
 /// assert_eq!(matte.specular, 0.0);

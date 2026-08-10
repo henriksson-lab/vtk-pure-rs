@@ -87,6 +87,11 @@ pub fn extract_slice_along_axis(
 }
 
 /// Extract maximum intensity projection along an axis.
+///
+/// Mirrors `vtkImageSlab` with `Operation = VTK_IMAGE_SLAB_MAX` over the full
+/// slice range: the projected axis is collapsed to a single slice, the origin
+/// along that axis is moved to the centre of the stack
+/// (`origin + 0.5 * spacing * (n - 1)`), and the spacing is preserved.
 pub fn max_intensity_projection(input: &ImageData, scalars: &str, axis: usize) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) => a,
@@ -126,7 +131,7 @@ pub fn max_intensity_projection(input: &ImageData, scalars: &str, axis: usize) -
                 origin[2],
                 origin[0] + 0.5 * sp[0] * nx.saturating_sub(1) as f64,
             ]);
-            img.set_spacing([sp[1], sp[2], 1.0]);
+            img.set_spacing([sp[1], sp[2], sp[0]]);
             img.point_data_mut()
                 .add_array(AnyDataArray::F64(DataArray::from_vec(
                     scalars, values, ncomp,
@@ -154,7 +159,7 @@ pub fn max_intensity_projection(input: &ImageData, scalars: &str, axis: usize) -
                 origin[2],
                 origin[1] + 0.5 * sp[1] * ny.saturating_sub(1) as f64,
             ]);
-            img.set_spacing([sp[0], sp[2], 1.0]);
+            img.set_spacing([sp[0], sp[2], sp[1]]);
             img.point_data_mut()
                 .add_array(AnyDataArray::F64(DataArray::from_vec(
                     scalars, values, ncomp,
@@ -182,7 +187,7 @@ pub fn max_intensity_projection(input: &ImageData, scalars: &str, axis: usize) -
                 origin[1],
                 origin[2] + 0.5 * sp[2] * nz.saturating_sub(1) as f64,
             ]);
-            img.set_spacing([sp[0], sp[1], 1.0]);
+            img.set_spacing([sp[0], sp[1], sp[2]]);
             img.point_data_mut()
                 .add_array(AnyDataArray::F64(DataArray::from_vec(
                     scalars, values, ncomp,

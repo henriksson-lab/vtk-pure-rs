@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 
@@ -7,31 +8,36 @@ use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points,
 /// Each polygon edge appears exactly once in the output, regardless of
 /// how many cells share it.
 pub fn extract_edges(input: &PolyData) -> PolyData {
-    let mut seen: HashMap<(i64, i64), usize> = HashMap::new();
-    let mut out_lines = CellArray::new();
+    let mut seen: HashMap<u64, usize, BuildHasherDefault<U64EdgeHasher>> = HashMap::default();
+    let mut line_offsets = Vec::with_capacity(input.polys.connectivity_len() + 1);
+    let mut line_conn = Vec::with_capacity(input.polys.connectivity_len() * 2);
+    line_offsets.push(0);
     let mut edge_source_cell_ids = Vec::new();
 
     let insert_edge = |a: i64,
                        b: i64,
                        source_cell_id: usize,
-                       seen: &mut HashMap<(i64, i64), usize>,
-                       lines: &mut CellArray,
+                       seen: &mut HashMap<u64, usize, BuildHasherDefault<U64EdgeHasher>>,
+                       line_offsets: &mut Vec<i64>,
+                       line_conn: &mut Vec<i64>,
                        edge_source_cell_ids: &mut Vec<usize>| {
-        let key = if a < b { (a, b) } else { (b, a) };
+        let key = edge_key(a, b);
         if let Some(&edge_id) = seen.get(&key) {
             edge_source_cell_ids[edge_id] = edge_source_cell_ids[edge_id].min(source_cell_id);
         } else {
             let edge_id = edge_source_cell_ids.len();
             seen.insert(key, edge_id);
             edge_source_cell_ids.push(source_cell_id);
-            lines.push_cell(&[a, b]);
+            line_conn.extend_from_slice(&[a, b]);
+            line_offsets.push(line_conn.len() as i64);
         }
     };
 
     let process_polygon = |cell: &[i64],
                            source_cell_id: usize,
-                           seen: &mut HashMap<(i64, i64), usize>,
-                           lines: &mut CellArray,
+                           seen: &mut HashMap<u64, usize, BuildHasherDefault<U64EdgeHasher>>,
+                           line_offsets: &mut Vec<i64>,
+                           line_conn: &mut Vec<i64>,
                            edge_source_cell_ids: &mut Vec<usize>| {
         let n = cell.len();
         if n < 2 {
@@ -40,7 +46,15 @@ pub fn extract_edges(input: &PolyData) -> PolyData {
         for i in 0..n {
             let a = cell[i];
             let b = cell[(i + 1) % n];
-            insert_edge(a, b, source_cell_id, seen, lines, edge_source_cell_ids);
+            insert_edge(
+                a,
+                b,
+                source_cell_id,
+                seen,
+                line_offsets,
+                line_conn,
+                edge_source_cell_ids,
+            );
         }
     };
 
@@ -54,7 +68,8 @@ pub fn extract_edges(input: &PolyData) -> PolyData {
             cell,
             polys_offset + poly_id,
             &mut seen,
-            &mut out_lines,
+            &mut line_offsets,
+            &mut line_conn,
             &mut edge_source_cell_ids,
         );
     }
@@ -72,7 +87,8 @@ pub fn extract_edges(input: &PolyData) -> PolyData {
                 v1,
                 source_cell_id,
                 &mut seen,
-                &mut out_lines,
+                &mut line_offsets,
+                &mut line_conn,
                 &mut edge_source_cell_ids,
             );
             insert_edge(
@@ -80,7 +96,8 @@ pub fn extract_edges(input: &PolyData) -> PolyData {
                 v2,
                 source_cell_id,
                 &mut seen,
-                &mut out_lines,
+                &mut line_offsets,
+                &mut line_conn,
                 &mut edge_source_cell_ids,
             );
             insert_edge(
@@ -88,7 +105,8 @@ pub fn extract_edges(input: &PolyData) -> PolyData {
                 v0,
                 source_cell_id,
                 &mut seen,
-                &mut out_lines,
+                &mut line_offsets,
+                &mut line_conn,
                 &mut edge_source_cell_ids,
             );
         }
@@ -104,13 +122,48 @@ pub fn extract_edges(input: &PolyData) -> PolyData {
                 b,
                 source_cell_id,
                 &mut seen,
-                &mut out_lines,
+                &mut line_offsets,
+                &mut line_conn,
                 &mut edge_source_cell_ids,
             );
         }
     }
 
+    let out_lines = CellArray::from_raw(line_offsets, line_conn);
     build_output_with_used_points(input, out_lines, &edge_source_cell_ids)
+}
+
+#[derive(Default)]
+struct U64EdgeHasher(u64);
+
+impl Hasher for U64EdgeHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut hash = 0xcbf29ce484222325u64;
+        for &byte in bytes {
+            hash ^= byte as u64;
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        self.0 = hash;
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = mix_u64(value);
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+fn edge_key(a: i64, b: i64) -> u64 {
+    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+    ((lo as u64) << 32) | (hi as u64 & 0xffff_ffff)
+}
+
+fn mix_u64(mut x: u64) -> u64 {
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^ (x >> 31)
 }
 
 fn build_output_with_used_points(
@@ -126,6 +179,15 @@ fn build_output_with_used_points(
             }
             used[id as usize] = true;
         }
+    }
+
+    if used.iter().all(|&is_used| is_used) {
+        let mut pd = PolyData::new();
+        pd.points = input.points.clone();
+        pd.lines = lines;
+        *pd.point_data_mut() = input.point_data().clone();
+        copy_cell_data(input, edge_source_cell_ids, &mut pd);
+        return pd;
     }
 
     let mut old_to_new = vec![-1i64; input.points.len()];

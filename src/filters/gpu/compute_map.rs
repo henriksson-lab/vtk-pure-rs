@@ -136,8 +136,8 @@ fn create_compute_pipeline(
         .device
         .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[bgl],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(bgl)],
+            immediate_size: 0,
         });
     ctx.device
         .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn gpu_sqrt() {
-        let ctx = match GpuContext::new() {
+        let ctx = match GpuContext::shared() {
             Ok(c) => c,
             Err(_) => return,
         };

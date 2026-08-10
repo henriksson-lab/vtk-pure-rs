@@ -3,7 +3,7 @@
 /// # Examples
 ///
 /// ```
-/// use crate::render::ColorMap;
+/// use vtk_pure_rs::render::ColorMap;
 ///
 /// let cm = ColorMap::viridis();
 /// let color = cm.map(0.5);

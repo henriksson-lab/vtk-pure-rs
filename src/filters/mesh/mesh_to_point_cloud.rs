@@ -4,45 +4,20 @@ use crate::data::{CellArray, Points, PolyData};
 
 /// Controls how point-cloud vertex cells are generated.
 ///
-/// Mirrors `vtkConvertToPointCloud::CellGeneration`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PointCloudCellGeneration {
-    /// Do not generate any cells.
-    NoCells,
-    /// Generate one polyvertex cell containing every point.
-    PolyVertexCell,
-    /// Generate one vertex cell per point.
-    VertexCells,
-}
+/// Mirrors `vtkConvertToPointCloud::CellGeneration`. Re-exported from
+/// [`crate::filters::mesh::point_cloud_from_mesh`], which holds the single
+/// definition.
+pub use crate::filters::mesh::point_cloud_from_mesh::PointCloudCellGeneration;
+
+/// Convert mesh points to a point-cloud `PolyData`.
+///
+/// Re-exported from [`crate::filters::mesh::point_cloud_from_mesh`], which
+/// holds the single implementation of `vtkConvertToPointCloud`.
+pub use crate::filters::mesh::point_cloud_from_mesh::convert_to_point_cloud;
 
 /// Extract all mesh vertices as a point cloud using VTK's default polyvertex-cell mode.
 pub fn mesh_to_point_cloud(mesh: &PolyData) -> PolyData {
     convert_to_point_cloud(mesh, PointCloudCellGeneration::PolyVertexCell)
-}
-
-/// Convert mesh points to a point-cloud `PolyData`.
-pub fn convert_to_point_cloud(mesh: &PolyData, mode: PointCloudCellGeneration) -> PolyData {
-    let mut result = PolyData::new();
-    result.points = mesh.points.clone();
-    *result.point_data_mut() = mesh.point_data().clone();
-    *result.field_data_mut() = mesh.field_data().clone();
-
-    match mode {
-        PointCloudCellGeneration::NoCells => {}
-        PointCloudCellGeneration::PolyVertexCell => {
-            let ids: Vec<i64> = (0..mesh.points.len()).map(|i| i as i64).collect();
-            result.verts.push_cell(&ids);
-        }
-        PointCloudCellGeneration::VertexCells => {
-            let mut verts = CellArray::new();
-            for i in 0..mesh.points.len() {
-                verts.push_cell(&[i as i64]);
-            }
-            result.verts = verts;
-        }
-    }
-
-    result
 }
 
 /// Create a point cloud from raw coordinate arrays.
@@ -105,17 +80,6 @@ mod tests {
         assert_eq!(pc.verts.num_cells(), 1);
         assert_eq!(pc.verts.cell(0), &[0, 1, 2]);
         assert_eq!(pc.polys.num_cells(), 0);
-    }
-
-    #[test]
-    fn test_to_cloud_vertex_cells() {
-        let mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        let pc = convert_to_point_cloud(&mesh, PointCloudCellGeneration::VertexCells);
-        assert_eq!(pc.verts.num_cells(), 3);
-        assert_eq!(pc.verts.cell(0), &[0]);
     }
 
     #[test]

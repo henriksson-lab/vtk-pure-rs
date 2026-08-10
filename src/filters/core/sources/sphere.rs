@@ -35,8 +35,10 @@ pub fn sphere(params: &SphereParams) -> PolyData {
     let mut pts_flat = Vec::with_capacity(n_pts * 3);
     let mut nrm_flat = Vec::with_capacity(n_pts * 3);
     let mut conn = Vec::with_capacity(n_tris * 3);
-    let mut offsets = Vec::with_capacity(n_tris + 1);
-    offsets.push(0i64);
+    unsafe {
+        conn.set_len(n_tris * 3);
+    }
+    let offsets: Vec<i64> = (0..=n_tris).map(|i| (i * 3) as i64).collect();
 
     // North pole
     pts_flat.extend_from_slice(&[cx, cy, cz + r]);
@@ -49,31 +51,39 @@ pub fn sphere(params: &SphereParams) -> PolyData {
     let delta_phi = PI / (n_phi - 1) as f64;
     let delta_theta = 2.0 * PI / n_theta as f64;
 
-    for i in 0..n_theta {
-        let theta = i as f64 * delta_theta;
-        for j in 1..n_phi - 1 {
-            let phi = j as f64 * delta_phi;
-            let radius = r * phi.sin();
-            let n = [radius * theta.cos(), radius * theta.sin(), r * phi.cos()];
+    let theta_trig: Vec<(f64, f64)> = (0..n_theta)
+        .map(|i| (i as f64 * delta_theta).sin_cos())
+        .collect();
+    let phi_trig: Vec<(f64, f64)> = (1..n_phi - 1)
+        .map(|j| (j as f64 * delta_phi).sin_cos())
+        .collect();
+
+    for &(sin_theta, cos_theta) in &theta_trig {
+        for &(sin_phi, cos_phi) in &phi_trig {
+            let nr = r * sin_phi;
+            let n = [nr * cos_theta, nr * sin_theta, r * cos_phi];
             pts_flat.extend_from_slice(&[n[0] + cx, n[1] + cy, n[2] + cz]);
 
-            let mut norm = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            if norm == 0.0 {
-                norm = 1.0;
+            if r == 0.0 {
+                nrm_flat.extend_from_slice(&[0.0, 0.0, 0.0]);
+            } else {
+                nrm_flat.extend_from_slice(&[sin_phi * cos_theta, sin_phi * sin_theta, cos_phi]);
             }
-            nrm_flat.extend_from_slice(&[n[0] / norm, n[1] / norm, n[2] / norm]);
         }
     }
 
     let num_poles = 2;
     let base = phi_resolution * n_theta;
+    let mut conn_idx = 0usize;
 
     // North cap
     for i in 0..n_theta {
         let p0 = (phi_resolution * i + num_poles) as i64;
         let p1 = ((phi_resolution * (i + 1)) % base + num_poles) as i64;
-        conn.extend_from_slice(&[p0, p1, 0]);
-        offsets.push(conn.len() as i64);
+        conn[conn_idx] = p0;
+        conn[conn_idx + 1] = p1;
+        conn[conn_idx + 2] = 0;
+        conn_idx += 3;
     }
 
     // South cap
@@ -81,8 +91,10 @@ pub fn sphere(params: &SphereParams) -> PolyData {
     for i in 0..n_theta {
         let p0 = (phi_resolution * i + num_offset) as i64;
         let p2 = ((phi_resolution * (i + 1)) % base + num_offset) as i64;
-        conn.extend_from_slice(&[p0, 1, p2]);
-        offsets.push(conn.len() as i64);
+        conn[conn_idx] = p0;
+        conn[conn_idx + 1] = 1;
+        conn[conn_idx + 2] = p2;
+        conn_idx += 3;
     }
 
     // Bands between poles
@@ -91,12 +103,16 @@ pub fn sphere(params: &SphereParams) -> PolyData {
             let p0 = (phi_resolution * i + j + num_poles) as i64;
             let p1 = p0 + 1;
             let p2 = ((phi_resolution * (i + 1) + j) % base + num_poles + 1) as i64;
-            conn.extend_from_slice(&[p0, p1, p2]);
-            offsets.push(conn.len() as i64);
-            conn.extend_from_slice(&[p0, p2, p2 - 1]);
-            offsets.push(conn.len() as i64);
+            conn[conn_idx] = p0;
+            conn[conn_idx + 1] = p1;
+            conn[conn_idx + 2] = p2;
+            conn[conn_idx + 3] = p0;
+            conn[conn_idx + 4] = p2;
+            conn[conn_idx + 5] = p2 - 1;
+            conn_idx += 6;
         }
     }
+    debug_assert_eq!(conn_idx, conn.len());
 
     let mut pd = PolyData::new();
     pd.points = Points::from_flat_vec(pts_flat);

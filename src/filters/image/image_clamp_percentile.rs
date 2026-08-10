@@ -17,11 +17,23 @@ pub fn image_clamp_percentile(input: &ImageData, scalars: &str) -> ImageData {
             buf[0]
         })
         .collect();
-    let mut sorted = values.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let lo = sorted[((n - 1) as f64 * 0.05) as usize];
-    let hi = sorted[((n - 1) as f64 * 0.95) as usize];
-    let data: Vec<f64> = values.into_iter().map(|v| v.clamp(lo, hi)).collect();
+    // Percentiles are taken over the non-NaN samples only: a NaN has no rank, and
+    // letting one land on a percentile would make `clamp` panic (it requires
+    // `lo <= hi`, which is false for any NaN bound).
+    let mut sorted: Vec<f64> = values.iter().copied().filter(|v| !v.is_nan()).collect();
+    if sorted.is_empty() {
+        return input.clone();
+    }
+    sorted.sort_by(f64::total_cmp);
+    let last = sorted.len() - 1;
+    let lo = sorted[(last as f64 * 0.05) as usize];
+    let hi = sorted[(last as f64 * 0.95) as usize];
+    // NaNs are passed through untouched rather than clamped to a percentile they
+    // were never ranked against.
+    let data: Vec<f64> = values
+        .into_iter()
+        .map(|v| if v.is_nan() { v } else { v.clamp(lo, hi) })
+        .collect();
     let dims = input.dimensions();
     ImageData::with_dimensions(dims[0], dims[1], dims[2])
         .with_spacing(input.spacing())

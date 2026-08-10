@@ -1,86 +1,30 @@
 //! Compute per-face areas and attach as cell data.
+//!
+//! The implementations live in [`crate::filters::mesh::face_area_stats`] (per-face
+//! areas and their statistics) and [`crate::filters::mesh::surface_curvature_integral`]
+//! (total area); this module only re-exports them so there is a single
+//! implementation of each.
 
-use crate::data::{AnyDataArray, DataArray, PolyData};
+use crate::data::PolyData;
 
-/// Compute area of each polygon and store as cell data "Area".
-pub fn compute_face_areas(mesh: &PolyData) -> PolyData {
-    let mut areas = Vec::new();
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            areas.push(0.0);
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        // Triangulate polygon and sum triangle areas
-        let mut total = 0.0;
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let cx = e1[1] * e2[2] - e1[2] * e2[1];
-            let cy = e1[2] * e2[0] - e1[0] * e2[2];
-            let cz = e1[0] * e2[1] - e1[1] * e2[0];
-            total += 0.5 * (cx * cx + cy * cy + cz * cz).sqrt();
-        }
-        areas.push(total);
-    }
-    let mut result = mesh.clone();
-    result
-        .cell_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Area", areas, 1)));
-    result
-}
-
-/// Compute total surface area.
-pub fn total_surface_area(mesh: &PolyData) -> f64 {
-    let result = compute_face_areas(mesh);
-    let arr = result.cell_data().get_array("Area").unwrap();
-    let mut buf = [0.0f64];
-    (0..arr.num_tuples())
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0]
-        })
-        .sum()
-}
+pub use crate::filters::mesh::face_area_stats::compute_face_areas;
+pub use crate::filters::mesh::surface_curvature_integral::total_surface_area;
 
 /// Compute min, max, average face area.
+///
+/// Thin wrapper over [`crate::filters::mesh::face_area_stats::face_area_stats`],
+/// which returns the richer [`FaceAreaStats`](crate::filters::mesh::face_area_stats::FaceAreaStats)
+/// record. An empty mesh yields `(0, 0, 0)`.
 pub fn face_area_stats(mesh: &PolyData) -> (f64, f64, f64) {
-    let result = compute_face_areas(mesh);
-    let arr = result.cell_data().get_array("Area").unwrap();
-    let n = arr.num_tuples();
-    if n == 0 {
-        return (0.0, 0.0, 0.0);
+    match crate::filters::mesh::face_area_stats::face_area_stats(mesh) {
+        Some(stats) => (stats.min_area, stats.max_area, stats.mean_area),
+        None => (0.0, 0.0, 0.0),
     }
-    let mut buf = [0.0f64];
-    let mut mn = f64::INFINITY;
-    let mut mx = f64::NEG_INFINITY;
-    let mut sum = 0.0;
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        mn = mn.min(buf[0]);
-        mx = mx.max(buf[0]);
-        sum += buf[0];
-    }
-    (mn, mx, sum / n as f64)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn test_areas() {
-        let mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 2.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        let r = compute_face_areas(&mesh);
-        let arr = r.cell_data().get_array("Area").unwrap();
-        let mut buf = [0.0];
-        arr.tuple_as_f64(0, &mut buf);
-        assert!((buf[0] - 2.0).abs() < 1e-10); // triangle area = 2
-    }
     #[test]
     fn test_total() {
         let mesh = PolyData::from_triangles(

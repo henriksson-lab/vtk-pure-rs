@@ -69,34 +69,30 @@ pub fn convex_hull(input: &PolyData) -> PolyData {
             continue; // Point is inside hull
         }
 
-        // Find horizon edges (edges between visible and non-visible faces)
-        let mut horizon: Vec<(usize, usize)> = Vec::new();
+        // Find horizon edges. In the current outward orientation, internal
+        // edges between two visible faces appear once in each direction; only
+        // edges without a visible reverse neighbor are on the horizon.
+        let visible_face_count = visible.iter().filter(|&&v| v).count();
+        let mut visible_edges: Vec<(usize, usize)> = Vec::with_capacity(visible_face_count * 3);
         for (fi, face) in faces.iter().enumerate() {
             if !visible[fi] {
                 continue;
             }
-            let edges = [(face[0], face[1]), (face[1], face[2]), (face[2], face[0])];
-            for &(a, b) in &edges {
-                // Check if the adjacent face (sharing edge b,a) is non-visible
-                let is_horizon = faces.iter().enumerate().any(|(fj, other)| {
-                    if fj == fi || visible[fj] {
-                        return false;
-                    }
-                    let oedges = [
-                        (other[0], other[1]),
-                        (other[1], other[2]),
-                        (other[2], other[0]),
-                    ];
-                    oedges.contains(&(b, a))
-                });
-                if is_horizon {
-                    horizon.push((a, b));
-                }
+            visible_edges.push((face[0], face[1]));
+            visible_edges.push((face[1], face[2]));
+            visible_edges.push((face[2], face[0]));
+        }
+
+        let mut horizon: Vec<(usize, usize)> = Vec::with_capacity(visible_edges.len());
+        for &(a, b) in &visible_edges {
+            if !visible_edges.iter().any(|&(c, d)| c == b && d == a) {
+                horizon.push((a, b));
             }
         }
 
         // Remove visible faces
-        let mut new_faces: Vec<[usize; 3]> = Vec::new();
+        let mut new_faces: Vec<[usize; 3]> =
+            Vec::with_capacity(faces.len() - visible_face_count + horizon.len());
         for (fi, face) in faces.iter().enumerate() {
             if !visible[fi] {
                 new_faces.push(*face);

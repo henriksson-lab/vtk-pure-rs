@@ -59,31 +59,15 @@ pub fn estimate_fiedler_vector(mesh: &PolyData, iterations: usize) -> PolyData {
     r.point_data_mut().set_active_scalars("Fiedler");
     r
 }
-pub fn spectral_partition(mesh: &PolyData, iterations: usize) -> PolyData {
-    let r = estimate_fiedler_vector(mesh, iterations);
-    let arr = r.point_data().get_array("Fiedler").unwrap();
-    let n = arr.num_tuples();
-    let mut buf = [0.0f64];
-    let labels: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            if buf[0] >= 0.0 {
-                1.0
-            } else {
-                0.0
-            }
-        })
-        .collect();
-    let mut result = r;
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "Partition",
-            labels,
-            1,
-        )));
-    result
-}
+/// Partition a mesh into two halves by the sign of the Fiedler vector.
+///
+/// Re-exported from [`crate::filters::mesh::mesh_spectral_partition`], which
+/// holds the single implementation. That one actually minimises the Rayleigh
+/// quotient, so it converges on the Fiedler vector; the copy that used to live
+/// here ran plain power iteration on the Laplacian, which converges on the
+/// *largest* eigenvector instead. Note the output carries only "Partition" —
+/// use [`estimate_fiedler_vector`] if you also want the raw vector.
+pub use crate::filters::mesh::mesh_spectral_partition::spectral_partition;
 fn add_neighbor_pair(nb: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
     if a_id < 0 || b_id < 0 {
         return;
@@ -116,19 +100,5 @@ mod tests {
         );
         let r = estimate_fiedler_vector(&m, 20);
         assert!(r.point_data().get_array("Fiedler").is_some());
-    }
-    #[test]
-    fn test_partition() {
-        let m = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [0.5, 1.0, 0.0],
-                [1.5, 1.0, 0.0],
-            ],
-            vec![[0, 1, 2], [1, 3, 2]],
-        );
-        let r = spectral_partition(&m, 20);
-        assert!(r.point_data().get_array("Partition").is_some());
     }
 }

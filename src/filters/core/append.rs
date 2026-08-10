@@ -1,4 +1,60 @@
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
+use crate::types::Scalar;
+use rayon::prelude::*;
+use std::ptr;
+
+const APPEND_PAR_MIN_VALUES: usize = 1_000_000;
+
+fn uninit_scalar_vec<T: Scalar>(len: usize) -> Vec<T> {
+    let mut data = Vec::with_capacity(len);
+    unsafe {
+        data.set_len(len);
+    }
+    data
+}
+
+#[derive(Clone, Copy)]
+struct UnsafeSliceWriter<T> {
+    ptr: *mut T,
+}
+
+unsafe impl<T: Send> Send for UnsafeSliceWriter<T> {}
+unsafe impl<T: Sync> Sync for UnsafeSliceWriter<T> {}
+
+impl<T> UnsafeSliceWriter<T> {
+    fn new(slice: &mut [T]) -> Self {
+        Self {
+            ptr: slice.as_mut_ptr(),
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn copy_from_slice(&self, dst_start: usize, src: &[T])
+    where
+        T: Copy,
+    {
+        ptr::copy_nonoverlapping(src.as_ptr(), self.ptr.add(dst_start), src.len());
+    }
+
+    #[inline(always)]
+    unsafe fn write(&self, idx: usize, value: T) {
+        *self.ptr.add(idx) = value;
+    }
+}
+
+#[derive(Clone, Copy)]
+struct InputRange<'a> {
+    input: &'a PolyData,
+    point_start: usize,
+}
+
+#[derive(Clone, Copy)]
+struct CellRange<'a> {
+    cells: &'a CellArray,
+    point_start: i64,
+    cell_start: usize,
+    conn_start: usize,
+}
 
 /// Merge multiple PolyData into one. Bulk memcpy via flat slices for speed.
 pub fn append(inputs: &[&PolyData]) -> PolyData {
@@ -21,14 +77,18 @@ pub fn append(inputs: &[&PolyData]) -> PolyData {
         return inputs[0].clone();
     }
 
-    let total_pts: usize = inputs.iter().map(|p| p.points.len()).sum();
-
-    // Bulk copy point data via extend_from_slice on flat backing buffer.
-    // Avoids per-point get()/push() overhead (single memcpy per input mesh).
-    let mut pts_flat = Vec::with_capacity(total_pts * 3);
+    let mut input_ranges = Vec::with_capacity(inputs.len());
+    let mut total_pts = 0usize;
     for &input in &inputs {
-        pts_flat.extend_from_slice(input.points.as_flat_slice());
+        input_ranges.push(InputRange {
+            input,
+            point_start: total_pts,
+        });
+        total_pts += input.points.len();
     }
+
+    let mut pts_flat = uninit_scalar_vec(total_pts * 3);
+    copy_points(&input_ranges, &mut pts_flat);
 
     let polys = merge_cells(&inputs, |p| &p.polys);
     let lines = merge_cells(&inputs, |p| &p.lines);
@@ -47,53 +107,102 @@ pub fn append(inputs: &[&PolyData]) -> PolyData {
     output
 }
 
+fn copy_points(ranges: &[InputRange<'_>], out: &mut [f64]) {
+    if out.len() < APPEND_PAR_MIN_VALUES {
+        for range in ranges {
+            let src = range.input.points.as_flat_slice();
+            let dst_start = range.point_start * 3;
+            out[dst_start..dst_start + src.len()].copy_from_slice(src);
+        }
+        return;
+    }
+
+    let writer = UnsafeSliceWriter::new(out);
+    ranges.par_iter().for_each(|range| {
+        let src = range.input.points.as_flat_slice();
+        unsafe {
+            writer.copy_from_slice(range.point_start * 3, src);
+        }
+    });
+}
+
 fn merge_cells(inputs: &[&PolyData], get: impl Fn(&PolyData) -> &CellArray) -> CellArray {
-    let cell_arrays: Vec<&CellArray> = inputs.iter().map(|p| get(p)).collect();
-    let total_cells: usize = cell_arrays.iter().map(|cells| cells.num_cells()).sum();
+    if inputs.iter().all(|input| get(input).is_empty()) {
+        return CellArray::new();
+    }
+
+    let mut ranges = Vec::with_capacity(inputs.len());
+    let mut total_cells = 0usize;
+    let mut total_conn = 0usize;
+    let mut point_start = 0i64;
+    for &input in inputs {
+        let cells = get(input);
+        ranges.push(CellRange {
+            cells,
+            point_start,
+            cell_start: total_cells,
+            conn_start: total_conn,
+        });
+        total_cells += cells.num_cells();
+        total_conn += cells.connectivity_len();
+        point_start += input.points.len() as i64;
+    }
     if total_cells == 0 {
         return CellArray::new();
     }
 
-    let total_conn: usize = cell_arrays
-        .iter()
-        .map(|cells| cells.connectivity_len())
-        .sum();
-    let mut offsets = Vec::with_capacity(total_cells + 1);
-    let mut conn = Vec::with_capacity(total_conn);
-    offsets.push(0i64);
-
-    let mut pt_off: i64 = 0;
-    for (&input, cells) in inputs.iter().zip(cell_arrays) {
-        if cells.is_empty() {
-            pt_off += input.points.len() as i64;
-            continue;
-        }
-
-        let src_conn = cells.connectivity();
-        if pt_off == 0 {
-            conn.extend_from_slice(src_conn);
-        } else {
-            // Bulk offset: extend then add offset in-place
-            let start = conn.len();
-            conn.extend_from_slice(src_conn);
-            for v in &mut conn[start..] {
-                *v += pt_off;
-            }
-        }
-        let base = *offsets.last().unwrap();
-        let src_off = cells.offsets();
-        if base == 0 {
-            offsets.extend_from_slice(&src_off[1..]);
-        } else {
-            let start = offsets.len();
-            offsets.extend_from_slice(&src_off[1..]);
-            for v in &mut offsets[start..] {
-                *v += base;
-            }
-        }
-        pt_off += input.points.len() as i64;
-    }
+    let mut offsets = uninit_scalar_vec(total_cells + 1);
+    let mut conn = uninit_scalar_vec(total_conn);
+    offsets[0] = 0;
+    copy_cell_ranges(&ranges, &mut offsets, &mut conn);
     CellArray::from_raw(offsets, conn)
+}
+
+fn copy_cell_ranges(ranges: &[CellRange<'_>], offsets: &mut [i64], conn: &mut [i64]) {
+    if offsets.len() + conn.len() < APPEND_PAR_MIN_VALUES {
+        for range in ranges {
+            if range.cells.is_empty() {
+                continue;
+            }
+            let src_offsets = range.cells.offsets();
+            let src_conn = range.cells.connectivity();
+            let conn_start = range.conn_start as i64;
+            for (local_idx, &src_offset) in src_offsets[1..].iter().enumerate() {
+                offsets[range.cell_start + local_idx + 1] = conn_start + src_offset;
+            }
+            if range.point_start == 0 {
+                conn[range.conn_start..range.conn_start + src_conn.len()].copy_from_slice(src_conn);
+            } else {
+                for (local_idx, &point_id) in src_conn.iter().enumerate() {
+                    conn[range.conn_start + local_idx] = point_id + range.point_start;
+                }
+            }
+        }
+        return;
+    }
+
+    let offsets_writer = UnsafeSliceWriter::new(offsets);
+    let conn_writer = UnsafeSliceWriter::new(conn);
+    ranges.par_iter().for_each(|range| {
+        if range.cells.is_empty() {
+            return;
+        }
+        let src_offsets = range.cells.offsets();
+        let src_conn = range.cells.connectivity();
+        let conn_start = range.conn_start as i64;
+        unsafe {
+            for (local_idx, &src_offset) in src_offsets[1..].iter().enumerate() {
+                offsets_writer.write(range.cell_start + local_idx + 1, conn_start + src_offset);
+            }
+            if range.point_start == 0 {
+                conn_writer.copy_from_slice(range.conn_start, src_conn);
+            } else {
+                for (local_idx, &point_id) in src_conn.iter().enumerate() {
+                    conn_writer.write(range.conn_start + local_idx, point_id + range.point_start);
+                }
+            }
+        }
+    });
 }
 
 fn append_point_data(target: &mut DataSetAttributes, inputs: &[&PolyData]) {
@@ -202,7 +311,7 @@ fn concat_array_ranges(
     range_stride: usize,
 ) -> Option<AnyDataArray> {
     macro_rules! concat_variant {
-        ($variant:ident) => {{
+        ($variant:ident, $ty:ty) => {{
             let AnyDataArray::$variant(first_array) = first else {
                 unreachable!();
             };
@@ -211,20 +320,13 @@ fn concat_array_ranges(
                 .iter()
                 .map(|&(start, end)| end.saturating_sub(start))
                 .sum();
-            let mut data = Vec::with_capacity(total_tuples * nc);
-            for (range_idx, &(start, end)) in ranges.iter().enumerate() {
-                if start == end {
-                    continue;
-                }
-                let array_idx = range_idx % range_stride;
-                let AnyDataArray::$variant(array) = arrays[array_idx] else {
+            let mut data = uninit_scalar_vec::<$ty>(total_tuples * nc);
+            concat_ranges_into(&mut data, arrays, ranges, range_stride, nc, |array| {
+                let AnyDataArray::$variant(array) = array else {
                     return None;
                 };
-                if end > array.num_tuples() {
-                    return None;
-                }
-                data.extend_from_slice(&array.as_slice()[start * nc..end * nc]);
-            }
+                Some(array.as_slice())
+            })?;
             Some(AnyDataArray::$variant(DataArray::from_vec(
                 first_array.name(),
                 data,
@@ -233,17 +335,70 @@ fn concat_array_ranges(
         }};
     }
     match first {
-        AnyDataArray::F32(_) => concat_variant!(F32),
-        AnyDataArray::F64(_) => concat_variant!(F64),
-        AnyDataArray::I8(_) => concat_variant!(I8),
-        AnyDataArray::I16(_) => concat_variant!(I16),
-        AnyDataArray::I32(_) => concat_variant!(I32),
-        AnyDataArray::I64(_) => concat_variant!(I64),
-        AnyDataArray::U8(_) => concat_variant!(U8),
-        AnyDataArray::U16(_) => concat_variant!(U16),
-        AnyDataArray::U32(_) => concat_variant!(U32),
-        AnyDataArray::U64(_) => concat_variant!(U64),
+        AnyDataArray::F32(_) => concat_variant!(F32, f32),
+        AnyDataArray::F64(_) => concat_variant!(F64, f64),
+        AnyDataArray::I8(_) => concat_variant!(I8, i8),
+        AnyDataArray::I16(_) => concat_variant!(I16, i16),
+        AnyDataArray::I32(_) => concat_variant!(I32, i32),
+        AnyDataArray::I64(_) => concat_variant!(I64, i64),
+        AnyDataArray::U8(_) => concat_variant!(U8, u8),
+        AnyDataArray::U16(_) => concat_variant!(U16, u16),
+        AnyDataArray::U32(_) => concat_variant!(U32, u32),
+        AnyDataArray::U64(_) => concat_variant!(U64, u64),
     }
+}
+
+fn concat_ranges_into<T: Scalar>(
+    out: &mut [T],
+    arrays: &[&AnyDataArray],
+    ranges: &[(usize, usize)],
+    range_stride: usize,
+    nc: usize,
+    get_slice: impl Fn(&AnyDataArray) -> Option<&[T]> + Send + Sync,
+) -> Option<()> {
+    let mut tuple_offsets = Vec::with_capacity(ranges.len());
+    let mut tuple_offset = 0usize;
+    for (range_idx, &(start, end)) in ranges.iter().enumerate() {
+        let array_idx = range_idx % range_stride;
+        let array = get_slice(arrays[array_idx])?;
+        if end > array.len() / nc {
+            return None;
+        }
+        tuple_offsets.push(tuple_offset);
+        tuple_offset += end.saturating_sub(start);
+    }
+
+    if out.len() < APPEND_PAR_MIN_VALUES {
+        for (range_idx, &(start, end)) in ranges.iter().enumerate() {
+            if start == end {
+                continue;
+            }
+            let array_idx = range_idx % range_stride;
+            let array = get_slice(arrays[array_idx])?;
+            let src = &array[start * nc..end * nc];
+            let dst_start = tuple_offsets[range_idx] * nc;
+            out[dst_start..dst_start + src.len()].copy_from_slice(src);
+        }
+        return Some(());
+    }
+
+    let writer = UnsafeSliceWriter::new(out);
+    ranges
+        .par_iter()
+        .enumerate()
+        .for_each(|(range_idx, &(start, end))| {
+            if start == end {
+                return;
+            }
+            let array_idx = range_idx % range_stride;
+            let array = get_slice(arrays[array_idx]).expect("array type checked before copy");
+            let src = &array[start * nc..end * nc];
+            unsafe {
+                writer.copy_from_slice(tuple_offsets[range_idx] * nc, src);
+            }
+        });
+
+    Some(())
 }
 
 #[cfg(test)]

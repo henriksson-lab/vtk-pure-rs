@@ -1,5 +1,10 @@
 //! Smooth a scalar point data array using Laplacian diffusion.
 use crate::data::{AnyDataArray, DataArray, PolyData};
+
+/// Smooth a scalar point-data array with `iterations` Jacobi Laplacian passes.
+///
+/// The smoothed values replace the array of the same name in the output, as
+/// VTK's attribute-processing filters do.
 pub fn smooth_scalar(
     mesh: &PolyData,
     array_name: &str,
@@ -25,9 +30,13 @@ pub fn smooth_scalar(
     for cell in mesh.polys.iter() {
         let nc = cell.len();
         for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
+            let (Ok(a), Ok(b)) = (
+                usize::try_from(cell[i]),
+                usize::try_from(cell[(i + 1) % nc]),
+            ) else {
+                continue;
+            };
+            if a < n && b < n && a != b {
                 if !nb[a].contains(&b) {
                     nb[a].push(b);
                 }

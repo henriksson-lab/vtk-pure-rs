@@ -5,7 +5,7 @@ use glam::{DMat4, DVec3};
 /// # Examples
 ///
 /// ```
-/// use crate::render::Camera;
+/// use vtk_pure_rs::render::Camera;
 ///
 /// let mut camera = Camera::new();
 /// camera.look_at([0.0, 0.0, 5.0], [0.0, 0.0, 0.0]);

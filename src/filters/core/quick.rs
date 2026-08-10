@@ -1,7 +1,7 @@
 //! Quick convenience functions that don't require parameter structs.
 //!
 //! ```
-//! use crate::filters::core::quick::*;
+//! use vtk_pure_rs::filters::core::quick::*;
 //!
 //! let s = sphere();
 //! assert!(s.points.len() > 0);
@@ -11,7 +11,8 @@
 
 use crate::data::PolyData;
 
-/// Generate a default sphere (radius 0.5, 16x16 resolution).
+/// Generate a default sphere (radius 0.5, 8x8 resolution, matching
+/// `vtkSphereSource`'s defaults).
 pub fn sphere() -> PolyData {
     crate::filters::core::sources::sphere::sphere(
         &crate::filters::core::sources::sphere::SphereParams::default(),

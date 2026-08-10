@@ -65,6 +65,11 @@ pub fn detect_symmetry_plane(mesh: &PolyData) -> Option<SymmetryPlane> {
 /// Compute symmetry score for a given plane.
 ///
 /// Score is 1.0 - (mean distance to reflected closest point / mesh diameter).
+///
+/// The mean reflected-to-nearest-point distance itself comes from the single
+/// implementation in [`crate::filters::mesh::mesh_symmetry::symmetry_score`];
+/// this function only normalizes it by the bounding-box diagonal so the score
+/// is scale-invariant and reads 1.0 for perfect symmetry.
 pub fn symmetry_score(pts: &[[f64; 3]], plane_point: [f64; 3], plane_normal: [f64; 3]) -> f64 {
     let n = pts.len();
     if n < 2 {
@@ -77,38 +82,12 @@ pub fn symmetry_score(pts: &[[f64; 3]], plane_point: [f64; 3], plane_normal: [f6
     if len < 1e-15 {
         return 0.0;
     }
-    let plane_normal = [
-        plane_normal[0] / len,
-        plane_normal[1] / len,
-        plane_normal[2] / len,
-    ];
 
-    // Reflect all points across the plane
-    let reflected: Vec<[f64; 3]> = pts
-        .iter()
-        .map(|p| {
-            let d = (p[0] - plane_point[0]) * plane_normal[0]
-                + (p[1] - plane_point[1]) * plane_normal[1]
-                + (p[2] - plane_point[2]) * plane_normal[2];
-            [
-                p[0] - 2.0 * d * plane_normal[0],
-                p[1] - 2.0 * d * plane_normal[1],
-                p[2] - 2.0 * d * plane_normal[2],
-            ]
-        })
-        .collect();
-
-    // Compute mean closest-point distance between reflected and original
-    let mut total_dist = 0.0;
-    for rp in &reflected {
-        let mut min_d = f64::MAX;
-        for op in pts {
-            let d = (rp[0] - op[0]).powi(2) + (rp[1] - op[1]).powi(2) + (rp[2] - op[2]).powi(2);
-            min_d = min_d.min(d);
-        }
-        total_dist += min_d.sqrt();
-    }
-    let mean_dist = total_dist / n as f64;
+    let mean_dist = crate::filters::mesh::mesh_symmetry::symmetry_score(
+        &PolyData::from_points(pts.to_vec()),
+        plane_normal,
+        plane_point,
+    );
 
     // Compute mesh diameter for normalization from the bounding box diagonal.
     let mut min_pt = pts[0];

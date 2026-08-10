@@ -85,27 +85,51 @@ pub fn mul(a: &Matrix4, b: &Matrix4) -> Matrix4 {
 /// Apply a 4x4 transformation matrix to all points (and normals) of a PolyData.
 pub fn transform(input: &PolyData, matrix: &Matrix4) -> PolyData {
     let mut output = input.clone();
+    output.points = transform_points(&input.points, matrix);
 
-    // Transform points directly on flat slice — avoids per-point get/set overhead.
-    // Matrix multiply is inlined; remaining cost is dominated by clone().
-    let m = matrix;
-    let pts = output.points.as_flat_slice_mut();
-    let n = pts.len() / 3;
-    for i in 0..n {
-        let base = i * 3;
-        let (x, y, z) = (pts[base], pts[base + 1], pts[base + 2]);
-        pts[base] = m[0][0] * x + m[1][0] * y + m[2][0] * z + m[3][0];
-        pts[base + 1] = m[0][1] * x + m[1][1] * y + m[2][1] * z + m[3][1];
-        pts[base + 2] = m[0][2] * x + m[1][2] * y + m[2][2] * z + m[3][2];
-    }
-
-    let normal_matrix = inverse_transpose_3x3(m);
-    transform_active_vectors(output.point_data_mut(), m);
+    let normal_matrix = inverse_transpose_3x3(matrix);
+    transform_active_vectors(output.point_data_mut(), matrix);
     transform_active_normals(output.point_data_mut(), &normal_matrix);
-    transform_active_vectors(output.cell_data_mut(), m);
+    transform_active_vectors(output.cell_data_mut(), matrix);
     transform_active_normals(output.cell_data_mut(), &normal_matrix);
 
     output
+}
+
+fn transform_points(
+    points: &crate::data::Points<f64>,
+    matrix: &Matrix4,
+) -> crate::data::Points<f64> {
+    let src = points.as_flat_slice();
+    let mut dst = Vec::with_capacity(src.len());
+    unsafe {
+        dst.set_len(src.len());
+    }
+    let m00 = matrix[0][0];
+    let m10 = matrix[1][0];
+    let m20 = matrix[2][0];
+    let m30 = matrix[3][0];
+    let m01 = matrix[0][1];
+    let m11 = matrix[1][1];
+    let m21 = matrix[2][1];
+    let m31 = matrix[3][1];
+    let m02 = matrix[0][2];
+    let m12 = matrix[1][2];
+    let m22 = matrix[2][2];
+    let m32 = matrix[3][2];
+
+    let mut i = 0;
+    while i < src.len() {
+        let x = src[i];
+        let y = src[i + 1];
+        let z = src[i + 2];
+        dst[i] = m00 * x + m10 * y + m20 * z + m30;
+        dst[i + 1] = m01 * x + m11 * y + m21 * z + m31;
+        dst[i + 2] = m02 * x + m12 * y + m22 * z + m32;
+        i += 3;
+    }
+
+    crate::data::Points::from_flat_vec(dst)
 }
 
 fn transform_active_vectors(attrs: &mut DataSetAttributes, matrix: &Matrix4) {
@@ -141,6 +165,23 @@ fn transform_vector_array(
         return None;
     }
 
+    if let Some(array) = array.as_f64() {
+        return Some(transform_vector_slice(
+            array.name(),
+            array.as_slice(),
+            matrix,
+            normalize,
+        ));
+    }
+    if let Some(array) = array.as_f32() {
+        return Some(transform_vector_slice(
+            array.name(),
+            array.as_slice(),
+            matrix,
+            normalize,
+        ));
+    }
+
     let nt = array.num_tuples();
     let mut flat = vec![0.0f32; nt * 3];
     let mut buf = [0.0f64; 3];
@@ -155,12 +196,68 @@ fn transform_vector_array(
     Some(DataArray::<f32>::from_vec(array.name(), flat, 3))
 }
 
+fn transform_vector_slice<T: crate::types::Scalar>(
+    name: &str,
+    src: &[T],
+    matrix: &Matrix4,
+    normalize: bool,
+) -> DataArray<f32> {
+    let mut flat = Vec::with_capacity(src.len());
+    unsafe {
+        flat.set_len(src.len());
+    }
+    let m00 = matrix[0][0];
+    let m10 = matrix[1][0];
+    let m20 = matrix[2][0];
+    let m01 = matrix[0][1];
+    let m11 = matrix[1][1];
+    let m21 = matrix[2][1];
+    let m02 = matrix[0][2];
+    let m12 = matrix[1][2];
+    let m22 = matrix[2][2];
+
+    let mut i = 0;
+    while i < src.len() {
+        let x = src[i].to_f64();
+        let y = src[i + 1].to_f64();
+        let z = src[i + 2].to_f64();
+        write_vector(
+            &mut flat,
+            i / 3,
+            [
+                m00 * x + m10 * y + m20 * z,
+                m01 * x + m11 * y + m21 * z,
+                m02 * x + m12 * y + m22 * z,
+            ],
+            normalize,
+        );
+        i += 3;
+    }
+
+    DataArray::<f32>::from_vec(name, flat, 3)
+}
+
 fn transform_normal_array(
     array: &AnyDataArray,
     normal_matrix: &[[f64; 3]; 3],
 ) -> Option<DataArray<f32>> {
     if array.num_components() != 3 {
         return None;
+    }
+
+    if let Some(array) = array.as_f64() {
+        return Some(transform_normal_slice(
+            array.name(),
+            array.as_slice(),
+            normal_matrix,
+        ));
+    }
+    if let Some(array) = array.as_f32() {
+        return Some(transform_normal_slice(
+            array.name(),
+            array.as_slice(),
+            normal_matrix,
+        ));
     }
 
     let nt = array.num_tuples();
@@ -183,22 +280,66 @@ fn transform_normal_array(
     Some(DataArray::<f32>::from_vec(array.name(), flat, 3))
 }
 
+fn transform_normal_slice<T: crate::types::Scalar>(
+    name: &str,
+    src: &[T],
+    normal_matrix: &[[f64; 3]; 3],
+) -> DataArray<f32> {
+    let mut flat = Vec::with_capacity(src.len());
+    unsafe {
+        flat.set_len(src.len());
+    }
+    let m00 = normal_matrix[0][0];
+    let m01 = normal_matrix[0][1];
+    let m02 = normal_matrix[0][2];
+    let m10 = normal_matrix[1][0];
+    let m11 = normal_matrix[1][1];
+    let m12 = normal_matrix[1][2];
+    let m20 = normal_matrix[2][0];
+    let m21 = normal_matrix[2][1];
+    let m22 = normal_matrix[2][2];
+
+    let mut i = 0;
+    while i < src.len() {
+        let x = src[i].to_f64();
+        let y = src[i + 1].to_f64();
+        let z = src[i + 2].to_f64();
+        write_vector(
+            &mut flat,
+            i / 3,
+            [
+                m00 * x + m01 * y + m02 * z,
+                m10 * x + m11 * y + m12 * z,
+                m20 * x + m21 * y + m22 * z,
+            ],
+            true,
+        );
+        i += 3;
+    }
+
+    DataArray::<f32>::from_vec(name, flat, 3)
+}
+
 fn write_vector(flat: &mut [f32], idx: usize, v: [f64; 3], normalize: bool) {
     let base = idx * 3;
+    write_vector_tuple(&mut flat[base..base + 3], v, normalize);
+}
+
+fn write_vector_tuple(out: &mut [f32], v: [f64; 3], normalize: bool) {
     if normalize {
         let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
         if len > 1e-10 {
             let inv = 1.0 / len;
-            flat[base] = (v[0] * inv) as f32;
-            flat[base + 1] = (v[1] * inv) as f32;
-            flat[base + 2] = (v[2] * inv) as f32;
+            out[0] = (v[0] * inv) as f32;
+            out[1] = (v[1] * inv) as f32;
+            out[2] = (v[2] * inv) as f32;
         } else {
-            flat[base + 2] = 1.0;
+            out[2] = 1.0;
         }
     } else {
-        flat[base] = v[0] as f32;
-        flat[base + 1] = v[1] as f32;
-        flat[base + 2] = v[2] as f32;
+        out[0] = v[0] as f32;
+        out[1] = v[1] as f32;
+        out[2] = v[2] as f32;
     }
 }
 

@@ -235,6 +235,14 @@ fn point_data_f64_to_cell_data(input: &PolyData, arr: &DataArray<f64>) -> DataAr
 }
 
 fn cell_scalar_f64_to_point_data(input: &PolyData, arr: &DataArray<f64>) -> DataArray<f64> {
+    if input.verts.is_empty()
+        && input.lines.is_empty()
+        && input.strips.is_empty()
+        && arr.num_tuples() >= input.polys.num_cells()
+    {
+        return poly_cell_scalar_f64_to_point_data(input, arr);
+    }
+
     let mut sums = vec![0.0f64; input.points.len()];
     let mut counts = vec![0u32; input.points.len()];
     let values = arr.as_slice();
@@ -264,6 +272,36 @@ fn cell_scalar_f64_to_point_data(input: &PolyData, arr: &DataArray<f64>) -> Data
     for (value, &count) in sums.iter_mut().zip(&counts) {
         if count > 0 {
             *value /= count as f64;
+        }
+    }
+
+    DataArray::from_vec(arr.name(), sums, 1)
+}
+
+fn poly_cell_scalar_f64_to_point_data(input: &PolyData, arr: &DataArray<f64>) -> DataArray<f64> {
+    let mut sums = vec![0.0f64; input.points.len()];
+    let mut counts = vec![0u32; input.points.len()];
+    let values = arr.as_slice();
+    let offsets = input.polys.offsets();
+    let connectivity = input.polys.connectivity();
+
+    for cell_idx in 0..input.polys.num_cells() {
+        let value = values[cell_idx];
+        let start = offsets[cell_idx] as usize;
+        let end = offsets[cell_idx + 1] as usize;
+        for &point_id in &connectivity[start..end] {
+            let point_id = point_id as usize;
+            unsafe {
+                *sums.get_unchecked_mut(point_id) += value;
+                *counts.get_unchecked_mut(point_id) += 1;
+            }
+        }
+    }
+
+    for point_id in 0..sums.len() {
+        let count = counts[point_id];
+        if count > 0 {
+            sums[point_id] /= count as f64;
         }
     }
 

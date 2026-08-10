@@ -72,39 +72,7 @@ pub fn laplacian_coordinates(input: &PolyData) -> PolyData {
     pd
 }
 
-/// Compute the Laplacian magnitude (norm of delta coordinates).
-/// High values indicate high local curvature/detail.
-pub fn laplacian_magnitude(input: &PolyData) -> PolyData {
-    let result = laplacian_coordinates(input);
-    let dx = match result.point_data().get_array("DeltaX") {
-        Some(a) => a,
-        None => return input.clone(),
-    };
-    let dy = result.point_data().get_array("DeltaY").unwrap();
-    let dz = result.point_data().get_array("DeltaZ").unwrap();
-
-    let n = dx.num_tuples();
-    let mut buf = [0.0f64];
-    let mut mag = Vec::with_capacity(n);
-    for i in 0..n {
-        dx.tuple_as_f64(i, &mut buf);
-        let x = buf[0];
-        dy.tuple_as_f64(i, &mut buf);
-        let y = buf[0];
-        dz.tuple_as_f64(i, &mut buf);
-        let z = buf[0];
-        mag.push((x * x + y * y + z * z).sqrt());
-    }
-
-    let mut pd = result;
-    pd.point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "LaplacianMag",
-            mag,
-            1,
-        )));
-    pd
-}
+pub use crate::filters::mesh::mesh_laplacian_vector::laplacian_magnitude;
 
 fn add_neighbor_pair(neighbors: &mut [Vec<usize>], n: usize, a_id: i64, b_id: i64) {
     if a_id < 0 || b_id < 0 {
@@ -148,18 +116,6 @@ mod tests {
         let mut buf = [0.0f64];
         arr.tuple_as_f64(4, &mut buf); // center
         assert!(buf[0].abs() < 1e-10);
-    }
-
-    #[test]
-    fn magnitude_positive() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([1.0, 0.0, 0.0]);
-        pd.points.push([0.5, 1.0, 0.5]); // off-plane
-        pd.polys.push_cell(&[0, 1, 2]);
-
-        let result = laplacian_magnitude(&pd);
-        assert!(result.point_data().get_array("LaplacianMag").is_some());
     }
 
     #[test]

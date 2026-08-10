@@ -72,7 +72,7 @@ pub mod convex_hull_3d;
 pub mod convex_layers;
 pub mod convexity_analysis;
 pub mod coplanar_detection;
-pub mod coplanar_merge;
+pub use crate::filters::core::mesh::coplanar_merge;
 pub mod correspondence;
 pub mod cross_section;
 pub mod curvature_color;
@@ -95,7 +95,7 @@ pub mod decimate_quadric_error;
 pub mod decimate_vertex_clustering;
 pub mod deformation_energy;
 pub mod delaunay_triangulate_2d;
-pub mod depth_sort;
+pub use crate::filters::core::mesh::depth_sort;
 pub mod diff;
 pub mod dihedral_angle_array;
 pub mod dihedral_angles;
@@ -196,7 +196,6 @@ pub mod manifold_check;
 pub mod marching_squares;
 pub mod measure;
 pub mod measure_advanced;
-pub mod merge;
 pub mod merge_ops;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_abstract_simplicial;
@@ -210,7 +209,6 @@ pub mod mesh_align_to_axis;
 pub mod mesh_angle_defect;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_apply_transform_4x4;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_area_distortion;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_area_weighted_normals;
@@ -262,7 +260,6 @@ pub mod mesh_boundary_locked_smooth;
 pub mod mesh_boundary_loops;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_bounding_box;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_center_scale;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_centroid_distance;
@@ -386,7 +383,6 @@ pub mod mesh_discrete_morse_gradient;
 pub mod mesh_discrete_ricci_flow;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_displacement_field;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_distance_field_to_scalar;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_distance_histogram;
@@ -434,7 +430,6 @@ pub mod mesh_elevation;
 pub mod mesh_extract_boundary_vertices;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_extract_faces_by_scalar;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_extract_interior_vertices;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_extract_largest_component;
@@ -500,7 +495,6 @@ pub mod mesh_feature_size_estimate;
 pub mod mesh_find_closest_vertex_to_points;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_flatten_to_plane;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_flip_normals;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_from_point_cloud;
@@ -508,7 +502,6 @@ pub mod mesh_from_point_cloud;
 pub mod mesh_functional_map;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_gaussian_smooth;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_genus;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_geodesic_centroid;
@@ -530,7 +523,6 @@ pub mod mesh_geodesic_heat_signature;
 pub mod mesh_geodesic_medial_axis;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_geodesic_smooth;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_geodesic_voronoi;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_geodesic_voronoi_diagram;
@@ -550,9 +542,7 @@ pub mod mesh_heat_flow_steady;
 pub mod mesh_heat_geodesic;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_heat_kernel_distance;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_heat_kernel_signature;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_heat_method_geodesic;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_height_map;
@@ -598,7 +588,6 @@ pub mod mesh_laplacian_matrix_build;
 pub mod mesh_laplacian_smooth_boundary_free;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_laplacian_spectral_basis;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_laplacian_vector;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_local_basis;
@@ -614,7 +603,6 @@ pub mod mesh_measure_angles;
 pub mod mesh_merge_close_components;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_merge_close_vertices;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_mesh_boolean_classify;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_mirror;
@@ -644,7 +632,6 @@ pub mod mesh_optimal_delaunay;
 pub mod mesh_optimal_transport_approx;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_optimal_transport_on_surface;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_orient;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_orient_normals;
@@ -710,11 +697,8 @@ pub mod mesh_region_label_smooth;
 pub mod mesh_remesh_adaptive;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_remove_degenerate;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_remove_duplicate_faces;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_remove_faces;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_remove_isolated;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_resample_points_on_surface;
@@ -722,7 +706,6 @@ pub mod mesh_resample_points_on_surface;
 pub mod mesh_ring_select;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_saliency;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_sample_edges;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_sample_scalar_at_points;
@@ -796,7 +779,6 @@ pub mod mesh_scalar_transfer;
 pub mod mesh_scalar_transfer_barycentric;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_scalar_watershed_merge;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_scale_per_vertex;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_scale_to_bounds;
@@ -892,7 +874,6 @@ pub mod mesh_surface_sampling_blue_noise;
 pub mod mesh_surface_volume;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_symmetrize;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_symmetry;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_symmetry_measure;
@@ -928,7 +909,6 @@ pub mod mesh_total_curvature;
 pub mod mesh_transform_util;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_tutte_embedding;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_twist_deform;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_uniform_sample;
@@ -992,7 +972,6 @@ pub mod mesh_wave_equation;
 pub mod mesh_wave_kernel_signature;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_weighted_smooth;
-#[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_willmore_energy;
 #[cfg(feature = "filters-mesh-extra")]
 pub mod mesh_wireframe;

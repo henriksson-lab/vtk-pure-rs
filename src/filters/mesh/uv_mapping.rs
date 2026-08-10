@@ -54,45 +54,11 @@ pub fn uv_planar(mesh: &PolyData, axis: usize) -> PolyData {
 }
 
 /// Generate cylindrical UV mapping around Z axis.
+///
+/// Thin wrapper over [`crate::filters::mesh::uv_from_projection::uv_cylindrical`]
+/// with the cylinder axis fixed to +Z.
 pub fn uv_cylindrical(mesh: &PolyData) -> PolyData {
-    let n = mesh.points.len();
-    if n == 0 {
-        let mut result = mesh.clone();
-        result
-            .point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec("UV", Vec::new(), 2)));
-        result.point_data_mut().set_active_tcoords("UV");
-        return result;
-    }
-    let pts: Vec<[f64; 3]> = (0..n).map(|i| mesh.points.get(i)).collect();
-    let z_min = pts.iter().map(|p| p[2]).fold(f64::INFINITY, f64::min);
-    let z_max = pts.iter().map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
-    let z_range = if (z_max - z_min).abs() < 1e-15 {
-        1.0
-    } else {
-        z_max - z_min
-    };
-
-    let data: Vec<f64> = pts
-        .iter()
-        .flat_map(|p| {
-            let radius = (p[0] * p[0] + p[1] * p[1]).sqrt();
-            let u = if radius > 1e-15 {
-                positive_angle_fraction(p[1].atan2(p[0]))
-            } else {
-                0.0
-            };
-            let v = (p[2] - z_min) / z_range;
-            vec![u, v]
-        })
-        .collect();
-
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("UV", data, 2)));
-    result.point_data_mut().set_active_tcoords("UV");
-    result
+    crate::filters::mesh::uv_from_projection::uv_cylindrical(mesh, [0.0, 0.0, 1.0])
 }
 
 /// Generate spherical UV mapping.
@@ -181,20 +147,6 @@ mod tests {
         );
         let r = uv_cylindrical(&mesh);
         assert!(r.point_data().get_array("UV").is_some());
-    }
-    #[test]
-    fn test_cylindrical_distinguishes_signed_angle() {
-        let mesh = PolyData::from_triangles(
-            vec![[0.0, 1.0, 0.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        let r = uv_cylindrical(&mesh);
-        let arr = r.point_data().get_array("UV").unwrap();
-        let mut uv0 = [0.0; 2];
-        let mut uv1 = [0.0; 2];
-        arr.tuple_as_f64(0, &mut uv0);
-        arr.tuple_as_f64(1, &mut uv1);
-        assert!((uv0[0] - uv1[0]).abs() > 0.25);
     }
     #[test]
     fn test_spherical() {

@@ -231,69 +231,11 @@ fn percentile_sorted(sorted: &[f64], p: f64) -> f64 {
     }
 }
 
-/// Compute Pearson correlation matrix for all scalar columns of a Table.
-/// Returns a square matrix as a Vec<Vec<f64>> where entry (i,j) is the
-/// correlation between column i and column j.
-pub fn correlation_matrix(table: &Table) -> (Vec<String>, Vec<Vec<f64>>) {
-    let mut cols: Vec<(String, Vec<f64>)> = Vec::new();
-
-    for col in table.columns() {
-        if col.num_components() != 1 {
-            continue;
-        }
-        let n = col.num_tuples();
-        let mut values = Vec::with_capacity(n);
-        let mut buf = [0.0f64];
-        for i in 0..n {
-            col.tuple_as_f64(i, &mut buf);
-            values.push(buf[0]);
-        }
-        cols.push((col.name().to_string(), values));
-    }
-
-    let nc = cols.len();
-    let mut matrix = vec![vec![0.0; nc]; nc];
-    let names: Vec<String> = cols.iter().map(|(n, _)| n.clone()).collect();
-
-    for i in 0..nc {
-        matrix[i][i] = 1.0;
-        for j in (i + 1)..nc {
-            let r = pearson(&cols[i].1, &cols[j].1);
-            matrix[i][j] = r;
-            matrix[j][i] = r;
-        }
-    }
-
-    (names, matrix)
-}
-
-fn pearson(a: &[f64], b: &[f64]) -> f64 {
-    let n = a.len().min(b.len());
-    if n < 2 {
-        return 0.0;
-    }
-
-    let mean_a = a[..n].iter().sum::<f64>() / n as f64;
-    let mean_b = b[..n].iter().sum::<f64>() / n as f64;
-
-    let mut cov = 0.0;
-    let mut var_a = 0.0;
-    let mut var_b = 0.0;
-    for i in 0..n {
-        let da = a[i] - mean_a;
-        let db = b[i] - mean_b;
-        cov += da * db;
-        var_a += da * da;
-        var_b += db * db;
-    }
-
-    let denom = (var_a * var_b).sqrt();
-    if denom < f64::MIN_POSITIVE {
-        f64::NAN
-    } else {
-        cov / denom
-    }
-}
+/// Pearson correlation matrix for all scalar columns of a Table.
+///
+/// The implementation lives in
+/// [`crate::filters::statistics::correlative_statistics`].
+pub use crate::filters::statistics::correlative_statistics::correlation_matrix;
 
 #[cfg(test)]
 mod tests {

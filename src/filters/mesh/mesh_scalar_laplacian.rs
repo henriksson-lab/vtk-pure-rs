@@ -1,44 +1,33 @@
 //! Compute discrete Laplacian of a scalar field on mesh vertices.
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
+/// Discrete (umbrella) Laplacian of a scalar field, written to
+/// `"<scalar_name>_laplacian"`.
+///
+/// Renaming wrapper over
+/// [`crate::filters::mesh::mesh_scalar_field_laplacian::scalar_laplacian`],
+/// which holds the single implementation and writes to a fixed "Laplacian"
+/// array.
 pub fn scalar_laplacian(mesh: &PolyData, scalar_name: &str) -> PolyData {
     let n = mesh.points.len();
-    let arr = match mesh.point_data().get_array(scalar_name) {
-        Some(a) if a.num_components() == 1 && a.num_tuples() == n => a,
-        None => return mesh.clone(),
+    match mesh.point_data().get_array(scalar_name) {
+        Some(a) if a.num_components() == 1 && a.num_tuples() == n => {}
         _ => return mesh.clone(),
+    }
+
+    let base =
+        crate::filters::mesh::mesh_scalar_field_laplacian::scalar_laplacian(mesh, scalar_name);
+    let Some(arr) = base.point_data().get_array("Laplacian") else {
+        return mesh.clone();
     };
-    let mut vals = vec![0.0f64; n];
     let mut buf = [0.0f64];
-    for i in 0..n {
-        arr.tuple_as_f64(i, &mut buf);
-        vals[i] = buf[0];
-    }
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                if !adj[a].contains(&b) {
-                    adj[a].push(b);
-                }
-                if !adj[b].contains(&a) {
-                    adj[b].push(a);
-                }
-            }
-        }
-    }
-    let lap: Vec<f64> = (0..n)
+    let lap: Vec<f64> = (0..arr.num_tuples())
         .map(|i| {
-            if adj[i].is_empty() {
-                return 0.0;
-            }
-            let avg: f64 = adj[i].iter().map(|&j| vals[j]).sum::<f64>() / adj[i].len() as f64;
-            avg - vals[i]
+            arr.tuple_as_f64(i, &mut buf);
+            buf[0]
         })
         .collect();
+
     let out = format!("{}_laplacian", scalar_name);
     let mut result = mesh.clone();
     result

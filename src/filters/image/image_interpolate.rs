@@ -126,6 +126,11 @@ pub fn resize_bicubic(input: &ImageData, scalars: &str, new_nx: usize, new_ny: u
     output
 }
 
+/// Output extent, origin and spacing for a resize, following
+/// `vtkImageResize::RequestInformation` in its `OUTPUT_DIMENSIONS` mode with
+/// `Border` off: the low extent index is kept, the index stretch is
+/// `(hi - lo) / (dims - 1)`, and the origin absorbs the resulting index
+/// translation so that the sampled world positions are unchanged.
 fn resized_geometry(
     input: &ImageData,
     new_nx: usize,
@@ -195,8 +200,11 @@ mod tests {
         let r = resize_nearest(&img, "v", 2, 2);
         let arr = r.point_data().get_array("v").unwrap();
         let mut buf = [0.0f64];
+        // `from_function` is evaluated at world coordinates, so the far corner
+        // (i, j) = (3, 3) holds 3*2.0 + 10*(3*3.0) = 96, and downsampling to 2x2
+        // must land exactly on it.
         arr.tuple_as_f64(3, &mut buf);
-        assert_eq!(buf[0], 33.0);
+        assert_eq!(buf[0], 96.0);
         assert_eq!(r.spacing(), [6.0, 9.0, 1.0]);
     }
     #[test]
@@ -233,7 +241,10 @@ mod tests {
         let r = resize_nearest(&img, "v", 2, 2);
         assert_eq!(r.extent(), [5, 6, 10, 11, 2, 2]);
         assert_eq!(r.spacing(), [6.0, 9.0, 1.0]);
-        assert_eq!(r.origin(), [60.0, 110.0, 300.0]);
+        // vtkImageResize keeps the low extent index, so the origin has to absorb
+        // the index stretch: origin + spacing * (lo - lo*stretch), e.g.
+        // 100 + 2*(5 - 5*3) = 80. Any other origin moves the sampled points.
+        assert_eq!(r.origin(), [80.0, 140.0, 300.0]);
         assert_eq!(r.point_from_ijk(0, 0, 0), img.point_from_ijk(0, 0, 0));
         assert_eq!(r.point_from_ijk(1, 1, 0), img.point_from_ijk(3, 3, 0));
     }
@@ -283,7 +294,9 @@ mod tests {
         let r = resize_bicubic(&img, "v", 2, 2);
         assert_eq!(r.extent(), [5, 6, 10, 11, 2, 2]);
         assert_eq!(r.spacing(), [6.0, 9.0, 1.0]);
-        assert_eq!(r.origin(), [60.0, 110.0, 300.0]);
+        // See `test_nearest_uses_vtk_output_extent_and_origin`: the geometry is
+        // computed the same way for both interpolators.
+        assert_eq!(r.origin(), [80.0, 140.0, 300.0]);
         assert_eq!(r.point_from_ijk(0, 0, 0), img.point_from_ijk(0, 0, 0));
         assert_eq!(r.point_from_ijk(1, 1, 0), img.point_from_ijk(3, 3, 0));
     }

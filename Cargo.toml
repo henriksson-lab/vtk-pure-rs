@@ -16,7 +16,6 @@ exclude = [
     "scripts/",
     "convo.txt",
     "convo.txt.save",
-    "TOAUDIT.md",
     "NOTES.md",
     "TODO.md",
     "ALLFEAT.md",
@@ -101,7 +100,7 @@ thiserror = "2"
 bytemuck = { version = "1", features = ["derive"] }
 rayon = "1.10"
 glam = "0.29"
-wgpu = { version = "24", optional = true }
+wgpu = { version = "29", optional = true }
 winit = { version = "0.30", optional = true }
 pollster = { version = "0.4", optional = true }
 fontdue = { version = "0.9", optional = true }

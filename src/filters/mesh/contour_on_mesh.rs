@@ -1,95 +1,14 @@
-use crate::data::{CellArray, Points, PolyData};
-use std::collections::HashMap;
+use crate::data::PolyData;
 
 /// Extract multiple isocontours from a scalar field on a mesh.
 ///
 /// Like `mesh_level_set` but for multiple values at once.
 /// Returns a PolyData with line segments for all contours.
-pub fn multi_contour_on_mesh(input: &PolyData, array_name: &str, values: &[f64]) -> PolyData {
-    let arr = match input.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 && a.num_tuples() >= input.points.len() => a,
-        _ => return PolyData::new(),
-    };
-    let n = input.points.len();
-    let mut buf = [0.0f64];
-    let scalars: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0]
-        })
-        .collect();
-
-    let mut out_pts = Points::<f64>::new();
-    let mut out_lines = CellArray::new();
-
-    for &iso in values {
-        for cell in input.polys.iter() {
-            if cell.len() < 3 {
-                continue;
-            }
-            let Some(cell_ids) = valid_point_ids(cell, input.points.len()) else {
-                continue;
-            };
-            let mut crossings = Vec::new();
-            let mut exact_vertex_points = HashMap::new();
-            for k in 0..cell.len() {
-                let a = cell_ids[k];
-                let b = cell_ids[(k + 1) % cell.len()];
-                let sa = scalars[a];
-                let sb = scalars[b];
-                let da = sa - iso;
-                let db = sb - iso;
-
-                if da == 0.0 {
-                    let idx = *exact_vertex_points.entry(a).or_insert_with(|| {
-                        let idx = out_pts.len() as i64;
-                        out_pts.push(input.points.get(a));
-                        idx
-                    });
-                    if !crossings.contains(&idx) {
-                        crossings.push(idx);
-                    }
-                }
-                if db == 0.0 {
-                    let idx = *exact_vertex_points.entry(b).or_insert_with(|| {
-                        let idx = out_pts.len() as i64;
-                        out_pts.push(input.points.get(b));
-                        idx
-                    });
-                    if !crossings.contains(&idx) {
-                        crossings.push(idx);
-                    }
-                }
-
-                if da * db < 0.0 {
-                    let t = (iso - sa) / (sb - sa);
-                    let pa = input.points.get(a);
-                    let pb = input.points.get(b);
-                    let idx = out_pts.len() as i64;
-                    out_pts.push([
-                        pa[0] + t * (pb[0] - pa[0]),
-                        pa[1] + t * (pb[1] - pa[1]),
-                        pa[2] + t * (pb[2] - pa[2]),
-                    ]);
-                    crossings.push(idx);
-                }
-            }
-
-            if crossings.len() >= 2 {
-                for pair in crossings.chunks(2) {
-                    if pair.len() == 2 {
-                        out_lines.push_cell(&[pair[0], pair[1]]);
-                    }
-                }
-            }
-        }
-    }
-
-    let mut pd = PolyData::new();
-    pd.points = out_pts;
-    pd.lines = out_lines;
-    pd
-}
+///
+/// Re-exported from [`crate::filters::mesh::contour_lines`], which holds the
+/// single implementation (it additionally tags each output line with its
+/// isovalue in cell data).
+pub use crate::filters::mesh::contour_lines::multi_contour_on_mesh;
 
 /// Extract a single contour and compute its total length.
 pub fn contour_length(input: &PolyData, array_name: &str, isovalue: f64) -> f64 {
@@ -105,36 +24,10 @@ pub fn contour_length(input: &PolyData, array_name: &str, isovalue: f64) -> f64 
     total
 }
 
-fn valid_point_ids(cell: &[i64], n_points: usize) -> Option<Vec<usize>> {
-    cell.iter()
-        .map(|&id| usize::try_from(id).ok().filter(|&id| id < n_points))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::data::{AnyDataArray, DataArray};
-
-    #[test]
-    fn multi_contour() {
-        let mut pd = PolyData::new();
-        pd.points.push([0.0, 0.0, 0.0]);
-        pd.points.push([2.0, 0.0, 0.0]);
-        pd.points.push([1.0, 2.0, 0.0]);
-        pd.points.push([0.0, 2.0, 0.0]);
-        pd.polys.push_cell(&[0, 1, 2]);
-        pd.polys.push_cell(&[0, 2, 3]);
-        pd.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "f",
-                vec![0.0, 2.0, 1.5, 0.5],
-                1,
-            )));
-
-        let result = multi_contour_on_mesh(&pd, "f", &[0.5, 1.0, 1.5]);
-        assert!(result.lines.num_cells() > 0);
-    }
 
     #[test]
     fn contour_length_test() {

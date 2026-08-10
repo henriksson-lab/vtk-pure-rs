@@ -6,44 +6,42 @@
 //! polygon connectivity (negative index terminates each polygon).
 
 use crate::data::{CellArray, Points, PolyData};
-use std::io::{BufRead, Write};
+use std::fmt::Write as FmtWrite;
+use std::io::{BufRead, Write as IoWrite};
 
 /// Write a PolyData mesh in BYU format.
-pub fn write_byu<W: Write>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
+pub fn write_byu<W: IoWrite>(w: &mut W, mesh: &PolyData) -> std::io::Result<()> {
     let n_pts = mesh.points.len();
     let n_polys = mesh.polys.num_cells();
-    // Count total edges (sum of polygon sizes)
-    let mut n_edges = 0;
-    for cell in mesh.polys.iter() {
-        n_edges += cell.len();
+    let n_edges = mesh.polys.connectivity_len();
+
+    let mut out = String::with_capacity(estimate_byu_size(n_pts, n_edges, n_polys));
+    writeln!(&mut out, "1 {n_pts} {n_polys} {n_edges}").unwrap();
+    writeln!(&mut out, "1 {n_polys}").unwrap();
+
+    for p in mesh.points.as_flat_slice().chunks_exact(3) {
+        writeln!(&mut out, "{:e} {:e} {:e}", p[0], p[1], p[2]).unwrap();
     }
 
-    // Header: parts vertices polygons edges
-    writeln!(w, "1 {n_pts} {n_polys} {n_edges}")?;
-    // Part range (1-based)
-    writeln!(w, "1 {n_polys}")?;
-
-    // Vertices (x y z)
-    for i in 0..n_pts {
-        let p = mesh.points.get(i);
-        writeln!(w, "{:e} {:e} {:e}", p[0], p[1], p[2])?;
-    }
-
-    // Polygons (1-based indices, last one negative)
     for cell in mesh.polys.iter() {
         let n = cell.len();
         for (i, &pid) in cell.iter().enumerate() {
             let idx = pid + 1; // 1-based
             if i == n - 1 {
-                write!(w, "{}", -idx)?;
+                write!(&mut out, "{}", -idx).unwrap();
             } else {
-                write!(w, "{idx} ")?;
+                write!(&mut out, "{idx} ").unwrap();
             }
         }
-        writeln!(w)?;
+        out.push('\n');
     }
 
+    w.write_all(out.as_bytes())?;
     Ok(())
+}
+
+fn estimate_byu_size(n_pts: usize, n_edges: usize, n_polys: usize) -> usize {
+    64 + n_pts * 72 + n_edges * 8 + n_polys
 }
 
 /// Read a BYU format file into a PolyData mesh.
@@ -58,7 +56,7 @@ pub fn read_byu<R: BufRead>(reader: R) -> Result<PolyData, String> {
     let n_parts = next_i64(&mut tokens, "number of parts")?;
     let n_verts = next_i64(&mut tokens, "number of vertices")?;
     let n_polys = next_i64(&mut tokens, "number of polygons")?;
-    let _n_edges = next_i64(&mut tokens, "number of edges")?;
+    let n_edges = next_i64(&mut tokens, "number of edges")?;
 
     if n_parts < 1 || n_verts < 1 || n_polys < 1 {
         return Err("Bad MOVIE.BYU file".into());
@@ -66,45 +64,44 @@ pub fn read_byu<R: BufRead>(reader: R) -> Result<PolyData, String> {
     let n_parts = n_parts as usize;
     let n_verts = n_verts as usize;
     let n_polys = n_polys as usize;
+    let n_edges = usize::try_from(n_edges).map_err(|_| "invalid BYU edge count".to_string())?;
 
-    // Read vertices
     for _ in 0..n_parts {
         let _part_start = next_i64(&mut tokens, "part start")?;
         let _part_end = next_i64(&mut tokens, "part end")?;
     }
-    let mut points = Points::<f64>::new();
+    let mut points = Vec::with_capacity(n_verts * 3);
     for _ in 0..n_verts {
-        points.push([
-            next_f64(&mut tokens, "point x")?,
-            next_f64(&mut tokens, "point y")?,
-            next_f64(&mut tokens, "point z")?,
-        ]);
+        points.push(next_f64(&mut tokens, "point x")?);
+        points.push(next_f64(&mut tokens, "point y")?);
+        points.push(next_f64(&mut tokens, "point z")?);
     }
 
-    // Read polygon connectivity
-    let mut polys = CellArray::new();
+    let mut offsets = Vec::with_capacity(n_polys + 1);
+    let mut connectivity = Vec::with_capacity(n_edges);
+    offsets.push(0);
     for _ in 0..n_polys {
-        let mut current_poly: Vec<i64> = Vec::new();
+        let start = connectivity.len();
         loop {
             let value = next_i64(&mut tokens, "polygon connectivity")?;
             if value == 0 {
                 return Err("BYU point indices are 1-based and must not be zero".into());
             }
             if value < 0 {
-                current_poly.push(-value - 1); // convert to 0-based
+                connectivity.push(-value - 1); // convert to 0-based
                 break;
             }
-            current_poly.push(value - 1); // convert to 0-based
+            connectivity.push(value - 1); // convert to 0-based
         }
-        if current_poly.is_empty() {
+        if connectivity.len() == start {
             return Err("empty BYU polygon".into());
         }
-        polys.push_cell(&current_poly);
+        offsets.push(connectivity.len() as i64);
     }
 
     let mut mesh = PolyData::new();
-    mesh.points = points;
-    mesh.polys = polys;
+    mesh.points = Points::from_flat_vec(points);
+    mesh.polys = CellArray::from_raw(offsets, connectivity);
     Ok(mesh)
 }
 

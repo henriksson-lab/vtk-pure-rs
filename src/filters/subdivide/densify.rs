@@ -12,57 +12,104 @@ pub fn densify(input: &PolyData, number_of_subdivisions: f64) -> PolyData {
         number_of_subdivisions.ceil() as usize
     };
     let mut out_points = input.points.clone();
-    let mut out_polys = CellArray::new();
+    let (output_cells, output_connectivity) = estimate_output_polys(&input.polys, n_subdivisions);
+    let mut out_offsets = Vec::with_capacity(output_cells + 1);
+    let mut out_connectivity = Vec::with_capacity(output_connectivity);
+    out_offsets.push(0);
     let mut point_arrays = collect_point_arrays(input);
     let mut cell_arrays = collect_cell_arrays(input);
+    reserve_cell_arrays(&mut cell_arrays, output_cells);
 
     for (cell_id, cell) in input.polys.iter().enumerate() {
         if cell.len() < 3 || n_subdivisions == 0 {
-            out_polys.push_cell(cell);
+            push_output_cell(cell, &mut out_offsets, &mut out_connectivity);
             copy_cell_arrays(&mut cell_arrays, cell_id);
             continue;
         }
 
-        let mut polygons = vec![cell.to_vec()];
-        for _ in 0..n_subdivisions {
-            polygons = subdivide_polygons(polygons, &mut out_points, &mut point_arrays);
-        }
-        for polygon in polygons {
-            out_polys.push_cell(&polygon);
+        subdivide_cell(
+            cell,
+            n_subdivisions,
+            &mut out_points,
+            &mut point_arrays,
+            &mut out_offsets,
+            &mut out_connectivity,
+        );
+        for _ in 0..subdivided_cell_count(cell.len(), n_subdivisions) {
             copy_cell_arrays(&mut cell_arrays, cell_id);
         }
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
-    pd.polys = out_polys;
+    pd.polys = CellArray::from_raw(out_offsets, out_connectivity);
     add_point_arrays(&mut pd, point_arrays);
     add_cell_arrays(&mut pd, cell_arrays);
     pd
 }
 
-fn subdivide_polygons(
-    polygons: Vec<Vec<i64>>,
-    points: &mut crate::data::Points<f64>,
-    point_arrays: &mut [PointArray],
-) -> Vec<Vec<i64>> {
-    let mut new_polygons = Vec::new();
-    for polygon in polygons {
-        if polygon.len() < 3 {
-            new_polygons.push(polygon);
-            continue;
-        }
-
-        let centroid_id = insert_centroid(&polygon, points, point_arrays);
-        for i in 0..polygon.len() {
-            new_polygons.push(vec![
-                polygon[i],
-                polygon[(i + 1) % polygon.len()],
-                centroid_id,
-            ]);
+fn estimate_output_polys(cells: &CellArray, n_subdivisions: usize) -> (usize, usize) {
+    let mut num_cells = 0;
+    let mut connectivity_len = 0;
+    for cell in cells.iter() {
+        if cell.len() < 3 || n_subdivisions == 0 {
+            num_cells += 1;
+            connectivity_len += cell.len();
+        } else {
+            let generated = subdivided_cell_count(cell.len(), n_subdivisions);
+            num_cells += generated;
+            connectivity_len += generated * 3;
         }
     }
-    new_polygons
+    (num_cells, connectivity_len)
+}
+
+fn subdivided_cell_count(num_vertices: usize, n_subdivisions: usize) -> usize {
+    if n_subdivisions == 0 {
+        1
+    } else {
+        num_vertices * 3usize.pow((n_subdivisions - 1) as u32)
+    }
+}
+
+fn reserve_cell_arrays(arrays: &mut [CellArrayData], output_cells: usize) {
+    for array in arrays {
+        array
+            .output_data
+            .reserve(output_cells * array.num_components);
+    }
+}
+
+fn push_output_cell(cell: &[i64], offsets: &mut Vec<i64>, connectivity: &mut Vec<i64>) {
+    connectivity.extend_from_slice(cell);
+    offsets.push(connectivity.len() as i64);
+}
+
+fn subdivide_cell(
+    polygon: &[i64],
+    subdivisions_left: usize,
+    points: &mut crate::data::Points<f64>,
+    point_arrays: &mut [PointArray],
+    offsets: &mut Vec<i64>,
+    connectivity: &mut Vec<i64>,
+) {
+    if polygon.len() < 3 || subdivisions_left == 0 {
+        push_output_cell(polygon, offsets, connectivity);
+        return;
+    }
+
+    let centroid_id = insert_centroid(polygon, points, point_arrays);
+    for i in 0..polygon.len() {
+        let triangle = [polygon[i], polygon[(i + 1) % polygon.len()], centroid_id];
+        subdivide_cell(
+            &triangle,
+            subdivisions_left - 1,
+            points,
+            point_arrays,
+            offsets,
+            connectivity,
+        );
+    }
 }
 
 fn insert_centroid(

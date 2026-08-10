@@ -81,7 +81,7 @@ impl AtlasRegion {
 /// # Example
 ///
 /// ```
-/// use crate::render::texture::{Texture, TextureAtlas};
+/// use vtk_pure_rs::render::texture::{Texture, TextureAtlas};
 ///
 /// let tex_a = Texture::checkerboard(64, 8);
 /// let tex_b = Texture::solid(255, 0, 0);

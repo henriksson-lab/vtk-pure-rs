@@ -9,7 +9,7 @@ use crate::data::{AnyDataArray, FieldData};
 /// # Examples
 ///
 /// ```
-/// use crate::data::{Table, AnyDataArray, DataArray};
+/// use vtk_pure_rs::data::{Table, AnyDataArray, DataArray};
 ///
 /// let table = Table::new()
 ///     .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0, 3.0], 1)))
@@ -157,7 +157,7 @@ impl Table {
     /// Write the table as CSV to a writer.
     ///
     /// ```
-    /// use crate::data::{Table, AnyDataArray, DataArray};
+    /// use vtk_pure_rs::data::{Table, AnyDataArray, DataArray};
     ///
     /// let table = Table::new()
     ///     .with_column(AnyDataArray::F64(DataArray::from_vec("x", vec![1.0, 2.0], 1)))

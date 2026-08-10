@@ -1,85 +1,41 @@
 use crate::data::{AnyDataArray, DataArray, PolyData};
 
-/// Approximate geodesic distance using the heat method.
+/// Approximate geodesic distance using the heat method, from a set of source vertices.
 ///
-/// 1. Diffuse a heat pulse from source vertices
-/// 2. Compute normalized gradient of the heat
-/// 3. Solve a Poisson equation to recover distance
+/// Thin multi-source wrapper around
+/// [`crate::filters::mesh::mesh_heat_method_geodesic::heat_method_distance`], which owns
+/// the actual heat-method solve (heat diffusion, normalised gradient, Poisson recovery).
+/// Each source is solved independently and the per-vertex minimum is kept, so the result
+/// is the distance to the nearest source.
 ///
-/// Simplified version: uses the heat diffusion step directly
-/// (accurate for short distances). Adds "HeatDistance" scalar.
+/// Adds a "HeatDistance" scalar. Vertices are reported as `-1.0` when no usable source
+/// vertex was supplied.
 pub fn heat_method_distance(input: &PolyData, sources: &[usize], diffusion_time: f64) -> PolyData {
     let n = input.points.len();
     if n == 0 {
         return input.clone();
     }
 
-    let mut neighbors: Vec<Vec<usize>> = vec![Vec::new(); n];
-    for cell in input.polys.iter() {
-        let cn = cell.len();
-        if cn < 2 {
-            continue;
-        }
-        for i in 0..cn {
-            if cell[i] < 0 || cell[(i + 1) % cn] < 0 {
-                continue;
-            }
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % cn] as usize;
-            if a >= n || b >= n {
-                continue;
-            }
-            if !neighbors[a].contains(&b) {
-                neighbors[a].push(b);
-            }
-            if !neighbors[b].contains(&a) {
-                neighbors[b].push(a);
-            }
-        }
-    }
-
-    // Step 1: Diffuse heat
-    let mut heat = vec![0.0f64; n];
-    for &s in sources {
-        if s < n {
-            heat[s] = 1.0;
-        }
-    }
-
     let dt = diffusion_time.max(0.01);
-    let steps = (dt / 0.1).ceil() as usize;
-    for _ in 0..steps {
-        let mut new = heat.clone();
-        for i in 0..n {
-            if neighbors[i].is_empty() {
-                continue;
-            }
-            let avg: f64 =
-                neighbors[i].iter().map(|&j| heat[j]).sum::<f64>() / neighbors[i].len() as f64;
-            new[i] = heat[i] + 0.1 * (avg - heat[i]);
-        }
-        heat = new;
+    let heat_steps = (dt / 0.1).ceil() as usize;
+
+    let mut nearest: Option<Vec<f64>> = None;
+    for &source in sources.iter().filter(|&&s| s < n) {
+        let solved = crate::filters::mesh::mesh_heat_method_geodesic::heat_method_distance(
+            input, source, dt, heat_steps,
+        );
+        let d = solved
+            .point_data()
+            .get_array("HeatGeodesic")
+            .map(|arr| arr.to_f64_vec())
+            .unwrap_or_else(|| vec![0.0; n]);
+        nearest = Some(match nearest {
+            None => d,
+            Some(best) => best.iter().zip(d.iter()).map(|(&a, &b)| a.min(b)).collect(),
+        });
     }
 
-    // Step 2: Convert heat to distance (approximate: -log(heat) * scale)
-    let max_heat = heat.iter().copied().fold(0.0f64, f64::max);
-    let dist: Vec<f64> = heat
-        .iter()
-        .map(|&h| {
-            if h > 1e-15 && max_heat > 1e-15 {
-                -(h / max_heat).ln() * dt.sqrt()
-            } else {
-                f64::MAX
-            }
-        })
-        .collect();
-
-    // Normalize so source = 0
-    let min_dist = dist.iter().copied().fold(f64::MAX, f64::min);
-    let result: Vec<f64> = dist
-        .iter()
-        .map(|&d| if d < f64::MAX { d - min_dist } else { -1.0 })
-        .collect();
+    let result = nearest.unwrap_or_else(|| vec![-1.0; n]);
 
     let mut pd = input.clone();
     pd.point_data_mut()
@@ -113,22 +69,49 @@ mod tests {
     }
 
     #[test]
-    fn distance_increases() {
-        let mut pd = PolyData::new();
-        for i in 0..5 {
-            pd.points.push([i as f64, 0.0, 0.0]);
+    fn multiple_sources_take_the_nearest() {
+        let mesh = PolyData::from_triangles(
+            vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
+            vec![[0, 1, 2], [1, 3, 2]],
+        );
+        let single = heat_method_distance(&mesh, &[0], 1.0);
+        let multi = heat_method_distance(&mesh, &[0, 3], 1.0);
+        let a = single
+            .point_data()
+            .get_array("HeatDistance")
+            .unwrap()
+            .to_f64_vec();
+        let b = multi
+            .point_data()
+            .get_array("HeatDistance")
+            .unwrap()
+            .to_f64_vec();
+        for i in 0..4 {
+            assert!(
+                b[i] <= a[i] + 1e-12,
+                "adding a source must not increase distance at vertex {i}"
+            );
         }
-        pd.polys.push_cell(&[0, 1, 2]);
-        pd.polys.push_cell(&[2, 3, 4]);
+    }
 
-        let result = heat_method_distance(&pd, &[0], 1.0);
-        let arr = result.point_data().get_array("HeatDistance").unwrap();
-        let mut buf = [0.0f64];
-        arr.tuple_as_f64(0, &mut buf);
-        let d0 = buf[0];
-        arr.tuple_as_f64(2, &mut buf);
-        let d2 = buf[0];
-        assert!(d2 > d0); // farther = larger distance
+    #[test]
+    fn no_usable_source_marks_every_vertex() {
+        let mesh = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        let result = heat_method_distance(&mesh, &[99], 1.0);
+        let d = result
+            .point_data()
+            .get_array("HeatDistance")
+            .unwrap()
+            .to_f64_vec();
+        assert_eq!(d, vec![-1.0; 3]);
     }
 
     #[test]

@@ -28,13 +28,16 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
         normal[2] / norm_len,
     ];
 
-    let mut out_points = input.points.clone();
+    let mut out_points = Points::new();
     let mut out_polys = CellArray::new();
 
     // Track intersection edges for cap generation
     // Each intersection edge is stored as (point_index_a, point_index_b) on the clip plane
     let mut cap_edges: Vec<(usize, usize)> = Vec::new();
     let mut edge_locator: HashMap<(i64, i64), i64> = HashMap::new();
+    let mut point_map = vec![-1i64; input.points.len()];
+    let mut dists = Vec::with_capacity(input.polys.max_cell_size());
+    let mut remapped_cell = Vec::with_capacity(input.polys.max_cell_size());
 
     for cell_idx in 0..input.polys.num_cells() {
         let cell = input.polys.cell(cell_idx);
@@ -43,21 +46,30 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
         }
 
         // Classify vertices
-        let dists: Vec<f64> = cell
-            .iter()
-            .map(|&id| {
-                let p = input.points.get(id as usize);
-                (p[0] - origin[0]) * normal[0]
-                    + (p[1] - origin[1]) * normal[1]
-                    + (p[2] - origin[2]) * normal[2]
-            })
-            .collect();
-
-        let all_inside = dists.iter().all(|&d| d >= 0.0);
-        let all_outside = dists.iter().all(|&d| d < 0.0);
+        dists.clear();
+        let mut all_inside = true;
+        let mut all_outside = true;
+        for &id in cell {
+            let p = input.points.get(id as usize);
+            let dist = (p[0] - origin[0]) * normal[0]
+                + (p[1] - origin[1]) * normal[1]
+                + (p[2] - origin[2]) * normal[2];
+            dists.push(dist);
+            all_inside &= dist >= 0.0;
+            all_outside &= dist < 0.0;
+        }
 
         if all_inside {
-            out_polys.push_cell(cell);
+            remapped_cell.clear();
+            for &id in cell {
+                remapped_cell.push(get_or_copy_input_point(
+                    id,
+                    &input.points,
+                    &mut out_points,
+                    &mut point_map,
+                ));
+            }
+            out_polys.push_cell(&remapped_cell);
         } else if all_outside {
             // discard
         } else {
@@ -68,6 +80,7 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
                 &input.points,
                 &mut out_points,
                 &mut edge_locator,
+                &mut point_map,
             );
 
             if clipped.len() >= 3 {
@@ -123,7 +136,28 @@ pub fn clip_closed_surface(input: &PolyData, origin: [f64; 3], normal: [f64; 3])
         }
     }
 
-    compact_poly_data(out_points, out_polys)
+    let mut output = PolyData::new();
+    output.points = out_points;
+    output.polys = out_polys;
+    output
+}
+
+fn get_or_copy_input_point(
+    input_id: i64,
+    src_points: &Points<f64>,
+    out_points: &mut Points<f64>,
+    point_map: &mut [i64],
+) -> i64 {
+    let input_idx = input_id as usize;
+    let out_id = point_map[input_idx];
+    if out_id >= 0 {
+        return out_id;
+    }
+
+    let out_id = out_points.len() as i64;
+    out_points.push(src_points.get(input_idx));
+    point_map[input_idx] = out_id;
+    out_id
 }
 
 /// Clip a polygon and return (clipped_vertex_ids, intersection_edge_pairs).
@@ -133,6 +167,7 @@ fn clip_and_collect(
     src_points: &Points<f64>,
     out_points: &mut Points<f64>,
     edge_locator: &mut HashMap<(i64, i64), i64>,
+    point_map: &mut [i64],
 ) -> (Vec<i64>, Vec<(i64, i64)>) {
     let n = cell.len();
     let mut result = Vec::new();
@@ -145,7 +180,9 @@ fn clip_and_collect(
         let dj = dists[j];
 
         if di >= 0.0 {
-            result.push(cell[i]);
+            result.push(get_or_copy_input_point(
+                cell[i], src_points, out_points, point_map,
+            ));
         }
 
         // Check for crossing
@@ -189,35 +226,6 @@ fn clip_and_collect(
     }
 
     (result, intersections)
-}
-
-fn compact_poly_data(points: Points<f64>, polys: CellArray) -> PolyData {
-    let mut used = vec![false; points.len()];
-    for cell in polys.iter() {
-        for &id in cell {
-            used[id as usize] = true;
-        }
-    }
-
-    let mut point_map = vec![0i64; points.len()];
-    let mut compact_points = Points::new();
-    for (old_id, is_used) in used.into_iter().enumerate() {
-        if is_used {
-            point_map[old_id] = compact_points.len() as i64;
-            compact_points.push(points.get(old_id));
-        }
-    }
-
-    let mut compact_polys = CellArray::new();
-    for cell in polys.iter() {
-        let remapped: Vec<i64> = cell.iter().map(|&id| point_map[id as usize]).collect();
-        compact_polys.push_cell(&remapped);
-    }
-
-    let mut output = PolyData::new();
-    output.points = compact_points;
-    output.polys = compact_polys;
-    output
 }
 
 /// Order a set of edges into closed loops.

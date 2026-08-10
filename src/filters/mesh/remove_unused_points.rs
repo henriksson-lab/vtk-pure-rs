@@ -222,6 +222,23 @@ mod tests {
     }
 
     #[test]
+    fn negative_point_id_in_a_line_returns_empty_output() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.lines.push_cell(&[0, -1]);
+
+        let result = remove_unused_points(&pd);
+        assert_eq!(result.points.len(), 0);
+        assert_eq!(result.total_cells(), 0);
+    }
+
+    #[test]
+    fn empty_input() {
+        let pd = PolyData::new();
+        assert_eq!(remove_unused_points(&pd).points.len(), 0);
+    }
+
+    #[test]
     fn remaps_point_data_for_surviving_points() {
         use crate::data::DataArray;
 

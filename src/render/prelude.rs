@@ -1,7 +1,19 @@
 //! Convenience re-exports for common vtk-render types.
 //!
 //! ```
-//! use crate::render::prelude::*;
+//! use vtk_pure_rs::render::prelude::*;
+//!
+//! let scene = Scene::new()
+//!     .with_background(0.1, 0.1, 0.15)
+//!     .with_actor(Actor::new(vtk_pure_rs::data::PolyData::new()));
+//! assert_eq!(scene.num_actors(), 1);
+//!
+//! let cmap = ColorMap::viridis();
+//! let camera = Camera::new();
+//! let material = Material::matte();
+//! assert_eq!(material.specular, 0.0);
+//! assert!(cmap.map(0.5)[1] >= 0.0);
+//! assert!(camera.distance() > 0.0);
 //! ```
 
 pub use crate::render::measurement::MeshMeasurements;

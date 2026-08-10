@@ -1,143 +1,31 @@
 //! Shape Diameter Function (SDF) for thickness estimation.
+//!
+//! The single implementation lives in [`crate::filters::mesh::shape_diameter`];
+//! this module is a thin wrapper that keeps the historical signature (an
+//! explicit RNG `seed`) and the `"SDF"` output array name.
+
 use crate::data::{AnyDataArray, DataArray, PolyData};
-pub fn shape_diameter_function(mesh: &PolyData, num_rays: usize, seed: u64) -> PolyData {
-    let n = mesh.points.len();
-    if n == 0 {
+
+/// Compute the shape diameter function and attach it as an `"SDF"` scalar.
+///
+/// `seed` is retained for API compatibility only: the surviving implementation
+/// uses a deterministic golden-angle cone sampling pattern, so results no
+/// longer depend on a random seed.
+pub fn shape_diameter_function(mesh: &PolyData, num_rays: usize, _seed: u64) -> PolyData {
+    let computed = crate::filters::mesh::shape_diameter::shape_diameter_function(mesh, num_rays);
+    let Some(array) = computed.point_data().get_array("ShapeDiameter") else {
         return mesh.clone();
-    }
-    let nm = calc_nm(mesh);
-    let nr = num_rays.max(1);
-    let mut rng = seed;
-    let mut sdf = vec![0.0f64; n];
-    for i in 0..n {
-        let p = mesh.points.get(i);
-        let ni = nm[i];
-        let mut sum = 0.0;
-        let mut count = 0;
-        // Cast rays in cone around -normal direction
-        for _ in 0..nr {
-            let u = next_unit(&mut rng) * 0.6 - 0.3;
-            let v = next_unit(&mut rng) * 0.6 - 0.3;
-            let dir = [-ni[0] + u, -ni[1] + v, -ni[2]];
-            let dl = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2])
-                .sqrt()
-                .max(1e-15);
-            let dir = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
-            // Cast ray against all triangles
-            let mut best_t = f64::INFINITY;
-            for cell in mesh.polys.iter() {
-                if !valid_cell(mesh, cell) {
-                    continue;
-                }
-                let a = mesh.points.get(cell[0] as usize);
-                for ci in 1..cell.len() - 1 {
-                    let b = mesh.points.get(cell[ci] as usize);
-                    let c = mesh.points.get(cell[ci + 1] as usize);
-                    if let Some(t) = ray_tri(p, dir, a, b, c) {
-                        if t > 0.01 && t < best_t {
-                            best_t = t;
-                        }
-                    }
-                }
-            }
-            if best_t < f64::INFINITY {
-                sum += best_t;
-                count += 1;
-            }
-        }
-        sdf[i] = if count > 0 { sum / count as f64 } else { 0.0 };
-    }
-    let mut r = mesh.clone();
-    r.point_data_mut()
+    };
+    let sdf = array.to_f64_vec();
+
+    let mut result = mesh.clone();
+    result
+        .point_data_mut()
         .add_array(AnyDataArray::F64(DataArray::from_vec("SDF", sdf, 1)));
-    r.point_data_mut().set_active_scalars("SDF");
-    r
+    result.point_data_mut().set_active_scalars("SDF");
+    result
 }
 
-fn valid_cell(mesh: &PolyData, cell: &[i64]) -> bool {
-    cell.len() >= 3
-        && cell
-            .iter()
-            .all(|&point_id| point_id >= 0 && (point_id as usize) < mesh.points.len())
-}
-
-fn next_unit(rng: &mut u64) -> f64 {
-    *rng = rng
-        .wrapping_mul(6364136223846793005)
-        .wrapping_add(1442695040888963407);
-    ((*rng >> 33) as f64) / (((1u64 << 31) - 1) as f64)
-}
-
-fn ray_tri(o: [f64; 3], d: [f64; 3], a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<f64> {
-    let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-    let h = [
-        d[1] * e2[2] - d[2] * e2[1],
-        d[2] * e2[0] - d[0] * e2[2],
-        d[0] * e2[1] - d[1] * e2[0],
-    ];
-    let det = e1[0] * h[0] + e1[1] * h[1] + e1[2] * h[2];
-    if det.abs() < 1e-12 {
-        return None;
-    }
-    let inv = 1.0 / det;
-    let s = [o[0] - a[0], o[1] - a[1], o[2] - a[2]];
-    let u = inv * (s[0] * h[0] + s[1] * h[1] + s[2] * h[2]);
-    if u < 0.0 || u > 1.0 {
-        return None;
-    }
-    let q = [
-        s[1] * e1[2] - s[2] * e1[1],
-        s[2] * e1[0] - s[0] * e1[2],
-        s[0] * e1[1] - s[1] * e1[0],
-    ];
-    let v = inv * (d[0] * q[0] + d[1] * q[1] + d[2] * q[2]);
-    if v < 0.0 || u + v > 1.0 {
-        return None;
-    }
-    let t = inv * (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]);
-    if t > 1e-12 {
-        Some(t)
-    } else {
-        None
-    }
-}
-fn calc_nm(mesh: &PolyData) -> Vec<[f64; 3]> {
-    let n = mesh.points.len();
-    let mut nm = vec![[0.0f64; 3]; n];
-    for cell in mesh.polys.iter() {
-        if !valid_cell(mesh, cell) {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let fn_ = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            for &v in cell {
-                let vi = v as usize;
-                nm[vi][0] += fn_[0];
-                nm[vi][1] += fn_[1];
-                nm[vi][2] += fn_[2];
-            }
-        }
-    }
-    for v in &mut nm {
-        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-        if l > 1e-15 {
-            v[0] /= l;
-            v[1] /= l;
-            v[2] /= l;
-        }
-    }
-    nm
-}
 #[cfg(test)]
 mod tests {
     use super::*;

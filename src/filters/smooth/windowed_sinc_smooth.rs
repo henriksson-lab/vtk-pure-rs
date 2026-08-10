@@ -79,8 +79,12 @@ pub fn windowed_sinc_smooth(input: &PolyData, iterations: usize, pass_band: f64)
             continue;
         }
 
-        let mut unique_edges = Vec::new();
-        let mut boundary_edges = Vec::new();
+        let mut unique_small = [0u32; 16];
+        let mut boundary_small = [0u32; 4];
+        let mut unique_heap: Vec<u32> = Vec::new();
+        let mut boundary_heap: Vec<u32> = Vec::new();
+        let mut unique_len = 0usize;
+        let mut boundary_len = 0usize;
         let mut non_manifold_edges = 0usize;
         let mut i = start;
         while i < end {
@@ -91,25 +95,30 @@ pub fn windowed_sinc_smooth(input: &PolyData, iterations: usize, pass_band: f64)
                 i += 1;
             }
             if count == 1 {
-                boundary_edges.push(nb);
+                push_neighbor(
+                    nb,
+                    &mut boundary_small,
+                    &mut boundary_heap,
+                    &mut boundary_len,
+                );
             } else if count > 2 {
                 non_manifold_edges += 1;
             }
-            unique_edges.push(nb);
+            push_neighbor(nb, &mut unique_small, &mut unique_heap, &mut unique_len);
         }
 
-        if boundary_edges.is_empty() && non_manifold_edges == 0 {
-            nbr_data.extend(unique_edges);
-        } else if boundary_edges.len() == 2
+        if boundary_len == 0 && non_manifold_edges == 0 {
+            extend_neighbors(&mut nbr_data, &unique_small, &unique_heap, unique_len);
+        } else if boundary_len == 2
             && non_manifold_edges == 0
             && !exceeds_edge_angle(
                 input,
                 v,
-                boundary_edges[0] as usize,
-                boundary_edges[1] as usize,
+                neighbor_at(&boundary_small, &boundary_heap, 0) as usize,
+                neighbor_at(&boundary_small, &boundary_heap, 1) as usize,
             )
         {
-            nbr_data.extend(boundary_edges);
+            extend_neighbors(&mut nbr_data, &boundary_small, &boundary_heap, boundary_len);
         }
     }
     nbr_off[n] = nbr_data.len() as u32;
@@ -216,6 +225,44 @@ where
             visit(pt_id, cell[i + 1] as usize);
             visit(pt_id, cell[i - 1] as usize);
         }
+    }
+}
+
+fn push_neighbor<const N: usize>(
+    value: u32,
+    small: &mut [u32; N],
+    heap: &mut Vec<u32>,
+    len: &mut usize,
+) {
+    if *len < N {
+        small[*len] = value;
+    } else {
+        if heap.is_empty() {
+            heap.extend_from_slice(small);
+        }
+        heap.push(value);
+    }
+    *len += 1;
+}
+
+fn neighbor_at<const N: usize>(small: &[u32; N], heap: &[u32], index: usize) -> u32 {
+    if heap.is_empty() {
+        small[index]
+    } else {
+        heap[index]
+    }
+}
+
+fn extend_neighbors<const N: usize>(
+    output: &mut Vec<u32>,
+    small: &[u32; N],
+    heap: &[u32],
+    len: usize,
+) {
+    if heap.is_empty() {
+        output.extend_from_slice(&small[..len]);
+    } else {
+        output.extend_from_slice(heap);
     }
 }
 

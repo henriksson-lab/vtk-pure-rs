@@ -1,5 +1,16 @@
 //! Microfluidic Peclet number
 use crate::data::{AnyDataArray, DataArray, ImageData};
+
+/// Ratio of the assumed microchannel length (1 um) to the assumed solute
+/// diffusivity (1e-9 m^2/s), i.e. `L / D = 1e-6 / 1e-9 = 1e3` s/m.
+///
+/// Stored pre-divided: evaluating `v * 1e-6 / 1e-9` rounds twice (and neither
+/// `1e-6` nor `1e-9` is exactly representable), which loses the last digits of
+/// the result. The exact decimal ratio only rounds once.
+const LENGTH_OVER_DIFFUSIVITY: f64 = 1e3;
+
+/// Peclet number `Pe = v * L / D` for each sample, where `v` is the scalar
+/// (advective velocity in m/s), `L = 1` um and `D = 1e-9` m^2/s.
 pub fn image_peclet_microfluidic(input: &ImageData, scalars: &str) -> ImageData {
     let arr = match input.point_data().get_array(scalars) {
         Some(a) if a.num_components() == 1 => a,
@@ -10,7 +21,7 @@ pub fn image_peclet_microfluidic(input: &ImageData, scalars: &str) -> ImageData 
     let data: Vec<f64> = (0..n)
         .map(|i| {
             arr.tuple_as_f64(i, &mut buf);
-            buf[0] * 1e-6 / 1e-9
+            buf[0] * LENGTH_OVER_DIFFUSIVITY
         })
         .collect();
     let dims = input.dimensions();

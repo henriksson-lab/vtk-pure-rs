@@ -63,9 +63,15 @@ pub fn dual_graph(input: &PolyData) -> PolyData {
     }
 
     let mut out_lines = CellArray::new();
+    let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
     for faces in edge_faces.values() {
         if faces.len() >= 2 {
-            out_lines.push_cell(&[faces[0] as i64, faces[1] as i64]);
+            // Two faces sharing more than one edge must still yield a single
+            // dual edge.
+            let key = (faces[0].min(faces[1]), faces[0].max(faces[1]));
+            if seen.insert(key) {
+                out_lines.push_cell(&[faces[0] as i64, faces[1] as i64]);
+            }
         }
     }
 

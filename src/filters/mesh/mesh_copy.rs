@@ -8,46 +8,9 @@ pub fn deep_copy_mesh(mesh: &PolyData) -> PolyData {
 }
 
 /// Append multiple meshes into one.
-pub fn append_meshes(meshes: &[&PolyData]) -> PolyData {
-    let datasets: Vec<&PolyData> = meshes
-        .iter()
-        .copied()
-        .filter(|mesh| !mesh.points.is_empty())
-        .collect();
-    if datasets.is_empty() {
-        return PolyData::new();
-    }
-
-    let mut pts = Points::<f64>::new();
-    let mut verts = CellArray::new();
-    let mut lines = CellArray::new();
-    let mut polys = CellArray::new();
-    let mut strips = CellArray::new();
-
-    for mesh in &datasets {
-        let offset = pts.len() as i64;
-        for i in 0..mesh.points.len() {
-            pts.push(mesh.points.get(i));
-        }
-        copy_cells(&mesh.verts, &mut verts, offset);
-        copy_cells(&mesh.lines, &mut lines, offset);
-        copy_cells(&mesh.polys, &mut polys, offset);
-        copy_cells(&mesh.strips, &mut strips, offset);
-    }
-
-    let mut result = PolyData::new();
-    result.points = pts;
-    result.verts = verts;
-    result.lines = lines;
-    result.polys = polys;
-    result.strips = strips;
-    copy_common_point_data(&datasets, &mut result);
-    copy_common_cell_data(&datasets, &mut result);
-    if let Some(first) = datasets.first() {
-        *result.field_data_mut() = first.field_data().clone();
-    }
-    result
-}
+///
+/// The single implementation lives in [`crate::filters::mesh::merge_ops`].
+pub use crate::filters::mesh::merge_ops::append_meshes;
 
 /// Duplicate mesh N times with given offset between copies.
 pub fn duplicate_mesh(mesh: &PolyData, n: usize, offset: [f64; 3]) -> PolyData {
@@ -91,50 +54,6 @@ fn copy_cells(src: &CellArray, dst: &mut CellArray, offset: i64) {
     }
 }
 
-fn copy_common_point_data(inputs: &[&PolyData], output: &mut PolyData) {
-    let Some(first) = inputs.first() else {
-        return;
-    };
-    for array in first.point_data().field_data().iter() {
-        let name = array.name();
-        if array.num_tuples() != first.points.len() {
-            continue;
-        }
-        if inputs.iter().all(|mesh| {
-            mesh.point_data().get_array(name).is_some_and(|other| {
-                arrays_compatible(array, other) && other.num_tuples() == mesh.points.len()
-            })
-        }) {
-            if let Some(appended) = append_array(name, array, inputs, |mesh| mesh.point_data()) {
-                output.point_data_mut().add_array(appended);
-            }
-        }
-    }
-    copy_active_attributes(first.point_data(), output.point_data_mut());
-}
-
-fn copy_common_cell_data(inputs: &[&PolyData], output: &mut PolyData) {
-    let Some(first) = inputs.first() else {
-        return;
-    };
-    for array in first.cell_data().field_data().iter() {
-        let name = array.name();
-        if array.num_tuples() != first.total_cells() {
-            continue;
-        }
-        if inputs.iter().all(|mesh| {
-            mesh.cell_data().get_array(name).is_some_and(|other| {
-                arrays_compatible(array, other) && other.num_tuples() == mesh.total_cells()
-            })
-        }) {
-            if let Some(appended) = append_cell_array(name, array, inputs) {
-                output.cell_data_mut().add_array(appended);
-            }
-        }
-    }
-    copy_active_attributes(first.cell_data(), output.cell_data_mut());
-}
-
 fn repeat_point_data(input: &PolyData, n: usize, output: &mut PolyData) {
     for array in input.point_data().field_data().iter() {
         if array.num_tuples() == input.points.len() {
@@ -153,83 +72,6 @@ fn repeat_cell_data(input: &PolyData, n: usize, output: &mut PolyData) {
         }
     }
     copy_active_attributes(input.cell_data(), output.cell_data_mut());
-}
-
-fn append_array(
-    name: &str,
-    template: &AnyDataArray,
-    inputs: &[&PolyData],
-    attrs: impl Fn(&PolyData) -> &DataSetAttributes,
-) -> Option<AnyDataArray> {
-    macro_rules! append {
-        ($variant:ident, $ty:ty) => {{
-            let mut out = DataArray::<$ty>::new(name, template.num_components());
-            for mesh in inputs {
-                let Some(AnyDataArray::$variant(array)) = attrs(mesh).get_array(name) else {
-                    return None;
-                };
-                for tuple in array.iter_tuples() {
-                    out.push_tuple(tuple);
-                }
-            }
-            Some(AnyDataArray::$variant(out))
-        }};
-    }
-
-    match template {
-        AnyDataArray::F32(_) => append!(F32, f32),
-        AnyDataArray::F64(_) => append!(F64, f64),
-        AnyDataArray::I8(_) => append!(I8, i8),
-        AnyDataArray::I16(_) => append!(I16, i16),
-        AnyDataArray::I32(_) => append!(I32, i32),
-        AnyDataArray::I64(_) => append!(I64, i64),
-        AnyDataArray::U8(_) => append!(U8, u8),
-        AnyDataArray::U16(_) => append!(U16, u16),
-        AnyDataArray::U32(_) => append!(U32, u32),
-        AnyDataArray::U64(_) => append!(U64, u64),
-    }
-}
-
-fn append_cell_array(
-    name: &str,
-    template: &AnyDataArray,
-    inputs: &[&PolyData],
-) -> Option<AnyDataArray> {
-    macro_rules! append {
-        ($variant:ident, $ty:ty) => {{
-            let mut out = DataArray::<$ty>::new(name, template.num_components());
-            for range_fn in [
-                cell_vert_range as fn(&PolyData) -> std::ops::Range<usize>,
-                cell_line_range,
-                cell_poly_range,
-                cell_strip_range,
-            ] {
-                for mesh in inputs {
-                    let Some(AnyDataArray::$variant(array)) = mesh.cell_data().get_array(name)
-                    else {
-                        return None;
-                    };
-                    for tuple_idx in range_fn(mesh) {
-                        out.push_tuple(array.tuple(tuple_idx));
-                    }
-                }
-            }
-            Some(AnyDataArray::$variant(out))
-        }};
-    }
-
-    match template {
-        AnyDataArray::F32(_) => append!(F32, f32),
-        AnyDataArray::F64(_) => append!(F64, f64),
-        AnyDataArray::I8(_) => append!(I8, i8),
-        AnyDataArray::I16(_) => append!(I16, i16),
-        AnyDataArray::I32(_) => append!(I32, i32),
-        AnyDataArray::I64(_) => append!(I64, i64),
-        AnyDataArray::U8(_) => append!(U8, u8),
-        AnyDataArray::U16(_) => append!(U16, u16),
-        AnyDataArray::U32(_) => append!(U32, u32),
-        AnyDataArray::U64(_) => append!(U64, u64),
-    }
 }
 
 fn repeat_array(array: &AnyDataArray, n: usize) -> AnyDataArray {
@@ -321,10 +163,6 @@ fn cell_strip_range(mesh: &PolyData) -> std::ops::Range<usize> {
     start..start + mesh.strips.num_cells()
 }
 
-fn arrays_compatible(a: &AnyDataArray, b: &AnyDataArray) -> bool {
-    a.scalar_type() == b.scalar_type() && a.num_components() == b.num_components()
-}
-
 fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttributes) {
     if let Some(array) = input.scalars() {
         if output.has_array(array.name()) {
@@ -362,20 +200,6 @@ fn copy_active_attributes(input: &DataSetAttributes, output: &mut DataSetAttribu
 mod tests {
     use super::*;
     #[test]
-    fn test_append() {
-        let a = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        let b = PolyData::from_triangles(
-            vec![[5.0, 5.0, 5.0], [6.0, 5.0, 5.0], [5.5, 6.0, 5.0]],
-            vec![[0, 1, 2]],
-        );
-        let r = append_meshes(&[&a, &b]);
-        assert_eq!(r.points.len(), 6);
-        assert_eq!(r.polys.num_cells(), 2);
-    }
-    #[test]
     fn test_duplicate() {
         let mesh = PolyData::from_triangles(
             vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]],
@@ -386,47 +210,6 @@ mod tests {
         assert_eq!(r.polys.num_cells(), 3);
         let p = r.points.get(3);
         assert!((p[0] - 2.0).abs() < 1e-10); // second copy offset by 2
-    }
-
-    #[test]
-    fn append_cell_data_matches_output_cell_order() {
-        let mut a = mixed_cell_mesh();
-        let mut b = mixed_cell_mesh();
-        set_cell_ids(&mut a, [10.0, 20.0, 30.0, 40.0]);
-        set_cell_ids(&mut b, [11.0, 21.0, 31.0, 41.0]);
-
-        let r = append_meshes(&[&a, &b]);
-
-        assert_eq!(
-            r.cell_data().get_array("cell_id").unwrap().to_f64_vec(),
-            vec![10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 40.0, 41.0]
-        );
-    }
-
-    #[test]
-    fn append_ignores_empty_inputs_for_common_arrays() {
-        let mut mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        mesh.point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "temperature",
-                vec![1.0, 2.0, 3.0],
-                1,
-            )));
-        let empty = PolyData::new();
-
-        let r = append_meshes(&[&empty, &mesh]);
-
-        assert_eq!(r.points.len(), 3);
-        assert_eq!(
-            r.point_data()
-                .get_array("temperature")
-                .unwrap()
-                .to_f64_vec(),
-            vec![1.0, 2.0, 3.0]
-        );
     }
 
     #[test]

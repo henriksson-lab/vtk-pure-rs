@@ -31,21 +31,46 @@ fn reverse_cells(cells: &CellArray) -> CellArray {
     let src_off = cells.offsets();
     let src_conn = cells.connectivity();
     let nc = cells.num_cells();
-    let mut conn = Vec::with_capacity(src_conn.len());
-    let mut offsets = Vec::with_capacity(src_off.len());
-    offsets.push(0i64);
+    let homogeneous = cells.is_homogeneous();
 
-    for ci in 0..nc {
-        let start = src_off[ci] as usize;
-        let end = src_off[ci + 1] as usize;
-        // Push reversed
-        for j in (start..end).rev() {
-            conn.push(src_conn[j]);
-        }
-        offsets.push(conn.len() as i64);
+    if matches!(homogeneous, Some(0 | 1)) {
+        return cells.clone();
     }
 
-    CellArray::from_raw(offsets, conn)
+    let mut conn = Vec::with_capacity(src_conn.len());
+
+    match homogeneous {
+        Some(2) => {
+            for cell in src_conn.chunks_exact(2) {
+                conn.push(cell[1]);
+                conn.push(cell[0]);
+            }
+        }
+        Some(3) => {
+            for cell in src_conn.chunks_exact(3) {
+                conn.push(cell[2]);
+                conn.push(cell[1]);
+                conn.push(cell[0]);
+            }
+        }
+        Some(4) => {
+            for cell in src_conn.chunks_exact(4) {
+                conn.push(cell[3]);
+                conn.push(cell[2]);
+                conn.push(cell[1]);
+                conn.push(cell[0]);
+            }
+        }
+        _ => {
+            for ci in 0..nc {
+                let start = src_off[ci] as usize;
+                let end = src_off[ci + 1] as usize;
+                conn.extend(src_conn[start..end].iter().rev().copied());
+            }
+        }
+    }
+
+    CellArray::from_raw(src_off.to_vec(), conn)
 }
 
 fn flipped_normals(name: &str, normals: &AnyDataArray) -> DataArray<f64> {

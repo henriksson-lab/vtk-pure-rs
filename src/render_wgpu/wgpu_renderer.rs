@@ -79,9 +79,12 @@ struct GpuMesh {
 pub struct WgpuRenderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    surface: wgpu::Surface<'static>,
-    surface_config: wgpu::SurfaceConfiguration,
+    /// Present target. `None` for a headless / offscreen renderer.
+    surface: Option<wgpu::Surface<'static>>,
+    surface_config: Option<wgpu::SurfaceConfiguration>,
     surface_format: wgpu::TextureFormat,
+    /// Colour target used by [`Renderer::render`] when there is no surface.
+    offscreen_color: Option<wgpu::Texture>,
     pipeline_triangles: wgpu::RenderPipeline,
     pipeline_lines: wgpu::RenderPipeline,
     pipeline_points: wgpu::RenderPipeline,
@@ -110,7 +113,14 @@ pub struct WgpuRenderer {
     height: u32,
 }
 
+/// Colour format used by the headless / externally-supplied-device constructors.
+///
+/// Matches the sRGB format that is picked for window surfaces, so that shaders and
+/// pipelines behave identically on- and offscreen.
+pub const DEFAULT_OFFSCREEN_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
 impl WgpuRenderer {
+    /// Create a renderer that presents to a window.
     pub async fn new(window: Arc<Window>) -> Result<Self, VtkError> {
         let size = window.inner_size();
         let width = size.width.max(1);
@@ -128,10 +138,10 @@ impl WgpuRenderer {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| VtkError::InvalidData("no suitable GPU adapter found".into()))?;
+            .map_err(|e| VtkError::InvalidData(format!("no suitable GPU adapter found: {e}")))?;
 
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .request_device(&wgpu::DeviceDescriptor::default())
             .await
             .map_err(|e| VtkError::InvalidData(format!("device request failed: {e}")))?;
 
@@ -155,6 +165,141 @@ impl WgpuRenderer {
         };
         surface.configure(&device, &surface_config);
 
+        Self::build(
+            device,
+            queue,
+            Some(surface),
+            Some(surface_config),
+            surface_format,
+            width,
+            height,
+        )
+    }
+
+    /// Create a renderer with no window and no surface.
+    ///
+    /// Everything is drawn into renderer-owned offscreen textures, so
+    /// [`Renderer::render_to_image`] works on a machine with no display server.
+    /// [`Renderer::render`] also works and leaves the result in the owned colour
+    /// texture (see [`WgpuRenderer::offscreen_texture`]); there is simply nothing
+    /// to present it to.
+    pub async fn new_headless(width: u32, height: u32) -> Result<Self, VtkError> {
+        let width = width.max(1);
+        let height = height.max(1);
+
+        let instance = wgpu::Instance::default();
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+            .map_err(|e| VtkError::InvalidData(format!("no suitable GPU adapter found: {e}")))?;
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default())
+            .await
+            .map_err(|e| VtkError::InvalidData(format!("device request failed: {e}")))?;
+
+        Self::build(
+            device,
+            queue,
+            None,
+            None,
+            DEFAULT_OFFSCREEN_FORMAT,
+            width,
+            height,
+        )
+    }
+
+    /// Blocking convenience wrapper around [`WgpuRenderer::new_headless`].
+    pub fn new_headless_blocking(width: u32, height: u32) -> Result<Self, VtkError> {
+        pollster::block_on(Self::new_headless(width, height))
+    }
+
+    /// Create a renderer on a caller-supplied [`wgpu::Device`] / [`wgpu::Queue`].
+    ///
+    /// This is the entry point for embedding vtk-rs inside another wgpu
+    /// application (e.g. a slint window using `unstable-wgpu-29`): texture
+    /// sharing requires both sides to use the *same* device, which means the
+    /// host owns it and hands it over. Rendering is offscreen; use
+    /// [`WgpuRenderer::offscreen_texture`] to import the result, or
+    /// [`Renderer::render_to_image`] to read it back to the CPU.
+    ///
+    /// `format` must be the colour format the host expects to sample.
+    pub fn from_device(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, VtkError> {
+        Self::build(device, queue, None, None, format, width.max(1), height.max(1))
+    }
+
+    /// The renderer-owned offscreen colour texture, if [`Renderer::render`] has
+    /// been called on a surfaceless renderer. Created with `RENDER_ATTACHMENT |
+    /// COPY_SRC | TEXTURE_BINDING` so it can be sampled or copied by the host.
+    pub fn offscreen_texture(&self) -> Option<&wgpu::Texture> {
+        self.offscreen_color.as_ref()
+    }
+
+    /// Borrow the underlying device/queue (needed when a host application has to
+    /// submit its own work against the same device).
+    pub fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    /// Borrow the underlying queue.
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.queue
+    }
+
+    /// The colour format this renderer draws to.
+    pub fn color_format(&self) -> wgpu::TextureFormat {
+        self.surface_format
+    }
+
+    /// Lazily create (and cache) the offscreen colour target used when there is
+    /// no surface. Returns a cheap clone of the texture handle.
+    fn ensure_offscreen_color(&mut self) -> wgpu::Texture {
+        let (w, h) = (self.width.max(1), self.height.max(1));
+        let stale = match &self.offscreen_color {
+            Some(tex) => tex.width() != w || tex.height() != h,
+            None => true,
+        };
+        if stale {
+            self.offscreen_color = Some(self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("headless color target"),
+                size: wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: self.surface_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            }));
+        }
+        self.offscreen_color.as_ref().unwrap().clone()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        surface: Option<wgpu::Surface<'static>>,
+        surface_config: Option<wgpu::SurfaceConfiguration>,
+        surface_format: wgpu::TextureFormat,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, VtkError> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("vtk shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -244,8 +389,8 @@ impl WgpuRenderer {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_group_layout)],
+            immediate_size: 0,
         });
 
         let pipeline_triangles = create_pipeline_with_cull(
@@ -356,6 +501,7 @@ impl WgpuRenderer {
             surface,
             surface_config,
             surface_format,
+            offscreen_color: None,
             pipeline_triangles,
             pipeline_lines,
             pipeline_points,
@@ -671,6 +817,7 @@ impl WgpuRenderer {
                 label: Some("render pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: msaa_view,
+                    depth_slice: None,
                     resolve_target: Some(resolve_target),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
@@ -989,6 +1136,7 @@ impl WgpuRenderer {
                     label: Some("silhouette pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: resolve_target,
+                        depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Load,
@@ -1265,6 +1413,7 @@ impl WgpuRenderer {
                     label: Some("annotation pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: resolve_target,
+                        depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Load,
@@ -1290,11 +1439,29 @@ impl Renderer for WgpuRenderer {
     fn render(&mut self, scene: &Scene) -> Result<(), VtkError> {
         use crate::render::StereoMode;
 
-        let output = self
-            .surface
-            .get_current_texture()
-            .map_err(|e| VtkError::InvalidData(format!("surface texture error: {e}")))?;
-        let resolve_view = output.texture.create_view(&Default::default());
+        // Acquire the frame target: the swapchain image when we have a surface,
+        // otherwise the renderer-owned offscreen colour texture.
+        let surface_output = match &self.surface {
+            Some(surface) => {
+                use wgpu::CurrentSurfaceTexture as Cst;
+                match surface.get_current_texture() {
+                    Cst::Success(t) | Cst::Suboptimal(t) => Some(t),
+                    other => {
+                        return Err(VtkError::InvalidData(format!(
+                            "surface texture error: {other:?}"
+                        )))
+                    }
+                }
+            }
+            None => None,
+        };
+        // `wgpu::Texture` is a cheap refcounted handle, so cloning it here keeps
+        // `self` free for the `&mut self` calls further down.
+        let target_texture = match &surface_output {
+            Some(output) => output.texture.clone(),
+            None => self.ensure_offscreen_color(),
+        };
+        let resolve_view = target_texture.create_view(&Default::default());
 
         if !scene.viewports.is_empty() {
             // Multi-viewport: render each viewport to its own region
@@ -1340,7 +1507,7 @@ impl Renderer for WgpuRenderer {
                         aspect: wgpu::TextureAspect::All,
                     },
                     wgpu::TexelCopyTextureInfo {
-                        texture: &output.texture,
+                        texture: &target_texture,
                         mip_level: 0,
                         origin: wgpu::Origin3d { x: px, y: py, z: 0 },
                         aspect: wgpu::TextureAspect::All,
@@ -1428,7 +1595,7 @@ impl Renderer for WgpuRenderer {
                         aspect: wgpu::TextureAspect::All,
                     },
                     wgpu::TexelCopyTextureInfo {
-                        texture: &output.texture,
+                        texture: &target_texture,
                         mip_level: 0,
                         origin: wgpu::Origin3d { x: px, y: py, z: 0 },
                         aspect: wgpu::TextureAspect::All,
@@ -1452,7 +1619,9 @@ impl Renderer for WgpuRenderer {
             self.render_to_view(scene, &msaa, &resolve_view, &depth)?;
         }
 
-        output.present();
+        if let Some(output) = surface_output {
+            output.present();
+        }
         Ok(())
     }
 
@@ -1460,9 +1629,15 @@ impl Renderer for WgpuRenderer {
         if width > 0 && height > 0 {
             self.width = width;
             self.height = height;
-            self.surface_config.width = width;
-            self.surface_config.height = height;
-            self.surface.configure(&self.device, &self.surface_config);
+            if let (Some(surface), Some(config)) =
+                (self.surface.as_ref(), self.surface_config.as_mut())
+            {
+                config.width = width;
+                config.height = height;
+                surface.configure(&self.device, config);
+            }
+            // Force the offscreen colour target to be re-created at the new size.
+            self.offscreen_color = None;
             self.depth_texture =
                 create_depth_texture(&self.device, width, height, MSAA_SAMPLE_COUNT);
             self.msaa_texture =
@@ -1545,7 +1720,9 @@ impl Renderer for WgpuRenderer {
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
             let _ = sender.send(result);
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|e| VtkError::InvalidData(format!("device poll failed: {e}")))?;
 
         receiver
             .recv()
@@ -1660,8 +1837,8 @@ fn create_pipeline_with_cull(
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: !alpha_blend,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: Some(!alpha_blend),
+            depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: Default::default(),
             bias: Default::default(),
         }),
@@ -1670,7 +1847,7 @@ fn create_pipeline_with_cull(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -1699,8 +1876,8 @@ fn create_depth_pipeline(
         },
         depth_stencil: Some(wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
             stencil: Default::default(),
             bias: Default::default(),
         }),
@@ -1709,7 +1886,7 @@ fn create_depth_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -2011,4 +2188,93 @@ fn project_to_ndc(vp: &glam::DMat4, pos: [f64; 3]) -> Option<(f32, f32)> {
     let nx = ((p.x / p.w + 1.0) * 0.5) as f32;
     let ny = ((p.y / p.w + 1.0) * 0.5) as f32;
     Some((nx, ny))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::render::{Actor, ColorMap, Scene};
+
+    /// Distinct RGB triples in an RGBA buffer.
+    fn distinct_colors(rgba: &[u8]) -> usize {
+        let mut seen = std::collections::HashSet::new();
+        for px in rgba.chunks_exact(4) {
+            seen.insert((px[0], px[1], px[2]));
+        }
+        seen.len()
+    }
+
+    /// Build a renderer with no window/surface and render a real image.
+    ///
+    /// Skips (rather than fails) if the machine has no usable wgpu adapter, so
+    /// the suite still runs on GPU-less CI.
+    #[test]
+    fn headless_render_produces_non_trivial_image() {
+        let (w, h) = (256u32, 192u32);
+        let mut renderer = match WgpuRenderer::new_headless_blocking(w, h) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("skipping headless render test, no GPU adapter: {e}");
+                return;
+            }
+        };
+
+        let sphere = crate::filters::core::sources::sphere(&Default::default());
+        let mesh = crate::filters::normals::normals::compute_normals(
+            &crate::filters::core::elevation::elevation_z(&sphere),
+        );
+        let mut scene = Scene::new()
+            .with_actor(Actor::new(mesh).with_scalar_coloring(ColorMap::viridis(), None))
+            .with_background(0.05, 0.05, 0.1);
+        scene.camera.look_at([0.0, 0.5, 3.0], [0.0, 0.0, 0.0]);
+
+        let rgba = renderer
+            .render_to_image(&scene, w, h)
+            .expect("headless render_to_image failed");
+
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+
+        // Not a constant colour: a shaded sphere over a background must produce
+        // a wide spread of values.
+        let n = distinct_colors(&rgba);
+        assert!(n > 64, "expected a shaded image, got {n} distinct colours");
+
+        // And the object must actually cover a meaningful part of the frame:
+        // count pixels that differ from the background clear colour.
+        let bg = &rgba[0..3];
+        let non_bg = rgba
+            .chunks_exact(4)
+            .filter(|px| px[0] != bg[0] || px[1] != bg[1] || px[2] != bg[2])
+            .count();
+        let frac = non_bg as f64 / (w * h) as f64;
+        assert!(
+            frac > 0.05,
+            "only {:.1}% of pixels differ from the background",
+            frac * 100.0
+        );
+    }
+
+    /// The surfaceless renderer can also drive the normal `render()` path; the
+    /// result lands in the renderer-owned offscreen texture.
+    #[test]
+    fn headless_render_uses_owned_texture() {
+        let (w, h) = (128u32, 128u32);
+        let mut renderer = match WgpuRenderer::new_headless_blocking(w, h) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("skipping headless render test, no GPU adapter: {e}");
+                return;
+            }
+        };
+        assert!(renderer.offscreen_texture().is_none());
+
+        let scene = Scene::new().with_background(0.1, 0.2, 0.3);
+        renderer.render(&scene).expect("headless render() failed");
+
+        let tex = renderer
+            .offscreen_texture()
+            .expect("render() should have created an offscreen target");
+        assert_eq!(tex.width(), w);
+        assert_eq!(tex.height(), h);
+    }
 }

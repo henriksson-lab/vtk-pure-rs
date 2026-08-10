@@ -1,20 +1,33 @@
 //! Boundary analysis: extract boundary loops, measure perimeters.
 
-use crate::data::{AnyDataArray, CellArray, DataArray, Points, PolyData};
+use crate::data::{CellArray, Points, PolyData};
 
-/// Extract all boundary loops as separate polylines.
+/// Extract all boundary loops, one `PolyData` per loop.
+///
+/// Thin wrapper over the single loop-tracing implementation in
+/// [`crate::filters::mesh::extract_boundary::extract_boundary_loops`], which
+/// returns every loop as a line cell of one `PolyData`; this entry point splits
+/// that result into one `PolyData` per loop.
 pub fn extract_boundary_loops(mesh: &PolyData) -> Vec<PolyData> {
-    let loops = find_boundary_loops(mesh);
-    loops
-        .iter()
-        .map(|loop_v| {
+    let traced = crate::filters::mesh::extract_boundary::extract_boundary_loops(mesh);
+    (0..traced.lines.num_cells())
+        .map(|c| {
+            let cell = traced.lines.cell(c);
+            // Traced loops repeat the first vertex as the last one; drop it so
+            // each output holds the loop vertices exactly once.
+            let verts = if cell.len() >= 2 && cell.first() == cell.last() {
+                &cell[..cell.len() - 1]
+            } else {
+                cell
+            };
+
             let mut pts = Points::<f64>::new();
             let mut lines = CellArray::new();
-            let ids: Vec<i64> = loop_v
+            let ids: Vec<i64> = verts
                 .iter()
                 .enumerate()
                 .map(|(i, &vi)| {
-                    pts.push(mesh.points.get(vi));
+                    pts.push(traced.points.get(vi as usize));
                     i as i64
                 })
                 .collect();
@@ -58,55 +71,21 @@ pub fn boundary_classification(mesh: &PolyData) -> &'static str {
     }
 }
 
-/// Add a "BoundaryDistance" point data: hop distance from nearest boundary vertex.
+/// Add a "BoundaryDistance" point data: distance from the nearest boundary vertex.
+///
+/// Thin wrapper over the single implementation in
+/// [`crate::filters::mesh::mesh_distance_field_to_scalar::boundary_distance_field`],
+/// re-labelling its output array to this module's `"BoundaryDistance"` name.
 pub fn boundary_distance_field(mesh: &PolyData) -> PolyData {
-    let n = mesh.points.len();
-    let loops = find_boundary_loops(mesh);
-    let seeds: Vec<usize> = loops.into_iter().flatten().collect();
-    if seeds.is_empty() {
-        let mut result = mesh.clone();
+    let mut result =
+        crate::filters::mesh::mesh_distance_field_to_scalar::boundary_distance_field(mesh);
+    if let Some(mut arr) = result.point_data_mut().remove_array("BoundaryDist") {
+        arr.set_name("BoundaryDistance");
+        result.point_data_mut().add_array(arr);
         result
             .point_data_mut()
-            .add_array(AnyDataArray::F64(DataArray::from_vec(
-                "BoundaryDistance",
-                vec![0.0; n],
-                1,
-            )));
-        return result;
+            .set_active_scalars("BoundaryDistance");
     }
-
-    let adj = build_adj(mesh, n);
-    let mut dist = vec![f64::MAX; n];
-    let mut queue = std::collections::VecDeque::new();
-    for &s in &seeds {
-        if s < n {
-            dist[s] = 0.0;
-            queue.push_back(s);
-        }
-    }
-    while let Some(v) = queue.pop_front() {
-        let d = dist[v] + 1.0;
-        for &nb in &adj[v] {
-            if d < dist[nb] {
-                dist[nb] = d;
-                queue.push_back(nb);
-            }
-        }
-    }
-    for d in &mut dist {
-        if *d == f64::MAX {
-            *d = 0.0;
-        }
-    }
-
-    let mut result = mesh.clone();
-    result
-        .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec(
-            "BoundaryDistance",
-            dist,
-            1,
-        )));
     result
 }
 
@@ -161,22 +140,6 @@ fn find_boundary_loops(mesh: &PolyData) -> Vec<Vec<usize>> {
         }
     }
     loops
-}
-
-fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        for i in 0..nc {
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                adj[a].insert(b);
-                adj[b].insert(a);
-            }
-        }
-    }
-    adj.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 fn extend_boundary_path(

@@ -1,7 +1,49 @@
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::data::{AnyDataArray, CellArray, DataArray, DataSetAttributes, Points, PolyData};
 use crate::types::Scalar;
+
+type EdgeMap = HashMap<u64, EdgeInfo, BuildHasherDefault<U64FastHasher>>;
+
+#[derive(Default)]
+struct U64FastHasher(u64);
+
+impl Hasher for U64FastHasher {
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        mix_u64(self.0)
+    }
+
+    #[inline(always)]
+    fn write(&mut self, bytes: &[u8]) {
+        let mut value = 0u64;
+        for (shift, &byte) in bytes.iter().take(8).enumerate() {
+            value |= (byte as u64) << (shift * 8);
+        }
+        self.0 = value;
+    }
+
+    #[inline(always)]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = i;
+    }
+}
+
+#[inline(always)]
+fn mix_u64(mut value: u64) -> u64 {
+    value ^= value >> 30;
+    value = value.wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    value ^= value >> 27;
+    value = value.wrapping_mul(0x94d0_49bb_1331_11eb);
+    value ^ (value >> 31)
+}
+
+#[derive(Clone, Copy)]
+struct EdgeInfo {
+    count: u8,
+    midpoint: i64,
+}
 
 /// Midpoint subdivision: split each triangle into 4 by inserting
 /// midpoints on each edge.
@@ -15,98 +57,127 @@ pub fn subdivide_midpoint(input: &PolyData) -> PolyData {
         return input.clone();
     }
     let mut out_points = input.points.clone();
-    let mut out_polys = CellArray::new();
     let input_point_count = input.points.len();
-    let mut point_stencils: Vec<PointStencil> =
-        (0..input_point_count).map(PointStencil::single).collect();
-    let mut source_cell_ids = Vec::new();
+    let has_point_data = input.point_data().num_arrays() != 0;
+    let has_cell_data = input.cell_data().num_arrays() != 0;
+    let mut point_stencils: Option<Vec<PointStencil>> =
+        has_point_data.then(|| (0..input_point_count).map(PointStencil::single).collect());
+    let mut source_cell_ids = has_cell_data.then(Vec::new);
     let poly_cell_offset = input.verts.num_cells() + input.lines.num_cells();
-    let mut edge_counts: HashMap<(i64, i64), usize> = HashMap::new();
+    let mut edges: EdgeMap = HashMap::with_capacity_and_hasher(
+        input.polys.num_cells() * 3,
+        BuildHasherDefault::<U64FastHasher>::default(),
+    );
+    let mut triangles = Vec::with_capacity(input.polys.num_cells());
 
     for cell in input.polys.iter() {
         let Some([a, b, c]) = valid_triangle_point_ids(cell, input_point_count) else {
             return input.clone();
         };
+        triangles.push([a, b, c]);
         for (u, v) in [(a, b), (b, c), (c, a)] {
-            *edge_counts.entry(edge_key(u as i64, v as i64)).or_default() += 1;
+            let info = edges
+                .entry(edge_key(u, v, input_point_count))
+                .or_insert(EdgeInfo {
+                    count: 0,
+                    midpoint: -1,
+                });
+            info.count += 1;
+            if info.count > 2 {
+                return input.clone();
+            }
         }
     }
-    if edge_counts.values().any(|&count| count > 2) {
-        return input.clone();
-    }
 
-    // Cache midpoints to avoid duplicates on shared edges
-    let mut midpoint_cache: HashMap<(i64, i64), i64> = HashMap::new();
+    let mut offsets = Vec::with_capacity(triangles.len() * 4 + 1);
+    let mut conn = Vec::with_capacity(triangles.len() * 12);
+    offsets.push(0);
 
-    let get_midpoint = |a: i64,
-                        b: i64,
-                        pts: &mut Points<f64>,
-                        cache: &mut HashMap<(i64, i64), i64>,
-                        stencils: &mut Vec<PointStencil>|
-     -> i64 {
-        let key = edge_key(a, b);
-        if let Some(&mid) = cache.get(&key) {
-            return mid;
-        }
-        let pa = pts.get(a as usize);
-        let pb = pts.get(b as usize);
-        let idx = pts.len() as i64;
-        pts.push([
-            (pa[0] + pb[0]) * 0.5,
-            (pa[1] + pb[1]) * 0.5,
-            (pa[2] + pb[2]) * 0.5,
-        ]);
-        cache.insert(key, idx);
-        stencils.push(PointStencil {
-            sources: vec![a as usize, b as usize],
-            weights: vec![0.5, 0.5],
-        });
-        idx
-    };
+    for (cell_index, &[a, b, c]) in triangles.iter().enumerate() {
+        let ab = midpoint_for_edge(
+            a,
+            b,
+            input,
+            &mut out_points,
+            &mut edges,
+            input_point_count,
+            point_stencils.as_mut(),
+        );
+        let bc = midpoint_for_edge(
+            b,
+            c,
+            input,
+            &mut out_points,
+            &mut edges,
+            input_point_count,
+            point_stencils.as_mut(),
+        );
+        let ca = midpoint_for_edge(
+            c,
+            a,
+            input,
+            &mut out_points,
+            &mut edges,
+            input_point_count,
+            point_stencils.as_mut(),
+        );
 
-    for (cell_index, cell) in input.polys.iter().enumerate() {
-        let [a, b, c] = valid_triangle_point_ids(cell, input_point_count).unwrap();
         let a = a as i64;
         let b = b as i64;
         let c = c as i64;
-
-        let ab = get_midpoint(
-            a,
-            b,
-            &mut out_points,
-            &mut midpoint_cache,
-            &mut point_stencils,
-        );
-        let bc = get_midpoint(
-            b,
-            c,
-            &mut out_points,
-            &mut midpoint_cache,
-            &mut point_stencils,
-        );
-        let ca = get_midpoint(
-            c,
-            a,
-            &mut out_points,
-            &mut midpoint_cache,
-            &mut point_stencils,
-        );
-
-        out_polys.push_cell(&[a, ab, ca]);
-        out_polys.push_cell(&[ab, b, bc]);
-        out_polys.push_cell(&[bc, c, ca]);
-        out_polys.push_cell(&[ab, bc, ca]);
-        source_cell_ids.extend(std::iter::repeat(poly_cell_offset + cell_index).take(4));
+        conn.extend_from_slice(&[a, ab, ca, ab, b, bc, bc, c, ca, ab, bc, ca]);
+        let base = conn.len() as i64 - 12;
+        offsets.extend_from_slice(&[base + 3, base + 6, base + 9, base + 12]);
+        if let Some(source_cell_ids) = &mut source_cell_ids {
+            source_cell_ids.extend(std::iter::repeat(poly_cell_offset + cell_index).take(4));
+        }
     }
 
     let mut pd = PolyData::new();
     pd.points = out_points;
-    pd.polys = out_polys;
-    *pd.point_data_mut() =
-        interpolate_point_data(input.point_data(), input_point_count, &point_stencils);
-    *pd.cell_data_mut() = copy_cell_data(input.cell_data(), &source_cell_ids);
+    pd.polys = CellArray::from_raw(offsets, conn);
+    if let Some(point_stencils) = point_stencils {
+        *pd.point_data_mut() =
+            interpolate_point_data(input.point_data(), input_point_count, &point_stencils);
+    }
+    if let Some(source_cell_ids) = source_cell_ids {
+        *pd.cell_data_mut() = copy_cell_data(input.cell_data(), &source_cell_ids);
+    }
     *pd.field_data_mut() = input.field_data().clone();
     pd
+}
+
+fn midpoint_for_edge(
+    a: usize,
+    b: usize,
+    input: &PolyData,
+    pts: &mut Points<f64>,
+    edges: &mut EdgeMap,
+    point_count: usize,
+    stencils: Option<&mut Vec<PointStencil>>,
+) -> i64 {
+    let key = edge_key(a, b, point_count);
+    let info = edges.get_mut(&key).unwrap();
+    if info.midpoint >= 0 {
+        return info.midpoint;
+    }
+
+    let pa = input.points.get(a);
+    let pb = input.points.get(b);
+    let idx = pts.len() as i64;
+    pts.push([
+        (pa[0] + pb[0]) * 0.5,
+        (pa[1] + pb[1]) * 0.5,
+        (pa[2] + pb[2]) * 0.5,
+    ]);
+    info.midpoint = idx;
+    if let Some(stencils) = stencils {
+        stencils.push(PointStencil {
+            sources: vec![a, b],
+            weights: vec![0.5, 0.5],
+        });
+    }
+    idx
 }
 
 #[derive(Debug, Clone)]
@@ -139,11 +210,11 @@ fn valid_point_index(id: i64, n_points: usize) -> Option<usize> {
     usize::try_from(id).ok().filter(|&idx| idx < n_points)
 }
 
-fn edge_key(a: i64, b: i64) -> (i64, i64) {
+fn edge_key(a: usize, b: usize, point_count: usize) -> u64 {
     if a < b {
-        (a, b)
+        a as u64 * point_count as u64 + b as u64
     } else {
-        (b, a)
+        b as u64 * point_count as u64 + a as u64
     }
 }
 

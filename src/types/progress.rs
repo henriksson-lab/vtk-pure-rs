@@ -8,7 +8,7 @@ use std::sync::Arc;
 /// Thread-safe: can be shared across rayon parallel operations.
 ///
 /// ```
-/// use crate::types::progress::Progress;
+/// use vtk_pure_rs::types::progress::Progress;
 ///
 /// let progress = Progress::new();
 /// progress.set_total(100);

@@ -7,7 +7,7 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 pub fn scalar_gradient_on_mesh(input: &PolyData, array_name: &str) -> PolyData {
     let n: usize = input.points.len();
     let values: Vec<f64> = match input.point_data().get_array(array_name) {
-        Some(arr) if arr.num_tuples() >= n => {
+        Some(arr) if arr.num_components() == 1 && arr.num_tuples() >= n => {
             let mut vals = vec![0.0f64; n];
             let mut buf = [0.0f64];
             for (i, val) in vals.iter_mut().enumerate() {
@@ -172,6 +172,37 @@ mod tests {
             }
         }
         assert!(found, "expected at least one vertex with gradient ~(1,0,0)");
+    }
+
+    #[test]
+    fn constant_field_has_zero_gradient() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.point_data_mut()
+            .add_array(DataArray::from_vec("f", vec![5.0; 3], 1).into());
+
+        let result = scalar_gradient_on_mesh(&pd, "f");
+        let mag = result.point_data().get_array("GradientMagnitude").unwrap();
+        let mut buf = [0.0f64];
+        for i in 0..3 {
+            mag.tuple_as_f64(i, &mut buf);
+            assert!(buf[0] < 1e-10);
+        }
+    }
+
+    #[test]
+    fn vector_array_is_not_treated_as_scalar() {
+        let mut pd = PolyData::from_triangles(
+            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            vec![[0, 1, 2]],
+        );
+        pd.point_data_mut()
+            .add_array(DataArray::from_vec("v", vec![0.0; 9], 3).into());
+
+        let result = scalar_gradient_on_mesh(&pd, "v");
+        assert!(result.point_data().get_array("ScalarGradient").is_none());
     }
 
     #[test]

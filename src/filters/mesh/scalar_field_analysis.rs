@@ -116,81 +116,25 @@ pub fn extract_level_set(mesh: &PolyData, array_name: &str, isovalue: f64) -> Po
 }
 
 /// Compute scalar gradient on mesh as per-vertex vectors.
+///
+/// Thin wrapper over
+/// [`crate::filters::mesh::point_data_gradient::scalar_gradient_on_mesh`], which owns the
+/// single per-face-gradient implementation. The result is republished under this
+/// module's "Gradient" array name.
 pub fn scalar_gradient_on_mesh(mesh: &PolyData, array_name: &str) -> PolyData {
-    let n = mesh.points.len();
-    let arr = match mesh.point_data().get_array(array_name) {
-        Some(a) if a.num_components() == 1 && a.num_tuples() >= n => a,
-        _ => return mesh.clone(),
+    let mut result =
+        crate::filters::mesh::point_data_gradient::scalar_gradient_on_mesh(mesh, array_name);
+    let Some(gradient) = result.point_data_mut().remove_array("ScalarGradient") else {
+        return result;
     };
-    let adj = build_adj(mesh, n);
-    let mut buf = [0.0f64];
-    let values: Vec<f64> = (0..n)
-        .map(|i| {
-            arr.tuple_as_f64(i, &mut buf);
-            buf[0]
-        })
-        .collect();
-
-    let mut grad = Vec::with_capacity(n * 3);
-    for i in 0..n {
-        if adj[i].is_empty() {
-            grad.extend_from_slice(&[0.0, 0.0, 0.0]);
-            continue;
-        }
-        let pi = mesh.points.get(i);
-        let mut gx = 0.0;
-        let mut gy = 0.0;
-        let mut gz = 0.0;
-        let mut w_sum = 0.0;
-        for &j in &adj[i] {
-            let pj = mesh.points.get(j);
-            let dx = pj[0] - pi[0];
-            let dy = pj[1] - pi[1];
-            let dz = pj[2] - pi[2];
-            let d = (dx * dx + dy * dy + dz * dz).sqrt();
-            if d > 1e-15 {
-                let dv = values[j] - values[i];
-                let w = 1.0 / d;
-                gx += w * dv * dx / d;
-                gy += w * dv * dy / d;
-                gz += w * dv * dz / d;
-                w_sum += w;
-            }
-        }
-        if w_sum > 1e-15 {
-            grad.extend_from_slice(&[gx / w_sum, gy / w_sum, gz / w_sum]);
-        } else {
-            grad.extend_from_slice(&[0.0, 0.0, 0.0]);
-        }
-    }
-
-    let mut result = mesh.clone();
+    let _ = result.point_data_mut().remove_array("GradientMagnitude");
+    let values = gradient.to_f64_vec_flat();
     result
         .point_data_mut()
-        .add_array(AnyDataArray::F64(DataArray::from_vec("Gradient", grad, 3)));
+        .add_array(AnyDataArray::F64(DataArray::from_vec(
+            "Gradient", values, 3,
+        )));
     result
-}
-
-fn build_adj(mesh: &PolyData, n: usize) -> Vec<Vec<usize>> {
-    let mut adj: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); n];
-    for cell in mesh.polys.iter() {
-        let nc = cell.len();
-        if nc < 2 {
-            continue;
-        }
-        for i in 0..nc {
-            if cell[i] < 0 || cell[(i + 1) % nc] < 0 {
-                continue;
-            }
-            let a = cell[i] as usize;
-            let b = cell[(i + 1) % nc] as usize;
-            if a < n && b < n {
-                adj[a].insert(b);
-                adj[b].insert(a);
-            }
-        }
-    }
-    adj.into_iter().map(|s| s.into_iter().collect()).collect()
 }
 
 fn build_link_topology(

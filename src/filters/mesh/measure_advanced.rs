@@ -2,47 +2,10 @@
 
 use crate::data::PolyData;
 
-/// Compute the signed volume of a closed triangle mesh.
-pub fn signed_volume(mesh: &PolyData) -> f64 {
-    let mut vol = 0.0;
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if !valid_cell(cell, mesh.points.len()) {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            vol += a[0] * (b[1] * c[2] - b[2] * c[1])
-                + b[0] * (c[1] * a[2] - c[2] * a[1])
-                + c[0] * (a[1] * b[2] - a[2] * b[1]);
-        }
-    }
-    vol / 6.0
-}
-
-/// Compute the total surface area of a mesh.
-pub fn surface_area(mesh: &PolyData) -> f64 {
-    let mut area = 0.0;
-    for cell in mesh.polys.iter() {
-        if cell.len() < 3 {
-            continue;
-        }
-        if !valid_cell(cell, mesh.points.len()) {
-            continue;
-        }
-        let a = mesh.points.get(cell[0] as usize);
-        for i in 1..cell.len() - 1 {
-            let b = mesh.points.get(cell[i] as usize);
-            let c = mesh.points.get(cell[i + 1] as usize);
-            area += tri_area(a, b, c);
-        }
-    }
-    area
-}
+pub use crate::filters::mesh::inertia::inertia_tensor;
+pub use crate::filters::mesh::volume::compactness;
+pub use crate::filters::mesh::volume::signed_volume;
+pub use crate::filters::mesh::volume::surface_area;
 
 /// Compute center of mass of a surface mesh (area-weighted centroid).
 pub fn center_of_mass(mesh: &PolyData) -> [f64; 3] {
@@ -91,30 +54,11 @@ fn valid_cell(cell: &[i64], npoints: usize) -> bool {
     cell.iter().all(|&id| id >= 0 && (id as usize) < npoints)
 }
 
-/// Compute the moment of inertia tensor (3x3 matrix).
-pub fn inertia_tensor(mesh: &PolyData) -> [[f64; 3]; 3] {
-    let n = mesh.points.len();
-    let mut tensor = [[0.0; 3]; 3];
-    let com = center_of_mass(mesh);
-    for i in 0..n {
-        let p = mesh.points.get(i);
-        let d = [p[0] - com[0], p[1] - com[1], p[2] - com[2]];
-        let r2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-        tensor[0][0] += r2 - d[0] * d[0];
-        tensor[0][1] -= d[0] * d[1];
-        tensor[0][2] -= d[0] * d[2];
-        tensor[1][0] -= d[1] * d[0];
-        tensor[1][1] += r2 - d[1] * d[1];
-        tensor[1][2] -= d[1] * d[2];
-        tensor[2][0] -= d[2] * d[0];
-        tensor[2][1] -= d[2] * d[1];
-        tensor[2][2] += r2 - d[2] * d[2];
-    }
-    tensor
-}
-
 /// Compute sphericity: how close the shape is to a sphere.
 /// 1.0 = perfect sphere, 0.0 = very non-spherical.
+///
+/// This is Wadell's sphericity, the reciprocal square of
+/// `vtkMassProperties::NormalizedShapeIndex`.
 pub fn sphericity(mesh: &PolyData) -> f64 {
     let vol = signed_volume(mesh).abs();
     let area = surface_area(mesh);
@@ -123,16 +67,6 @@ pub fn sphericity(mesh: &PolyData) -> f64 {
     }
     let pi = std::f64::consts::PI;
     (pi.powf(1.0 / 3.0) * (6.0 * vol).powf(2.0 / 3.0)) / area
-}
-
-/// Compute compactness (isoperimetric ratio): V² / A³.
-pub fn compactness(mesh: &PolyData) -> f64 {
-    let vol = signed_volume(mesh).abs();
-    let area = surface_area(mesh);
-    if area < 1e-15 {
-        return 0.0;
-    }
-    (36.0 * std::f64::consts::PI * vol * vol) / (area * area * area)
 }
 
 /// Comprehensive measurement summary.
@@ -166,45 +100,6 @@ pub fn measure_all(mesh: &PolyData) -> MeshMeasurements {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn unit_cube_volume() {
-        let mesh = PolyData::from_triangles(
-            vec![
-                [0.0, 0.0, 0.0],
-                [1.0, 0.0, 0.0],
-                [1.0, 1.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0],
-                [1.0, 0.0, 1.0],
-                [1.0, 1.0, 1.0],
-                [0.0, 1.0, 1.0],
-            ],
-            vec![
-                [0, 2, 1],
-                [0, 3, 2],
-                [4, 5, 6],
-                [4, 6, 7],
-                [0, 1, 5],
-                [0, 5, 4],
-                [2, 3, 7],
-                [2, 7, 6],
-                [0, 4, 7],
-                [0, 7, 3],
-                [1, 2, 6],
-                [1, 6, 5],
-            ],
-        );
-        let vol = signed_volume(&mesh).abs();
-        assert!((vol - 1.0).abs() < 0.01, "vol={vol}");
-    }
-    #[test]
-    fn area() {
-        let mesh = PolyData::from_triangles(
-            vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            vec![[0, 1, 2]],
-        );
-        assert!((surface_area(&mesh) - 0.5).abs() < 0.01);
-    }
     #[test]
     fn com() {
         let mesh = PolyData::from_triangles(

@@ -71,10 +71,11 @@ pub fn count_boundary_vertices(input: &PolyData) -> usize {
         .count()
 }
 
-/// Count the number of interior vertices.
-pub fn count_interior_vertices(input: &PolyData) -> usize {
-    input.points.len() - count_boundary_vertices(input)
-}
+/// Count the number of interior (non-boundary) vertices.
+///
+/// Single implementation lives in
+/// [`crate::filters::mesh::mesh_extract_interior_vertices`].
+pub use crate::filters::mesh::mesh_extract_interior_vertices::count_interior_vertices;
 
 fn add_edge(
     a: i64,

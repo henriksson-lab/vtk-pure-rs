@@ -8,7 +8,8 @@ use crate::data::{AnyDataArray, DataArray, PolyData};
 ///
 /// Edge weights are Euclidean distances between connected vertices. Adds a
 /// "GeodesicDistance" scalar array to point data. Unreachable vertices get
-/// `f64::INFINITY`.
+/// `-1.0`, matching `vtkDijkstraGraphGeodesicPath`, which resets its
+/// cumulative weights to -1.
 pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
     let n: usize = input.points.len();
 
@@ -81,6 +82,12 @@ pub fn geodesic_distance(input: &PolyData, source_vertex: usize) -> PolyData {
             }
         }
     }
+
+    // Unreachable vertices are reported as -1.0 (VTK's sentinel), not INFINITY.
+    let distances: Vec<f64> = distances
+        .into_iter()
+        .map(|d| if d.is_finite() { d } else { -1.0 })
+        .collect();
 
     let mut output = input.clone();
     output

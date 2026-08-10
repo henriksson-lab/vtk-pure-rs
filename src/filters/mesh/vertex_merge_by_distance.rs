@@ -5,8 +5,22 @@ use crate::types::Scalar;
 
 /// Merge vertices that are within `distance` of each other using k-d tree.
 ///
-/// More efficient than `vertex_glue` for large meshes. Merges to the
-/// first-encountered vertex in each cluster.
+/// Rust counterpart of `vtkCleanPolyData` (`Filters/Core/vtkCleanPolyData.cxx`)
+/// running with `PointMerging` on and `ToleranceIsAbsolute` on, i.e. `distance`
+/// is an absolute tolerance (VTK's `AbsoluteTolerance`), not a fraction of the
+/// bounding box diagonal. Like VTK's locator, a point merges into the first
+/// already-inserted point within the tolerance (`<=`, see
+/// `vtkPointLocator::IsInsertedPoint`); the k-d tree only accelerates that
+/// search.
+///
+/// Connectivity is rewritten the way `vtkCleanPolyData` does it: consecutive
+/// duplicate point ids are collapsed, a polygon/strip whose first and last id
+/// coincide loses the repeat, and cells that degenerate are downgraded
+/// (strip -> poly -> line -> vert), matching VTK's default `ConvertStripsToPolys`
+/// / `ConvertPolysToLines` / `ConvertLinesToPoints` settings.
+///
+/// Deviation from VTK: points that no cell references are kept (VTK only emits
+/// points it meets while walking cells); use `remove_isolated_vertices` for that.
 pub fn merge_close_vertices(input: &PolyData, distance: f64) -> PolyData {
     let n = input.points.len();
     if n == 0 || !distance.is_finite() || distance < 0.0 {
@@ -38,14 +52,30 @@ pub fn merge_close_vertices(input: &PolyData, distance: f64) -> PolyData {
         }
     }
 
-    let mut kept_cell_ids = Vec::new();
-    let out_verts = remap_cells(&input.verts, &remap, 1, 0, &mut kept_cell_ids);
-    let line_offset = input.verts.num_cells();
-    let out_lines = remap_cells(&input.lines, &remap, 2, line_offset, &mut kept_cell_ids);
-    let poly_offset = line_offset + input.lines.num_cells();
-    let out_polys = remap_cells(&input.polys, &remap, 3, poly_offset, &mut kept_cell_ids);
-    let strip_offset = poly_offset + input.polys.num_cells();
-    let out_strips = remap_cells(&input.strips, &remap, 4, strip_offset, &mut kept_cell_ids);
+    // Input cells are numbered verts, lines, polys, strips - the order
+    // vtkPolyData uses for cell data.
+    let mut out_cells = OutputCells::default();
+    let mut old_cell_id = 0usize;
+    for (cells, kind) in [
+        (&input.verts, CellKind::Verts),
+        (&input.lines, CellKind::Lines),
+        (&input.polys, CellKind::Polys),
+        (&input.strips, CellKind::Strips),
+    ] {
+        for cell in cells.iter() {
+            let cell_id = old_cell_id;
+            old_cell_id += 1;
+            let Some(mapped) = remap_cell(cell, &remap) else {
+                continue;
+            };
+            let cleaned = collapse_repeated_ids(&mapped, kind);
+            let Some(target) = downgrade(kind, cleaned.len()) else {
+                continue;
+            };
+            out_cells.push(target, cleaned, cell_id);
+        }
+    }
+    let (out_verts, out_lines, out_polys, out_strips, kept_cell_ids) = out_cells.finish();
 
     let mut pd = input.clone();
     pd.points = out_pts;
@@ -58,27 +88,94 @@ pub fn merge_close_vertices(input: &PolyData, distance: f64) -> PolyData {
     pd
 }
 
-fn remap_cells(
-    cells: &CellArray,
-    remap: &[usize],
-    minimum_size: usize,
-    cell_offset: usize,
-    kept_cell_ids: &mut Vec<usize>,
-) -> CellArray {
-    let mut out = CellArray::new();
-    for (cell_id, cell) in cells.iter().enumerate() {
-        let Some(mapped) = remap_cell(cell, remap) else {
-            continue;
-        };
-        let mut unique = mapped.clone();
-        unique.sort();
-        unique.dedup();
-        if unique.len() >= minimum_size {
-            out.push_cell(&mapped);
-            kept_cell_ids.push(cell_offset + cell_id);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CellKind {
+    Verts,
+    Lines,
+    Polys,
+    Strips,
+}
+
+/// Collapse runs of identical point ids, as vtkCleanPolyData does while
+/// rewriting connectivity (`if (i == 0 || ptId != updatedPts[numNewPts - 1])`).
+/// Vertex cells keep every id; polygons and strips additionally drop a trailing
+/// id that repeats the first one.
+fn collapse_repeated_ids(mapped: &[i64], kind: CellKind) -> Vec<i64> {
+    if kind == CellKind::Verts {
+        return mapped.to_vec();
+    }
+    let mut out: Vec<i64> = Vec::with_capacity(mapped.len());
+    for &id in mapped {
+        if out.last() != Some(&id) {
+            out.push(id);
         }
     }
+    match kind {
+        CellKind::Polys if out.len() > 2 && out.first() == out.last() => {
+            out.pop();
+        }
+        CellKind::Strips if out.len() > 1 && out.first() == out.last() => {
+            out.pop();
+        }
+        _ => {}
+    }
     out
+}
+
+/// Which cell array a cleaned cell ends up in. Mirrors vtkCleanPolyData with
+/// ConvertStripsToPolys/ConvertPolysToLines/ConvertLinesToPoints all enabled
+/// (their default): a cell too small for its own array is demoted rather than
+/// dropped, and only an empty cell disappears.
+fn downgrade(kind: CellKind, num_points: usize) -> Option<CellKind> {
+    let target = match (kind, num_points) {
+        (_, 0) => return None,
+        (CellKind::Strips, n) if n > 3 => CellKind::Strips,
+        (CellKind::Polys | CellKind::Strips, n) if n > 2 => CellKind::Polys,
+        (CellKind::Lines | CellKind::Polys | CellKind::Strips, n) if n > 1 => CellKind::Lines,
+        (CellKind::Verts, _) => CellKind::Verts,
+        _ => CellKind::Verts,
+    };
+    Some(target)
+}
+
+/// Cells being accumulated per output array, each remembering the input cell it
+/// came from so cell data can follow. vtkCleanPolyData does the same with its
+/// separate outLineData/outPolyData/outStrpData lists.
+#[derive(Default)]
+struct OutputCells {
+    verts: Vec<(Vec<i64>, usize)>,
+    lines: Vec<(Vec<i64>, usize)>,
+    polys: Vec<(Vec<i64>, usize)>,
+    strips: Vec<(Vec<i64>, usize)>,
+}
+
+impl OutputCells {
+    fn push(&mut self, kind: CellKind, cell: Vec<i64>, old_cell_id: usize) {
+        let bucket = match kind {
+            CellKind::Verts => &mut self.verts,
+            CellKind::Lines => &mut self.lines,
+            CellKind::Polys => &mut self.polys,
+            CellKind::Strips => &mut self.strips,
+        };
+        bucket.push((cell, old_cell_id));
+    }
+
+    fn finish(self) -> (CellArray, CellArray, CellArray, CellArray, Vec<usize>) {
+        let mut kept_cell_ids = Vec::new();
+        let mut build = |cells: Vec<(Vec<i64>, usize)>| {
+            let mut out = CellArray::new();
+            for (cell, old_cell_id) in cells {
+                out.push_cell(&cell);
+                kept_cell_ids.push(old_cell_id);
+            }
+            out
+        };
+        let verts = build(self.verts);
+        let lines = build(self.lines);
+        let polys = build(self.polys);
+        let strips = build(self.strips);
+        (verts, lines, polys, strips, kept_cell_ids)
+    }
 }
 
 fn remap_cell(cell: &[i64], remap: &[usize]) -> Option<Vec<i64>> {
@@ -243,10 +340,92 @@ mod tests {
         temperature.tuple_as_f64(0, &mut scalar);
         assert_eq!(scalar[0], 10.0);
 
+        // The line collapsed to a single point, so vtkCleanPolyData emits it as
+        // a vertex cell; cell data is reordered verts-then-polys accordingly.
+        assert_eq!(result.verts.num_cells(), 1);
+        assert_eq!(result.lines.num_cells(), 0);
         let ids = result.cell_data().get_array("ids").unwrap();
-        assert_eq!(ids.num_tuples(), 1);
+        assert_eq!(ids.num_tuples(), 2);
         ids.tuple_as_f64(0, &mut scalar);
+        assert_eq!(scalar[0], 7.0);
+        ids.tuple_as_f64(1, &mut scalar);
         assert_eq!(scalar[0], 9.0);
+    }
+
+    #[test]
+    fn collapsed_polygon_is_downgraded_to_a_line() {
+        // vtkCleanPolyData with ConvertPolysToLines on turns a triangle whose
+        // two first corners merge into a line rather than dropping it.
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.001, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2]);
+
+        let result = merge_close_vertices(&pd, 0.01);
+        assert_eq!(result.polys.num_cells(), 0);
+        assert_eq!(result.lines.num_cells(), 1);
+        assert_eq!(result.lines.cell(0), &[0, 1]);
+    }
+
+    #[test]
+    fn collapsed_strip_is_downgraded_to_a_polygon() {
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.001, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([1.0, 1.0, 0.0]);
+        pd.strips.push_cell(&[0, 1, 2, 3]);
+
+        let result = merge_close_vertices(&pd, 0.01);
+        assert_eq!(result.strips.num_cells(), 0);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.polys.cell(0), &[0, 1, 2]);
+    }
+
+    #[test]
+    fn quadrilateral_keeps_its_remaining_corners() {
+        // Merging two adjacent corners of a quad leaves a triangle, matching
+        // vtkCleanPolyData's consecutive-duplicate collapse.
+        let mut pd = PolyData::new();
+        pd.points.push([0.0, 0.0, 0.0]);
+        pd.points.push([0.001, 0.0, 0.0]);
+        pd.points.push([1.0, 0.0, 0.0]);
+        pd.points.push([0.0, 1.0, 0.0]);
+        pd.polys.push_cell(&[0, 1, 2, 3]);
+
+        let result = merge_close_vertices(&pd, 0.01);
+        assert_eq!(result.polys.num_cells(), 1);
+        assert_eq!(result.polys.cell(0), &[0, 1, 2]);
+    }
+
+    #[test]
+    fn keeps_active_scalars_and_line_topology() {
+        let mut mesh = PolyData::from_points(vec![
+            [0.0, 0.0, 0.0],
+            [0.001, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]);
+        mesh.lines.push_cell(&[0, 2]);
+        mesh.point_data_mut()
+            .add_array(AnyDataArray::F64(DataArray::from_vec(
+                "id",
+                vec![10.0, 11.0, 12.0, 13.0],
+                1,
+            )));
+        mesh.point_data_mut().set_active_scalars("id");
+
+        let r = merge_close_vertices(&mesh, 0.01);
+        assert_eq!(r.points.len(), 3);
+        assert_eq!(r.lines.num_cells(), 1);
+
+        let arr = r.point_data().get_array("id").unwrap();
+        assert_eq!(arr.num_tuples(), 3);
+        let mut value = [0.0];
+        arr.tuple_as_f64(0, &mut value);
+        assert_eq!(value[0], 10.0);
+        assert!(r.point_data().scalars().is_some());
     }
 
     #[test]
